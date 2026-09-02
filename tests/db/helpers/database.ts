@@ -31,8 +31,19 @@ const SUPABASE_COMPAT = `
   language sql
   stable
   as $$
+    -- Returns NULL when there is no session, matching Supabase.
+    --
+    -- The coalesce to '{}' matters: an unauthenticated request leaves
+    -- request.jwt.claims empty, and casting '' to json raises "invalid input
+    -- syntax for type json". That error would surface as a thrown query,
+    -- which a denial-checking assertion happily accepts — so anonymous tests
+    -- would pass without RLS having refused anything. Returning NULL cleanly
+    -- forces the policies themselves to do the denying.
     select nullif(
-      current_setting('request.jwt.claims', true)::json ->> 'sub',
+      coalesce(
+        nullif(current_setting('request.jwt.claims', true), ''),
+        '{}'
+      )::json ->> 'sub',
       ''
     )::uuid;
   $$;

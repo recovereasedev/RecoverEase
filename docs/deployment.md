@@ -138,31 +138,42 @@ are used.
 
 Without the redirect URL, password reset links will not return to the app.
 
-## Scheduled jobs (not yet wired)
+## Scheduled jobs
 
-Three database functions exist and are tested, but nothing calls them on a
-schedule. Module 4.2 ("Configure Automated Medication Reminders") and 4.7
-("Receive Medication Reminders") are incomplete until this is done.
+Migration `…100009_scheduled_jobs.sql` registers three pg_cron jobs. The whole
+block is guarded on `pg_cron` being available, so it is a no-op where the
+extension is absent (including the PGlite test harness) rather than aborting
+the migration.
+
+| Job | Cadence | Purpose |
+| --- | --- | --- |
+| `recoverease-extend-medication-slots` | `0 1 * * *` | Extends dose slots for every live schedule |
+| `recoverease-medication-reminders` | `*/15 * * * *` | Chases doses that came due unrecorded (modules 4.2, 4.7) |
+| `recoverease-mark-overdue-doses` | `5 * * * *` | Writes off doses past the grace period |
+
+`cron.schedule(name, …)` replaces a job of the same name, so re-running the
+migration does not accumulate duplicates.
+
+Confirm after deploying:
 
 ```sql
-create extension if not exists pg_cron;
-
--- Extend dose slots for every live schedule.
-select cron.schedule(
-  'extend-medication-slots', '0 1 * * *',
-  $$ select public.extend_all_medication_log_slots(30) $$
-);
-
--- Doses that came and went unrecorded become 'missed', not perpetually
--- 'pending', so adherence stays meaningful.
-select cron.schedule(
-  'mark-overdue-doses', '0 * * * *',
-  $$ select public.mark_overdue_medication_logs(6) $$
-);
+select jobname, schedule, active from cron.job
+ where jobname like 'recoverease-%';
 ```
 
-Sending the reminder itself (email or push) is a further step and is not
-implemented.
+**If pg_cron is unavailable** the migration logs a notice and skips. Call the
+same three functions from any external scheduler using the service role —
+they are the entire contract, and each is idempotent:
+
+```sql
+select public.extend_all_medication_log_slots(30);
+select public.dispatch_medication_reminders(30);
+select public.mark_overdue_medication_logs(6);
+```
+
+Reminders are delivered as in-app notifications, which is what the ERD's
+`notification` table models. Email or push delivery would be a further step
+and is not implemented.
 
 ## Bundle budget
 
@@ -199,7 +210,7 @@ npm run build          # then check what index.html references
 
 ## Pre-deployment checklist
 
-- [ ] `npm run verify` passes (lint, typecheck, 113 tests, build)
+- [ ] `npm run verify` passes (lint, typecheck, 136 tests, build)
 - [ ] Migrations applied; `db advisors` reports no security findings
 - [ ] First administrator provisioned
 - [ ] `app.timezone` set

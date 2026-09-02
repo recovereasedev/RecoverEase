@@ -216,6 +216,6 @@ Recorded honestly rather than left for someone to discover:
    the browser's print pipeline; writing a rendered file to Supabase Storage
    is the documented extension point, deliberately not faked with a URL that
    would 404.
-4. **Automated medication reminders need a scheduler.** The database functions
-   exist and are tested; wiring them to `pg_cron` is described in
-   [`deployment.md`](./deployment.md) and has not been done.
+4. **Reminder delivery is in-app only.** Medication reminders are dispatched
+   on a pg_cron schedule and written to the `notification` table, which is
+   what the ERD models. Email and push delivery are not implemented.

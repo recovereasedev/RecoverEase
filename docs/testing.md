@@ -1,7 +1,7 @@
 # Testing
 
 ```bash
-npm test              # everything — 113 tests
+npm test              # everything — 136 tests
 npm run test:unit     # component and pure-function tests (jsdom)
 npm run test:db       # schema and RLS tests (real PostgreSQL)
 npm run verify        # lint + typecheck + test + build
@@ -36,7 +36,10 @@ create schema auth;
 create table auth.users (id uuid primary key, email text not null);
 
 create function auth.uid() returns uuid as $$
-  select nullif(current_setting('request.jwt.claims', true)::json ->> 'sub','')::uuid
+  select nullif(
+    coalesce(nullif(current_setting('request.jwt.claims', true), ''), '{}')::json ->> 'sub',
+    ''
+  )::uuid
 $$;
 
 create role anon; create role authenticated; create role service_role;
@@ -46,6 +49,22 @@ grant execute on function auth.uid() to anon, authenticated, service_role;
 
 Note what is **not** granted: `SELECT` on `auth.users`. A signed-in role can
 resolve its own id and nothing more, matching production.
+
+### The `coalesce` is load-bearing, and was added after a real finding
+
+An unauthenticated request leaves `request.jwt.claims` empty, and casting
+`''` to `json` raises *invalid input syntax for type json*. That error
+surfaced as a **thrown query** — which a denial-checking assertion happily
+accepts as a refusal.
+
+So every anonymous test had been passing without RLS refusing anything. The
+policies were in fact correct, but the tests were not proving it. Returning
+`NULL` cleanly forces the policies themselves to do the denying, which is
+what those assertions were supposed to be checking all along.
+
+It surfaced because a later suite ran an `UPDATE` whose audit trigger calls
+`auth.uid()` outside a policy, where the same error was fatal rather than
+conveniently interpreted as a denial.
 
 Impersonation runs inside a transaction so `set local` reverts automatically
 and a denial cannot leave the session half-configured for the next assertion:
@@ -83,7 +102,7 @@ RLS refuses in two different ways, and a test checking only one is weak:
 `expectDenied` accepts either, and — importantly — **fails when the statement
 succeeds and returns rows**.
 
-### What the 55 database tests cover
+### What the 78 database tests cover
 
 | Area | Examples |
 | --- | --- |
@@ -97,6 +116,7 @@ succeeds and returns rows**.
 | Escalation | Patient cannot change their doctor, status, or role; deactivated doctor cannot reactivate themselves; nobody can forge or delete audit rows |
 | Workflow | Patient cannot approve their own reschedule; approving moves the appointment; doctor cannot edit adherence; patient cannot book with another doctor or on another patient's behalf |
 | Notifications | Users see only their own; a doctor may notify their own patient but not someone else's |
+| Medication reminders | One reminder per dose however often the scheduler fires; honours the opt-out and preferred time; reaches only the dose owner; slot generation idempotent; doses generated at clinic-local wall-clock time; the functions refuse `authenticated` and `anon` |
 
 Every guard test asserts the refusal **and** that the legitimate action still
 works. A guard that blocked everything would otherwise pass.
@@ -120,7 +140,7 @@ test, so the rule still holds for everything else.
 
 ## Component and unit tests
 
-58 tests, chosen for logic that can be silently wrong rather than for
+58 component and unit tests, chosen for logic that can be silently wrong rather than for
 coverage percentage.
 
 **Recovery streak** — the only number on the patient dashboard that is

@@ -149,7 +149,7 @@ introspects the result, so the generated types cannot drift from the schema.
 | `npm run build` | Type-check and produce a production build |
 | `npm run typecheck` | Type-check without emitting |
 | `npm run lint` | oxlint |
-| `npm test` | All 113 tests |
+| `npm test` | All 136 tests |
 | `npm run test:unit` | Component and unit tests |
 | `npm run test:db` | Schema and RLS tests, against real PostgreSQL |
 | `npm run test:coverage` | Coverage report |
@@ -158,13 +158,13 @@ introspects the result, so the generated types cannot drift from the schema.
 
 ## Testing
 
-113 tests in two suites:
+136 tests in two suites:
 
-- **55 database tests** run every migration into a real PostgreSQL (PGlite,
+- **78 database tests** run every migration into a real PostgreSQL (PGlite,
   in-process, no Docker) and then issue queries as different principals to
   verify the Row Level Security policies actually hold — cross-tenant
-  isolation, doctor scoping, administrator boundaries, privilege escalation
-  and workflow integrity.
+  isolation, doctor scoping, administrator boundaries, privilege escalation,
+  workflow integrity and the medication reminder scheduler's idempotency.
 - **58 component and unit tests** cover the logic that can be silently wrong:
   streak calculation across timezones, adherence maths, loading/empty/error
   ordering, error translation, accessibility wiring and route guards.
