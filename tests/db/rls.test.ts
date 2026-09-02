@@ -283,6 +283,39 @@ describe('row level security', () => {
       expect(serialised).not.toContain('Take with food')
       expect(serialised).not.toContain('Post-operative knee recovery')
     })
+
+    it('puts no personal identifier anywhere in the audit trail', async () => {
+      // The test above names the three tables already known to be safe, which
+      // is why it did not catch `user_account`. That table was classified as
+      // administrative and given `values` disclosure alongside `doctor` and
+      // `announcement` — but unlike those it holds a row for every patient,
+      // so its entries recorded each patient's email address. An
+      // administrator has SELECT on audit_log, so that was readable straight
+      // from the API. Found in production, not here.
+      //
+      // This assertion is deliberately not scoped to a list of tables: it
+      // reads the entire audit trail as an administrator and looks for
+      // identifiers. A future table added with the wrong disclosure mode
+      // fails here without anyone remembering to extend a whitelist.
+      const rows = await database.asUser<{ audit_log_details: unknown }>(
+        fx.adminUserId,
+        'select audit_log_details from public.audit_log',
+      )
+
+      expect(rows.length).toBeGreaterThan(0)
+      const serialised = JSON.stringify(rows)
+
+      // An email address identifies a person, and "this person is a patient
+      // here" is health information even without a diagnosis attached.
+      expect(serialised).not.toMatch(
+        /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/,
+      )
+
+      // Names of real people, from every role.
+      for (const name of ['Alice', 'Santos', 'Bob', 'Carol', 'Dave']) {
+        expect(serialised).not.toContain(name)
+      }
+    })
   })
 
   // =========================================================================

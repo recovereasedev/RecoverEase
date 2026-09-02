@@ -227,6 +227,56 @@ Sign-in does not distinguish an unknown email from a wrong password: a message
 that separates them lets an attacker enumerate which patients and clinicians
 are registered.
 
+### The gap this claim had, and how it was found
+
+The paragraphs above were true for `patient`, `prescription` and
+`treatment_plan`, and a test asserted it for exactly those three. It was not
+true everywhere.
+
+`audit_row_change` takes a disclosure mode. Four tables were classified as
+administrative and given `values`: `doctor`, `announcement`, `system_setting`
+and `user_account`. The first three hold no patient rows. **`user_account`
+holds one for every patient**, so its audit entries recorded:
+
+```json
+{"record": {"user_id": "...", "user_role": "patient",
+            "user_email": "patient@example.com", ...}}
+```
+
+An administrator has `SELECT` on `audit_log`. The audit screen never rendered
+that payload — its "Fields changed" column showed a dash — but an
+administrator could read every patient's email address directly from
+`/rest/v1/audit_log`. The interface hiding it is not a boundary; that is the
+premise this entire model is built on, and here the model caught the interface
+out rather than the other way round.
+
+It also contradicted the codebase's own intent. `create-account` writes its
+audit entry with the comment *"Deliberately no name, email or clinical detail:
+administrators can read audit_log and must not learn patient identities from
+it."* The Edge Function honoured that. The trigger on the same table did not.
+
+An email address is not a diagnosis. But it identifies a person, and "this
+identified person is a patient of this clinic" is health information.
+
+**Fixed in migration 15** with a fourth trigger argument naming columns whose
+values are never recorded. `user_account` keeps `values` disclosure — the role
+and account id are what make the entry useful for reviewing provisioning — and
+loses only the identifier. Verified live by creating a throwaway account and
+reading back what the trigger wrote.
+
+The test that missed this was scoped to a list of three tables. Its
+replacement reads the **entire** audit trail as an administrator and asserts no
+email address and no personal name appears anywhere, so a future table added
+with the wrong disclosure mode fails without anyone remembering to extend a
+whitelist. It was confirmed to fail against the pre-fix trigger.
+
+**One-time remediation.** Three rows written before the fix carried fixture
+addresses. Audit history is append-only for every role, administrators
+included, and these were rewritten as the table owner to drop the email key.
+That is the only time audit history has been altered, and it is recorded here
+rather than done quietly. Zero rows in the live audit trail now match an email
+pattern.
+
 ## Leaked-password protection is a paid feature
 
 Supabase Auth can reject passwords that appear in the Have I Been Pwned
