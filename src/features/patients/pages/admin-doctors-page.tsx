@@ -1,10 +1,12 @@
-import { Stethoscope } from 'lucide-react'
+import { Stethoscope, UserPlus } from 'lucide-react'
+import { useState } from 'react'
 
 import { StateView } from '@/components/feedback/state-view'
 import { PageHeader } from '@/components/layout/page-header'
 import { StatusBadge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardBody } from '@/components/ui/card'
+import { RegisterAccountDialog } from '@/features/patients/components/register-account-dialog'
 import { useAllDoctors, useSetDoctorActive } from '@/features/patients/hooks'
 import { formatDate } from '@/lib/format'
 import { doctorAccountStatus } from '@/lib/status'
@@ -26,12 +28,25 @@ import { fullName } from '@/lib/utils'
 export function AdminDoctorsPage() {
   const doctorsQuery = useAllDoctors()
   const setActive = useSetDoctorActive()
+  const [isRegisterOpen, setRegisterOpen] = useState(false)
 
   return (
     <>
       <PageHeader
         title="Doctor accounts"
         description="Clinician accounts and their access to the system."
+        actions={
+          <Button onClick={() => setRegisterOpen(true)}>
+            <UserPlus aria-hidden="true" />
+            Register a doctor
+          </Button>
+        }
+      />
+
+      <RegisterAccountDialog
+        mode="doctor"
+        isOpen={isRegisterOpen}
+        onClose={() => setRegisterOpen(false)}
       />
 
       <Card>
@@ -52,8 +67,7 @@ export function AdminDoctorsPage() {
                   No doctor accounts
                 </p>
                 <p className="mt-1 text-sm text-muted">
-                  Doctor accounts are provisioned through the account
-                  management workflow.
+                  Register a doctor to give them access to the system.
                 </p>
               </div>
             }

@@ -1,11 +1,13 @@
-import { Search, Users } from 'lucide-react'
+import { Search, UserPlus, Users } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import { StateView } from '@/components/feedback/state-view'
 import { PageHeader } from '@/components/layout/page-header'
 import { StatusBadge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Card, CardBody } from '@/components/ui/card'
+import { RegisterAccountDialog } from '@/features/patients/components/register-account-dialog'
 import { useMyPatients } from '@/features/patients/hooks'
 import { calculateAge, formatDate } from '@/lib/format'
 import { patientStatus } from '@/lib/status'
@@ -24,6 +26,7 @@ import { fullName, initials } from '@/lib/utils'
 export function DoctorPatientsPage() {
   const patientsQuery = useMyPatients()
   const [search, setSearch] = useState('')
+  const [isRegisterOpen, setRegisterOpen] = useState(false)
 
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase()
@@ -41,6 +44,18 @@ export function DoctorPatientsPage() {
       <PageHeader
         title="Patients"
         description="Everyone assigned to your care."
+        actions={
+          <Button onClick={() => setRegisterOpen(true)}>
+            <UserPlus aria-hidden="true" />
+            Register a patient
+          </Button>
+        }
+      />
+
+      <RegisterAccountDialog
+        mode="patient"
+        isOpen={isRegisterOpen}
+        onClose={() => setRegisterOpen(false)}
       />
 
       <Card>
@@ -83,7 +98,7 @@ export function DoctorPatientsPage() {
                 <p className="mt-1 text-sm text-muted">
                   {search
                     ? 'Try a different name.'
-                    : 'Patients you register will appear here.'}
+                    : 'Register a patient to get started.'}
                 </p>
               </div>
             }
