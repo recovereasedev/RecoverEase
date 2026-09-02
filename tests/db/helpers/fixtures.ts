@@ -149,7 +149,7 @@ export async function seedFixture(database: TestDatabase): Promise<Fixture> {
   const aliceGoalId = await one<string>(
     `insert into public.treatment_goal
        (treatment_plan_id, treatment_goal_description, treatment_goal_target_date)
-     values ($1, 'Walk 500 metres unaided', current_date + 30)
+     values ($1, 'Walk 500 metres unaided', public.app_today() + 30)
      returning treatment_goal_id`,
     [alicePlanId],
   )
@@ -175,10 +175,15 @@ export async function seedFixture(database: TestDatabase): Promise<Fixture> {
     [alice.patId, doctorAId],
   )
 
+  // `app_today()`, not `current_date`. The schema defines "today" as the
+  // clinic's day, and the two are different dates for part of every day —
+  // that gap is what broke recovery logging in production. Fixtures that
+  // still used the server clock would be asserting against a definition of
+  // today the application does not use.
   const aliceRecoveryLogId = await one<string>(
     `insert into public.recovery_log
        (pat_id, recovery_log_date, recovery_log_notes, recovery_log_mood_rating)
-     values ($1, current_date, 'Felt steady today', 4)
+     values ($1, public.app_today(), 'Felt steady today', 4)
      returning recovery_log_id`,
     [alice.patId],
   )
