@@ -1,24 +1,30 @@
 # Deployment
 
-> **Status: deployed, smoke-tested and origin-migrated. One secret outstanding.**
+> **Status: deployed, smoke-tested and origin-migrated. Two items outstanding.**
 >
 > | | |
 > | --- | --- |
-> | Production URL | <https://recovereasedev.vercel.app> |
+> | Production URL | <https://recoverease-web.vercel.app> |
 > | Supabase project ref | `kwsezszstdagzllbyjuk` (ap-southeast-1) |
 > | Vercel project | `recovereasedev-7251s-projects/recoverease` |
 > | Repository | `recovereasedev/RecoverEase` |
 >
 > 14 migrations applied, 20 tables, RLS on every one, 54 policies, 3 pg_cron
 > jobs all confirmed to have actually executed, both Edge Functions ACTIVE at
-> v2 with `verify_jwt`.
+> v3 with `verify_jwt`.
 >
-> `recoverease-zeta.vercel.app` remains a live alias for the same deployment
-> and is on the CORS allow-list, so old links keep working. It is no longer
-> the canonical origin.
+> Two older hostnames on the same Vercel project still resolve, and both are
+> on the Edge Function CORS allow-list so nothing bookmarked breaks:
 >
-> **Outstanding:** `ANTHROPIC_API_KEY` is not set, so the guidance chatbot
-> cannot generate replies. Its failure path is verified and degrades cleanly.
+> | Hostname | Behaviour |
+> | --- | --- |
+> | `recovereasedev.vercel.app` | 307 → the canonical host |
+> | `recoverease-zeta.vercel.app` | serves the same deployment directly |
+>
+> **Outstanding:** `ANTHROPIC_API_KEY` is not set (no key available), so the
+> guidance chatbot cannot generate replies — its failure path is verified and
+> degrades cleanly. Leaked-password protection cannot be enabled on the
+> current Supabase plan; see below.
 
 ## Prerequisites
 
@@ -134,6 +140,7 @@ is not on the list now receives **no** `Access-Control-Allow-Origin` header at
 all, which is the honest form of a refusal. Verified live:
 
 ```
+recoverease-web.vercel.app  -> Access-Control-Allow-Origin: recoverease-web.vercel.app
 recovereasedev.vercel.app   -> Access-Control-Allow-Origin: recovereasedev.vercel.app
 recoverease-zeta.vercel.app -> Access-Control-Allow-Origin: recoverease-zeta.vercel.app
 evil.example.com            -> no header (refused)

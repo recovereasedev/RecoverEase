@@ -205,20 +205,24 @@ Vercel for the frontend, Supabase for everything else.
 [`vercel.json`](./vercel.json) configures SPA routing, a Content-Security-
 Policy, immutable asset caching and the usual security headers.
 
-**Live at <https://recovereasedev.vercel.app>**, backed by Supabase project
-`kwsezszstdagzllbyjuk`. Smoke-tested end to end across all three roles, on the
-production URL. `recoverease-zeta.vercel.app` remains a working alias for the
-same deployment.
+**Live at <https://recoverease-web.vercel.app>**, backed by Supabase project
+`kwsezszstdagzllbyjuk`. Smoke-tested end to end across all three roles.
+`recovereasedev.vercel.app` redirects to it and `recoverease-zeta.vercel.app`
+serves the same deployment; both are on the Edge Function CORS allow-list, so
+older links keep working.
 
-One item is outstanding: the `ANTHROPIC_API_KEY` Edge Function secret is not
-set, so the guidance chatbot cannot generate replies. Its failure path is
-verified — the patient's message is saved and the UI says the assistant is
-unavailable rather than inventing an answer. Everything else is exercised
-against the live system.
+Two items are outstanding, both external rather than code:
+
+- `ANTHROPIC_API_KEY` is not set, so the guidance chatbot cannot generate
+  replies. Its failure path is verified — the patient's message is saved and
+  the UI says the assistant is unavailable rather than inventing an answer.
+- Leaked-password protection requires a Supabase Pro plan and cannot be
+  enabled on the current one. See [`docs/security.md`](./docs/security.md).
 
 The three demonstration accounts had their shared password rotated to
-independent random values; see [`docs/deployment.md`](./docs/deployment.md)
-for how to set your own.
+independent random values, so **nobody can currently sign in**. See
+[`docs/deployment.md`](./docs/deployment.md) for the one-line SQL that sets a
+password of your choosing.
 
 ## Git workflow
 

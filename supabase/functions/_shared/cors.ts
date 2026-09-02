@@ -26,10 +26,14 @@
  * project controls belong in it.
  */
 const PRODUCTION_ORIGINS = [
+  // Canonical.
+  'https://recoverease-web.vercel.app',
+  // Older aliases on the same Vercel project. `recovereasedev` now 307s to
+  // the canonical host and `recoverease-zeta` is Vercel's name-derived alias;
+  // both still serve, so both stay listed. A browser that follows a redirect
+  // keeps its *original* origin on the subsequent request, and a bookmarked
+  // link should not reach a chat that fails for no visible reason.
   'https://recovereasedev.vercel.app',
-  // Vercel's name-derived alias for the same project, still live and serving
-  // the same deployment. Kept so a bookmarked link does not hit a chat that
-  // fails for no visible reason.
   'https://recoverease-zeta.vercel.app',
 ]
 

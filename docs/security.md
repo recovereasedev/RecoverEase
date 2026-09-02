@@ -227,6 +227,36 @@ Sign-in does not distinguish an unknown email from a wrong password: a message
 that separates them lets an attacker enumerate which patients and clinicians
 are registered.
 
+## Leaked-password protection is a paid feature
+
+Supabase Auth can reject passwords that appear in the Have I Been Pwned
+corpus, and the security advisor flags the project while it is off. It is
+switched on under **Authentication → Sign In / Providers → Email → Prevent use
+of leaked passwords**.
+
+On this project that toggle cannot be saved:
+
+```
+Failed to update auth configuration: Configuring leaked password protection
+via HaveIBeenPwned.org is available on Pro Plans and up.
+```
+
+So the advisor warning is **not** an oversight and cannot be cleared without
+upgrading the plan. Recorded here rather than left looking like something
+nobody got round to.
+
+What partly covers the same ground in the meantime, and is available on the
+current plan, on the same settings page:
+
+- **Minimum password length** — currently 6, the Supabase floor. Raising it to
+  10 or 12 costs nothing and removes the largest share of guessable
+  passwords.
+- **Password requirements** — currently unset; requiring mixed character
+  classes is also free.
+
+Neither is a substitute for a breach-corpus check, which is the only control
+that catches a long, complex password that has already leaked elsewhere.
+
 ## Known limitations
 
 Recorded honestly rather than left for someone to discover:
