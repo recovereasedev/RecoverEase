@@ -1,0 +1,17 @@
+# Normalise line endings so the repo stays consistent across Windows, macOS
+# and Linux checkouts, and so diffs are not polluted by CRLF churn.
+* text=auto eol=lf
+
+# Binary assets must never be normalised.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.pdf binary
+
+# Generated: collapse in pull request diffs.
+package-lock.json linguist-generated=true -diff
+src/types/database.types.ts linguist-generated=true

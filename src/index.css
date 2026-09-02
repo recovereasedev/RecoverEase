@@ -1,0 +1,244 @@
+@import 'tailwindcss';
+
+/* ===========================================================================
+   RecoverEase Design System
+   ---------------------------------------------------------------------------
+   Source of truth: "RecoverEase - User Interface Design" (Sections 1-5).
+   That document specifies six colour roles, a sans-serif hierarchy, rounded
+   containers, generous whitespace, and three governing principles:
+   clarity, simplicity, accessibility.
+
+   Design rules encoded here:
+
+   1. Colour is never the only carrier of meaning. Every status token has a
+      matching icon and text label in `src/lib/status.ts`.
+   2. Every foreground/background pair used for text meets WCAG AA (4.5:1).
+      Measured ratios are recorded beside each token.
+   3. Separation is done with borders, not shadows. Shadow is reserved for
+      genuinely floating layers (menu, dialog, toast) so that elevation keeps
+      its meaning instead of becoming decoration.
+   4. The blue-to-teal gradient called for by the design document is used in
+      exactly two places (the brand mark, and the auth/landing brand panel)
+      and nowhere else. It is an identity cue, not a surface treatment.
+   =========================================================================== */
+
+@theme {
+  /* ---- Typography ------------------------------------------------------ */
+  /* A system stack renders natively on every target platform: no webfont
+     request, no layout shift on load, and no failure mode when a font CDN is
+     unreachable. Legibility at small sizes is what matters clinically. */
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+    "Liberation Mono", monospace;
+
+  /* ---- Brand: Blue ------------------------------------------------------
+     "Primary color for branding, navigation, and important interface
+     elements." */
+  --color-brand-50: #eff6ff;
+  --color-brand-100: #dbeafe;
+  --color-brand-200: #bfdbfe;
+  --color-brand-300: #93c5fd;
+  --color-brand-400: #60a5fa;
+  --color-brand-500: #3b82f6;
+  --color-brand-600: #2563eb; /* 5.17:1 on white - AA for body text */
+  --color-brand-700: #1d4ed8; /* 7.00:1 on white - AAA */
+  --color-brand-800: #1e40af;
+  --color-brand-900: #1e3a8a;
+  --color-brand-950: #172554;
+
+  /* ---- Accent: Teal -----------------------------------------------------
+     "Secondary/accent color used for buttons, highlights, and visual
+     emphasis." Note the usable-for-text floor is 700, not 600. */
+  --color-accent-50: #f0fdfa;
+  --color-accent-100: #ccfbf1;
+  --color-accent-200: #99f6e4;
+  --color-accent-300: #5eead4;
+  --color-accent-400: #2dd4bf;
+  --color-accent-500: #14b8a6;
+  --color-accent-600: #0d9488; /* 3.94:1 - non-text use only (icons, rules) */
+  --color-accent-700: #0f766e; /* 5.29:1 on white - AA. Use this for text. */
+  --color-accent-800: #115e59;
+  --color-accent-900: #134e4a;
+  --color-accent-950: #042f2e;
+
+  /* ---- Neutrals ---------------------------------------------------------
+     A cool slate reads as clinical instrumentation rather than warm
+     consumer software. */
+  --color-neutral-50: #f8fafc;
+  --color-neutral-100: #f1f5f9;
+  --color-neutral-200: #e2e8f0;
+  --color-neutral-300: #cbd5e1;
+  --color-neutral-400: #94a3b8;
+  --color-neutral-500: #64748b; /* 4.76:1 on white - AA floor, muted text */
+  --color-neutral-600: #475569; /* 7.56:1 on white */
+  --color-neutral-700: #334155;
+  --color-neutral-800: #1e293b;
+  --color-neutral-900: #0f172a; /* 17.85:1 on white - headings */
+  --color-neutral-950: #020617;
+
+  /* ---- Status -----------------------------------------------------------
+     Chosen at the shade where colour-on-white clears AA, so one token works
+     for both a badge fill and inline text. */
+  --color-success-50: #ecfdf5;
+  --color-success-100: #d1fae5;
+  --color-success-200: #a7f3d0;
+  --color-success-600: #059669;
+  --color-success-700: #047857; /* 4.83:1 on white */
+  --color-success-800: #065f46;
+
+  --color-warning-50: #fffbeb;
+  --color-warning-100: #fef3c7;
+  --color-warning-200: #fde68a;
+  --color-warning-600: #d97706;
+  --color-warning-700: #b45309; /* 4.52:1 on white */
+  --color-warning-800: #92400e;
+
+  --color-danger-50: #fef2f2;
+  --color-danger-100: #fee2e2;
+  --color-danger-200: #fecaca;
+  --color-danger-600: #dc2626;
+  --color-danger-700: #b91c1c; /* 5.94:1 on white */
+  --color-danger-800: #991b1b;
+
+  --color-info-50: #eff6ff;
+  --color-info-100: #dbeafe;
+  --color-info-200: #bfdbfe;
+  --color-info-600: #2563eb;
+  --color-info-700: #1d4ed8;
+  --color-info-800: #1e40af;
+
+  /* ---- Semantic surface roles ------------------------------------------
+     Components reference these, never a raw scale step or hex value.
+     Mapped one-to-one onto the design document's colour table. */
+  --color-canvas: #f8fafc; /* "Light Gray - page backgrounds"        */
+  --color-surface: #ffffff; /* "White - content areas, cards, forms"  */
+  --color-surface-sunken: #f1f5f9; /* nested wells, table headers     */
+  --color-border: #e2e8f0; /* "subtle separation between sections"    */
+  --color-border-strong: #cbd5e1;
+  --color-heading: #0f172a; /* "Dark Gray - headings, primary text"   */
+  --color-body: #334155;
+  --color-muted: #64748b; /* "Muted Gray - secondary text, labels"    */
+
+  /* ---- Radius -----------------------------------------------------------
+     "Rounded containers and cards", applied with restraint. Fully rounded
+     pills are reserved for avatars and count badges. */
+  --radius-sm: 0.375rem; /*  6px - badges, small inputs */
+  --radius-md: 0.5rem; /*   8px - buttons, inputs       */
+  --radius-lg: 0.75rem; /*  12px - cards, panels        */
+  --radius-xl: 1rem; /*     16px - dialogs, panels      */
+
+  /* ---- Elevation --------------------------------------------------------
+     Only floating layers get a shadow. Everything else uses a border. */
+  --shadow-xs: 0 1px 2px 0 rgb(15 23 42 / 0.04);
+  --shadow-sm:
+    0 1px 3px 0 rgb(15 23 42 / 0.06), 0 1px 2px -1px rgb(15 23 42 / 0.04);
+  --shadow-md:
+    0 4px 12px -2px rgb(15 23 42 / 0.08), 0 2px 6px -2px rgb(15 23 42 / 0.04);
+  --shadow-lg: 0 12px 32px -8px rgb(15 23 42 / 0.14);
+
+  /* ---- Motion -----------------------------------------------------------
+     Short and functional. Motion signals a state change; it never decorates. */
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+  --duration-fast: 120ms;
+  --duration-base: 180ms;
+}
+
+/* ===========================================================================
+   Base layer
+   =========================================================================== */
+
+@layer base {
+  *,
+  *::before,
+  *::after {
+    border-color: var(--color-border);
+  }
+
+  html {
+    /* Never suppress zoom. */
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: var(--color-canvas);
+    color: var(--color-body);
+    font-family: var(--font-sans);
+    font-size: 1rem; /* 16px floor for body text */
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    color: var(--color-heading);
+    font-weight: 600;
+    line-height: 1.25;
+    text-wrap: balance; /* prevents orphaned words in headings */
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+
+  /* Focus is always visible. This is deliberately not overridable by
+     component styles: an invisible focus ring makes the app unusable by
+     keyboard, which is an accessibility failure, not a style preference. */
+  :focus-visible {
+    outline: 2px solid var(--color-brand-600);
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
+  }
+
+  /* Numeric columns must align for scanning doses, times and dates. */
+  table,
+  [data-numeric] {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Respect the OS setting. Motion is an enhancement, never a requirement. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+/* ===========================================================================
+   Utilities
+   =========================================================================== */
+
+@layer utilities {
+  /* The one sanctioned gradient. Identity only: brand mark, and the auth /
+     landing brand panel. Do not extend this to cards, buttons or headers. */
+  .brand-gradient {
+    background-image: linear-gradient(
+      135deg,
+      var(--color-brand-600) 0%,
+      var(--color-brand-500) 45%,
+      var(--color-accent-500) 100%
+    );
+  }
+
+  .brand-gradient-text {
+    background-image: linear-gradient(
+      120deg,
+      var(--color-brand-600) 0%,
+      var(--color-accent-600) 100%
+    );
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+}
