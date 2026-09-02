@@ -107,14 +107,19 @@ export function formatScheduleTime(value: string | null | undefined): string {
   return value ? value.slice(0, 5) : UNKNOWN_DATE
 }
 
-/** Whole years, for a date of birth. Null when unknown or unparseable. */
+/**
+ * Whole years, for a date of birth. Null when unknown or unparseable.
+ *
+ * `today` is injectable so the boundary — the day before a birthday versus
+ * the day of it — can be tested deterministically instead of depending on
+ * when the suite happens to run.
+ */
 export function calculateAge(
   birthDate: string | null | undefined,
+  today: Date = new Date(),
 ): number | null {
   const birth = toDate(birthDate)
   if (birth === null) return null
-
-  const today = new Date()
 
   let age = today.getFullYear() - birth.getFullYear()
   const monthDelta = today.getMonth() - birth.getMonth()

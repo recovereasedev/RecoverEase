@@ -91,12 +91,36 @@ describe('formatting', () => {
     expect(toDateKey(early)).toBe('2026-09-02')
   })
 
-  it('computes age without counting an unreached birthday', () => {
-    const today = new Date()
-    const birthday = new Date(today)
-    birthday.setFullYear(today.getFullYear() - 30)
-    birthday.setDate(birthday.getDate() + 1)
+  describe('calculateAge around the birthday boundary', () => {
+    // Fixed dates rather than offsets from "now".
+    //
+    // The original version of this test built the birth date with
+    // `toISOString().slice(0, 10)`, which is UTC. Run at 00:38 in UTC+8 the
+    // local date was 4 September but the ISO string said 3 September, so
+    // "birthday tomorrow" silently became "birthday today" and the assertion
+    // flipped from 29 to 30. It passed for a day and then failed on the
+    // clock, which is exactly the failure mode the app code avoids by
+    // formatting from local parts.
+    const born = '1996-09-04'
 
-    expect(calculateAge(birthday.toISOString().slice(0, 10))).toBe(29)
+    it('has not counted the birthday the day before', () => {
+      expect(calculateAge(born, new Date(2026, 8, 3))).toBe(29)
+    })
+
+    it('counts it on the day itself', () => {
+      expect(calculateAge(born, new Date(2026, 8, 4))).toBe(30)
+    })
+
+    it('counts it the day after', () => {
+      expect(calculateAge(born, new Date(2026, 8, 5))).toBe(30)
+    })
+
+    it('handles a birthday later in the year', () => {
+      expect(calculateAge('1996-12-25', new Date(2026, 8, 3))).toBe(29)
+    })
+
+    it('handles a birthday earlier in the year', () => {
+      expect(calculateAge('1996-01-05', new Date(2026, 8, 3))).toBe(30)
+    })
   })
 })
