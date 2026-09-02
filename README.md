@@ -149,25 +149,31 @@ introspects the result, so the generated types cannot drift from the schema.
 | `npm run build` | Type-check and produce a production build |
 | `npm run typecheck` | Type-check without emitting |
 | `npm run lint` | oxlint |
-| `npm test` | All 136 tests |
+| `npm test` | Unit and database tests (149) |
 | `npm run test:unit` | Component and unit tests |
 | `npm run test:db` | Schema and RLS tests, against real PostgreSQL |
+| `npm run test:e2e` | Browser journeys against a production build (42) |
 | `npm run test:coverage` | Coverage report |
 | `npm run db:types` | Regenerate database types from migrations |
 | `npm run verify` | lint + typecheck + test + build |
 
 ## Testing
 
-136 tests in two suites:
+191 tests in three suites:
 
 - **78 database tests** run every migration into a real PostgreSQL (PGlite,
   in-process, no Docker) and then issue queries as different principals to
   verify the Row Level Security policies actually hold — cross-tenant
   isolation, doctor scoping, administrator boundaries, privilege escalation,
   workflow integrity and the medication reminder scheduler's idempotency.
-- **58 component and unit tests** cover the logic that can be silently wrong:
+- **71 component and unit tests** cover the logic that can be silently wrong:
   streak calculation across timezones, adherence maths, loading/empty/error
-  ordering, error translation, accessibility wiring and route guards.
+  ordering, error translation, date-formatting resilience, accessibility
+  wiring and route guards.
+- **42 browser tests** (Playwright) drive a production build in Chrome and on
+  a phone viewport: sign-in, role routing, the consent gate, the patient,
+  doctor and administrator journeys, and responsive layout. They found two
+  real defects — see [`docs/testing.md`](./docs/testing.md).
 
 See [`docs/testing.md`](./docs/testing.md), including an honest list of what
 is **not** covered.

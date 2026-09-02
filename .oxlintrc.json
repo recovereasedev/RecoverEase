@@ -23,6 +23,16 @@
       "rules": {
         "typescript/no-explicit-any": "off"
       }
+    },
+    {
+      "files": ["e2e/**"],
+      "rules": {
+        // False positive, not a suppressed defect. Playwright's fixture API
+        // hands each fixture a callback named `use`, and the rule reads any
+        // call to `use(...)` as a React hook invoked outside a component.
+        // There is no React in these files at all.
+        "react-hooks/rules-of-hooks": "off"
+      }
     }
   ]
 }

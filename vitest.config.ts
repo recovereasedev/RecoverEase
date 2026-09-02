@@ -33,6 +33,8 @@ export default defineConfig({
         'src/types/database.types.ts',
       ],
     },
+    // Playwright drives e2e/ in a real browser; Vitest must not pick those up.
+    exclude: ['**/node_modules/**', '**/dist/**', 'e2e/**'],
     projects: [
       {
         extends: true,

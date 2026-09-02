@@ -40,3 +40,9 @@ supabase/.branches/
 # Test + build output
 coverage/
 *.tsbuildinfo
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/

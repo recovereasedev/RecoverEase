@@ -210,7 +210,8 @@ npm run build          # then check what index.html references
 
 ## Pre-deployment checklist
 
-- [ ] `npm run verify` passes (lint, typecheck, 136 tests, build)
+- [ ] `npm run verify` passes (lint, typecheck, 149 tests, build)
+- [ ] `npm run test:e2e` passes (42 browser tests)
 - [ ] Migrations applied; `db advisors` reports no security findings
 - [ ] First administrator provisioned
 - [ ] `app.timezone` set

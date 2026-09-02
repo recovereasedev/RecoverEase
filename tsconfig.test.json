@@ -32,5 +32,11 @@
       "@/*": ["./src/*"]
     }
   },
-  "include": ["tests/**/*.ts", "tests/**/*.tsx", "scripts/**/*.ts"]
+  "include": [
+    "tests/**/*.ts",
+    "tests/**/*.tsx",
+    "scripts/**/*.ts",
+    "e2e/**/*.ts",
+    "playwright.config.ts"
+  ]
 }

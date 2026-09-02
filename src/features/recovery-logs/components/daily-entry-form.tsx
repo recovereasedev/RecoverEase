@@ -20,6 +20,7 @@ export function DailyEntryForm({
   initialNotes,
   isEditing,
   isSaving,
+  wasJustSaved,
   error,
   onSave,
 }: {
@@ -27,23 +28,28 @@ export function DailyEntryForm({
   initialNotes: string
   isEditing: boolean
   isSaving: boolean
+  /**
+   * Owned by the parent, not this component.
+   *
+   * A successful save gives today's entry an id, which changes this
+   * component's key and remounts it — wiping any local "saved" flag before it
+   * could ever be seen. The confirmation has to live with the mutation.
+   */
+  wasJustSaved: boolean
   error: unknown
   onSave: (values: { moodRating: number | null; notes: string | null }) => void
 }) {
   const [mood, setMood] = useState<number | null>(initialMood)
   const [notes, setNotes] = useState(initialNotes)
-  const [justSaved, setJustSaved] = useState(false)
 
   return (
     <form
       onSubmit={(event) => {
         event.preventDefault()
-        setJustSaved(false)
         onSave({
           moodRating: mood,
           notes: notes.trim() === '' ? null : notes.trim(),
         })
-        setJustSaved(true)
       }}
       className="space-y-6"
     >
@@ -72,7 +78,7 @@ export function DailyEntryForm({
           {isEditing ? 'Update entry' : 'Save entry'}
         </Button>
 
-        {justSaved && !isSaving && !error ? (
+        {wasJustSaved && !isSaving && !error ? (
           <p role="status" className="text-sm font-medium text-success-700">
             Saved.
           </p>

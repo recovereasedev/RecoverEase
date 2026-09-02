@@ -1,9 +1,10 @@
 # Testing
 
 ```bash
-npm test              # everything — 136 tests
+npm test              # unit + database — 149 tests
 npm run test:unit     # component and pure-function tests (jsdom)
 npm run test:db       # schema and RLS tests (real PostgreSQL)
+npm run test:e2e      # browser journeys — 42 tests (Playwright)
 npm run verify        # lint + typecheck + test + build
 ```
 
@@ -16,6 +17,8 @@ worlds:
 | --- | --- | --- |
 | `unit` | jsdom | Component behaviour, pure domain logic |
 | `db` | node | Schema, constraints, RLS policies |
+
+Playwright runs a third suite in a real browser; see *Browser journeys* below.
 
 ## Row Level Security is tested, not assumed
 
@@ -140,7 +143,7 @@ test, so the rule still holds for everything else.
 
 ## Component and unit tests
 
-58 component and unit tests, chosen for logic that can be silently wrong rather than for
+71 component and unit tests, chosen for logic that can be silently wrong rather than for
 coverage percentage.
 
 **Recovery streak** — the only number on the patient dashboard that is
@@ -181,14 +184,69 @@ than at the first sign-in. Tests import modules downstream of it, so the
 call**: everything exercises pure functions or renders components with data
 passed directly.
 
+## Browser journeys (Playwright)
+
+42 tests against a **production build** served by `vite preview` — not the dev
+server. The dev server transforms modules on demand and chunks differently, so
+testing it would leave the artefact that actually ships unexercised, including
+the lazy route chunks where a code-splitting mistake shows up.
+
+Two projects: `desktop` (Chrome) and `mobile` (Pixel 7). The mobile project
+runs only `responsive.spec.ts`, and the desktop project explicitly ignores it —
+asserting a bottom bar at desktop width would fail on something correctly
+absent.
+
+### What the browser suite covers
+
+| Area | Examples |
+| --- | --- |
+| Public pages | Landing states there is no public sign-up and offers no sign-up link; unknown paths reach the not-found page |
+| Sign in | Field-level validation; the failure message does not distinguish an unknown address from a wrong password; password reveal; landing on the correct role home |
+| Route guards | Four protected paths redirect a signed-out visitor; a patient on an admin route is sent home; a signed-in user is moved off the landing page |
+| Session | Survives a hard reload without bouncing to sign in; signing out locks the app again |
+| Consent gate | Blocks a patient who has not consented, including via a deep link; releases once accepted |
+| Patient | Logs a day and sees it in the journal; marks a dose taken; confirms an appointment; books a follow-up; requests a reschedule; Escape closes a dialog |
+| Doctor | Caseload lists only their own patients; search; keyboard tab navigation on a patient record; writes a clinical note; registration dialog has no password field |
+| Administrator | No patient section in navigation; dashboard shows counts and no patient name; audit log shows changed column names and not values; deactivates a doctor; cannot reach a patient screen by URL |
+| Chatbot | With the Edge Function unavailable, the UI says so and keeps the patient's message rather than inventing a reply |
+| Responsive | No horizontal scroll on a phone; bottom bar capped at five items; drawer opens and closes on Escape; tables become cards; touch targets clear 44px |
+
+### What the browser suite deliberately does not test
+
+**Authorization.** Supabase endpoints are intercepted and answered by a
+PostgREST-shaped stub, so no policy is evaluated. That is not a shortcut, it
+is the correct division: pointing a browser at a stub proves the interface
+behaves; pointing SQL at PostgreSQL proves the data is protected. Testing
+authorization through a stub would only prove the stub agrees with itself.
+
+The stub answers *per principal* — a doctor's dataset contains only their own
+patients, an administrator's contains no patient rows — so the browser tests
+assert what each role is actually shown, without pretending to enforce it.
+
+### Two real defects this suite found
+
+Both were invisible to jsdom tests and to manual clicking.
+
+1. **A missing timestamp blanked an entire route.** `date-fns` `format()`
+   throws `RangeError` on an invalid date. Called during render, that reached
+   the router's error boundary and replaced the whole screen. Every formatter
+   in `src/lib/format.ts` now degrades to `—`: a clinician losing a patient
+   record because one value was null is far worse than a dash where a time
+   should be.
+
+2. **A save confirmation could never appear.** The recovery entry form is
+   keyed on the saved entry's id so its initial values come from props rather
+   than an effect. A successful save assigns that id, which changed the key
+   and remounted the component — wiping the local "Saved." flag before it
+   rendered. The confirmation now lives with the mutation that owns it.
+
 ## What is not covered
 
 Stated plainly rather than implied:
 
-- **No end-to-end tests.** There is no browser-driven run against a deployed
-  instance. The RLS suite covers the authorization behaviour an E2E suite
-  would mostly be re-checking, and the component tests cover interaction, but
-  a full sign-in-to-dashboard journey is untested.
+- **No run against a deployed instance.** The browser suite runs against a
+  local production build with Supabase intercepted. Nothing here has been
+  exercised against a real Supabase project or a real deployment.
 - **The Edge Functions have no automated tests.** They need a Deno runtime and
   live credentials. Their logic is deliberately thin — verify caller, check
   role, write, audit — with the real rules in the database.

@@ -65,6 +65,7 @@ export function RecoveryPage() {
                   initialNotes={todaysLog?.recovery_log_notes ?? ''}
                   isEditing={Boolean(todaysLog)}
                   isSaving={saveLog.isPending}
+                  wasJustSaved={saveLog.isSuccess}
                   error={saveLog.error}
                   onSave={(values) =>
                     saveLog.mutate({ date: todayKey, ...values })
