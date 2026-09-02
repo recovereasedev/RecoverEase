@@ -3,6 +3,26 @@
   "plugins": ["react", "typescript", "oxc"],
   "rules": {
     "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
+    "react/exhaustive-deps": "warn",
+
+    // Disabled deliberately, not to silence a defect.
+    //
+    // This rule wants a module to export components OR other values, never
+    // both, so that React Fast Refresh can always hot-swap a file. RecoverEase
+    // deliberately co-locates a component with the small helper that belongs
+    // to it: `Button` with `buttonVariants`, `AuthProvider` with `useAuth`,
+    // `ErrorState` with `describeError`. Splitting each of those into a second
+    // file to satisfy a development-time convenience would fragment the
+    // codebase for no runtime benefit; the cost is that those few files do a
+    // full reload instead of a hot swap while developing.
+    "react/only-export-components": "off"
+  },
+  "overrides": [
+    {
+      "files": ["tests/**", "scripts/**"],
+      "rules": {
+        "typescript/no-explicit-any": "off"
+      }
+    }
+  ]
 }

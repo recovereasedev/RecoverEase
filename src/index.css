@@ -241,4 +241,18 @@
     background-clip: text;
     color: transparent;
   }
+
+  /* Hidden until focused. Used by the skip link, which must be reachable by
+     keyboard but must not occupy space for everyone else. */
+  .sr-only-focusable:not(:focus):not(:focus-within) {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border-width: 0;
+  }
 }
