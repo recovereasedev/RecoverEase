@@ -342,21 +342,73 @@ describe('medication reminders', () => {
         [prescription!.prescription_id],
       )
 
-      const [slot] = await database.asService<{ local_time: string }>(
-        `select to_char(
+      const [slot] = await database.asService<{ local_times: string }>(
+        `select string_agg(distinct to_char(
                   medication_log_scheduled_at at time zone 'Asia/Manila',
                   'HH24:MI'
-                ) as local_time
+                ), ', ' order by to_char(
+                  medication_log_scheduled_at at time zone 'Asia/Manila',
+                  'HH24:MI'
+                )) as local_times
            from public.medication_log
-          where medication_schedule_id = $1
-          order by medication_log_scheduled_at
-          limit 1`,
+          where medication_schedule_id = $1`,
         [schedule!.medication_schedule_id],
       )
 
-      // A dose set for 08:00 must mean 08:00 where the patient lives. Stored
-      // naively it would land at 08:00 UTC, which is 16:00 in Manila.
-      expect(slot?.local_time).toBe('08:00')
+      // A dose set for 08:00 must mean 08:00 where the patient lives.
+      //
+      // Asserting the DISTINCT SET rather than the earliest row is
+      // deliberate. The earlier version of this test checked only the first
+      // slot, and a bug that shifted every dose by the zone offset still
+      // produced a plausible-looking first row — it shipped, and was caught
+      // only by live verification against real PostgreSQL. The whole set has
+      // no such blind spot.
+      expect(slot?.local_times).toBe('08:00')
+    })
+
+    it('places a twice-daily schedule at both prescribed times', async () => {
+      await database.asService(
+        `insert into public.system_setting
+           (system_setting_key, system_setting_value)
+         values ('app.timezone', 'Asia/Manila')
+         on conflict (system_setting_key)
+           do update set system_setting_value = excluded.system_setting_value`,
+      )
+
+      const [prescription] = await database.asService<{
+        prescription_id: string
+      }>(
+        `insert into public.prescription (pat_id, doc_id)
+         values ($1, $2) returning prescription_id`,
+        [fx.carolPatId, fx.doctorBId],
+      )
+
+      const [schedule] = await database.asService<{
+        medication_schedule_id: string
+      }>(
+        `insert into public.medication_schedule
+           (prescription_id, medication_schedule_name,
+            medication_schedule_dosage, medication_schedule_frequency,
+            medication_schedule_times)
+         values ($1, 'Paracetamol', '500mg', 2, '{08:00,20:00}'::time[])
+         returning medication_schedule_id`,
+        [prescription!.prescription_id],
+      )
+
+      const [slot] = await database.asService<{ local_times: string }>(
+        `select string_agg(distinct to_char(
+                  medication_log_scheduled_at at time zone 'Asia/Manila',
+                  'HH24:MI'
+                ), ', ' order by to_char(
+                  medication_log_scheduled_at at time zone 'Asia/Manila',
+                  'HH24:MI'
+                )) as local_times
+           from public.medication_log
+          where medication_schedule_id = $1`,
+        [schedule!.medication_schedule_id],
+      )
+
+      expect(slot?.local_times).toBe('08:00, 20:00')
     })
   })
 
