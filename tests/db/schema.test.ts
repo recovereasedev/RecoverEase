@@ -92,6 +92,43 @@ describe('database schema', () => {
     expect(writePolicies).toEqual([])
   })
 
+  it('does not expose trigger functions as callable API endpoints', async () => {
+    // PostgreSQL grants EXECUTE to PUBLIC on every new function, and
+    // PostgREST publishes anything in `public` as /rest/v1/rpc/<name>. That
+    // turned every trigger function into a reachable endpoint — flagged by
+    // the live Supabase advisor, three of them SECURITY DEFINER.
+    //
+    // Revoking does not stop triggers firing: PostgreSQL checks EXECUTE only
+    // on a direct call, which is exactly the call being removed.
+    const callable = await database.asService<{
+      signature: string
+      role: string
+    }>(
+      `select p.oid::regprocedure::text as signature, r.rolname as role
+         from pg_proc p
+         join pg_namespace n on n.oid = p.pronamespace
+         cross join (values ('anon'), ('authenticated')) as r(rolname)
+        where n.nspname = 'public'
+          and p.prorettype = 'pg_catalog.trigger'::regtype
+          and has_function_privilege(r.rolname, p.oid, 'EXECUTE')
+        order by 1, 2`,
+    )
+
+    expect(callable).toEqual([])
+  })
+
+  it('keeps a single INSERT policy per role on report', async () => {
+    // Two permissive policies for the same role and action are both evaluated
+    // on every insert. Flagged by the live performance advisor and merged
+    // into one equivalent policy.
+    const [row] = await database.asService<{ count: string }>(
+      `select count(*) from pg_policies
+        where schemaname = 'public' and tablename = 'report' and cmd = 'INSERT'`,
+    )
+
+    expect(Number(row?.count)).toBe(1)
+  })
+
   it('does not expose the authorization helper schema to the API', async () => {
     const granted = await database.asService<{ has_access: boolean }>(
       `select has_schema_privilege('anon', 'app_private', 'USAGE')
