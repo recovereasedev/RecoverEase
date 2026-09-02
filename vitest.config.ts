@@ -44,6 +44,18 @@ export default defineConfig({
             'tests/unit/**/*.test.{ts,tsx}',
             'src/**/*.test.{ts,tsx}',
           ],
+          // `src/lib/env.ts` validates configuration at import time and throws
+          // when it is missing — deliberately, so a misconfigured deployment
+          // fails loudly at startup rather than at the first sign-in. Tests
+          // import modules that sit downstream of it, so they need values.
+          //
+          // These are obvious placeholders pointing nowhere. No test makes a
+          // network call: everything either exercises pure functions or
+          // renders components with data supplied directly.
+          env: {
+            VITE_SUPABASE_URL: 'http://localhost:54321',
+            VITE_SUPABASE_PUBLISHABLE_KEY: 'test-publishable-key',
+          },
         },
       },
       {

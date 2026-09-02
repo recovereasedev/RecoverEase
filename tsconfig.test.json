@@ -1,0 +1,36 @@
+{
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.test.tsbuildinfo",
+    "target": "es2023",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "moduleDetection": "force",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "skipLibCheck": true,
+
+    /* Tests span both worlds: the DB suite reads migration files with node
+       APIs, the component suite renders into jsdom. Hence both type sets. */
+    "types": ["node", "vite/client"],
+
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "erasableSyntaxOnly": true,
+    "noFallthroughCasesInSwitch": true,
+
+    /* `noUncheckedIndexedAccess` and `exactOptionalPropertyTypes` are
+       deliberately not enabled here. They earn their cost in shipped code,
+       where an unchecked lookup becomes a runtime crash for a user. In a test
+       a bad index fails the test immediately, so the same strictness only
+       adds non-null assertions that obscure what is being asserted. */
+
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": ["tests/**/*.ts", "tests/**/*.tsx", "scripts/**/*.ts"]
+}
