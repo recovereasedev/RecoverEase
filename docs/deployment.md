@@ -1,9 +1,21 @@
 # Deployment
 
-> **Status: not yet deployed.** Everything below has been written and the
-> build verified locally, but no Supabase project has been provisioned and no
-> Vercel deployment exists. Nothing in this document should be read as
-> "already done".
+> **Status: deployed and smoke-tested, with two secrets outstanding.**
+>
+> | | |
+> | --- | --- |
+> | Frontend | <https://recoverease-zeta.vercel.app> |
+> | Supabase project ref | `kwsezszstdagzllbyjuk` (ap-southeast-1) |
+> | Vercel project | `recovereasedev-7251s-projects/recoverease` |
+> | Repository | `recovereasedev/RecoverEase` |
+>
+> 14 migrations applied, 20 tables, RLS on every one, 55 policies, 3 pg_cron
+> jobs registered, both Edge Functions ACTIVE with `verify_jwt`.
+>
+> **Outstanding, and both are dashboard actions:** `ALLOWED_ORIGINS` and
+> `ANTHROPIC_API_KEY` are not set, so the guidance chatbot cannot reply in
+> production — see step 5. Everything else has been exercised against the live
+> deployment.
 
 ## Prerequisites
 
@@ -103,6 +115,27 @@ machine.
 If `ANTHROPIC_API_KEY` is unset, `chatbot-reply` returns 503 and the UI says
 the assistant is unavailable. Every other module works. That is a supported
 configuration, not a broken one.
+
+**Both secrets are currently unset on the live project, and this is the one
+piece of the deployment that is not finished.** The symptom is not a 503 but a
+browser CORS error, which is easy to misdiagnose: with `ALLOWED_ORIGINS`
+empty, `corsHeaders()` falls back to the first entry of the allow-list — a
+localhost origin — so the production browser is told
+`Access-Control-Allow-Origin: http://localhost:5173` and blocks the response
+before the function's own 503 is ever read. Confirmed live:
+
+```
+$ curl -s -X OPTIONS .../functions/v1/chatbot-reply     -H "Origin: https://recoverease-zeta.vercel.app" -D - -o /dev/null
+HTTP/1.1 200 OK
+Access-Control-Allow-Origin: http://localhost:5173
+```
+
+The chat itself degrades correctly in the meantime: the patient's message is
+still persisted and the UI says the assistant is unavailable rather than
+inventing a reply.
+
+Setting these needs either the Supabase CLI (authenticated with an access
+token) or **Project Settings → Edge Functions → Secrets** in the dashboard.
 
 ## 6. Deploy the frontend
 
@@ -208,9 +241,37 @@ Re-measure after dependency changes:
 npm run build          # then check what index.html references
 ```
 
+## Smoke-test fixtures still in the production database
+
+Three accounts were created to smoke-test the live deployment and **have not
+been removed**:
+
+| Email | Role |
+| --- | --- |
+| `patient@smoke.invalid` | patient (Alice Santos) |
+| `doctor@smoke.invalid` | doctor (Dr Alan Cruz) |
+| `admin@smoke.invalid` | admin (Ada Reyes) |
+
+They share one password, which was chosen for a throwaway test and is written
+down in the project's working notes. Treat it as public.
+
+They were left in place on purpose — they are the only data that makes the
+deployment demonstrable, and deleting them is not reversible — but that is a
+decision with a shelf life. **Before this is shown to anyone outside the
+project, either rotate the password or remove the accounts:**
+
+```sql
+-- Removes the fixtures and, by ON DELETE CASCADE, everything they own.
+delete from auth.users where email like '%@smoke.invalid';
+```
+
+Leaving a known-password administrator account on a reachable deployment is
+the single largest outstanding risk in this project. It is recorded here
+rather than quietly left for someone to find.
+
 ## Pre-deployment checklist
 
-- [ ] `npm run verify` passes (lint, typecheck, 149 tests, build)
+- [ ] `npm run verify` passes (lint, typecheck, 164 tests, build)
 - [ ] `npm run test:e2e` passes (42 browser tests)
 - [ ] Migrations applied; `db advisors` reports no security findings
 - [ ] First administrator provisioned

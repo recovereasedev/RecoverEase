@@ -105,7 +105,7 @@ RLS refuses in two different ways, and a test checking only one is weak:
 `expectDenied` accepts either, and — importantly — **fails when the statement
 succeeds and returns rows**.
 
-### What the 78 database tests cover
+### What the 89 database tests cover
 
 | Area | Examples |
 | --- | --- |
@@ -240,16 +240,65 @@ Both were invisible to jsdom tests and to manual clicking.
    and remounted the component — wiping the local "Saved." flag before it
    rendered. The confirmation now lives with the mutation that owns it.
 
+## Defects that only the live database found
+
+Two bugs survived every local suite and were caught by running against a real
+Supabase project. Both are the same shape: a behaviour that is only wrong when
+two clocks, or two engines, disagree — and the local harness had neither
+disagreement.
+
+1. **Doses generated eight hours early.** A schedule of 08:00 and 20:00 with
+   `app.timezone = Asia/Manila` materialised at 00:00 and 12:00 Manila.
+   `generate_series(date, date, interval)` resolves to the **timestamptz**
+   overload, so the series value was already zone-aware and `AT TIME ZONE`
+   converted *out* of the zone instead of into it. PGlite resolved the overload
+   differently, so the assertion passed locally and failed on real PostgreSQL.
+   Fixed by casting the series value to `date` (migration 13). The test now
+   asserts the full set of dose times rather than only the earliest.
+
+2. **Patients could not log their recovery entry for eight hours a day.**
+   Saving the daily entry returned `23514` — "A recovery log cannot be dated in
+   the future" — for any patient logging between midnight and 08:00 local. The
+   database runs in UTC; the browser sends the patient's *local* date on
+   purpose; the guard compared the two. For the first eight hours of every
+   Manila day they disagreed and the guard read the patient's own today as
+   tomorrow. This broke the single most important daily action in the product,
+   during the morning, which is when a recovery app is most used. Fixed by
+   resolving every calendar date through `public.app_today()` (migration 14).
+
+Why no local suite could have caught the second one: every test ran the
+database and the assertions on one clock and built dates with `current_date`,
+so client and server always agreed — which is precisely the condition under
+which the bug does not exist. `tests/db/application-timezone.test.ts` now pulls
+the clocks apart deliberately, pinning the server to `Pacific/Niue` (UTC-11)
+and the clinic to `Pacific/Kiritimati` (UTC+14). That 25-hour spread is wider
+than a day, so the clinic's date is strictly ahead of the server's at *every*
+instant — the mismatch is exercised on every run rather than during a lucky
+window. The tests were confirmed to fail against the pre-fix schema and pass
+against the fixed one.
+
+The general lesson is not that the tests were weak. It is that a compatibility
+layer can differ from the engine on overload resolution, and that a suite whose
+clocks all agree cannot test clock disagreement. Both are reasons live
+verification is a separate phase rather than a formality.
+
 ## What is not covered
 
 Stated plainly rather than implied:
 
-- **No run against a deployed instance.** The browser suite runs against a
-  local production build with Supabase intercepted. Nothing here has been
-  exercised against a real Supabase project or a real deployment.
 - **The Edge Functions have no automated tests.** They need a Deno runtime and
   live credentials. Their logic is deliberately thin — verify caller, check
-  role, write, audit — with the real rules in the database.
-- **The deployed database has not been verified.** The policies are tested
-  against the same migrations, but no Supabase project has been provisioned;
-  run `get_advisors` after the first deploy.
+  role, write, audit — with the real rules in the database. Both functions were
+  confirmed to boot and to reject unauthenticated calls in production, but the
+  guidance-chatbot model path has never been executed: it needs
+  `ANTHROPIC_API_KEY` and `ALLOWED_ORIGINS`, neither of which is set.
+- **The browser suite runs against a stub, not a server.** Playwright drives a
+  local production build with Supabase intercepted, so it tests the client's
+  behaviour and not the database's. Anything enforced by a trigger or a policy
+  is invisible to it — which is why it could not have found either defect
+  above.
+- **Load, concurrency and long-horizon scheduling are untested.** The pg_cron
+  jobs have been confirmed to be registered and the dose generator to be
+  idempotent on a second run, but no test covers a month of accumulated
+  scheduling or simultaneous writers beyond the single duplicate-guard case in
+  the reminder tests.

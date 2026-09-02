@@ -1,78 +1,61 @@
-import Anthropic from 'npm:@anthropic-ai/sdk@0.70.0'
-import { zodOutputFormat } from 'npm:@anthropic-ai/sdk@0.70.0/helpers/zod'
-import { z } from 'npm:zod@3.25.76'
-
-import {
-  AuthError,
-  requireCaller,
-  serviceClient,
-} from '../_shared/auth.ts'
+import { AuthError, requireCaller, serviceClient } from '../_shared/auth.ts'
 import { handlePreflight, jsonResponse } from '../_shared/cors.ts'
 
 /**
- * Guidance chatbot — modules 8.1, 8.2 and 8.3.
+ * Guidance chatbot - modules 8.1, 8.2 and 8.3.
  *
- * Three things force this to run server-side rather than in the browser:
- *
- *  - the provider credential must not ship in a client bundle;
- *  - module 8.7 lets an administrator set the system prompt, and a prompt the
- *    client supplies is a prompt the client can replace;
- *  - module 8.2 requires critical-concern detection to raise a doctor alert,
- *    and a check the patient's browser performs is a check it can skip.
+ * Three things force this server-side: the provider credential must not ship
+ * in a client bundle; module 8.7 lets an administrator set the system prompt,
+ * and a prompt the client supplies is one the client can replace; and module
+ * 8.2 requires critical-concern detection to raise a doctor alert, which a
+ * check in the patient's browser could simply skip.
  *
  * If the provider is not configured this returns 503 and the UI says the
  * assistant is unavailable. It never falls back to a canned reply: an
  * invented answer about post-treatment symptoms is worse than no answer.
  *
+ * The Anthropic SDK is imported dynamically, inside the handler and after the
+ * key check, so that a missing or unreachable provider package cannot stop
+ * the function loading and turn a clean 503 into a hard crash.
+ *
+ * This file is kept behaviourally in step with what is deployed. An earlier revision
+ * used `messages.parse()` with `zodOutputFormat` for schema-guaranteed output,
+ * which is the better shape for a patient-safety classifier; it was rolled
+ * back to a top-level-import-free version so the function could load, and it
+ * is recoverable from git history once the provider secrets are set and the
+ * model path can actually be exercised end to end.
+ *
  * Deploy:
  *   supabase functions deploy chatbot-reply
- *   supabase secrets set ANTHROPIC_API_KEY=sk-ant-...
+ *   supabase secrets set ANTHROPIC_API_KEY=...
+ *   supabase secrets set ALLOWED_ORIGINS="https://<your-app>.vercel.app"
  */
 
 const MODEL = 'claude-opus-5'
 
-/**
- * The fallback used when an administrator has not configured module 8.7.
- *
- * The safety framing is not left to configuration: an administrator editing
- * the prompt should be shaping tone and clinic-specific guidance, not able to
- * accidentally delete the instruction that stops the assistant diagnosing.
- * The non-negotiable part is appended below, after whatever they set.
- */
-const DEFAULT_GUIDANCE = `You support patients recovering after treatment. Answer
-questions about the recovery process in plain, calm language.`
+const DEFAULT_GUIDANCE = `You support patients recovering after treatment.
+Answer questions about the recovery process in plain, calm language.`
 
+// Appended after the administrator's text, so editing module 8.7's prompt can
+// shape tone and clinic-specific guidance but cannot delete the instruction
+// that stops the assistant diagnosing.
 const SAFETY_RULES = `
 Non-negotiable rules:
 - You are not a clinician. Never diagnose a condition, never interpret test
   results, and never tell a patient to start, stop, or change a medication or
   a dose. Direct those questions to their doctor.
 - Keep answers short and concrete. Prefer two or three sentences.
-- If the patient describes something that could be an emergency — chest pain,
+- If the patient describes something that could be an emergency - chest pain,
   difficulty breathing, heavy bleeding, signs of infection such as fever with
-  a hot swollen wound, fainting, thoughts of self-harm — tell them plainly to
+  a hot swollen wound, fainting, thoughts of self-harm - tell them plainly to
   contact emergency services or their doctor now, and set has_critical_concern.
 - Set has_critical_concern for anything a treating clinician would want to
   know about promptly, not merely for emergencies. It is better to raise a
   concern that turns out to be minor than to miss one.
-- Never claim to have contacted anyone on the patient's behalf. Their doctor
-  is notified separately by the system.`
+- Never claim to have contacted anyone on the patient's behalf.
 
-const ReplySchema = z.object({
-  reply: z
-    .string()
-    .describe('The message shown to the patient. Plain language, no markdown.'),
-  has_critical_concern: z
-    .boolean()
-    .describe(
-      'True when the patient described something their doctor should be told about promptly.',
-    ),
-  concern_summary: z
-    .string()
-    .describe(
-      'One sentence for the doctor describing the concern, or an empty string when there is none.',
-    ),
-})
+Reply with JSON only, matching exactly:
+{"reply": string, "has_critical_concern": boolean, "concern_summary": string}`
 
 Deno.serve(async (request) => {
   const preflight = handlePreflight(request)
@@ -97,16 +80,12 @@ Deno.serve(async (request) => {
 
   try {
     const caller = await requireCaller(request)
-    const { chatSessionId } = (await request.json()) as {
-      chatSessionId?: string
-    }
+    const { chatSessionId } = (await request.json()) as { chatSessionId?: string }
 
-    if (!chatSessionId) {
-      throw new AuthError('chatSessionId is required', 400)
-    }
+    if (!chatSessionId) throw new AuthError('chatSessionId is required', 400)
 
     // The session must belong to the caller. Without this check any patient
-    // could pass another patient's session id and read back their transcript
+    // could pass another patient's session id and read their transcript back
     // through the model's reply.
     const { data: session, error: sessionError } = await admin
       .from('chat_session')
@@ -117,10 +96,7 @@ Deno.serve(async (request) => {
     if (sessionError) throw new AuthError('Could not load the conversation', 500)
     if (!session) throw new AuthError('Conversation not found', 404)
 
-    const patient = session.patient as unknown as {
-      user_id: string
-      doc_id: string
-    }
+    const patient = session.patient as unknown as { user_id: string; doc_id: string }
 
     if (patient.user_id !== caller.userId) {
       throw new AuthError('This conversation is not yours', 403)
@@ -140,8 +116,6 @@ Deno.serve(async (request) => {
       throw new AuthError('There is nothing to reply to', 400)
     }
 
-    // Module 8.7: administrator-configured guidance, with the safety rules
-    // appended so they cannot be edited away.
     const { data: promptSetting } = await admin
       .from('system_setting')
       .select('system_setting_value')
@@ -152,33 +126,33 @@ Deno.serve(async (request) => {
       promptSetting?.system_setting_value?.trim() || DEFAULT_GUIDANCE
     }\n${SAFETY_RULES}`
 
+    const { default: Anthropic } = await import('npm:@anthropic-ai/sdk')
     const anthropic = new Anthropic({ apiKey })
 
-    const completion = await anthropic.messages.parse({
+    // Effort is left at its default. This is a patient-safety classification
+    // as much as a chat reply, and missing a concern costs more than tokens.
+    const completion = await anthropic.messages.create({
       model: MODEL,
       max_tokens: 2000,
       system: systemPrompt,
-      // Effort is left at its default of `high`. This is a patient-safety
-      // classification as much as a chat reply, and the cost of missing a
-      // concern is far higher than the cost of the tokens.
       messages: history.map((message) => ({
-        role:
-          message.chat_message_role === 'patient'
-            ? ('user' as const)
-            : ('assistant' as const),
+        role: message.chat_message_role === 'patient' ? ('user' as const) : ('assistant' as const),
         content: message.chat_message_content as string,
       })),
-      output_config: { format: zodOutputFormat(ReplySchema) },
     })
 
-    const parsed = completion.parsed_output
-    if (!parsed) {
-      // Structured parsing failed. Saying nothing is the safe outcome; a
-      // half-parsed reply is not something to show a recovering patient.
-      throw new AuthError(
-        'The assistant could not produce a usable reply',
-        502,
-      )
+    const text = completion.content
+      .filter((block: { type: string }) => block.type === 'text')
+      .map((block: { text: string }) => block.text)
+      .join('')
+
+    let parsed: { reply: string; has_critical_concern: boolean; concern_summary: string }
+    try {
+      parsed = JSON.parse(text.trim().replace(/^```json\s*|\s*```$/g, ''))
+    } catch {
+      // Saying nothing is the safe outcome; a half-parsed reply is not
+      // something to show a recovering patient.
+      throw new AuthError('The assistant could not produce a usable reply', 502)
     }
 
     const { data: inserted, error: insertError } = await admin
@@ -193,7 +167,7 @@ Deno.serve(async (request) => {
 
     if (insertError) throw new AuthError(insertError.message, 500)
 
-    // --- Module 8.2: raise the doctor alert ------------------------------
+    // Module 8.2: raise the doctor alert.
     if (parsed.has_critical_concern) {
       await admin
         .from('chat_session')
@@ -204,8 +178,7 @@ Deno.serve(async (request) => {
         })
         .eq('chat_session_id', chatSessionId)
 
-      // Module 8.3: the doctor receives the alert. Resolve their user account
-      // from the patient's assigned doctor.
+      // Module 8.3: the doctor receives the alert.
       const { data: doctor } = await admin
         .from('doctor')
         .select('user_id')
@@ -225,10 +198,7 @@ Deno.serve(async (request) => {
     }
 
     return jsonResponse(
-      {
-        message: inserted,
-        raisedCriticalConcern: parsed.has_critical_concern,
-      },
+      { message: inserted, raisedCriticalConcern: parsed.has_critical_concern },
       200,
       origin,
     )
@@ -237,28 +207,7 @@ Deno.serve(async (request) => {
       return jsonResponse({ error: error.message }, error.status, origin)
     }
 
-    // Typed SDK errors, checked most specific first.
-    if (error instanceof Anthropic.RateLimitError) {
-      return jsonResponse(
-        { error: 'The assistant is busy. Try again in a moment.' },
-        429,
-        origin,
-      )
-    }
-    if (error instanceof Anthropic.APIError) {
-      console.error('anthropic error', error.status, error.message)
-      return jsonResponse(
-        { error: 'The guidance assistant is unavailable.' },
-        503,
-        origin,
-      )
-    }
-
     console.error('chatbot-reply failed', error)
-    return jsonResponse(
-      { error: 'The guidance assistant is unavailable.' },
-      503,
-      origin,
-    )
+    return jsonResponse({ error: 'The guidance assistant is unavailable.' }, 503, origin)
   }
 })

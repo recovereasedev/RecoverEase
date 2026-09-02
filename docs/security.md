@@ -61,6 +61,32 @@ The core predicate is `is_my_patient(pat_id)`, which additionally requires
 revokes their access to every patient record at the database, not merely their
 ability to sign in.
 
+### The one `SECURITY DEFINER` function in `public`
+
+`app_private` holds every authorization helper. One function sits outside it,
+deliberately: `public.app_today()`, which returns the current date in the
+clinic timezone.
+
+It has to be in `public` and callable by `authenticated`, because column
+`DEFAULT` expressions are evaluated with the privileges of the *inserting*
+role, not the table owner — a default that called into `app_private` would
+fail for every real user.
+
+It has to be `SECURITY DEFINER`, because it reads `system_setting`, which is
+readable only by administrators. Under invoker rights a patient would match no
+row, silently fall back to `UTC`, and reintroduce exactly the bug the function
+exists to remove.
+
+What keeps that acceptable:
+
+- It takes **no arguments**, so there is nothing to point it at.
+- It returns **a date**, never table data. The only thing it discloses is what
+  day the server thinks it is, which every HTTP `Date` response header already
+  carries.
+- `EXECUTE` is revoked from `PUBLIC` and `anon`; it is not reachable
+  unauthenticated. A test asserts this.
+- `search_path` is pinned to empty, like every helper in `app_private`.
+
 ## Policy conventions
 
 Applied to every policy, each guarding a specific failure:
@@ -205,11 +231,16 @@ are registered.
 
 Recorded honestly rather than left for someone to discover:
 
-1. **RLS is verified against PGlite, not the deployed project.** The same
-   migration files are replayed into a real PostgreSQL, so the policies
-   themselves are genuinely exercised — but the deployed instance has not been
-   tested, because no Supabase project has been provisioned yet. Run
-   `get_advisors` after the first deploy.
+1. **Verified live, with the advisors reviewed.** The policies are exercised
+   both against PGlite and against the deployed project. On the live database
+   an administrator was confirmed to read **zero rows** from all eight clinical
+   tables while `admin_dashboard_stats()` still returned the correct counts; a
+   patient reads zero doctor notes; a deactivated doctor reads zero rows
+   everywhere; and eight separate escalation attempts were refused while the
+   legitimate edit still succeeded. The Supabase advisors were run and their
+   findings either fixed (trigger functions exposed as RPC endpoints, migration
+   11; two permissive INSERT policies on `report` merged, migration 12) or
+   recorded with a reason — never silenced by weakening a policy.
 2. **Rate limiting relies on Supabase defaults.** No additional throttling is
    applied to the Edge Functions.
 3. **`report_file_path` is never populated.** Documents are produced through

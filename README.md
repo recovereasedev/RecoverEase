@@ -161,7 +161,7 @@ introspects the result, so the generated types cannot drift from the schema.
 
 191 tests in three suites:
 
-- **78 database tests** run every migration into a real PostgreSQL (PGlite,
+- **89 database tests** run every migration into a real PostgreSQL (PGlite,
   in-process, no Docker) and then issue queries as different principals to
   verify the Row Level Security policies actually hold — cross-tenant
   isolation, doctor scoping, administrator boundaries, privilege escalation,
@@ -205,8 +205,17 @@ Vercel for the frontend, Supabase for everything else.
 [`vercel.json`](./vercel.json) configures SPA routing, a Content-Security-
 Policy, immutable asset caching and the usual security headers.
 
-**Not yet deployed.** See [`docs/deployment.md`](./docs/deployment.md) for the
-full procedure and the pre-deployment checklist.
+**Live at <https://recoverease-zeta.vercel.app>**, backed by Supabase project
+`kwsezszstdagzllbyjuk`. Smoke-tested end to end across all three roles.
+
+Two things are outstanding, both dashboard actions: the `ALLOWED_ORIGINS` and
+`ANTHROPIC_API_KEY` Edge Function secrets are unset, so the guidance chatbot
+cannot reply in production (it degrades gracefully — the message is saved and
+the UI says the assistant is unavailable). Three smoke-test accounts with a
+known password are also still in the database and should be removed or
+rotated before the deployment is shown publicly. See
+[`docs/deployment.md`](./docs/deployment.md) for both, the full procedure and
+the checklist.
 
 ## Git workflow
 

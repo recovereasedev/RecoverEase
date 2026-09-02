@@ -15,8 +15,13 @@ const configured = (Deno.env.get('ALLOWED_ORIGINS') ?? '')
   .filter(Boolean)
 
 // Local development origins are always permitted; they are not reachable from
-// anywhere but the developer's own machine.
-const DEV_ORIGINS = ['http://localhost:5173', 'http://127.0.0.1:5173']
+// anywhere but the developer's own machine. 4173 is `vite preview`, which is
+// how the production build is checked before deploying.
+const DEV_ORIGINS = [
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+  'http://localhost:4173',
+]
 
 export function corsHeaders(origin: string | null): Record<string, string> {
   const allowList = [...configured, ...DEV_ORIGINS]
