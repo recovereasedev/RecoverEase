@@ -1,21 +1,24 @@
 # Deployment
 
-> **Status: deployed and smoke-tested, with two secrets outstanding.**
+> **Status: deployed, smoke-tested and origin-migrated. One secret outstanding.**
 >
 > | | |
 > | --- | --- |
-> | Frontend | <https://recoverease-zeta.vercel.app> |
+> | Production URL | <https://recovereasedev.vercel.app> |
 > | Supabase project ref | `kwsezszstdagzllbyjuk` (ap-southeast-1) |
 > | Vercel project | `recovereasedev-7251s-projects/recoverease` |
 > | Repository | `recovereasedev/RecoverEase` |
 >
-> 14 migrations applied, 20 tables, RLS on every one, 55 policies, 3 pg_cron
-> jobs registered, both Edge Functions ACTIVE with `verify_jwt`.
+> 14 migrations applied, 20 tables, RLS on every one, 54 policies, 3 pg_cron
+> jobs all confirmed to have actually executed, both Edge Functions ACTIVE at
+> v2 with `verify_jwt`.
 >
-> **Outstanding, and both are dashboard actions:** `ALLOWED_ORIGINS` and
-> `ANTHROPIC_API_KEY` are not set, so the guidance chatbot cannot reply in
-> production — see step 5. Everything else has been exercised against the live
-> deployment.
+> `recoverease-zeta.vercel.app` remains a live alias for the same deployment
+> and is on the CORS allow-list, so old links keep working. It is no longer
+> the canonical origin.
+>
+> **Outstanding:** `ANTHROPIC_API_KEY` is not set, so the guidance chatbot
+> cannot generate replies. Its failure path is verified and degrades cleanly.
 
 ## Prerequisites
 
@@ -116,26 +119,31 @@ If `ANTHROPIC_API_KEY` is unset, `chatbot-reply` returns 503 and the UI says
 the assistant is unavailable. Every other module works. That is a supported
 configuration, not a broken one.
 
-**Both secrets are currently unset on the live project, and this is the one
-piece of the deployment that is not finished.** The symptom is not a 503 but a
-browser CORS error, which is easy to misdiagnose: with `ALLOWED_ORIGINS`
-empty, `corsHeaders()` falls back to the first entry of the allow-list — a
-localhost origin — so the production browser is told
-`Access-Control-Allow-Origin: http://localhost:5173` and blocks the response
-before the function's own 503 is ever read. Confirmed live:
+**`ALLOWED_ORIGINS` is no longer required for production.** The canonical
+origins are checked into `supabase/functions/_shared/cors.ts` as
+`PRODUCTION_ORIGINS`, because they are public URLs rather than secrets, and a
+deployment that silently fails CORS until somebody remembers an environment
+variable is a worse default than a hostname in source. `ALLOWED_ORIGINS` still
+*extends* that list for staging or a future custom domain.
+
+The original failure was worth recording: with an empty list the old code fell
+back to `allowList[0]` — a localhost origin — so a production browser was
+answered with `Access-Control-Allow-Origin: http://localhost:5173` and blocked
+the response before the function's own clean 503 could be read. An origin that
+is not on the list now receives **no** `Access-Control-Allow-Origin` header at
+all, which is the honest form of a refusal. Verified live:
 
 ```
-$ curl -s -X OPTIONS .../functions/v1/chatbot-reply     -H "Origin: https://recoverease-zeta.vercel.app" -D - -o /dev/null
-HTTP/1.1 200 OK
-Access-Control-Allow-Origin: http://localhost:5173
+recovereasedev.vercel.app   -> Access-Control-Allow-Origin: recovereasedev.vercel.app
+recoverease-zeta.vercel.app -> Access-Control-Allow-Origin: recoverease-zeta.vercel.app
+evil.example.com            -> no header (refused)
 ```
 
-The chat itself degrades correctly in the meantime: the patient's message is
-still persisted and the UI says the assistant is unavailable rather than
-inventing a reply.
-
-Setting these needs either the Supabase CLI (authenticated with an access
-token) or **Project Settings → Edge Functions → Secrets** in the dashboard.
+**`ANTHROPIC_API_KEY` is still required and still unset.** It is a real
+secret, so it belongs in **Project Settings → Edge Functions → Secrets**, never
+in source and never in the frontend. Until it is set, `chatbot-reply` returns
+503 and the UI says the assistant is unavailable — a supported configuration,
+and the only part of the product that is not fully exercised in production.
 
 ## 6. Deploy the frontend
 
@@ -241,33 +249,51 @@ Re-measure after dependency changes:
 npm run build          # then check what index.html references
 ```
 
-## Smoke-test fixtures still in the production database
+## Demonstration accounts
 
-Three accounts were created to smoke-test the live deployment and **have not
-been removed**:
+The production database contains exactly three accounts, and no others:
 
-| Email | Role |
-| --- | --- |
-| `patient@smoke.invalid` | patient (Alice Santos) |
-| `doctor@smoke.invalid` | doctor (Dr Alan Cruz) |
-| `admin@smoke.invalid` | admin (Ada Reyes) |
+| Email | Role | Name |
+| --- | --- | --- |
+| `patient@smoke.invalid` | patient | Alice Santos |
+| `doctor@smoke.invalid` | doctor | Dr Alan Cruz |
+| `admin@smoke.invalid` | admin | Ada Reyes |
 
-They share one password, which was chosen for a throwaway test and is written
-down in the project's working notes. Treat it as public.
+They were created to smoke-test the live deployment and they are also the only
+data that makes it demonstrable — there is no separate "real" set behind them.
+Deleting them would leave the system with no users at all, so they were kept
+and their credentials rotated instead.
 
-They were left in place on purpose — they are the only data that makes the
-deployment demonstrable, and deleting them is not reversible — but that is a
-decision with a shelf life. **Before this is shown to anyone outside the
-project, either rotate the password or remove the accounts:**
+**The shared password they were created with no longer works.** Each account
+now has an independent random bcrypt password that was generated, hashed and
+discarded inside a single SQL statement, so it exists nowhere — not in this
+repository, not in any transcript, and not in anyone's hands. Existing sessions
+and refresh tokens were deleted at the same time. This was verified by
+attempting the old password against the live sign-in page and being refused.
+
+To use them again, set a password of your choosing. Either **Authentication →
+Users → … → Reset password** in the dashboard, or run this in the SQL editor,
+substituting your own value:
 
 ```sql
--- Removes the fixtures and, by ON DELETE CASCADE, everything they own.
-delete from auth.users where email like '%@smoke.invalid';
+update auth.users
+   set encrypted_password = extensions.crypt('<choose-a-password>',
+                                             extensions.gen_salt('bf'))
+ where email = 'admin@smoke.invalid';
 ```
 
-Leaving a known-password administrator account on a reachable deployment is
-the single largest outstanding risk in this project. It is recorded here
-rather than quietly left for someone to find.
+Rotation did not touch any application data. All records survive — one
+patient, one doctor, one treatment plan, one prescription, 64 dose slots, one
+recovery log, one clinical note, one appointment — and every authorization
+boundary was re-verified afterwards: the doctor still sees their one patient,
+the administrator still sees zero patient rows, and the patient still sees
+zero clinical notes.
+
+Note on `.invalid`: it is a reserved TLD that can never resolve, so these
+addresses cannot receive password-reset email. That is deliberate for test
+fixtures, but it does mean self-service recovery is not available for them —
+use the dashboard or the SQL above. Real accounts get a working address and
+the invitation flow in `create-account`.
 
 ## Pre-deployment checklist
 

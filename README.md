@@ -205,17 +205,20 @@ Vercel for the frontend, Supabase for everything else.
 [`vercel.json`](./vercel.json) configures SPA routing, a Content-Security-
 Policy, immutable asset caching and the usual security headers.
 
-**Live at <https://recoverease-zeta.vercel.app>**, backed by Supabase project
-`kwsezszstdagzllbyjuk`. Smoke-tested end to end across all three roles.
+**Live at <https://recovereasedev.vercel.app>**, backed by Supabase project
+`kwsezszstdagzllbyjuk`. Smoke-tested end to end across all three roles, on the
+production URL. `recoverease-zeta.vercel.app` remains a working alias for the
+same deployment.
 
-Two things are outstanding, both dashboard actions: the `ALLOWED_ORIGINS` and
-`ANTHROPIC_API_KEY` Edge Function secrets are unset, so the guidance chatbot
-cannot reply in production (it degrades gracefully — the message is saved and
-the UI says the assistant is unavailable). Three smoke-test accounts with a
-known password are also still in the database and should be removed or
-rotated before the deployment is shown publicly. See
-[`docs/deployment.md`](./docs/deployment.md) for both, the full procedure and
-the checklist.
+One item is outstanding: the `ANTHROPIC_API_KEY` Edge Function secret is not
+set, so the guidance chatbot cannot generate replies. Its failure path is
+verified — the patient's message is saved and the UI says the assistant is
+unavailable rather than inventing an answer. Everything else is exercised
+against the live system.
+
+The three demonstration accounts had their shared password rotated to
+independent random values; see [`docs/deployment.md`](./docs/deployment.md)
+for how to set your own.
 
 ## Git workflow
 
