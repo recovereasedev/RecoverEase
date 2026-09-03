@@ -17,6 +17,7 @@ import { Link } from 'react-router-dom'
 
 import { BrandWordmark } from '@/components/layout/brand'
 import { buttonVariants } from '@/components/ui/button'
+import { Eyebrow } from '@/components/ui/section-heading'
 import { ProductPreview } from '@/features/marketing/components/product-preview'
 
 type Feature = { icon: LucideIcon; title: string; body: string }
@@ -92,7 +93,7 @@ const STEPS = [
   },
 ]
 
-function SectionHeading({
+function MarketingSection({
   eyebrow,
   title,
   description,
@@ -103,16 +104,10 @@ function SectionHeading({
 }) {
   return (
     <div className="mx-auto max-w-2xl text-center">
-      {eyebrow ? (
-        <p className="text-sm font-semibold uppercase tracking-wide text-accent-700">
-          {eyebrow}
-        </p>
-      ) : null}
-      <h2 className="mt-2 text-2xl font-semibold tracking-tight text-heading sm:text-3xl">
-        {title}
-      </h2>
+      {eyebrow ? <Eyebrow>{eyebrow}</Eyebrow> : null}
+      <h2 className="mt-2 text-headline-lg text-brand-800">{title}</h2>
       {description ? (
-        <p className="mt-3 text-muted">{description}</p>
+        <p className="mt-3 text-body-md text-muted">{description}</p>
       ) : null}
     </div>
   )
@@ -120,8 +115,8 @@ function SectionHeading({
 
 function FeatureCard({ icon: Icon, title, body }: Feature) {
   return (
-    <li className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-surface p-5">
-      <span className="flex size-10 items-center justify-center rounded-[var(--radius-md)] bg-brand-50">
+    <li className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-surface p-4 sm:p-5">
+      <span className="flex size-10 items-center justify-center rounded-[var(--radius-md)] bg-surface-raised">
         <Icon className="size-5 text-brand-700" aria-hidden="true" />
       </span>
       <h3 className="mt-4 font-semibold text-heading">{title}</h3>
@@ -135,15 +130,19 @@ export function LandingPage() {
     <div className="min-h-dvh bg-canvas">
       <a
         href="#main-content"
-        className="sr-only-focusable absolute left-4 top-4 z-50 rounded-[var(--radius-md)] bg-brand-600 px-4 py-2 text-sm font-medium text-white"
+        className="sr-only-focusable absolute left-4 top-4 z-50 rounded-[var(--radius-md)] bg-brand-800 px-4 py-2 text-sm font-medium text-white"
       >
         Skip to main content
       </a>
 
       {/* --- Header ------------------------------------------------------- */}
       <header className="border-b border-[var(--color-border)] bg-surface">
-        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-5 sm:px-8">
-          <Link to="/" className="rounded-[var(--radius-sm)]">
+        <div className="mx-auto flex h-16 max-w-[var(--container-content)] items-center justify-between px-5 sm:px-8">
+          <Link
+            to="/"
+            // A navigation target, and the wordmark alone measured 38px.
+            className="inline-flex min-h-11 items-center rounded-[var(--radius-sm)] sm:min-h-0"
+          >
             <BrandWordmark />
           </Link>
           <Link to="/sign-in" className={buttonVariants({ size: 'sm' })}>
@@ -155,27 +154,39 @@ export function LandingPage() {
       <main id="main-content" tabIndex={-1}>
         {/* --- Hero ------------------------------------------------------- */}
         <section className="border-b border-[var(--color-border)] bg-surface">
-          <div className="mx-auto grid max-w-6xl gap-12 px-5 py-16 sm:px-8 lg:grid-cols-[1.15fr_1fr] lg:items-center lg:py-24">
+          <div className="mx-auto grid max-w-[var(--container-content)] gap-12 px-5 py-16 sm:px-8 lg:grid-cols-[1.15fr_1fr] lg:items-center lg:py-24">
             <div>
               <p className="inline-flex items-center gap-2 rounded-full border border-accent-200 bg-accent-50 px-3 py-1 text-sm font-medium text-accent-800">
                 <ShieldCheck className="size-4" aria-hidden="true" />
                 For clinics and their patients
               </p>
 
-              <h1 className="mt-5 text-4xl font-semibold tracking-tight text-heading sm:text-5xl sm:leading-[1.1]">
+              {/* The one place the type scale is exceeded. A hero is
+                  allowed to be larger than a page title; everything below it
+                  is on the system's steps. */}
+              <h1 className="mt-5 text-headline-xl text-brand-800 sm:text-[3.25rem] sm:leading-[1.05]">
                 Recovery, followed properly —{' '}
                 <span className="brand-gradient-text">start to finish</span>
               </h1>
 
-              <p className="mt-5 max-w-xl text-lg leading-relaxed text-body">
+              <p className="mt-5 max-w-xl text-body-lg leading-relaxed text-body">
                 RecoverEase keeps a patient’s treatment plan, medication
                 schedule, appointments and daily progress in one shared record
                 — so the person recovering and the clinician treating them are
                 looking at the same thing.
               </p>
 
-              <div className="mt-8 flex flex-wrap gap-3">
-                <Link to="/sign-in" className={buttonVariants({ size: 'lg' })}>
+              {/* Full width and stacked on a phone. Side by side these two
+                  are about 370px of button in a 335px column, so they wrapped
+                  into two left-aligned rows of different widths. */}
+              <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+                <Link
+                  to="/sign-in"
+                  className={buttonVariants({
+                    size: 'lg',
+                    className: 'max-sm:w-full',
+                  })}
+                >
                   Sign in to your account
                 </Link>
                 <a
@@ -183,6 +194,7 @@ export function LandingPage() {
                   className={buttonVariants({
                     size: 'lg',
                     variant: 'secondary',
+                    className: 'max-sm:w-full',
                   })}
                 >
                   See how it works
@@ -202,16 +214,16 @@ export function LandingPage() {
         </section>
 
         {/* --- Who it helps ----------------------------------------------- */}
-        <section className="mx-auto max-w-6xl px-5 py-16 sm:px-8 lg:py-20">
-          <SectionHeading
+        <section className="mx-auto max-w-[var(--container-content)] px-5 py-16 sm:px-8 lg:py-20">
+          <MarketingSection
             eyebrow="Who it is for"
             title="Two people, one record"
             description="Recovery breaks down when the patient and the clinician are working from different information. RecoverEase gives each of them the view they need of the same underlying record."
           />
 
           <div className="mt-10 grid gap-5 md:grid-cols-2">
-            <div className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-surface p-6">
-              <h3 className="text-lg font-semibold text-heading">
+            <div className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-surface p-5 sm:p-6">
+              <h3 className="text-headline-md text-heading">
                 If you are recovering
               </h3>
               <p className="mt-2 text-body">
@@ -222,8 +234,8 @@ export function LandingPage() {
               </p>
             </div>
 
-            <div className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-surface p-6">
-              <h3 className="text-lg font-semibold text-heading">
+            <div className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-surface p-5 sm:p-6">
+              <h3 className="text-headline-md text-heading">
                 If you are treating
               </h3>
               <p className="mt-2 text-body">
@@ -240,15 +252,15 @@ export function LandingPage() {
           id="how-it-works"
           className="scroll-mt-8 border-y border-[var(--color-border)] bg-surface"
         >
-          <div className="mx-auto max-w-6xl px-5 py-16 sm:px-8 lg:py-20">
-            <SectionHeading eyebrow="How it works" title="Three steps" />
+          <div className="mx-auto max-w-[var(--container-content)] px-5 py-16 sm:px-8 lg:py-20">
+            <MarketingSection eyebrow="How it works" title="Three steps" />
 
             <ol className="mt-10 grid gap-6 md:grid-cols-3">
               {STEPS.map((step, index) => (
                 <li key={step.title} className="relative">
                   <span
                     aria-hidden="true"
-                    className="flex size-9 items-center justify-center rounded-full bg-brand-600 text-sm font-semibold text-white"
+                    className="flex size-9 items-center justify-center rounded-full bg-brand-800 text-sm font-semibold text-white"
                   >
                     {index + 1}
                   </span>
@@ -266,8 +278,8 @@ export function LandingPage() {
         </section>
 
         {/* --- Patient features -------------------------------------------- */}
-        <section className="mx-auto max-w-6xl px-5 py-16 sm:px-8 lg:py-20">
-          <SectionHeading
+        <section className="mx-auto max-w-[var(--container-content)] px-5 py-16 sm:px-8 lg:py-20">
+          <MarketingSection
             eyebrow="For patients"
             title="Everything your recovery asks of you, in one place"
           />
@@ -280,8 +292,8 @@ export function LandingPage() {
 
         {/* --- Clinician features ------------------------------------------ */}
         <section className="border-y border-[var(--color-border)] bg-surface">
-          <div className="mx-auto max-w-6xl px-5 py-16 sm:px-8 lg:py-20">
-            <SectionHeading
+          <div className="mx-auto max-w-[var(--container-content)] px-5 py-16 sm:px-8 lg:py-20">
+            <MarketingSection
               eyebrow="For clinicians"
               title="The context you need before you walk in"
             />
@@ -294,15 +306,15 @@ export function LandingPage() {
         </section>
 
         {/* --- Security ----------------------------------------------------- */}
-        <section className="mx-auto max-w-6xl px-5 py-16 sm:px-8 lg:py-20">
-          <SectionHeading
+        <section className="mx-auto max-w-[var(--container-content)] px-5 py-16 sm:px-8 lg:py-20">
+          <MarketingSection
             eyebrow="Privacy"
             title="Access is enforced where the data lives"
             description="Health records deserve more than a hidden menu item. In RecoverEase, every rule about who can see what is enforced by the database itself."
           />
 
           <ul className="mt-10 grid gap-5 md:grid-cols-3">
-            <li className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-surface p-6">
+            <li className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-surface p-5 sm:p-6">
               <Lock className="size-5 text-accent-700" aria-hidden="true" />
               <h3 className="mt-4 font-semibold text-heading">
                 One patient, one clinician
@@ -313,7 +325,7 @@ export function LandingPage() {
               </p>
             </li>
 
-            <li className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-surface p-6">
+            <li className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-surface p-5 sm:p-6">
               <Database className="size-5 text-accent-700" aria-hidden="true" />
               <h3 className="mt-4 font-semibold text-heading">
                 Rules in the database
@@ -324,7 +336,7 @@ export function LandingPage() {
               </p>
             </li>
 
-            <li className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-surface p-6">
+            <li className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-surface p-5 sm:p-6">
               <UserCog className="size-5 text-accent-700" aria-hidden="true" />
               <h3 className="mt-4 font-semibold text-heading">
                 Administrators manage accounts, not records
@@ -341,22 +353,23 @@ export function LandingPage() {
         {/* --- Getting started ---------------------------------------------- */}
         <section className="border-t border-[var(--color-border)] bg-surface">
           <div className="mx-auto max-w-3xl px-5 py-16 text-center sm:px-8 lg:py-20">
-            <h2 className="text-2xl font-semibold tracking-tight text-heading sm:text-3xl">
-              Getting started
-            </h2>
-            <p className="mt-3 text-muted">
+            <h2 className="text-headline-lg text-brand-800">Getting started</h2>
+            <p className="mt-3 text-body-md text-muted">
               If your clinic already uses RecoverEase, your care team will have
               registered you and sent your sign-in details. Use the email
               address they registered.
             </p>
-            <p className="mt-2 text-muted">
+            <p className="mt-2 text-body-md text-muted">
               If you cannot sign in, contact your doctor or clinic
               administrator — they can reset your access.
             </p>
 
             <Link
               to="/sign-in"
-              className={buttonVariants({ size: 'lg', className: 'mt-8' })}
+              className={buttonVariants({
+                size: 'lg',
+                className: 'mt-8 max-sm:w-full',
+              })}
             >
               Sign in to RecoverEase
             </Link>
@@ -365,7 +378,7 @@ export function LandingPage() {
       </main>
 
       <footer className="border-t border-[var(--color-border)] bg-canvas">
-        <div className="mx-auto flex max-w-6xl flex-col gap-4 px-5 py-8 sm:flex-row sm:items-center sm:justify-between sm:px-8">
+        <div className="mx-auto flex max-w-[var(--container-content)] flex-col gap-4 px-5 py-8 sm:flex-row sm:items-center sm:justify-between sm:px-8">
           <BrandWordmark />
           <p className="text-sm text-muted">
             RecoverEase is a recovery management tool. It does not provide

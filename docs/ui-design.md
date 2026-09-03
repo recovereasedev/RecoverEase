@@ -125,6 +125,11 @@ The scale is the design system's, exposed as Tailwind text steps:
 | `text-label-md` | 14 / 20, +0.05em, 600 | Emphasised labels |
 | `text-label-sm` | 12 / 16, 500 | All-caps section anchors |
 
+The landing page hero is the one place the scale is exceeded: `headline-xl`
+on a phone, and a larger explicit size from `sm`. A marketing hero is allowed
+to be bigger than a page title; everything below it on that page is on the
+steps above.
+
 A "strong" hierarchy — large contrast between heading and body — is what lets
 a clinician scan a record instead of reading it. Page titles are set in brand
 blue and section headings in the heading colour; that separation is what lets

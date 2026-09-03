@@ -128,11 +128,10 @@ export function PatientChatPage() {
 
   return (
     <>
-      <PageHeader
-        eyebrow="Recovery guidance"
-        title="Guidance chat"
-        description="Ask about your recovery between appointments."
-      />
+      {/* No subtitle. "Ask about your recovery between appointments" is
+          said better, and at more length, by the notice directly below it -
+          and on a phone those two lines came out of the conversation. */}
+      <PageHeader eyebrow="Recovery guidance" title="Guidance chat" />
 
       {/* Stated before the conversation, not buried under it. Standing
           guidance, so it is not announced: it was on the page all along. */}
@@ -159,7 +158,7 @@ export function PatientChatPage() {
           The result is that the transcript is the only thing that scrolls and
           the composer is always where the thumb already is.
         */}
-        <Card className="flex h-[calc(100dvh-29rem)] min-h-[20rem] flex-col lg:h-auto lg:min-h-0">
+        <Card className="flex h-[calc(100dvh-26rem)] min-h-[20rem] flex-col lg:h-auto lg:min-h-0">
           <CardHeader
             title={
               activeSession
