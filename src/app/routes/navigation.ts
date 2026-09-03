@@ -22,6 +22,12 @@ export type NavItem = {
   label: string
   to: string
   icon: LucideIcon
+  /**
+   * Used by the phone's bottom bar, where a fifth of a 375px screen is not
+   * enough for "Treatment plan". Only set it where the full label would be
+   * truncated; a shortened label that still fits is just a worse label.
+   */
+  shortLabel?: string
   /** Matches nested routes, e.g. /doctor/patients/:id under "Patients". */
   matchPrefix?: boolean
 }
@@ -48,6 +54,7 @@ const PATIENT_NAV: NavSection[] = [
       { label: 'My recovery', to: '/patient/recovery', icon: Activity },
       {
         label: 'Treatment plan',
+        shortLabel: 'Treatment',
         to: '/patient/treatment',
         icon: ClipboardList,
         matchPrefix: true,

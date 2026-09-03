@@ -7,24 +7,44 @@ import {
   primaryMobileNavFor,
   type NavItem,
 } from '@/app/routes/navigation'
-import { BrandWordmark } from '@/components/layout/brand'
+import { BrandLockup, BrandWordmark } from '@/components/layout/brand'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/features/auth/auth-context'
 import { useUnreadNotificationCount } from '@/features/notifications/hooks'
+import type { UserRole } from '@/features/auth/types'
 import { cn, initialsFromName } from '@/lib/utils'
 
-const ROLE_LABEL = {
+const ROLE_LABEL: Record<UserRole, string> = {
   patient: 'Patient',
   doctor: 'Clinician',
   admin: 'Administrator',
-} as const
+}
+
+/**
+ * The line under the wordmark, and the context pill in the header.
+ *
+ * This is the only "where am I" cue the shell shows, and it is deliberately a
+ * fact the application actually holds - which portal you are signed in to.
+ * The design comps carry a live clinical status here ("Active Post-Op
+ * Pathway"); RecoverEase has no such concept, and inventing one would put a
+ * fabricated clinical claim in the frame of every screen.
+ */
+const ROLE_CONTEXT: Record<UserRole, string> = {
+  patient: 'Patient care portal',
+  doctor: 'Clinician workspace',
+  admin: 'System administration',
+}
 
 function navLinkClasses(isActive: boolean): string {
   return cn(
-    'flex items-center gap-3 rounded-[var(--radius-md)] px-3 py-2.5 text-sm font-medium transition-colors duration-[var(--duration-fast)]',
+    'flex items-center gap-3 rounded-[var(--radius-md)] border-l-[3px] px-3 py-2.5 text-sm',
+    'transition-colors duration-[var(--duration-fast)]',
     isActive
-      ? 'bg-brand-50 text-brand-700'
-      : 'text-body hover:bg-neutral-100 hover:text-heading',
+      ? // The teal left accent is the design system's active marker. It is
+        // paired with a tonal fill and a weight change, so the state is not
+        // carried by a 3px stripe of colour alone.
+        'border-accent-600 bg-surface-raised font-semibold text-brand-800'
+      : 'border-transparent font-medium text-body hover:bg-neutral-100 hover:text-heading',
   )
 }
 
@@ -37,7 +57,7 @@ function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
       {navigationFor(user.role).map((section, index) => (
         <div key={section.heading ?? `section-${index}`}>
           {section.heading ? (
-            <h2 className="mb-2 px-3 text-xs font-semibold uppercase tracking-wide text-muted">
+            <h2 className="mb-2 px-3 text-label-sm font-semibold uppercase tracking-wider text-muted">
               {section.heading}
             </h2>
           ) : null}
@@ -55,7 +75,7 @@ function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
                       <item.icon
                         className={cn(
                           'size-5 shrink-0',
-                          isActive ? 'text-brand-600' : 'text-neutral-500',
+                          isActive ? 'text-accent-700' : 'text-neutral-500',
                         )}
                         aria-hidden="true"
                       />
@@ -78,13 +98,13 @@ function NotificationBell({ to }: { to: string }) {
   return (
     <Link
       to={to}
-      className="relative inline-flex size-11 items-center justify-center rounded-[var(--radius-md)] text-body transition-colors hover:bg-neutral-100"
+      className="relative inline-flex size-11 items-center justify-center rounded-[var(--radius-md)] text-body transition-colors hover:bg-neutral-100 hover:text-heading"
     >
       <Bell className="size-5" aria-hidden="true" />
       {unread > 0 ? (
         <span
           aria-hidden="true"
-          className="absolute right-1.5 top-1.5 flex min-w-4 items-center justify-center rounded-full bg-danger-700 px-1 text-[10px] font-semibold leading-4 text-white"
+          className="absolute right-1.5 top-1.5 flex min-w-4 items-center justify-center rounded-full bg-danger-600 px-1 text-[10px] font-semibold leading-4 text-white"
         >
           {unread > 9 ? '9+' : unread}
         </span>
@@ -100,12 +120,45 @@ function NotificationBell({ to }: { to: string }) {
   )
 }
 
+function UserIdentity({
+  name,
+  role,
+  className,
+}: {
+  name: string
+  role: UserRole
+  className?: string
+}) {
+  return (
+    <div className={cn('flex items-center gap-3', className)}>
+      <span className="hidden min-w-0 text-right sm:block">
+        <span className="block truncate text-sm font-semibold text-heading">
+          {name}
+        </span>
+        <span className="block truncate text-label-sm text-muted">
+          {ROLE_LABEL[role]}
+        </span>
+      </span>
+      <span
+        aria-hidden="true"
+        className="flex size-9 shrink-0 items-center justify-center rounded-full bg-brand-800 text-xs font-semibold text-white"
+      >
+        {initialsFromName(name)}
+      </span>
+    </div>
+  )
+}
+
 function MobileDrawer({
   isOpen,
   onClose,
+  role,
+  onSignOut,
 }: {
   isOpen: boolean
   onClose: () => void
+  role: UserRole
+  onSignOut: () => void
 }) {
   const panelRef = useRef<HTMLDivElement>(null)
   const titleId = useId()
@@ -140,7 +193,7 @@ function MobileDrawer({
         type="button"
         aria-label="Close menu"
         onClick={onClose}
-        className="absolute inset-0 bg-neutral-900/40"
+        className="absolute inset-0 bg-neutral-950/40"
       />
       <div
         ref={panelRef}
@@ -151,7 +204,7 @@ function MobileDrawer({
       >
         <div className="flex items-center justify-between border-b border-[var(--color-border)] px-4 py-3">
           <span id={titleId}>
-            <BrandWordmark />
+            <BrandLockup subtitle={ROLE_CONTEXT[role]} />
           </span>
           <Button
             variant="ghost"
@@ -165,6 +218,17 @@ function MobileDrawer({
         <div className="flex-1 overflow-y-auto p-3">
           <SidebarNav onNavigate={onClose} />
         </div>
+        <div className="border-t border-[var(--color-border)] p-3">
+          <Button
+            variant="ghost"
+            block
+            className="justify-start text-danger-700 hover:bg-danger-50 hover:text-danger-800"
+            onClick={onSignOut}
+          >
+            <LogOut aria-hidden="true" />
+            Sign out
+          </Button>
+        </div>
       </div>
     </div>
   )
@@ -174,7 +238,7 @@ function BottomNav({ items }: { items: NavItem[] }) {
   return (
     <nav
       aria-label="Primary"
-      // pb-safe equivalent: keeps the bar clear of the iOS home indicator.
+      // The bottom padding keeps the bar clear of the iOS home indicator.
       className="fixed inset-x-0 bottom-0 z-40 border-t border-[var(--color-border)] bg-surface pb-[env(safe-area-inset-bottom)] md:hidden"
     >
       <ul className="grid grid-cols-5">
@@ -186,20 +250,29 @@ function BottomNav({ items }: { items: NavItem[] }) {
               className={({ isActive }) =>
                 cn(
                   'flex h-16 flex-col items-center justify-center gap-1 px-1 text-[11px] font-medium',
-                  isActive ? 'text-brand-700' : 'text-muted',
+                  isActive ? 'text-brand-800' : 'text-muted',
                 )
               }
             >
               {({ isActive }) => (
                 <>
-                  <item.icon
+                  <span
                     className={cn(
-                      'size-5',
-                      isActive ? 'text-brand-600' : 'text-neutral-500',
+                      'flex h-7 w-12 items-center justify-center rounded-full transition-colors',
+                      isActive ? 'bg-surface-raised' : 'bg-transparent',
                     )}
-                    aria-hidden="true"
-                  />
-                  <span className="line-clamp-1">{item.label}</span>
+                  >
+                    <item.icon
+                      className={cn(
+                        'size-5',
+                        isActive ? 'text-brand-800' : 'text-neutral-500',
+                      )}
+                      aria-hidden="true"
+                    />
+                  </span>
+                  <span className="line-clamp-1">
+                    {item.shortLabel ?? item.label}
+                  </span>
                 </>
               )}
             </NavLink>
@@ -229,48 +302,38 @@ export function AppShell() {
 
   const notificationsHref = `/${user.role}/notifications`
   const mobileItems = primaryMobileNavFor(user.role)
+  const handleSignOut = () => void signOut()
 
   return (
     <div className="min-h-dvh bg-canvas">
       <a
         href="#main-content"
-        className="sr-only-focusable absolute left-4 top-4 z-[60] rounded-[var(--radius-md)] bg-brand-600 px-4 py-2 text-sm font-medium text-white"
+        className="sr-only-focusable absolute left-4 top-4 z-[60] rounded-[var(--radius-md)] bg-brand-800 px-4 py-2 text-sm font-medium text-white"
       >
         Skip to main content
       </a>
 
       {/* --- Desktop sidebar --------------------------------------------- */}
-      <div className="hidden lg:fixed lg:inset-y-0 lg:left-0 lg:flex lg:w-64 lg:flex-col lg:border-r lg:border-[var(--color-border)] lg:bg-surface">
-        <div className="flex h-16 items-center border-b border-[var(--color-border)] px-5">
-          <Link to={`/${user.role}`} className="rounded-[var(--radius-sm)]">
-            <BrandWordmark />
+      <div className="hidden lg:fixed lg:inset-y-0 lg:left-0 lg:flex lg:w-sidebar lg:flex-col lg:border-r lg:border-[var(--color-border)] lg:bg-surface">
+        <div className="flex h-20 items-center border-b border-[var(--color-border)] px-5">
+          <Link
+            to={`/${user.role}`}
+            className="min-w-0 rounded-[var(--radius-sm)]"
+          >
+            <BrandLockup subtitle={ROLE_CONTEXT[user.role]} />
           </Link>
         </div>
-        <div className="flex-1 overflow-y-auto p-3">
+
+        <div className="flex-1 overflow-y-auto px-3 py-4">
           <SidebarNav />
         </div>
+
         <div className="border-t border-[var(--color-border)] p-3">
-          <div className="flex items-center gap-3 rounded-[var(--radius-md)] px-3 py-2">
-            <span
-              aria-hidden="true"
-              className="flex size-9 shrink-0 items-center justify-center rounded-full bg-brand-50 text-sm font-semibold text-brand-700"
-            >
-              {initialsFromName(user.displayName)}
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-sm font-medium text-heading">
-                {user.displayName}
-              </span>
-              <span className="block truncate text-xs text-muted">
-                {ROLE_LABEL[user.role]}
-              </span>
-            </span>
-          </div>
           <Button
             variant="ghost"
             block
-            className="mt-1 justify-start"
-            onClick={() => void signOut()}
+            className="justify-start text-danger-700 hover:bg-danger-50 hover:text-danger-800"
+            onClick={handleSignOut}
           >
             <LogOut aria-hidden="true" />
             Sign out
@@ -278,11 +341,16 @@ export function AppShell() {
         </div>
       </div>
 
-      <MobileDrawer isOpen={isMenuOpen} onClose={() => setMenuOpen(false)} />
+      <MobileDrawer
+        isOpen={isMenuOpen}
+        onClose={() => setMenuOpen(false)}
+        role={user.role}
+        onSignOut={handleSignOut}
+      />
 
       {/* --- Content column ----------------------------------------------- */}
-      <div className="lg:pl-64">
-        <header className="sticky top-0 z-30 flex h-16 items-center gap-2 border-b border-[var(--color-border)] bg-surface/95 px-4 backdrop-blur-sm sm:px-6">
+      <div className="lg:pl-sidebar">
+        <header className="sticky top-0 z-30 flex h-16 items-center gap-2 border-b border-[var(--color-border)] bg-surface/95 px-4 backdrop-blur-sm sm:px-6 lg:h-20">
           <Button
             variant="ghost"
             size="icon"
@@ -298,24 +366,37 @@ export function AppShell() {
             <BrandWordmark />
           </Link>
 
-          <div className="ml-auto flex items-center gap-1">
+          {/* Context strip. Hidden on small screens, where the wordmark and
+              the bottom bar already say where you are. */}
+          <p className="hidden items-center gap-2 rounded-full bg-surface-sunken px-3 py-1.5 text-label-sm font-medium text-muted lg:inline-flex">
+            <span
+              aria-hidden="true"
+              className="size-2 rounded-full bg-accent-600"
+            />
+            {ROLE_CONTEXT[user.role]}
+          </p>
+
+          <div className="ml-auto flex items-center gap-1 sm:gap-3">
             <NotificationBell to={notificationsHref} />
-            <Button
-              variant="ghost"
-              size="icon"
-              className="lg:hidden"
-              aria-label="Sign out"
-              onClick={() => void signOut()}
-            >
-              <LogOut aria-hidden="true" />
-            </Button>
+
+            <span
+              aria-hidden="true"
+              className="hidden h-8 w-px bg-[var(--color-border)] sm:block"
+            />
+
+            {/* Sign out is not repeated here on a phone: the drawer carries
+                it, and a five-control header at 375px leaves every target
+                too narrow to hit reliably. */}
+            <UserIdentity name={user.displayName} role={user.role} />
           </div>
         </header>
 
         <main
           id="main-content"
           tabIndex={-1}
-          className="px-4 pb-24 pt-6 sm:px-6 md:pb-10 lg:px-8"
+          // Capped at the design system's 1280px reading width so line
+          // lengths stay readable on an ultra-wide monitor.
+          className="content-width px-4 pb-24 pt-6 sm:px-6 md:pb-10 lg:px-8 lg:pt-8"
         >
           <Outlet />
         </main>

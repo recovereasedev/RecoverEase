@@ -1,48 +1,73 @@
 # UI design
 
-Implements the RecoverEase **User Interface Design** document. That document
-sets out six colour roles, a sans-serif hierarchy, rounded containers,
-generous whitespace, and three governing principles: **clarity, simplicity,
-accessibility**.
+Implements the approved **Clinical Clarity** design system
+(`clinical_clarity/DESIGN.md` in the Stitch export). Its stated intent is a
+high-trust healthcare aesthetic — calm, authoritative, human-centred — reached
+through tonal layering and a systematic approach to information density,
+rather than through gradients, glass or ornament.
 
 Tokens live in [`src/index.css`](../src/index.css) as Tailwind v4 `@theme`
 variables. Components reference semantic tokens, never a raw hex value or a
-scale step.
+scale step. That single seam is what let the palette be replaced wholesale
+without editing a component.
 
 ## Colour
 
-The document's table, mapped one-to-one:
+The design system's roles, mapped onto the token layer:
 
-| Document role | Token | Value |
+| Role | Token | Value |
 | --- | --- | --- |
-| Blue — branding, navigation, important elements | `--color-brand-600` | `#2563eb` |
-| Teal — buttons, highlights, emphasis | `--color-accent-700` | `#0f766e` |
-| White — content areas, cards, forms | `--color-surface` | `#ffffff` |
-| Light gray — page backgrounds | `--color-canvas` | `#f8fafc` |
-| Dark gray — headings and primary text | `--color-heading` | `#0f172a` |
-| Muted gray — secondary text, labels | `--color-muted` | `#64748b` |
+| `primary` — key actions, page titles, active navigation | `--color-brand-800` | `#004269` |
+| `primary-container` — solid fills, hover | `--color-brand-600` | `#0e5a8a` |
+| `secondary` — teal, interactive emphasis and confirmation | `--color-accent-700` | `#006b5f` |
+| `surface-container-lowest` — cards, content containers | `--color-surface` | `#ffffff` |
+| `background` — page floor | `--color-canvas` | `#f9f9ff` |
+| `surface-container-low` — wells, table headers | `--color-surface-sunken` | `#f0f3ff` |
+| `surface-container` — icon tiles, active nav, tonal chips | `--color-surface-raised` | `#e7eeff` |
+| `on-surface` — headings | `--color-heading` | `#111c2d` |
+| `on-surface-variant` — body copy | `--color-body` | `#41474f` |
+| `error` | `--color-danger-600` | `#ba1a1a` |
+| `tertiary` — amber, warnings | `--color-warning-700` | `#7e4900` |
 
-Neutrals use a cool slate rather than a warm gray, which reads as clinical
-instrumentation rather than consumer software.
+Neutrals are a blue-tinted slate taken from the system's tonal surface
+containers. Cooler than a true grey, which is what makes stacked panels read
+as layers rather than as dirt on the screen.
 
 ### Contrast
 
 Every foreground/background pair used for text was measured against WCAG AA
 (4.5:1) and the ratio is recorded beside the token:
 
-| Pair | Ratio |
-| --- | ---: |
-| `brand-600` on white | 5.17:1 |
-| `accent-700` on white | 5.29:1 |
-| `muted` (`neutral-500`) on white | 4.76:1 |
-| `heading` (`neutral-900`) on white | 17.85:1 |
-| `danger-700` on white | 5.94:1 |
-| `warning-700` on white | 4.52:1 |
-| `success-700` on white | 4.83:1 |
+| Pair | Ratio | |
+| --- | ---: | --- |
+| `heading` (`#111c2d`) on white | 17.10:1 | AAA |
+| `brand-800` on white | 10.59:1 | AAA |
+| `body` (`#41474f`) on white | 9.38:1 | AAA |
+| `accent-800` on white | 9.37:1 | AAA |
+| `danger-800` on white | 9.35:1 | AAA |
+| `warning-800` on white | 9.35:1 | AAA |
+| `success-700` on white | 7.76:1 | AAA |
+| `brand-600` on white | 7.37:1 | AAA |
+| `danger-600` on white | 6.46:1 | AA |
+| `accent-700` on white | 6.43:1 | AA |
+| `muted` (`#5f6672`) on white | 5.78:1 | AA |
+| `muted` on `surface-raised` | 4.98:1 | AA |
 
-**`accent-600` (`#0d9488`) is 3.94:1 and is not used for text.** It appears
-only as icon and rule colour. Teal's usable-for-text floor is 700, and this is
-the kind of detail that silently fails an audit if it is not written down.
+### One deliberate departure
+
+The design system's `outline` is `#717880`. On white that is **4.47:1**, on
+the canvas 4.26:1, and on a tinted container 3.84:1 — below AA for normal text
+in all three.
+
+It is kept as `--color-outline` for what it is genuinely for — hairlines,
+disabled glyphs, placeholder text, all of which WCAG exempts — and
+`--color-muted` is set one step darker at `#5f6672`. Secondary text is most of
+the text in a clinical interface; it has to pass. Accessibility outranks an
+exact hex, and this is the kind of detail that silently fails an audit if it
+is not written down.
+
+`neutral-400` (`#9aa1ad`, 2.60:1) is likewise decorative only — chevrons and
+empty-state glyphs, never text and never the sole carrier of meaning.
 
 ### Colour is never the only signal
 
@@ -79,16 +104,34 @@ decoration and stops meaning anything.
 
 ## Typography
 
-A system font stack, not a webfont:
+**Inter**, named by the design system for its legibility in data-heavy
+clinical screens. It is **self-hosted** via `@fontsource-variable/inter`
+rather than pulled from a font CDN, for two reasons: a patient portal should
+not send every visitor's IP and referrer to a third party on page load, and a
+bundled font has no external failure mode. Subsets are `unicode-range` gated,
+so an English session downloads one 48KB file. The full system stack remains
+the fallback.
 
-```
-ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, …
-```
+The scale is the design system's, exposed as Tailwind text steps:
 
-This renders natively on every target platform with no network request, no
-layout shift on load, and no failure mode when a font CDN is unreachable.
-Legibility at small sizes is what matters clinically, and the platform stacks
-are designed for exactly that.
+| Step | Size / line height | Used for |
+| --- | --- | --- |
+| `text-headline-xl` | 36 / 44, −0.02em, 700 | Page titles, `sm:` and up |
+| `text-headline-lg` | 28 / 36, −0.01em, 600 | Page titles on mobile |
+| `text-headline-md` | 20 / 28, 600 | Section headings |
+| `text-body-lg` | 18 / 28 | Lead paragraphs |
+| `text-body-md` | 16 / 24 | Body — the floor |
+| `text-body-sm` | 14 / 20 | Dense data tables |
+| `text-label-md` | 14 / 20, +0.05em, 600 | Emphasised labels |
+| `text-label-sm` | 12 / 16, 500 | All-caps section anchors |
+
+A "strong" hierarchy — large contrast between heading and body — is what lets
+a clinician scan a record instead of reading it. Page titles are set in brand
+blue and section headings in the heading colour; that separation is what lets
+section headings stay small without the page losing its structure.
+
+All-caps is used only for short labels, never for prose: capitals destroy word
+shape and slow reading.
 
 - Body text has a **16px floor**. Nothing clinical is set smaller.
 - Line height 1.5 for body, 1.25 for headings.
@@ -100,25 +143,52 @@ are designed for exactly that.
 
 ## Elevation
 
-Separation is done with **borders**, not shadows.
+Depth is **tonal**, not shadowed. The canvas is the floor; a white card sits
+on it behind a hairline border; nested groupings step down onto
+`surface-sunken` and tiles step up onto `surface-raised`.
 
-In an interface that shows many panels at once, a shadow on everything reads
-as noise and stops signalling anything. Shadow is reserved for genuinely
-floating layers — dropdown, dialog, drawer, toast — so elevation keeps its
-meaning.
+Shadow is the design system's "lifted" state and is spent sparingly: the
+restrained `0 4px 12px` at 8% is reserved for genuinely floating layers —
+dropdown, dialog, drawer, toast — plus `Card variant="elevated"`, which marks
+the one card on a screen that is asking for an action right now. A shadow on
+everything reads as noise and stops signalling anything.
 
 ## Radius
 
-The document asks for rounded containers; the four steps keep it restrained:
+An 8px base, which softens the institutional feel of healthcare software while
+staying structured:
 
 | Token | Size | Used for |
 | --- | --- | --- |
-| `--radius-sm` | 6px | Badges, small inputs |
-| `--radius-md` | 8px | Buttons, inputs |
-| `--radius-lg` | 12px | Cards, panels |
-| `--radius-xl` | 16px | Dialogs |
+| `--radius-xs` | 4px | Inline code, tiny chips |
+| `--radius-sm` | 6px | Skeleton blocks, focus ring |
+| `--radius-md` | 8px | Buttons, inputs, nav items |
+| `--radius-lg` | 16px | Cards, panels, modals |
+| `--radius-xl` | 24px | Large panels |
 
-Fully rounded pills are reserved for avatars and count badges.
+**Badges are fully rounded**, which is what keeps them from being mistaken for
+buttons: in this language a pill states a fact and an 8px rectangle performs
+an action. Pills are otherwise reserved for avatars and count badges.
+
+## Component vocabulary
+
+Beyond the base primitives, the design system's recurring patterns exist once
+each rather than being re-cut per page:
+
+| Component | What it is for |
+| --- | --- |
+| `SectionHeading` | Icon tile + title + description above a group of cards |
+| `Eyebrow` | The small all-caps label above a page or section title |
+| `StatCard` | One measurement in a bento row: label, number, trend, footer |
+| `ProgressBar` / `ProgressRing` | A rate, always restating a number written nearby |
+| `Notice` | Guidance, a safety note, or the outcome of an action |
+| `Skeleton` family | Load placeholders that reserve the real content's space |
+| `DataTable` family | Clinical tables: tinted header, horizontal rules only, own scroll container |
+
+`StatCard` is deliberately narrow: a label, a number, an optional trend and a
+footer sentence. It will not take an action, a chart or a paragraph, because a
+row of four cards that each do something different stops being scannable —
+which was the only reason to use cards instead of a list.
 
 ## Motion
 
@@ -182,8 +252,17 @@ Adapted, not shrunk:
 
 The brief asked for real healthcare software, not a generic AI dashboard:
 
-- **No meaningless metric tiles.** Every number on a dashboard is one the user
-  can act on. There is no "total patients seen" counter.
+- **No meaningless metric tiles.** `StatCard` exists, but the rule governing
+  its use has not changed: every number on a dashboard is one the user can act
+  on. There is no "total patients seen" counter and no invented adherence
+  percentage.
+- **None of the design comps' invented clinical content.** The comps carry
+  MRNs, NPI numbers, FIDO2 enrolment, a Merkle audit ledger, caregiver
+  proxies, VAS pain scores and post-op day counters. RecoverEase has none of
+  those concepts. The visual language was adopted; the fabricated record was
+  not. The shell's context strip names the portal you are signed in to — a
+  fact the application actually holds — rather than the comps' "Active Post-Op
+  Pathway".
 - **No decorative charts.** The two visualisations that exist —the goal
   progress bar and the mood trend— each restate their value in text beside
   them, and the mood trend ships a screen-reader table of the same data.
@@ -196,7 +275,7 @@ The brief asked for real healthcare software, not a generic AI dashboard:
   are not real.
 - **No glassmorphism, no decorative blobs, no gradient surfaces.**
 - **Light theme only.** Dark mode was not requested and doubles the QA
-  surface; the design document specifies a light clinical palette. Tokens are
+  surface; the design system specifies a light clinical palette. Tokens are
   structured so it could be added later without touching component code.
 
 ## Voice

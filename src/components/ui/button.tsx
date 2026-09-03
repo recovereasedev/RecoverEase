@@ -12,6 +12,12 @@ import { cn } from '@/lib/utils'
  *
  * The focus ring is inherited from the global `:focus-visible` rule rather
  * than redefined per variant, so it cannot be accidentally removed here.
+ *
+ * Variants follow the design system's action hierarchy directly: "primary
+ * actions are solid Blue with White text; secondary actions use a Teal
+ * outline". `outline` is the third rung - a neutral bordered control for
+ * genuinely tertiary actions (Cancel, Retry, Close) where teal would imply
+ * an endorsement the action does not have.
  */
 const buttonVariants = cva(
   [
@@ -25,14 +31,16 @@ const buttonVariants = cva(
     variants: {
       variant: {
         primary:
-          'bg-brand-600 text-white hover:bg-brand-700 active:bg-brand-800',
+          'bg-brand-800 text-white hover:bg-brand-700 active:bg-brand-900',
+        secondary:
+          'bg-surface text-accent-800 border border-accent-600 hover:bg-accent-50 active:bg-accent-100',
         accent:
           'bg-accent-700 text-white hover:bg-accent-800 active:bg-accent-900',
-        secondary:
-          'bg-surface text-heading border border-[var(--color-border-strong)] hover:bg-neutral-50 active:bg-neutral-100',
+        outline:
+          'bg-surface text-heading border border-[var(--color-border-strong)] hover:bg-neutral-100 active:bg-neutral-200',
         ghost: 'text-body hover:bg-neutral-100 active:bg-neutral-200',
         danger:
-          'bg-danger-700 text-white hover:bg-danger-800 active:bg-danger-800',
+          'bg-danger-600 text-white hover:bg-danger-700 active:bg-danger-800',
         link: 'text-brand-700 underline underline-offset-4 hover:text-brand-800',
       },
       size: {

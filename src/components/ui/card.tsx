@@ -1,33 +1,54 @@
+import { cva, type VariantProps } from 'class-variance-authority'
 import type { HTMLAttributes, ReactNode } from 'react'
+import type { LucideIcon } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
 
 /**
  * The primary grouping container.
  *
- * Cards are separated by a border rather than a drop shadow. In a clinical
- * interface that shows many panels at once, shadows on everything read as
- * noise and stop signalling elevation; keeping shadow for genuinely floating
- * layers (menus, dialogs) preserves that meaning.
+ * The design system builds depth out of tonal layers rather than shadow: the
+ * canvas is the floor, a white card sits on it behind a hairline border, and
+ * shadow is spent only on things that genuinely float. In a clinical
+ * interface showing many panels at once, a shadow on everything reads as
+ * noise and stops meaning "raised" at all.
+ *
+ * `elevated` is the "lifted" state from the specification - the restrained
+ * 0 4px 12px shadow - reserved for the one card on a screen that is asking
+ * for an action right now.
  */
-export function Card({
-  className,
-  ...props
-}: HTMLAttributes<HTMLDivElement>) {
+const cardVariants = cva('rounded-[var(--radius-lg)] bg-surface', {
+  variants: {
+    variant: {
+      default: 'border border-[var(--color-border)]',
+      elevated: 'border border-[var(--color-border)] shadow-[var(--shadow-md)]',
+      /** A tinted well: nested groupings that must not look like a new card. */
+      sunken: 'bg-surface-sunken',
+      /** No chrome at all, for a card that only exists to own the radius. */
+      plain: '',
+    },
+  },
+  defaultVariants: { variant: 'default' },
+})
+
+export type CardProps = HTMLAttributes<HTMLDivElement> &
+  VariantProps<typeof cardVariants>
+
+export function Card({ className, variant, ...props }: CardProps) {
   return (
-    <div
-      className={cn(
-        'rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-surface',
-        className,
-      )}
-      {...props}
-    />
+    <div className={cn(cardVariants({ variant }), className)} {...props} />
   )
 }
 
 export type CardHeaderProps = {
   title: ReactNode
   description?: ReactNode
+  /**
+   * A small tonal tile carrying the section's icon. The design system uses it
+   * to anchor a group visually; it is decorative, so it is hidden from
+   * assistive technology and the heading carries the meaning.
+   */
+  icon?: LucideIcon
   /** Rendered on the trailing edge: a button, a link, a filter. */
   action?: ReactNode
   /** Heading level, so a card nested in a section keeps document order sane. */
@@ -38,6 +59,7 @@ export type CardHeaderProps = {
 export function CardHeader({
   title,
   description,
+  icon: Icon,
   action,
   as: Heading = 'h2',
   className,
@@ -49,15 +71,25 @@ export function CardHeader({
         className,
       )}
     >
-      <div className="min-w-0">
-        <Heading className="text-base font-semibold text-heading">
-          {title}
-        </Heading>
-        {description ? (
-          <p className="mt-0.5 text-sm text-muted">{description}</p>
+      <div className="flex min-w-0 items-start gap-3">
+        {Icon ? (
+          <span
+            aria-hidden="true"
+            className="flex size-9 shrink-0 items-center justify-center rounded-[var(--radius-md)] bg-surface-raised text-brand-700"
+          >
+            <Icon className="size-5" />
+          </span>
         ) : null}
+        <div className="min-w-0">
+          <Heading className="text-base font-semibold text-heading">
+            {title}
+          </Heading>
+          {description ? (
+            <p className="mt-0.5 text-sm text-muted">{description}</p>
+          ) : null}
+        </div>
       </div>
-      {action ? <div className="shrink-0">{action}</div> : null}
+      {action ? <div className="ms-auto shrink-0">{action}</div> : null}
     </div>
   )
 }
@@ -76,10 +108,12 @@ export function CardFooter({
   return (
     <div
       className={cn(
-        'flex flex-wrap items-center gap-3 border-t border-[var(--color-border)] px-5 py-4',
+        'flex flex-wrap items-center gap-3 border-t border-[var(--color-border)] bg-surface-sunken/60 px-5 py-4',
         className,
       )}
       {...props}
     />
   )
 }
+
+export { cardVariants }

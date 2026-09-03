@@ -1,12 +1,18 @@
+/* Inter, self-hosted. The design system names Inter for its legibility in
+   data-heavy clinical screens. It is bundled rather than pulled from a font
+   CDN: a patient portal should not send every visitor's IP and referrer to a
+   third party on page load, and a bundled font has no external failure mode.
+   Subsets are unicode-range gated, so an English session fetches one file. */
+@import '@fontsource-variable/inter/wght.css';
 @import 'tailwindcss';
 
 /* ===========================================================================
-   RecoverEase Design System
+   RecoverEase Design System - "Clinical Clarity"
    ---------------------------------------------------------------------------
-   Source of truth: "RecoverEase - User Interface Design" (Sections 1-5).
-   That document specifies six colour roles, a sans-serif hierarchy, rounded
-   containers, generous whitespace, and three governing principles:
-   clarity, simplicity, accessibility.
+   Source of truth: the approved Stitch design system (clinical_clarity/
+   DESIGN.md), which supersedes the earlier palette. Its stated intent is a
+   high-trust healthcare aesthetic: calm, authoritative, human-centred, and
+   legible before it is decorative.
 
    Design rules encoded here:
 
@@ -14,130 +20,199 @@
       matching icon and text label in `src/lib/status.ts`.
    2. Every foreground/background pair used for text meets WCAG AA (4.5:1).
       Measured ratios are recorded beside each token.
-   3. Separation is done with borders, not shadows. Shadow is reserved for
-      genuinely floating layers (menu, dialog, toast) so that elevation keeps
-      its meaning instead of becoming decoration.
-   4. The blue-to-teal gradient called for by the design document is used in
-      exactly two places (the brand mark, and the auth/landing brand panel)
-      and nowhere else. It is an identity cue, not a surface treatment.
+   3. Depth is tonal, not shadowed. Cards sit on the canvas with a hairline
+      border; shadow is reserved for genuinely floating layers (menu, dialog,
+      toast) so that elevation keeps its meaning.
+   4. The blue-to-teal gradient is used in exactly two places (the brand mark,
+      and the auth/landing brand panel) and nowhere else. It is an identity
+      cue, not a surface treatment.
+
+   Where this file departs from DESIGN.md the reason is recorded in place.
+   There is exactly one such departure: `outline`.
    =========================================================================== */
 
 @theme {
   /* ---- Typography ------------------------------------------------------ */
-  /* A system stack renders natively on every target platform: no webfont
-     request, no layout shift on load, and no failure mode when a font CDN is
-     unreachable. Legibility at small sizes is what matters clinically. */
   --font-sans:
-    ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
-    Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+    'Inter Variable', 'Inter', ui-sans-serif, system-ui, -apple-system,
+    BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+    'Noto Sans', sans-serif;
   --font-mono:
-    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
-    "Liberation Mono", monospace;
+    ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas,
+    'Liberation Mono', monospace;
 
-  /* ---- Brand: Blue ------------------------------------------------------
-     "Primary color for branding, navigation, and important interface
-     elements." */
-  --color-brand-50: #eff6ff;
-  --color-brand-100: #dbeafe;
-  --color-brand-200: #bfdbfe;
-  --color-brand-300: #93c5fd;
-  --color-brand-400: #60a5fa;
-  --color-brand-500: #3b82f6;
-  --color-brand-600: #2563eb; /* 5.17:1 on white - AA for body text */
-  --color-brand-700: #1d4ed8; /* 7.00:1 on white - AAA */
-  --color-brand-800: #1e40af;
-  --color-brand-900: #1e3a8a;
-  --color-brand-950: #172554;
+  /* The design system's scale, verbatim. A "strong" hierarchy - large
+     contrast between headings and body - is what lets a clinician scan a
+     record instead of reading it. */
+  --text-headline-xl: 2.25rem; /* 36px */
+  --text-headline-xl--line-height: 2.75rem;
+  --text-headline-xl--letter-spacing: -0.02em;
+  --text-headline-xl--font-weight: 700;
 
-  /* ---- Accent: Teal -----------------------------------------------------
-     "Secondary/accent color used for buttons, highlights, and visual
-     emphasis." Note the usable-for-text floor is 700, not 600. */
-  --color-accent-50: #f0fdfa;
-  --color-accent-100: #ccfbf1;
-  --color-accent-200: #99f6e4;
-  --color-accent-300: #5eead4;
-  --color-accent-400: #2dd4bf;
-  --color-accent-500: #14b8a6;
-  --color-accent-600: #0d9488; /* 3.94:1 - non-text use only (icons, rules) */
-  --color-accent-700: #0f766e; /* 5.29:1 on white - AA. Use this for text. */
-  --color-accent-800: #115e59;
-  --color-accent-900: #134e4a;
-  --color-accent-950: #042f2e;
+  --text-headline-lg: 1.75rem; /* 28px */
+  --text-headline-lg--line-height: 2.25rem;
+  --text-headline-lg--letter-spacing: -0.01em;
+  --text-headline-lg--font-weight: 600;
+
+  --text-headline-md: 1.25rem; /* 20px */
+  --text-headline-md--line-height: 1.75rem;
+  --text-headline-md--font-weight: 600;
+
+  --text-body-lg: 1.125rem; /* 18px */
+  --text-body-lg--line-height: 1.75rem;
+
+  --text-body-md: 1rem; /* 16px - the body floor */
+  --text-body-md--line-height: 1.5rem;
+
+  --text-body-sm: 0.875rem; /* 14px - dense data tables */
+  --text-body-sm--line-height: 1.25rem;
+
+  /* Labels anchor a section. All-caps is used sparingly and never for prose:
+     capitals destroy word shape and slow reading. */
+  --text-label-md: 0.875rem;
+  --text-label-md--line-height: 1.25rem;
+  --text-label-md--letter-spacing: 0.05em;
+  --text-label-md--font-weight: 600;
+
+  --text-label-sm: 0.75rem;
+  --text-label-sm--line-height: 1rem;
+  --text-label-sm--font-weight: 500;
+
+  /* ---- Brand: medical blue ---------------------------------------------
+     Anchored on the design system's `primary` (#004269) and
+     `primary-container` (#0e5a8a): stability and medical expertise. The
+     colour of key actions, active navigation and brand touchpoints. */
+  --color-brand-50: #eaf2fb;
+  --color-brand-100: #cde5ff; /* primary-fixed */
+  --color-brand-200: #a0d0ff; /* on-primary-container */
+  --color-brand-300: #95ccff; /* primary-fixed-dim */
+  --color-brand-400: #5fa8d8;
+  --color-brand-500: #2b7cb0;
+  --color-brand-600: #0e5a8a; /* primary-container - 7.37:1 on white, AAA */
+  --color-brand-700: #004a75; /* on-primary-fixed-variant - 9.39:1, AAA */
+  --color-brand-800: #004269; /* primary - 10.59:1 on white, AAA */
+  --color-brand-900: #00344f;
+  --color-brand-950: #001d32; /* on-primary-fixed */
+
+  /* ---- Accent: teal -----------------------------------------------------
+     The design system's `secondary`. Interactive emphasis and positive
+     reinforcement. Unlike the previous palette the whole usable range clears
+     AA: 600 is 4.86:1, so it is now safe for text as well as for icons. */
+  --color-accent-50: #e6fbf6;
+  --color-accent-100: #c6f7ec;
+  --color-accent-200: #6df5e1; /* secondary-container */
+  --color-accent-300: #4fdbc8; /* secondary-fixed-dim */
+  --color-accent-400: #1fbfa8;
+  --color-accent-500: #00a08b;
+  --color-accent-600: #00806f; /* 4.86:1 on white - AA */
+  --color-accent-700: #006b5f; /* secondary - 6.43:1 on white - AA */
+  --color-accent-800: #005048; /* on-secondary-fixed-variant - 9.37:1 */
+  --color-accent-900: #00403a;
+  --color-accent-950: #00201c; /* on-secondary-fixed */
 
   /* ---- Neutrals ---------------------------------------------------------
-     A cool slate reads as clinical instrumentation rather than warm
-     consumer software. */
-  --color-neutral-50: #f8fafc;
-  --color-neutral-100: #f1f5f9;
-  --color-neutral-200: #e2e8f0;
-  --color-neutral-300: #cbd5e1;
-  --color-neutral-400: #94a3b8;
-  --color-neutral-500: #64748b; /* 4.76:1 on white - AA floor, muted text */
-  --color-neutral-600: #475569; /* 7.56:1 on white */
-  --color-neutral-700: #334155;
-  --color-neutral-800: #1e293b;
-  --color-neutral-900: #0f172a; /* 17.85:1 on white - headings */
-  --color-neutral-950: #020617;
+     A blue-tinted slate taken from the design system's tonal surface
+     containers. Cooler than a true grey, which is what makes stacked panels
+     read as layers rather than as dirt on the screen. */
+  --color-neutral-50: #f9f9ff; /* surface / background */
+  --color-neutral-100: #f0f3ff; /* surface-container-low */
+  --color-neutral-200: #dfe5f1; /* hairline rules, progress track */
+  --color-neutral-300: #c1c7d0; /* outline-variant */
+  --color-neutral-400: #9aa1ad; /* decorative only - 2.60:1 */
+  --color-neutral-500: #717880; /* outline - 4.47:1, icons only */
+  --color-neutral-600: #5f6672; /* 5.78:1 on white - AA - muted text */
+  --color-neutral-700: #41474f; /* on-surface-variant - 9.38:1 */
+  --color-neutral-800: #333942;
+  --color-neutral-900: #263143; /* inverse-surface */
+  --color-neutral-950: #111c2d; /* on-surface - 17.10:1 */
 
   /* ---- Status -----------------------------------------------------------
-     Chosen at the shade where colour-on-white clears AA, so one token works
+     Each family is anchored on the design system's role colour, then taken
+     to the shade where colour-on-white clears AA, so that one token works
      for both a badge fill and inline text. */
-  --color-success-50: #ecfdf5;
-  --color-success-100: #d1fae5;
-  --color-success-200: #a7f3d0;
-  --color-success-600: #059669;
-  --color-success-700: #047857; /* 4.83:1 on white */
-  --color-success-800: #065f46;
+  --color-success-50: #e8f7ee;
+  --color-success-100: #c2e9d3;
+  --color-success-200: #8fd4ae;
+  --color-success-600: #0e7a46; /* 5.40:1 on white */
+  --color-success-700: #0a5f37; /* 7.76:1 on white */
+  --color-success-800: #07492a; /* 10.52:1 on white */
 
-  --color-warning-50: #fffbeb;
-  --color-warning-100: #fef3c7;
-  --color-warning-200: #fde68a;
-  --color-warning-600: #d97706;
-  --color-warning-700: #b45309; /* 4.52:1 on white */
-  --color-warning-800: #92400e;
+  /* Amber, from the design system's `tertiary` family. */
+  --color-warning-50: #fff4e6;
+  --color-warning-100: #ffdcbd; /* tertiary-fixed */
+  --color-warning-200: #ffb86f; /* tertiary-fixed-dim */
+  --color-warning-600: #8a5000;
+  --color-warning-700: #7e4900; /* tertiary-container - 7.39:1 on white */
+  --color-warning-800: #693c00; /* on-tertiary-fixed-variant - 9.35:1 */
 
-  --color-danger-50: #fef2f2;
-  --color-danger-100: #fee2e2;
-  --color-danger-200: #fecaca;
-  --color-danger-600: #dc2626;
-  --color-danger-700: #b91c1c; /* 5.94:1 on white */
-  --color-danger-800: #991b1b;
+  /* Red, from the design system's `error` family. */
+  --color-danger-50: #ffedea;
+  --color-danger-100: #ffdad6; /* error-container */
+  --color-danger-200: #ffb4ab;
+  --color-danger-600: #ba1a1a; /* error - 6.46:1 on white */
+  --color-danger-700: #a01414; /* 8.06:1 on white */
+  --color-danger-800: #93000a; /* on-error-container - 9.35:1 */
 
-  --color-info-50: #eff6ff;
-  --color-info-100: #dbeafe;
-  --color-info-200: #bfdbfe;
-  --color-info-600: #2563eb;
-  --color-info-700: #1d4ed8;
-  --color-info-800: #1e40af;
+  /* Informational states share the brand blue by design: "this is a fact
+     about the system" and "this is the product speaking" are one voice. */
+  --color-info-50: #eaf2fb;
+  --color-info-100: #cde5ff;
+  --color-info-200: #a0d0ff;
+  --color-info-600: #0e5a8a;
+  --color-info-700: #004a75;
+  --color-info-800: #004269;
 
   /* ---- Semantic surface roles ------------------------------------------
-     Components reference these, never a raw scale step or hex value.
-     Mapped one-to-one onto the design document's colour table. */
-  --color-canvas: #f8fafc; /* "Light Gray - page backgrounds"        */
-  --color-surface: #ffffff; /* "White - content areas, cards, forms"  */
-  --color-surface-sunken: #f1f5f9; /* nested wells, table headers     */
-  --color-border: #e2e8f0; /* "subtle separation between sections"    */
-  --color-border-strong: #cbd5e1;
-  --color-heading: #0f172a; /* "Dark Gray - headings, primary text"   */
-  --color-body: #334155;
-  --color-muted: #64748b; /* "Muted Gray - secondary text, labels"    */
+     Components reference these, never a raw scale step or hex value. */
+  --color-canvas: #f9f9ff; /* the floor */
+  --color-surface: #ffffff; /* cards and content containers */
+  --color-surface-sunken: #f0f3ff; /* wells, table headers, inset panels */
+  --color-surface-raised: #e7eeff; /* icon tiles, active nav, tonal chips */
+  --color-border: #dfe5f1; /* hairline separation */
+  --color-border-strong: #c1c7d0; /* input borders, emphasised rules */
+  --color-heading: #111c2d; /* headings - 17.10:1 on white */
+  --color-body: #41474f; /* body copy - 9.38:1 on white */
+  --color-muted: #5f6672; /* secondary text and labels - 5.78:1 on white */
+
+  /* DEPARTURE FROM DESIGN.md, deliberate and singular.
+
+     The design system's `outline` is #717880. On white that is 4.47:1, on the
+     canvas 4.26:1, and on a tinted container 3.84:1 - below AA for normal
+     text in all three. It is kept here for what it is genuinely for
+     (hairlines, disabled glyphs, placeholder text, all of which are exempt),
+     and `--color-muted` is set one step darker at #5f6672 so that secondary
+     text - which is most of the text in a clinical interface - actually
+     passes. Accessibility outranks an exact hex. */
+  --color-outline: #717880;
+
+  --color-inverse-surface: #263143;
+  --color-inverse-on-surface: #ecf1ff; /* 11.60:1 on inverse-surface */
 
   /* ---- Radius -----------------------------------------------------------
-     "Rounded containers and cards", applied with restraint. Fully rounded
-     pills are reserved for avatars and count badges. */
-  --radius-sm: 0.375rem; /*  6px - badges, small inputs */
-  --radius-md: 0.5rem; /*   8px - buttons, inputs       */
-  --radius-lg: 0.75rem; /*  12px - cards, panels        */
-  --radius-xl: 1rem; /*     16px - dialogs, panels      */
+     8px base: "softens the institutional feel of healthcare software while
+     staying professional". Cards step up to 16px so a container boundary
+     reads clearly, and badges are fully rounded so they are never mistaken
+     for buttons. */
+  --radius-xs: 0.25rem; /* 4px */
+  --radius-sm: 0.375rem; /* 6px - small chips */
+  --radius-md: 0.5rem; /* 8px - buttons, inputs */
+  --radius-lg: 1rem; /* 16px - cards, modals */
+  --radius-xl: 1.5rem; /* 24px - large panels */
 
   /* ---- Elevation --------------------------------------------------------
-     Only floating layers get a shadow. Everything else uses a border. */
-  --shadow-xs: 0 1px 2px 0 rgb(15 23 42 / 0.04);
+     Restrained by specification: offset 0 4px, blur 12px, 8% neutral. Only
+     floating layers get one; everything else separates with a border. */
+  --shadow-xs: 0 1px 2px 0 rgb(17 28 45 / 0.04);
   --shadow-sm:
-    0 1px 3px 0 rgb(15 23 42 / 0.06), 0 1px 2px -1px rgb(15 23 42 / 0.04);
-  --shadow-md:
-    0 4px 12px -2px rgb(15 23 42 / 0.08), 0 2px 6px -2px rgb(15 23 42 / 0.04);
-  --shadow-lg: 0 12px 32px -8px rgb(15 23 42 / 0.14);
+    0 1px 3px 0 rgb(17 28 45 / 0.06), 0 1px 2px -1px rgb(17 28 45 / 0.04);
+  --shadow-md: 0 4px 12px 0 rgb(17 28 45 / 0.08);
+  --shadow-lg: 0 12px 32px -8px rgb(17 28 45 / 0.16);
+
+  /* ---- Layout -----------------------------------------------------------
+     "Main content areas should be capped at 1280px to prevent line lengths
+     from becoming unreadable on ultra-wide monitors." */
+  --container-content: 80rem; /* 1280px */
+  --spacing-sidebar: 18rem; /* 288px */
 
   /* ---- Motion -----------------------------------------------------------
      Short and functional. Motion signals a state change; it never decorates. */
@@ -180,6 +255,7 @@
     color: var(--color-heading);
     font-weight: 600;
     line-height: 1.25;
+    letter-spacing: -0.01em;
     text-wrap: balance; /* prevents orphaned words in headings */
   }
 
@@ -220,26 +296,33 @@
    =========================================================================== */
 
 @layer utilities {
-  /* The one sanctioned gradient. Identity only: brand mark, and the auth /
-     landing brand panel. Do not extend this to cards, buttons or headers. */
+  /* The one sanctioned gradient. Identity only: the brand mark, and the auth
+     and landing brand panel. Do not extend it to cards, buttons or headers. */
   .brand-gradient {
     background-image: linear-gradient(
       135deg,
-      var(--color-brand-600) 0%,
-      var(--color-brand-500) 45%,
-      var(--color-accent-500) 100%
+      var(--color-brand-800) 0%,
+      var(--color-brand-600) 45%,
+      var(--color-accent-600) 100%
     );
   }
 
   .brand-gradient-text {
     background-image: linear-gradient(
       120deg,
-      var(--color-brand-600) 0%,
-      var(--color-accent-600) 100%
+      var(--color-brand-800) 0%,
+      var(--color-accent-700) 100%
     );
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
+  }
+
+  /* Caps a content column at the specification's 1280px reading width. */
+  .content-width {
+    margin-inline: auto;
+    width: 100%;
+    max-width: var(--container-content);
   }
 
   /* Hidden until focused. Used by the skip link, which must be reachable by

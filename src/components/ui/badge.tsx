@@ -7,11 +7,16 @@ export type BadgeProps = {
   children: React.ReactNode
 }
 
+/**
+ * Badges are fully rounded by specification, which is what keeps them from
+ * being mistaken for buttons: in this design language a pill states a fact
+ * and an 8px rectangle performs an action.
+ */
 export function Badge({ tone = 'neutral', className, children }: BadgeProps) {
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1.5 rounded-[var(--radius-sm)] border px-2 py-0.5 text-xs font-medium',
+        'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold',
         toneClasses[tone],
         className,
       )}
