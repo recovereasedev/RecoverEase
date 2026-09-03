@@ -1,11 +1,12 @@
-import { ShieldAlert, UserX } from 'lucide-react'
+import { ShieldAlert, UserX, type LucideIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Link, Navigate, useLocation } from 'react-router-dom'
 
-import { EmptyState, ErrorState, LoadingState } from '@/components/feedback/state-view'
+import { ErrorState, LoadingState } from '@/components/feedback/state-view'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { useAuth } from '@/features/auth/auth-context'
 import type { AccountProblem, UserRole } from '@/features/auth/types'
+import { cn } from '@/lib/utils'
 
 /**
  * Route guards.
@@ -27,27 +28,57 @@ export function roleHome(role: UserRole): string {
   return HOME_FOR_ROLE[role]
 }
 
-function BlockedScreen({
+/**
+ * The frame for a screen that is the whole page rather than a panel inside
+ * one: not found, blocked account, session failure.
+ *
+ * It is not `EmptyState`. That renders an `<h3>`, which is correct for a card
+ * that sits under a page heading and wrong here, where this *is* the page and
+ * the browser's heading outline would otherwise start at level three. Same
+ * visual language, different document semantics.
+ */
+function StatusScreen({
+  icon: Icon,
+  tone = 'neutral',
   title,
   description,
-  onSignOut,
+  children,
 }: {
+  icon: LucideIcon
+  tone?: 'neutral' | 'danger'
   title: string
   description: string
-  onSignOut: () => void
+  children?: ReactNode
 }) {
   return (
-    <main className="mx-auto flex min-h-dvh max-w-md flex-col items-center justify-center px-6">
-      <EmptyState
-        icon={UserX}
-        title={title}
-        description={description}
-        action={
-          <Button variant="secondary" onClick={onSignOut}>
-            Sign out
-          </Button>
-        }
-      />
+    <main
+      className={[
+        'mx-auto flex min-h-dvh w-full max-w-md flex-col px-5',
+        'pt-10 pb-[max(2.5rem,env(safe-area-inset-bottom))]',
+      ].join(' ')}
+    >
+      {/* `my-auto` rather than `justify-center`, so a long message on a short
+          screen scrolls from the top instead of overflowing past it. */}
+      <div className="my-auto flex flex-col items-center text-center">
+        <span
+          aria-hidden="true"
+          className={cn(
+            'flex size-14 items-center justify-center rounded-[var(--radius-lg)]',
+            tone === 'danger'
+              ? 'bg-danger-50 text-danger-700'
+              : 'bg-surface-raised text-brand-700',
+          )}
+        >
+          <Icon className="size-7" />
+        </span>
+
+        <h1 className="mt-5 text-headline-lg text-brand-800">{title}</h1>
+        <p className="mt-2 text-body-md leading-relaxed text-muted">
+          {description}
+        </p>
+
+        {children ? <div className="mt-7 w-full">{children}</div> : null}
+      </div>
     </main>
   )
 }
@@ -84,7 +115,7 @@ export function RequireAuth({ children }: { children: ReactNode }) {
 
   if (status.state === 'loading') {
     return (
-      <div className="flex min-h-dvh items-center justify-center">
+      <div className="flex min-h-dvh items-center justify-center px-5">
         <LoadingState label="Checking your session…" />
       </div>
     )
@@ -97,7 +128,7 @@ export function RequireAuth({ children }: { children: ReactNode }) {
 
   if (status.state === 'error') {
     return (
-      <div className="flex min-h-dvh items-center justify-center px-6">
+      <div className="flex min-h-dvh items-center justify-center px-5">
         <ErrorState
           error={status.error}
           onRetry={() => window.location.reload()}
@@ -109,11 +140,21 @@ export function RequireAuth({ children }: { children: ReactNode }) {
   if (status.state === 'blocked') {
     const { title, description } = describeProblem(status.problem)
     return (
-      <BlockedScreen
+      <StatusScreen
+        icon={UserX}
+        tone="danger"
         title={title}
         description={description}
-        onSignOut={() => void signOut()}
-      />
+      >
+        <Button
+          variant="secondary"
+          size="lg"
+          block
+          onClick={() => void signOut()}
+        >
+          Sign out
+        </Button>
+      </StatusScreen>
     )
   }
 
@@ -161,20 +202,19 @@ export function NotFoundScreen() {
   const { user } = useAuth()
 
   return (
-    <main className="mx-auto flex min-h-dvh max-w-md flex-col items-center justify-center px-6">
-      <EmptyState
-        icon={ShieldAlert}
-        title="Page not found"
-        description="This page does not exist, or you do not have access to it."
-        action={
-          <Link
-            to={user ? roleHome(user.role) : '/'}
-            className={buttonVariants({ variant: 'secondary' })}
-          >
-            {user ? 'Back to your dashboard' : 'Back to home'}
-          </Link>
-        }
-      />
-    </main>
+    <StatusScreen
+      icon={ShieldAlert}
+      title="Page not found"
+      description="This page does not exist, or you do not have access to it."
+    >
+      {/* The only destination offered is one that certainly exists for whoever
+          is looking at this. No guesses, no "try searching". */}
+      <Link
+        to={user ? roleHome(user.role) : '/'}
+        className={buttonVariants({ size: 'lg', block: true })}
+      >
+        {user ? 'Back to your dashboard' : 'Back to home'}
+      </Link>
+    </StatusScreen>
   )
 }

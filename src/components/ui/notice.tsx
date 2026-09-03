@@ -45,15 +45,26 @@ export type NoticeProps = {
   tone?: NoticeTone
   title?: ReactNode
   children: ReactNode
+  /**
+   * Overrides the tone's default glyph. The default for `danger` is a shield,
+   * which reads as "you are blocked" - right for a permission failure, wrong
+   * for a mistyped password. Pass the icon that matches what actually
+   * happened; the tone still carries the colour.
+   */
+  icon?: LucideIcon
   /** A button or link on the trailing edge. */
   action?: ReactNode
   /**
-   * Announce the notice when it appears. Use it for something that happened
-   * in response to the user - a save failing - and leave it off for standing
-   * guidance that was on the page all along, which would otherwise be read
-   * out on every visit for no reason.
+   * Announce the notice when it appears.
+   *
+   * Leave it off for standing guidance that was on the page all along, which
+   * would otherwise be read out on every visit for no reason. Use `polite`
+   * for something that resolved in the background, and `assertive` - which
+   * renders `role="alert"` - for the outcome of something the user just did,
+   * such as a failed sign-in, where waiting for a pause in speech means the
+   * person has already moved on.
    */
-  live?: boolean
+  live?: 'polite' | 'assertive'
   className?: string
 }
 
@@ -68,17 +79,20 @@ export function Notice({
   tone = 'info',
   title,
   children,
+  icon,
   action,
-  live = false,
+  live,
   className,
 }: NoticeProps) {
   const styles = toneStyles[tone]
-  const Icon = styles.icon
+  const Icon = icon ?? styles.icon
 
   return (
     <div
-      role={live ? 'status' : undefined}
-      aria-live={live ? 'polite' : undefined}
+      // `alert` and `status` already imply their own politeness, so
+      // `aria-live` is not set alongside them: doubling the two is a known
+      // way to get a message announced twice.
+      role={live === 'assertive' ? 'alert' : live === 'polite' ? 'status' : undefined}
       className={cn(
         'flex flex-wrap items-start gap-4 rounded-[var(--radius-lg)] border p-4',
         styles.container,

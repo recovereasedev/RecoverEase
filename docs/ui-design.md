@@ -206,6 +206,18 @@ These are enforced by the primitives rather than left to each page:
   brand-coloured ring with 2px offset. Component styles cannot override it
   away — an invisible focus ring makes the app unusable by keyboard, which is
   a failure, not a style preference.
+
+  The rule is **unlayered**, deliberately, which puts it above every cascade
+  layer including Tailwind's utilities. Two things depend on that. The first
+  is the guarantee above: a rule in `@layer base` loses to any utility, so
+  before this it held only by convention. The second was found by measuring
+  rather than looking — `transition-colors` includes `outline-color`, so on
+  any control carrying it the ring animated from the element's own text colour
+  to the brand blue over 120ms. Reading the computed style immediately after a
+  Tab returned `rgb(255,255,255)` on the sign-in button: white, on a white
+  page. Someone tabbing at speed never saw a full-contrast ring on the app's
+  most important control. The rule restates the transition set without
+  `outline-color`, so hover and border transitions still run.
 - **Labels are always visible.** `Field` renders a real `<label>` bound with
   `htmlFor`. A placeholder is not a label: it disappears the moment someone
   types, which is exactly when a user filling in a long clinical form needs to
@@ -247,6 +259,35 @@ Adapted, not shrunk:
   horizontal scrolling, which is the pattern that makes clinical software
   unusable on a ward round.
 - Zoom is never suppressed; the viewport meta sets no `maximum-scale`.
+
+### Authentication screens
+
+Built mobile-first rather than as a shrunken desktop composition:
+
+| Breakpoint | Composition |
+| --- | --- |
+| `< 640px` | Single column, form directly on the canvas, compact brand lockup |
+| `640–1023px` | Same column, form lifted into a card |
+| `≥ 1024px` | Two columns: gradient brand panel beside the form card |
+
+Three decisions carry that:
+
+- **No card around the form on a phone.** A card at 375px spends 32px of a
+  335px column separating the form from nothing — it is the only thing on
+  screen. The card earns its place at `sm`, where a 448px column floating on
+  an empty background does need anchoring.
+- **Centred with `my-auto`, not `justify-center`.** A centred flex item that
+  grows taller than its container overflows in *both* directions and the top
+  becomes unreachable, because no scrollbar reaches above the start of a
+  scroll box. That is what happens on a 375×812 phone once the keyboard takes
+  half the viewport. `my-auto` collapses to zero when there is no spare room,
+  so the layout falls back to scrolling from the top instead of clipping.
+- **"Forgot your password?" sits below the submit button.** On the password
+  label row it saves a row of vertical space, but it also lands between the
+  email and password fields in the tab order — so a keyboard user filling the
+  form in tabs onto a link that navigates away mid-entry. Below the button the
+  sequence is email, password, reveal, Sign in, which is the order the form is
+  actually completed in.
 
 ## What was deliberately avoided
 

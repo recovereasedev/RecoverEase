@@ -263,15 +263,6 @@
     text-wrap: pretty;
   }
 
-  /* Focus is always visible. This is deliberately not overridable by
-     component styles: an invisible focus ring makes the app unusable by
-     keyboard, which is an accessibility failure, not a style preference. */
-  :focus-visible {
-    outline: 2px solid var(--color-brand-600);
-    outline-offset: 2px;
-    border-radius: var(--radius-sm);
-  }
-
   /* Numeric columns must align for scanning doses, times and dates. */
   table,
   [data-numeric] {
@@ -289,6 +280,37 @@
       scroll-behavior: auto !important;
     }
   }
+}
+
+/* ===========================================================================
+   Focus
+   ---------------------------------------------------------------------------
+   Deliberately UNLAYERED, which puts it above every cascade layer including
+   Tailwind's utilities. Two things depend on that:
+
+   1. The existing guarantee that component styles cannot remove the ring. A
+      rule in `@layer base` loses to any utility, so that guarantee was only
+      ever true by convention.
+
+   2. The ring reaching full contrast on the first frame. Tailwind's
+      `transition-colors` includes `outline-color`, so on a control carrying
+      it the ring animated from the element's own text colour to the brand
+      blue over 120ms - starting white on the primary button, against a white
+      page. Measured, not assumed: reading the computed style immediately
+      after a Tab returned rgb(255,255,255) on the sign-in button and the
+      correct blue only after the transition settled. Someone tabbing at speed
+      never saw a full-contrast ring on the app's most important control.
+
+   The transition set is restated without `outline-color`, so hover and border
+   transitions still run normally while an element is focused.
+   =========================================================================== */
+
+:focus-visible {
+  outline: 2px solid var(--color-brand-600);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+  transition-property: color, background-color, border-color,
+    text-decoration-color, fill, stroke;
 }
 
 /* ===========================================================================

@@ -1,13 +1,15 @@
 import { zodResolver } from '@hookform/resolvers/zod'
-import { AlertCircle } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useNavigate } from 'react-router-dom'
 
+import { LoadingState } from '@/components/feedback/state-view'
 import { Button } from '@/components/ui/button'
 import { Field, Input } from '@/components/ui/field'
+import { Notice } from '@/components/ui/notice'
 import { updatePassword } from '@/features/auth/api'
 import { AuthLayout } from '@/features/auth/components/auth-layout'
+import { AuthFormAlert } from '@/features/auth/components/form-alert'
 import {
   newPasswordSchema,
   type NewPasswordValues,
@@ -67,15 +69,36 @@ export function ResetPasswordPage() {
     }
   })
 
-  if (hasSession === false) {
+  // Checking the recovery session. Showing the form here and disabling its
+  // button looks like a broken page; saying what is happening does not.
+  if (hasSession === null) {
+    return (
+      <AuthLayout title="Choose a new password">
+        <LoadingState label="Checking your reset link…" />
+      </AuthLayout>
+    )
+  }
+
+  if (!hasSession) {
     return (
       <AuthLayout
         title="This link has expired"
         description="Password reset links can only be used once, and expire after an hour."
       >
-        <Button size="lg" block onClick={() => void navigate('/forgot-password')}>
-          Request a new link
-        </Button>
+        <div className="space-y-6">
+          <Notice tone="warning" title="Nothing has changed">
+            Your current password still works. Request a new link and the next
+            one will be valid for an hour.
+          </Notice>
+
+          <Button
+            size="lg"
+            block
+            onClick={() => void navigate('/forgot-password')}
+          >
+            Request a new link
+          </Button>
+        </div>
       </AuthLayout>
     )
   }
@@ -86,15 +109,7 @@ export function ResetPasswordPage() {
       description="Pick something you have not used elsewhere."
     >
       <form onSubmit={onSubmit} noValidate className="space-y-5">
-        {formError ? (
-          <div
-            role="alert"
-            className="flex items-start gap-2.5 rounded-[var(--radius-md)] border border-danger-200 bg-danger-50 p-3 text-sm text-danger-800"
-          >
-            <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-            <p>{formError}</p>
-          </div>
-        ) : null}
+        {formError ? <AuthFormAlert message={formError} /> : null}
 
         <Field
           label="New password"
@@ -126,9 +141,9 @@ export function ResetPasswordPage() {
           type="submit"
           size="lg"
           block
+          className="mt-6"
           isLoading={isSubmitting}
           loadingLabel="Updating your password…"
-          disabled={hasSession === null}
         >
           Update password
         </Button>

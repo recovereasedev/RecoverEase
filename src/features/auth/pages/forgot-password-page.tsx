@@ -1,13 +1,14 @@
 import { zodResolver } from '@hookform/resolvers/zod'
-import { AlertCircle, MailCheck } from 'lucide-react'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { Link } from 'react-router-dom'
 
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Field, Input } from '@/components/ui/field'
+import { Notice } from '@/components/ui/notice'
 import { requestPasswordReset } from '@/features/auth/api'
 import { AuthLayout } from '@/features/auth/components/auth-layout'
+import { AuthFormAlert } from '@/features/auth/components/form-alert'
 import {
   forgotPasswordSchema,
   type ForgotPasswordValues,
@@ -44,26 +45,30 @@ export function ForgotPasswordPage() {
   if (isSent) {
     return (
       <AuthLayout title="Check your email">
-        <div className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-surface p-5">
-          <span className="mb-3 flex size-11 items-center justify-center rounded-full bg-success-50">
-            <MailCheck className="size-5 text-success-700" aria-hidden="true" />
-          </span>
-          <p className="text-body">
+        {/* The whole screen changed, so the heading already announces the
+            outcome; the notice does not need to announce it a second time. */}
+        <div className="space-y-6">
+          <Notice tone="success" title="Reset link sent">
             If an account exists for that address, we have sent it a link to
             set a new password. The link expires in one hour.
-          </p>
-          <p className="mt-3 text-sm text-muted">
+          </Notice>
+
+          <p className="text-sm leading-relaxed text-muted">
             Nothing arrived? Check your spam folder, and confirm you used the
             address your care team registered.
           </p>
-        </div>
 
-        <Link
-          to="/sign-in"
-          className={buttonVariants({ variant: 'secondary', block: true })}
-        >
-          Back to sign in
-        </Link>
+          <Link
+            to="/sign-in"
+            className={buttonVariants({
+              variant: 'secondary',
+              size: 'lg',
+              block: true,
+            })}
+          >
+            Back to sign in
+          </Link>
+        </div>
       </AuthLayout>
     )
   }
@@ -74,19 +79,12 @@ export function ForgotPasswordPage() {
       description="Enter your email address and we will send you a link to set a new one."
     >
       <form onSubmit={onSubmit} noValidate className="space-y-5">
-        {formError ? (
-          <div
-            role="alert"
-            className="flex items-start gap-2.5 rounded-[var(--radius-md)] border border-danger-200 bg-danger-50 p-3 text-sm text-danger-800"
-          >
-            <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-            <p>{formError}</p>
-          </div>
-        ) : null}
+        {formError ? <AuthFormAlert message={formError} /> : null}
 
         <Field label="Email address" error={errors.email?.message} required>
           <Input
             type="email"
+            inputMode="email"
             autoComplete="username"
             autoFocus
             placeholder="name@clinic.com"
@@ -94,22 +92,28 @@ export function ForgotPasswordPage() {
           />
         </Field>
 
-        <Button
-          type="submit"
-          size="lg"
-          block
-          isLoading={isSubmitting}
-          loadingLabel="Sending reset link…"
-        >
-          Send reset link
-        </Button>
+        <div className="space-y-3 pt-1">
+          <Button
+            type="submit"
+            size="lg"
+            block
+            isLoading={isSubmitting}
+            loadingLabel="Sending reset link…"
+          >
+            Send reset link
+          </Button>
 
-        <Link
-          to="/sign-in"
-          className={buttonVariants({ variant: 'ghost', block: true })}
-        >
-          Back to sign in
-        </Link>
+          <Link
+            to="/sign-in"
+            className={buttonVariants({
+              variant: 'ghost',
+              size: 'lg',
+              block: true,
+            })}
+          >
+            Back to sign in
+          </Link>
+        </div>
       </form>
     </AuthLayout>
   )

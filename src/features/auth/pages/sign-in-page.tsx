@@ -1,5 +1,5 @@
 import { zodResolver } from '@hookform/resolvers/zod'
-import { AlertCircle, Eye, EyeOff } from 'lucide-react'
+import { Eye, EyeOff } from 'lucide-react'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { Link } from 'react-router-dom'
@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Field, Input } from '@/components/ui/field'
 import { signInWithPassword } from '@/features/auth/api'
 import { AuthLayout } from '@/features/auth/components/auth-layout'
+import { AuthFormAlert } from '@/features/auth/components/form-alert'
 import { signInSchema, type SignInValues } from '@/features/auth/schemas'
 
 /**
@@ -68,34 +69,27 @@ export function SignInPage() {
       title="Sign in to RecoverEase"
       description="Use the email address your care team registered for you."
       footer={
-        <div className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-surface p-4">
-          <h2 className="text-sm font-semibold text-heading">
+        // Deliberately not a card. Nesting a bordered panel inside the form
+        // card at `sm` and above would be two boxes deep for one sentence,
+        // and on a phone it is bulk between the button and the bottom of the
+        // screen. The fact still matters, so it stays — quietly.
+        <p className="text-center text-sm leading-relaxed text-muted">
+          <span className="font-semibold text-heading">
             Do not have an account?
-          </h2>
-          <p className="mt-1 text-sm text-muted">
-            RecoverEase accounts are created by your care team, so there is no
-            public sign-up. Ask your doctor or clinic administrator to set one
-            up for you.
-          </p>
-        </div>
+          </span>{' '}
+          RecoverEase accounts are created by your care team, so there is no
+          public sign-up. Ask your doctor or clinic administrator to set one up
+          for you.
+        </p>
       }
     >
       <form onSubmit={onSubmit} noValidate className="space-y-5">
-        {formError ? (
-          // role="alert" announces the failure immediately. Placing it above
-          // the fields means it is read before the inputs are revisited.
-          <div
-            role="alert"
-            className="flex items-start gap-2.5 rounded-[var(--radius-md)] border border-danger-200 bg-danger-50 p-3 text-sm text-danger-800"
-          >
-            <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-            <p>{formError}</p>
-          </div>
-        ) : null}
+        {formError ? <AuthFormAlert message={formError} /> : null}
 
         <Field label="Email address" error={errors.email?.message} required>
           <Input
             type="email"
+            inputMode="email"
             autoComplete="username"
             autoFocus
             placeholder="name@clinic.com"
@@ -115,9 +109,10 @@ export function SignInPage() {
               type="button"
               onClick={() => setShowPassword((current) => !current)}
               // A real button rather than an icon, so it is reachable by
-              // keyboard and announced with its current state.
+              // keyboard and announced with its current state. 44x44 at the
+              // input's own height, so it is tappable without magnifying.
               aria-pressed={showPassword}
-              className="absolute inset-y-0 right-0 flex w-12 items-center justify-center rounded-r-[var(--radius-md)] text-muted hover:text-heading"
+              className="absolute inset-y-0 right-0 flex w-12 items-center justify-center rounded-r-[var(--radius-md)] text-muted transition-colors hover:text-heading"
             >
               {showPassword ? (
                 <EyeOff className="size-5" aria-hidden="true" />
@@ -131,24 +126,33 @@ export function SignInPage() {
           </div>
         </Field>
 
-        <div className="flex justify-end">
-          <Link
-            to="/forgot-password"
-            className="rounded-[var(--radius-sm)] text-sm font-medium text-brand-700 hover:underline"
-          >
-            Forgot your password?
-          </Link>
-        </div>
-
         <Button
           type="submit"
           size="lg"
           block
+          className="mt-6"
           isLoading={isSubmitting}
           loadingLabel="Signing you in…"
         >
           Sign in
         </Button>
+
+        {/* Below the button, not beside the password label.
+            On the label row it saves a row of vertical space, but it also
+            lands between the email and password fields in the tab order, so a
+            keyboard user filling the form in tabs onto a link that navigates
+            away mid-entry. Putting it after the submit button keeps the
+            sequence email, password, reveal, Sign in - the order the form is
+            actually completed in - and leaves the primary action with nothing
+            competing above it. */}
+        <div className="flex justify-center">
+          <Link
+            to="/forgot-password"
+            className="inline-flex min-h-11 items-center rounded-[var(--radius-sm)] px-2 text-sm font-medium text-brand-700 hover:underline"
+          >
+            Forgot your password?
+          </Link>
+        </div>
       </form>
     </AuthLayout>
   )
