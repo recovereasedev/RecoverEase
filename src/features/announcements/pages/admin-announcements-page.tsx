@@ -82,10 +82,14 @@ export function AdminAnnouncementsPage() {
   return (
     <>
       <PageHeader
+        eyebrow="Communication"
         title="Announcements"
         description="Notices shown to everyone using RecoverEase."
         actions={
-          <Button onClick={() => setComposerOpen(true)}>
+          <Button
+            className="max-sm:w-full"
+            onClick={() => setComposerOpen(true)}
+          >
             <Megaphone aria-hidden="true" />
             New announcement
           </Button>
@@ -124,6 +128,7 @@ export function AdminAnnouncementsPage() {
               return (
                 <Card key={announcement.announcement_id}>
                   <CardHeader
+                    icon={Megaphone}
                     title={announcement.announcement_title}
                     description={
                       isPublished
@@ -141,6 +146,10 @@ export function AdminAnnouncementsPage() {
                       {announcement.announcement_content}
                     </p>
 
+                    {/* Publish and Delete are not alternatives to each
+                        other, so they are not given equal width: the
+                        destructive one stays a quiet ghost button beside the
+                        one an administrator actually came here to press. */}
                     <div className="mt-4 flex flex-wrap gap-2 border-t border-[var(--color-border)] pt-4">
                       <Button
                         size="sm"

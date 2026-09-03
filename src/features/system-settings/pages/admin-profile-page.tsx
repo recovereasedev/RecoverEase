@@ -76,8 +76,9 @@ export function AdminProfilePage() {
 
               {update.isError ? <ErrorState error={update.error} /> : null}
 
-              <div className="flex flex-wrap items-center gap-3">
+              <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
                 <Button
+                  className="max-sm:w-full"
                   type="submit"
                   isLoading={update.isPending}
                   loadingLabel="Saving…"

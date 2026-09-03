@@ -3,10 +3,10 @@ import {
   ArrowRight,
   CalendarDays,
   MessageCircle,
+  Settings,
   ShieldCheck,
   Stethoscope,
   Users,
-  type LucideIcon,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
@@ -14,44 +14,9 @@ import { ErrorState, LoadingState } from '@/components/feedback/state-view'
 import { PageHeader } from '@/components/layout/page-header'
 import { buttonVariants } from '@/components/ui/button'
 import { Card, CardBody, CardHeader } from '@/components/ui/card'
+import { StatCard } from '@/components/ui/stat-card'
 import { fetchAdminDashboardStats, fetchChatbotUsage } from '@/features/reports/api'
 import { queryKeys } from '@/lib/query-keys'
-
-function StatCard({
-  icon: Icon,
-  label,
-  value,
-  detail,
-}: {
-  icon: LucideIcon
-  label: string
-  value: number
-  detail?: string
-}) {
-  return (
-    <Card>
-      <CardBody>
-        <div className="flex items-start gap-3">
-          <span className="flex size-10 shrink-0 items-center justify-center rounded-[var(--radius-md)] bg-brand-50">
-            <Icon className="size-5 text-brand-700" aria-hidden="true" />
-          </span>
-          <div className="min-w-0">
-            <p className="text-sm text-muted">{label}</p>
-            <p
-              className="text-2xl font-semibold text-heading"
-              data-numeric
-            >
-              {value}
-            </p>
-            {detail ? (
-              <p className="text-sm text-muted">{detail}</p>
-            ) : null}
-          </div>
-        </div>
-      </CardBody>
-    </Card>
-  )
-}
 
 /**
  * Modules 10.1 "View Doctor/Patient Count Overview", 10.2 "View System Usage
@@ -61,6 +26,10 @@ function StatCard({
  * Administrators have no row access to patient records or chat transcripts —
  * the RLS policies deny both — so the counts genuinely cannot be assembled by
  * reading rows, and are not.
+ *
+ * The tiles are the shared `StatCard`, not a local copy of it. There is
+ * nothing on this page that is not already a number the system computes:
+ * no health score, no growth rate, no derived percentage.
  */
 export function AdminDashboard() {
   const statsQuery = useQuery({
@@ -76,6 +45,7 @@ export function AdminDashboard() {
   return (
     <>
       <PageHeader
+        eyebrow="Administration"
         title="System overview"
         description="Accounts, activity and configuration."
       />
@@ -89,18 +59,20 @@ export function AdminDashboard() {
         />
       ) : statsQuery.data ? (
         <>
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {/* Two up on a phone rather than one: these are short counts, and a
+              single column turns four numbers into a page of scrolling. */}
+          <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
             <StatCard
               icon={Users}
               label="Patients"
               value={statsQuery.data.patients.total}
-              detail={`${statsQuery.data.patients.active} active`}
+              footer={`${statsQuery.data.patients.active} active`}
             />
             <StatCard
               icon={Stethoscope}
               label="Doctors"
               value={statsQuery.data.doctors.total}
-              detail={`${statsQuery.data.doctors.active} active`}
+              footer={`${statsQuery.data.doctors.active} active`}
             />
             <StatCard
               icon={CalendarDays}
@@ -114,7 +86,7 @@ export function AdminDashboard() {
                 (total, count) => total + count,
                 0,
               )}
-              detail={Object.entries(statsQuery.data.accounts ?? {})
+              footer={Object.entries(statsQuery.data.accounts ?? {})
                 .map(([role, count]) => `${count} ${role}`)
                 .join(', ')}
             />
@@ -124,6 +96,7 @@ export function AdminDashboard() {
             {/* --- Chatbot usage — module 8.6 --------------------------- */}
             <Card>
               <CardHeader
+                icon={MessageCircle}
                 title="Guidance chatbot"
                 description="Usage over the last 30 days."
               />
@@ -134,11 +107,11 @@ export function AdminDashboard() {
                   <ErrorState error={usageQuery.error} />
                 ) : usageQuery.data ? (
                   <>
-                    <dl className="grid grid-cols-3 gap-4">
+                    <dl className="grid grid-cols-3 gap-3 sm:gap-4">
                       <div>
                         <dt className="text-sm text-muted">Conversations</dt>
                         <dd
-                          className="text-xl font-semibold text-heading"
+                          className="text-headline-md text-heading"
                           data-numeric
                         >
                           {usageQuery.data.sessions}
@@ -147,7 +120,7 @@ export function AdminDashboard() {
                       <div>
                         <dt className="text-sm text-muted">Messages</dt>
                         <dd
-                          className="text-xl font-semibold text-heading"
+                          className="text-headline-md text-heading"
                           data-numeric
                         >
                           {usageQuery.data.messages}
@@ -156,7 +129,7 @@ export function AdminDashboard() {
                       <div>
                         <dt className="text-sm text-muted">Flagged</dt>
                         <dd
-                          className="text-xl font-semibold text-heading"
+                          className="text-headline-md text-heading"
                           data-numeric
                         >
                           {usageQuery.data.sessions_flagged_critical}
@@ -179,7 +152,7 @@ export function AdminDashboard() {
 
             {/* --- Shortcuts ---------------------------------------------- */}
             <Card>
-              <CardHeader title="Administration" />
+              <CardHeader icon={Settings} title="Administration" />
               <CardBody className="space-y-2">
                 {[
                   { to: '/admin/doctors', label: 'Manage doctor accounts' },
@@ -191,7 +164,7 @@ export function AdminDashboard() {
                     key={item.to}
                     to={item.to}
                     className={buttonVariants({
-                      variant: 'secondary',
+                      variant: 'outline',
                       block: true,
                       className: 'justify-between',
                     })}

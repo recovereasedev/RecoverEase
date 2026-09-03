@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { ScrollText, ShieldCheck } from 'lucide-react'
+import { ScrollText } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
 import { StateView } from '@/components/feedback/state-view'
@@ -7,6 +7,7 @@ import { PageHeader } from '@/components/layout/page-header'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardBody } from '@/components/ui/card'
 import { Field, Input, Select } from '@/components/ui/field'
+import { Notice } from '@/components/ui/notice'
 import {
   distinctEntities,
   fetchAuditLog,
@@ -41,6 +42,11 @@ function changedColumns(entry: AuditLogEntry): string[] {
  *
  * There is no delete or edit control here, and no policy that would permit
  * one. The log is append-only for every role, administrators included.
+ *
+ * The redesign changes how the same five fields are laid out and nothing
+ * about which five they are. The query is untouched: it returns the acting
+ * account's email — an administrator or clinician, never a patient — the
+ * action, the entity, the timestamp, and the list of column names.
  */
 export function AuditLogPage() {
   const [entityFilter, setEntityFilter] = useState('')
@@ -80,18 +86,16 @@ export function AuditLogPage() {
   return (
     <>
       <PageHeader
+        eyebrow="Security"
         title="Audit log"
         description="A record of security-sensitive changes across the system."
       />
 
-      <div className="mb-4 flex items-start gap-2.5 rounded-[var(--radius-lg)] border border-info-200 bg-info-50 p-4 text-sm text-info-800">
-        <ShieldCheck className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-        <p>
-          Entries for patient records show which fields changed, never their
-          contents. Administrators do not have access to patient health
-          information, and the audit trail does not provide a way around that.
-        </p>
-      </div>
+      <Notice tone="info" className="mb-4">
+        Entries for patient records show which fields changed, never their
+        contents. Administrators do not have access to patient health
+        information, and the audit trail does not provide a way around that.
+      </Notice>
 
       <Card>
         <div className="grid gap-4 border-b border-[var(--color-border)] p-4 sm:grid-cols-3">
@@ -139,7 +143,7 @@ export function AuditLogPage() {
             onRetry={() => void auditQuery.refetch()}
             loadingLabel="Loading audit entries…"
             empty={
-              <div className="px-5 py-12 text-center">
+              <div className="px-4 py-12 text-center sm:px-5">
                 <ScrollText
                   className="mx-auto size-6 text-neutral-400"
                   aria-hidden="true"
@@ -154,31 +158,53 @@ export function AuditLogPage() {
             }
           >
             {(entries) => (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm">
+              <div className="md:overflow-x-auto">
+                {/*
+                  One table that restyles, rather than a table plus a card
+                  list. Rendering both would put every value in the document
+                  twice — bad for assistive technology, which reads the hidden
+                  copy in some modes, and worse for a page whose entire purpose
+                  is an exact record of what happened.
+
+                  Below `md` the rows become stacked blocks with a visible
+                  label per field. The ARIA roles are written out explicitly
+                  because changing `display` on a table element is what
+                  removes its implicit table semantics; with the roles stated,
+                  the structure survives the restyle.
+                */}
+                <table
+                  role="table"
+                  className="w-full text-left text-sm max-md:block"
+                >
                   <caption className="sr-only">
                     Audit log entries, most recent first
                   </caption>
-                  <thead className="border-b border-[var(--color-border)] bg-surface-sunken">
-                    <tr>
-                      <th scope="col" className="px-5 py-3 font-medium text-muted">
+                  <thead
+                    role="rowgroup"
+                    className="border-b border-[var(--color-border)] bg-surface-sunken text-label-sm uppercase tracking-wider text-muted max-md:sr-only"
+                  >
+                    <tr role="row">
+                      <th role="columnheader" scope="col" className="px-5 py-3 font-semibold">
                         When
                       </th>
-                      <th scope="col" className="px-5 py-3 font-medium text-muted">
+                      <th role="columnheader" scope="col" className="px-5 py-3 font-semibold">
                         Account
                       </th>
-                      <th scope="col" className="px-5 py-3 font-medium text-muted">
+                      <th role="columnheader" scope="col" className="px-5 py-3 font-semibold">
                         Action
                       </th>
-                      <th scope="col" className="px-5 py-3 font-medium text-muted">
+                      <th role="columnheader" scope="col" className="px-5 py-3 font-semibold">
                         Entity
                       </th>
-                      <th scope="col" className="px-5 py-3 font-medium text-muted">
+                      <th role="columnheader" scope="col" className="px-5 py-3 font-semibold">
                         Fields changed
                       </th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-[var(--color-border)]">
+                  <tbody
+                    role="rowgroup"
+                    className="divide-y divide-[var(--color-border)] max-md:block"
+                  >
                     {entries.map((entry) => {
                       const columns = changedColumns(entry)
                       const tone =
@@ -187,26 +213,36 @@ export function AuditLogPage() {
                         ] ?? 'neutral'
 
                       return (
-                        <tr key={entry.audit_log_id}>
-                          <td className="whitespace-nowrap px-5 py-3 text-muted">
+                        <tr
+                          key={entry.audit_log_id}
+                          role="row"
+                          className="max-md:block max-md:px-4 max-md:py-4"
+                        >
+                          <AuditCell label="When" className="whitespace-nowrap text-muted">
                             {formatDateTime(entry.audit_log_timestamp)}
-                          </td>
-                          <td className="px-5 py-3 text-body">
+                          </AuditCell>
+
+                          <AuditCell label="Account" className="text-body">
                             {entry.user_account?.user_email ?? (
                               <span className="italic text-muted">System</span>
                             )}
-                          </td>
-                          <td className="px-5 py-3">
+                          </AuditCell>
+
+                          <AuditCell label="Action">
                             <Badge tone={tone}>{entry.audit_log_action}</Badge>
-                          </td>
-                          <td className="px-5 py-3 text-body">
+                          </AuditCell>
+
+                          <AuditCell label="Entity" className="text-body">
                             {entry.audit_log_entity.replace(/_/g, ' ')}
-                          </td>
-                          <td className="px-5 py-3 text-muted">
+                          </AuditCell>
+
+                          <AuditCell label="Fields changed" className="text-muted">
                             {columns.length > 0
-                              ? columns.map((c) => c.replace(/_/g, ' ')).join(', ')
+                              ? columns
+                                  .map((c) => c.replace(/_/g, ' '))
+                                  .join(', ')
                               : '—'}
-                          </td>
+                          </AuditCell>
                         </tr>
                       )
                     })}
@@ -218,5 +254,35 @@ export function AuditLogPage() {
         </CardBody>
       </Card>
     </>
+  )
+}
+
+/**
+ * One cell. Below `md` it becomes a labelled key/value row, because a stacked
+ * value with no column header above it is unreadable — the header row is
+ * exactly what a stacked table loses.
+ */
+function AuditCell({
+  label,
+  className,
+  children,
+}: {
+  label: string
+  className?: string
+  children: React.ReactNode
+}) {
+  return (
+    <td
+      role="cell"
+      className="px-5 py-3 max-md:flex max-md:gap-3 max-md:px-0 max-md:py-1"
+    >
+      <span
+        aria-hidden="true"
+        className="hidden shrink-0 basis-32 text-label-sm uppercase tracking-wider text-muted max-md:block"
+      >
+        {label}
+      </span>
+      <span className={className}>{children}</span>
+    </td>
   )
 }

@@ -6,6 +6,7 @@ import { PageHeader } from '@/components/layout/page-header'
 import { StatusBadge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardBody } from '@/components/ui/card'
+import { Notice } from '@/components/ui/notice'
 import { RegisterAccountDialog } from '@/features/patients/components/register-account-dialog'
 import { useAllDoctors, useSetDoctorActive } from '@/features/patients/hooks'
 import { formatDate } from '@/lib/format'
@@ -33,10 +34,14 @@ export function AdminDoctorsPage() {
   return (
     <>
       <PageHeader
+        eyebrow="Accounts"
         title="Doctor accounts"
         description="Clinician accounts and their access to the system."
         actions={
-          <Button onClick={() => setRegisterOpen(true)}>
+          <Button
+            className="max-sm:w-full"
+            onClick={() => setRegisterOpen(true)}
+          >
             <UserPlus aria-hidden="true" />
             Register a doctor
           </Button>
@@ -58,7 +63,7 @@ export function AdminDoctorsPage() {
             onRetry={() => void doctorsQuery.refetch()}
             loadingLabel="Loading doctor accounts…"
             empty={
-              <div className="px-5 py-12 text-center">
+              <div className="px-4 py-12 text-center sm:px-5">
                 <Stethoscope
                   className="mx-auto size-6 text-neutral-400"
                   aria-hidden="true"
@@ -82,9 +87,13 @@ export function AdminDoctorsPage() {
                   return (
                     <li
                       key={doctor.doc_id}
-                      className="flex flex-wrap items-center gap-3 px-5 py-4"
+                      // Stacked on a phone. The status and the action belong
+                      // together on their own line: a deactivation control
+                      // wedged beside a three-line account summary is both
+                      // cramped and easy to hit by accident.
+                      className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:gap-4 sm:px-5"
                     >
-                      <div className="min-w-0 flex-1">
+                      <div className="min-w-0 sm:flex-1">
                         <p className="font-medium text-heading">
                           Dr{' '}
                           {fullName(
@@ -104,35 +113,43 @@ export function AdminDoctorsPage() {
                         </p>
                       </div>
 
-                      <StatusBadge
-                        status={
-                          doctor.doc_is_active
-                            ? doctorAccountStatus.active
-                            : doctorAccountStatus.inactive
-                        }
-                      />
+                      <div className="flex flex-wrap items-center gap-2 sm:shrink-0 sm:justify-end">
+                        <StatusBadge
+                          status={
+                            doctor.doc_is_active
+                              ? doctorAccountStatus.active
+                              : doctorAccountStatus.inactive
+                          }
+                        />
 
-                      <Button
-                        size="sm"
-                        variant={doctor.doc_is_active ? 'secondary' : 'primary'}
-                        isLoading={isMutating}
-                        onClick={() =>
-                          setActive.mutate({
-                            doctorId: doctor.doc_id,
-                            isActive: !doctor.doc_is_active,
-                          })
-                        }
-                      >
-                        {doctor.doc_is_active ? 'Deactivate' : 'Reactivate'}
-                        <span className="sr-only">
-                          {' '}
-                          Dr{' '}
-                          {fullName(
-                            doctor.doc_first_name,
-                            doctor.doc_last_name,
-                          )}
-                        </span>
-                      </Button>
+                        <Button
+                          size="sm"
+                          variant={
+                            doctor.doc_is_active ? 'secondary' : 'primary'
+                          }
+                          isLoading={isMutating}
+                          onClick={() =>
+                            setActive.mutate({
+                              doctorId: doctor.doc_id,
+                              isActive: !doctor.doc_is_active,
+                            })
+                          }
+                        >
+                          {doctor.doc_is_active ? 'Deactivate' : 'Reactivate'}
+                          {/* Names the account the button acts on. Several
+                              identical "Deactivate" buttons in one list are
+                              indistinguishable to a screen reader without
+                              it. */}
+                          <span className="sr-only">
+                            {' '}
+                            Dr{' '}
+                            {fullName(
+                              doctor.doc_first_name,
+                              doctor.doc_last_name,
+                            )}
+                          </span>
+                        </Button>
+                      </div>
                     </li>
                   )
                 })}
@@ -142,11 +159,11 @@ export function AdminDoctorsPage() {
         </CardBody>
       </Card>
 
-      <p className="mt-4 text-sm text-muted">
+      <Notice tone="info" className="mt-4">
         Deactivating a clinician immediately withdraws their access to all
         patient records. Their patients keep their history and remain assigned
         to them until reassigned.
-      </p>
+      </Notice>
     </>
   )
 }

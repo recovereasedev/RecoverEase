@@ -186,6 +186,15 @@ each rather than being re-cut per page:
 | `DataTable` family | Clinical tables: tinted header, horizontal rules only, own scroll container |
 | `ListRow` / `ListRows` | The something / detail / status / action row, stacked on a phone and inline from `sm` |
 
+A table that has to survive a phone is written **once**, not twice. The audit
+log restyles a single `<table>` into stacked labelled rows below `md` rather
+than rendering a card list beside a table: two copies put every value in the
+document twice, which assistive technology reads in some modes and which is
+indefensible on a page whose entire purpose is an exact record of what
+happened. Changing `display` on a table element strips its implicit
+semantics, so the ARIA roles are written out explicitly and the structure
+survives the restyle.
+
 `StatCard` is deliberately narrow: a label, a number, an optional trend and a
 footer sentence. It will not take an action, a chart or a paragraph, because a
 row of four cards that each do something different stops being scannable —

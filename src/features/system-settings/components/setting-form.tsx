@@ -2,7 +2,7 @@ import { useState } from 'react'
 
 import { ErrorState } from '@/components/feedback/state-view'
 import { Button } from '@/components/ui/button'
-import { Card, CardBody, CardHeader } from '@/components/ui/card'
+import { Card, CardBody, CardFooter, CardHeader } from '@/components/ui/card'
 import { Field, Input, Textarea } from '@/components/ui/field'
 import type { SystemSetting } from '@/features/system-settings/api'
 import { formatDateTime } from '@/lib/format'
@@ -45,14 +45,11 @@ export function SettingForm({
 
   return (
     <Card>
-      <CardHeader
-        title={definition.label}
-        description={
-          record
-            ? `Last updated ${formatDateTime(record.system_setting_updated_at)}`
-            : 'Not yet configured'
-        }
-      />
+      {/* The explanation sits under the title rather than under the field
+          label, so the card reads title, what it does, then the control -
+          instead of repeating the setting's name twice in a row with the
+          explanation stranded between them. */}
+      <CardHeader title={definition.label} description={definition.description} />
       <CardBody>
         <form
           onSubmit={(event) => {
@@ -61,7 +58,7 @@ export function SettingForm({
           }}
           className="space-y-4"
         >
-          <Field label={definition.label} description={definition.description}>
+          <Field label={definition.label}>
             {definition.multiline ? (
               <Textarea
                 rows={6}
@@ -80,9 +77,10 @@ export function SettingForm({
 
           {error ? <ErrorState error={error} /> : null}
 
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
             <Button
               type="submit"
+              className="max-sm:w-full"
               disabled={!isDirty}
               isLoading={isSaving}
               loadingLabel="Saving…"
@@ -97,6 +95,12 @@ export function SettingForm({
           </div>
         </form>
       </CardBody>
+
+      <CardFooter className="text-sm text-muted">
+        {record
+          ? `Last updated ${formatDateTime(record.system_setting_updated_at)}`
+          : 'Not yet configured'}
+      </CardFooter>
     </Card>
   )
 }

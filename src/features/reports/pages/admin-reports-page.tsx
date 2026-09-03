@@ -1,10 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { FileBarChart, Printer } from 'lucide-react'
+import { FileBarChart, ListChecks, Printer } from 'lucide-react'
 
 import { ErrorState, StateView } from '@/components/feedback/state-view'
 import { PageHeader } from '@/components/layout/page-header'
 import { Button } from '@/components/ui/button'
 import { Card, CardBody, CardHeader } from '@/components/ui/card'
+import { ListRow, ListRows } from '@/components/ui/list-row'
 import { useCurrentUser } from '@/features/auth/auth-context'
 import {
   fetchAdminDashboardStats,
@@ -54,12 +55,14 @@ export function AdminReportsPage() {
   return (
     <>
       <PageHeader
+        eyebrow="Records"
         title="Reports"
         description="System-wide reporting."
         actions={
           <>
             <Button
-              variant="secondary"
+              variant="outline"
+              className="max-sm:w-full"
               onClick={() => window.print()}
               disabled={!stats}
             >
@@ -67,6 +70,7 @@ export function AdminReportsPage() {
               Print or save as PDF
             </Button>
             <Button
+              className="max-sm:w-full"
               onClick={() => generate.mutate()}
               isLoading={generate.isPending}
               loadingLabel="Generating…"
@@ -84,6 +88,7 @@ export function AdminReportsPage() {
         {/* --- Current figures ------------------------------------------- */}
         <Card>
           <CardHeader
+            icon={FileBarChart}
             title="System summary"
             description={
               stats
@@ -100,11 +105,13 @@ export function AdminReportsPage() {
                 onRetry={() => void statsQuery.refetch()}
               />
             ) : stats ? (
-              <dl className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+              // Two up on a phone. These are four short counts; one column
+              // turns them into a page of scrolling.
+              <dl className="grid grid-cols-2 gap-5 lg:grid-cols-4">
                 <div>
                   <dt className="text-sm text-muted">Patients on record</dt>
                   <dd
-                    className="text-2xl font-semibold text-heading"
+                    className="text-headline-lg font-bold text-heading"
                     data-numeric
                   >
                     {stats.patients.total}
@@ -116,7 +123,7 @@ export function AdminReportsPage() {
                 <div>
                   <dt className="text-sm text-muted">Doctor accounts</dt>
                   <dd
-                    className="text-2xl font-semibold text-heading"
+                    className="text-headline-lg font-bold text-heading"
                     data-numeric
                   >
                     {stats.doctors.total}
@@ -130,7 +137,7 @@ export function AdminReportsPage() {
                     Upcoming appointments
                   </dt>
                   <dd
-                    className="text-2xl font-semibold text-heading"
+                    className="text-headline-lg font-bold text-heading"
                     data-numeric
                   >
                     {stats.appointments.upcoming}
@@ -155,7 +162,7 @@ export function AdminReportsPage() {
 
         {/* --- Recently generated — module 9.5 ---------------------------- */}
         <Card>
-          <CardHeader title="Recently generated reports" />
+          <CardHeader icon={ListChecks} title="Recently generated reports" />
           <CardBody className="p-0">
             <StateView
               isPending={reportsQuery.isPending}
@@ -163,7 +170,7 @@ export function AdminReportsPage() {
               data={reportsQuery.data}
               onRetry={() => void reportsQuery.refetch()}
               empty={
-                <div className="px-5 py-12 text-center">
+                <div className="px-4 py-12 text-center sm:px-5">
                   <FileBarChart
                     className="mx-auto size-6 text-neutral-400"
                     aria-hidden="true"
@@ -175,23 +182,24 @@ export function AdminReportsPage() {
               }
             >
               {(reports) => (
-                <ul className="divide-y divide-[var(--color-border)]">
+                <ListRows>
                   {reports.map((report) => (
-                    <li
+                    <ListRow
                       key={report.report_id}
-                      className="flex flex-wrap items-center justify-between gap-3 px-5 py-3.5"
-                    >
-                      <p className="font-medium text-heading">
-                        {report.report_type === 'system_wide'
+                      className="py-3"
+                      title={
+                        report.report_type === 'system_wide'
                           ? 'System-wide report'
-                          : 'Patient recovery report'}
-                      </p>
-                      <p className="text-sm text-muted">
-                        {formatDateTime(report.report_generated_at)}
-                      </p>
-                    </li>
+                          : 'Patient recovery report'
+                      }
+                      status={
+                        <span className="text-sm text-muted">
+                          {formatDateTime(report.report_generated_at)}
+                        </span>
+                      }
+                    />
                   ))}
-                </ul>
+                </ListRows>
               )}
             </StateView>
           </CardBody>

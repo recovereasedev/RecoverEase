@@ -72,9 +72,12 @@ export function StatCard({
         className,
       )}
     >
-      <div className="flex flex-1 items-start justify-between gap-3 p-5">
+      <div className="flex flex-1 items-start justify-between gap-3 p-4 sm:p-5">
         <div className="min-w-0">
-          <p className="text-label-sm font-semibold uppercase tracking-wider text-muted">
+          {/* Tighter tracking on a phone, and `break-words` as a last
+              resort. In a two-up grid at 375px the card is about 172px wide,
+              and a single long word - "APPOINTMENTS" - has nowhere to wrap. */}
+          <p className="text-label-sm font-semibold uppercase tracking-wide text-muted break-words sm:tracking-wider">
             {label}
           </p>
           <p className="mt-2 flex flex-wrap items-baseline gap-1.5">
@@ -102,9 +105,13 @@ export function StatCard({
         </div>
 
         {Icon ? (
+          // Hidden on the narrowest screens. The tile is decoration - it is
+          // already `aria-hidden` - and beside a 172px card it was taking 52px
+          // from the label, which is what forced "APPOINTMENTS" to break
+          // mid-word. Decoration yields to legibility.
           <span
             aria-hidden="true"
-            className="flex size-10 shrink-0 items-center justify-center rounded-[var(--radius-md)] bg-surface-raised text-brand-700"
+            className="hidden size-10 shrink-0 items-center justify-center rounded-[var(--radius-md)] bg-surface-raised text-brand-700 sm:flex"
           >
             <Icon className="size-5" />
           </span>
@@ -112,7 +119,7 @@ export function StatCard({
       </div>
 
       {footer ? (
-        <div className="border-t border-[var(--color-border)] bg-surface-sunken px-5 py-3 text-sm text-muted">
+        <div className="border-t border-[var(--color-border)] bg-surface-sunken px-4 py-3 text-sm text-muted sm:px-5">
           {footer}
         </div>
       ) : null}

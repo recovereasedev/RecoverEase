@@ -115,6 +115,7 @@ const ADMIN_NAV: NavSection[] = [
       { label: 'Dashboard', to: '/admin', icon: LayoutDashboard },
       {
         label: 'Doctor accounts',
+        shortLabel: 'Doctors',
         to: '/admin/doctors',
         icon: Stethoscope,
         matchPrefix: true,
