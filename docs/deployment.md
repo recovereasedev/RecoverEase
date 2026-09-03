@@ -271,12 +271,18 @@ data that makes it demonstrable — there is no separate "real" set behind them.
 Deleting them would leave the system with no users at all, so they were kept
 and their credentials rotated instead.
 
-**The shared password they were created with no longer works.** Each account
-now has an independent random bcrypt password that was generated, hashed and
-discarded inside a single SQL statement, so it exists nowhere — not in this
-repository, not in any transcript, and not in anyone's hands. Existing sessions
-and refresh tokens were deleted at the same time. This was verified by
-attempting the old password against the live sign-in page and being refused.
+**The password these accounts were originally seeded with no longer works.**
+It was rotated, verified dead against the live sign-in page, and later replaced
+with a value chosen by the project owner. That value is deliberately not
+recorded here — a credential that works against a public URL does not belong in
+a repository. Sessions and refresh tokens were cleared during the rotation.
+
+A note worth keeping: the first attempt to set a password through the Supabase
+dashboard was applied to a **different project**, so it silently had no effect
+here. Sign-in kept failing with `invalid_credentials` while the dashboard
+showed success. If credentials ever behave that way, check the project ref in
+the dashboard URL against `kwsezszstdagzllbyjuk` before debugging anything
+else.
 
 To use them again, set a password of your choosing. Either **Authentication →
 Users → … → Reset password** in the dashboard, or run this in the SQL editor,

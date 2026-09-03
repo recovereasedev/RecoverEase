@@ -55,6 +55,19 @@ describe('calendar dates resolve in the clinic timezone, not the server one', ()
     // Move the server off UTC too, so a fix that merely hard-codes UTC
     // somewhere would not satisfy these tests either.
     await database.asService(`set time zone '${SERVER_ZONE}'`)
+
+    // Start from no recovery entries.
+    //
+    // The fixture seeds one for Alice dated `app_today()`, which it evaluates
+    // before the clinic zone above is set — so it lands on the UTC date.
+    // `recovery_log_patient_day_key` allows one entry per patient per day, and
+    // Kiritimati's date equals UTC's for the fourteen hours before 10:00 UTC.
+    // Inside that window the fixture row and this suite's insert are the same
+    // day and collide; outside it they do not. That made the suite pass or
+    // fail on the clock rather than on the behaviour under test — the same
+    // failure mode these tests exist to catch, reintroduced by the tests
+    // themselves. Clearing the table removes the dependency entirely.
+    await database.asService('delete from public.recovery_log')
   })
 
   afterAll(async () => {

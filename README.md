@@ -219,10 +219,9 @@ Two items are outstanding, both external rather than code:
 - Leaked-password protection requires a Supabase Pro plan and cannot be
   enabled on the current one. See [`docs/security.md`](./docs/security.md).
 
-The three demonstration accounts had their shared password rotated to
-independent random values, so **nobody can currently sign in**. See
-[`docs/deployment.md`](./docs/deployment.md) for the one-line SQL that sets a
-password of your choosing.
+The three demonstration accounts are usable again; the password is held by the
+project owner and is not recorded in this repository. See
+[`docs/deployment.md`](./docs/deployment.md) for how to change it.
 
 ## Git workflow
 
