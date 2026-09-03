@@ -129,7 +129,7 @@ export type StoredMessage = {
 }
 
 export type InteractionTurn = {
-  type: 'user_input' | 'model_response'
+  type: 'user_input' | 'model_output'
   content: { type: 'text'; text: string }[]
 }
 
@@ -154,12 +154,38 @@ export function toInteractionInput(
     if (!text) continue
 
     turns.push({
-      type: row.chat_message_role === 'patient' ? 'user_input' : 'model_response',
+      // `model_output` for a prior assistant turn - the same type the API
+      // uses for the step it returns, because history is resent as received.
+      //
+      // Worth pinning down, because two plausible-looking alternatives are
+      // both rejected: `model_response` and `model_response_step`. The
+      // documentation showed each of them, and the provider accepts neither.
+      // The failure only appears once a conversation already contains an
+      // assistant turn, so the first message in any conversation succeeds and
+      // the follow-up fails - which is why it survived until a real
+      // multi-turn request was made.
+      type: row.chat_message_role === 'patient' ? 'user_input' : 'model_output',
       content: [{ type: 'text', text }],
     })
   }
 
   return turns
+}
+
+/**
+ * A conversation is only answerable if the patient spoke last.
+ *
+ * The provider rejects a request whose final turn is a model output, which is
+ * reasonable - there is no question outstanding. In normal use the UI appends
+ * the patient's message before calling, so this never trips; it trips on a
+ * retry that adds no new message, and without this guard that becomes an
+ * opaque provider error instead of the plain fact that there is nothing to
+ * reply to.
+ */
+export function hasUnansweredPatientMessage(
+  turns: readonly InteractionTurn[],
+): boolean {
+  return turns.at(-1)?.type === 'user_input'
 }
 
 export function buildInteractionRequest(input: {
@@ -170,6 +196,10 @@ export function buildInteractionRequest(input: {
     model: GEMINI_MODEL,
     system_instruction: input.systemInstruction,
     input: input.turns,
+    // Stateless: the transcript lives in RecoverEase's database, and replaying
+    // it per request is what keeps the provider from retaining a copy of a
+    // patient's conversation. Supplying history in `input` requires this.
+    store: false,
     response_format: {
       type: 'text',
       mime_type: 'application/json',

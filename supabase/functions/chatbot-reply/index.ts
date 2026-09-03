@@ -5,6 +5,7 @@ import {
   extractOutputText,
   GEMINI_API_REVISION,
   GEMINI_ENDPOINT,
+  hasUnansweredPatientMessage,
   parseAssistantReply,
   raisesCriticalConcern,
   toInteractionInput,
@@ -122,11 +123,16 @@ Deno.serve(async (request) => {
     // `toInteractionInput` is the data-minimisation boundary: it takes the
     // role and the text off each row and drops everything else, so the
     // provider receives this conversation and no other patient data at all.
+    const turns = toInteractionInput(history)
+    if (!hasUnansweredPatientMessage(turns)) {
+      throw new AuthError('There is nothing to reply to', 400)
+    }
+
     const body = buildInteractionRequest({
       systemInstruction: buildSystemInstruction(
         promptSetting?.system_setting_value,
       ),
-      turns: toInteractionInput(history),
+      turns,
     })
 
     const abort = AbortSignal.timeout(REQUEST_TIMEOUT_MS)

@@ -6,6 +6,7 @@ import {
   ASSISTANT_RESPONSE_JSON_SCHEMA,
   buildInteractionRequest,
   buildSystemInstruction,
+  hasUnansweredPatientMessage,
   DEFAULT_GUIDANCE,
   extractOutputText,
   GEMINI_ENDPOINT,
@@ -163,7 +164,7 @@ describe('data minimisation', () => {
 
     expect(turns).toEqual([
       { type: 'user_input', content: [{ type: 'text', text: 'Is stiffness normal?' }] },
-      { type: 'model_response', content: [{ type: 'text', text: 'Often, yes.' }] },
+      { type: 'model_output', content: [{ type: 'text', text: 'Often, yes.' }] },
     ])
 
     // Asserted on the serialised payload too, so a future field added to the
@@ -191,7 +192,7 @@ describe('data minimisation', () => {
       { chat_message_role: null, chat_message_content: 'b' },
     ])
 
-    expect(turns.every((turn) => turn.type === 'model_response')).toBe(true)
+    expect(turns.every((turn) => turn.type === 'model_output')).toBe(true)
   })
 })
 
@@ -220,6 +221,59 @@ describe('the request sent to Gemini', () => {
         schema: ASSISTANT_RESPONSE_JSON_SCHEMA,
       },
     })
+  })
+
+  it('uses the turn type the provider actually accepts for a model turn', () => {
+    // Regression guard for a failure only a real request could surface. Two
+    // plausible values are rejected by the provider — `model_response` and
+    // `model_response_step`, each of which appears in the documentation — and
+    // the accepted one is `model_output`. Because the payload only contains a
+    // model turn once the conversation already has an assistant reply, the
+    // first message in any conversation succeeded and the follow-up failed: a
+    // shape of bug a single-turn test would never see.
+    const turns = toInteractionInput([
+      { chat_message_role: 'patient', chat_message_content: 'first' },
+      { chat_message_role: 'assistant', chat_message_content: 'reply' },
+      { chat_message_role: 'patient', chat_message_content: 'follow-up' },
+    ])
+
+    expect(turns.map((turn) => turn.type)).toEqual([
+      'user_input',
+      'model_output',
+      'user_input',
+    ])
+  })
+
+  it('replays history statelessly rather than letting the provider retain it', () => {
+    // `store: false` is required when history is supplied in `input`, and it
+    // is also the reason the provider keeps no copy of a patient conversation:
+    // the transcript lives in RecoverEase's database and is replayed per call.
+    const body = buildInteractionRequest({
+      systemInstruction: 'system',
+      turns: toInteractionInput([
+        { chat_message_role: 'patient', chat_message_content: 'hello' },
+      ]),
+    })
+
+    expect(body.store).toBe(false)
+  })
+
+  it('only calls the provider when the patient spoke last', () => {
+    const answerable = toInteractionInput([
+      { chat_message_role: 'patient', chat_message_content: 'a' },
+      { chat_message_role: 'assistant', chat_message_content: 'b' },
+      { chat_message_role: 'patient', chat_message_content: 'c' },
+    ])
+    const alreadyAnswered = toInteractionInput([
+      { chat_message_role: 'patient', chat_message_content: 'a' },
+      { chat_message_role: 'assistant', chat_message_content: 'b' },
+    ])
+
+    expect(hasUnansweredPatientMessage(answerable)).toBe(true)
+    // The provider rejects this outright; refusing it here turns an opaque
+    // upstream error into the plain fact that there is nothing to reply to.
+    expect(hasUnansweredPatientMessage(alreadyAnswered)).toBe(false)
+    expect(hasUnansweredPatientMessage([])).toBe(false)
   })
 
   it('requires every field the validator requires', () => {

@@ -21,10 +21,13 @@
 > | `recovereasedev.vercel.app` | 307 → the canonical host |
 > | `recoverease-zeta.vercel.app` | serves the same deployment directly |
 >
-> **Outstanding:** `GEMINI_API_KEY` is not set (no key available yet), so the
-> recovery guidance assistant cannot generate replies — its failure path is
-> verified and degrades cleanly. Leaked-password protection cannot be enabled
-> on the current Supabase plan; see below.
+> **The recovery guidance assistant is live.** `GEMINI_API_KEY` is set and a
+> real Gemini request was verified end to end through the production UI:
+> patient message → authenticated Edge Function → Google Gemini → structured
+> output → Zod validation → database → rendered reply.
+>
+> Leaked-password protection cannot be enabled on the current Supabase plan;
+> see `docs/security.md`.
 
 ## Prerequisites
 

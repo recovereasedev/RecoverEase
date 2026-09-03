@@ -211,12 +211,14 @@ Policy, immutable asset caching and the usual security headers.
 serves the same deployment; both are on the Edge Function CORS allow-list, so
 older links keep working.
 
-Two items are outstanding, both external rather than code:
+The recovery guidance assistant runs on **Google Gemini** and is verified end
+to end in production: a real request returns a structured reply, validated with
+Zod before anything is stored or rendered. The browser never calls the
+provider. If Gemini is unavailable the patient's message is still saved and the
+UI says so rather than inventing an answer.
 
-- `GEMINI_API_KEY` is not set, so the recovery guidance assistant cannot
-  generate replies. Its failure path is verified — the patient's message is
-  saved and the UI says the assistant is unavailable rather than inventing an
-  answer.
+One item is outstanding, and it is external rather than code:
+
 - Leaked-password protection requires a Supabase Pro plan and cannot be
   enabled on the current one. See [`docs/security.md`](./docs/security.md).
 

@@ -290,11 +290,18 @@ Stated plainly rather than implied:
   live credentials. Their logic is deliberately thin — verify caller, check
   role, write, audit — with the real rules in the database. Both functions were
   confirmed to boot and to reject unauthenticated calls in production, but the
-  guidance assistant's model path has never been executed: it needs
-  `GEMINI_API_KEY`, which is not set. Everything either side of that call —
-  authentication, authorisation, CORS, data minimisation, response validation
-  and every failure branch — is tested and was verified against the deployed
-  function.
+  guidance assistant's model path is exercised in production rather than by
+  the suite: a real Gemini request was verified end to end through the UI.
+  Everything either side of that call — authentication, authorisation, CORS,
+  data minimisation, response validation and every failure branch — is tested
+  here and was also verified against the deployed function.
+
+  One bug reached production that only a real request could find. The turn
+  type for a prior assistant message is `model_output`; both `model_response`
+  and `model_response_step` appear in the documentation and both are rejected.
+  Because the payload only contains a model turn once a conversation already
+  has a reply, the first message in any conversation succeeded and the
+  follow-up failed. The suite now pins the accepted value.
 - **The browser suite runs against a stub, not a server.** Playwright drives a
   local production build with Supabase intercepted, so it tests the client's
   behaviour and not the database's. Anything enforced by a trigger or a policy
