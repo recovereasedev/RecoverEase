@@ -157,15 +157,27 @@ Deno.serve(async (request) => {
     }
 
     if (!response.ok) {
-      // Never echo the provider's body to the client: it can carry request
-      // details, and on some errors the key itself.
-      console.error('gemini returned an error status', response.status)
-      const status = response.status === 429 ? 429 : 502
+      // Logged for operators, never forwarded: provider error bodies can carry
+      // request detail and, on some providers, the key itself. Reading it here
+      // is what made the `model_output` turn-type failure diagnosable at all,
+      // since the platform log pipeline was unavailable.
+      const detail = await response.text().catch(() => '')
+      console.error(
+        'gemini returned an error status',
+        response.status,
+        detail.slice(0, 500),
+      )
+      // A 5xx from the provider is transient far more often than not - the
+      // documented response to "high demand" is to retry - so it is reported
+      // as busy rather than broken. Telling a patient the assistant is
+      // permanently unavailable when it will work in a minute is the wrong
+      // failure message.
+      const busy = response.status === 429 || response.status >= 500
       throw new AuthError(
-        status === 429
+        busy
           ? 'The guidance assistant is busy. Try again in a moment.'
           : 'The guidance assistant is unavailable.',
-        status,
+        busy ? 429 : 502,
       )
     }
 
