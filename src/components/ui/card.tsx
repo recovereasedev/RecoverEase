@@ -67,7 +67,7 @@ export function CardHeader({
   return (
     <div
       className={cn(
-        'flex flex-wrap items-start justify-between gap-3 border-b border-[var(--color-border)] px-5 py-4',
+        'flex flex-wrap items-start justify-between gap-3 border-b border-[var(--color-border)] px-4 py-4 sm:px-5',
         className,
       )}
     >
@@ -98,7 +98,7 @@ export function CardBody({
   className,
   ...props
 }: HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn('p-5', className)} {...props} />
+  return <div className={cn('p-4 sm:p-5', className)} {...props} />
 }
 
 export function CardFooter({
@@ -108,7 +108,7 @@ export function CardFooter({
   return (
     <div
       className={cn(
-        'flex flex-wrap items-center gap-3 border-t border-[var(--color-border)] bg-surface-sunken/60 px-5 py-4',
+        'flex flex-wrap items-center gap-3 border-t border-[var(--color-border)] bg-surface-sunken/60 px-4 py-4 sm:px-5',
         className,
       )}
       {...props}

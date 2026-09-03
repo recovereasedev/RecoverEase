@@ -1,11 +1,12 @@
 import { addDays, endOfToday, startOfToday, subDays } from 'date-fns'
-import { Pill, Printer } from 'lucide-react'
+import { CalendarClock, ClipboardList, Pill, Printer } from 'lucide-react'
 
 import { StateView } from '@/components/feedback/state-view'
 import { PageHeader } from '@/components/layout/page-header'
 import { StatusBadge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardBody, CardHeader } from '@/components/ui/card'
+import { ListRow, ListRows } from '@/components/ui/list-row'
 import { useCurrentUser } from '@/features/auth/auth-context'
 import { summariseAdherence } from '@/features/medications/api'
 import { AdherenceSummary } from '@/features/medications/components/adherence-summary'
@@ -28,7 +29,9 @@ import { medicationLogStatus } from '@/lib/status'
  *
  * The page opens on what is due today, because that is the question a patient
  * has when they open it. The prescription list and the week's adherence sit
- * below.
+ * below — and on a phone, below means below: the adherence column is the last
+ * thing in the document, not something competing with today's doses for the
+ * first screen.
  */
 export function PatientMedicationsPage() {
   const user = useCurrentUser()
@@ -65,10 +68,15 @@ export function PatientMedicationsPage() {
   return (
     <>
       <PageHeader
+        eyebrow="Your medication"
         title="Medication"
         description="What is due, what you have taken, and what your doctor has prescribed."
         actions={
-          <Button variant="secondary" onClick={() => window.print()}>
+          <Button
+            variant="outline"
+            className="max-sm:w-full"
+            onClick={() => window.print()}
+          >
             <Printer aria-hidden="true" />
             Print prescriptions
           </Button>
@@ -80,6 +88,7 @@ export function PatientMedicationsPage() {
           {/* --- Today --------------------------------------------------- */}
           <Card>
             <CardHeader
+              icon={Pill}
               title="Due today"
               description="Mark each dose once you have taken it."
             />
@@ -90,7 +99,7 @@ export function PatientMedicationsPage() {
                 data={todayDoses.data}
                 onRetry={() => void todayDoses.refetch()}
                 empty={
-                  <div className="px-5 py-10 text-center">
+                  <div className="px-4 py-10 text-center sm:px-5">
                     <Pill
                       className="mx-auto size-6 text-neutral-400"
                       aria-hidden="true"
@@ -102,7 +111,7 @@ export function PatientMedicationsPage() {
                 }
               >
                 {(doses) => (
-                  <ul className="divide-y divide-[var(--color-border)]">
+                  <ListRows>
                     {doses.map((dose) => {
                       const isPending =
                         dose.medication_log_status === 'pending'
@@ -110,80 +119,83 @@ export function PatientMedicationsPage() {
                         setDoseStatus.isPending &&
                         setDoseStatus.variables?.doseId ===
                           dose.medication_log_id
+                      // The button labels stay bare ("Taken", "Skip") so
+                      // they read cleanly in a row and so the accessible name
+                      // is exactly the word. In a list of identical controls a
+                      // screen reader announces the row's own text alongside
+                      // the button, which is what disambiguates them.
+                      const name =
+                        dose.medication_schedule?.medication_schedule_name ??
+                        'Medication'
+                      const time = formatTime(dose.medication_log_scheduled_at)
 
                       return (
-                        <li
+                        <ListRow
                           key={dose.medication_log_id}
-                          className="flex flex-wrap items-center gap-3 px-5 py-3.5"
-                        >
-                          <div className="min-w-0 flex-1">
-                            <p className="font-medium text-heading">
-                              {dose.medication_schedule
-                                ?.medication_schedule_name ?? 'Medication'}
-                            </p>
-                            <p className="text-sm text-muted">
+                          title={name}
+                          description={
+                            <>
                               {
                                 dose.medication_schedule
                                   ?.medication_schedule_dosage
                               }{' '}
-                              · due{' '}
-                              <span data-numeric>
-                                {formatTime(dose.medication_log_scheduled_at)}
-                              </span>
-                            </p>
-                          </div>
-
-                          <StatusBadge
-                            status={
-                              medicationLogStatus[dose.medication_log_status]
-                            }
-                          />
-
-                          {isPending ? (
-                            <div className="flex gap-2">
-                              <Button
-                                size="sm"
-                                isLoading={isMutating}
-                                onClick={() =>
-                                  setDoseStatus.mutate({
-                                    doseId: dose.medication_log_id,
-                                    status: 'taken',
-                                  })
-                                }
-                              >
-                                Taken
-                              </Button>
+                              · due <span data-numeric>{time}</span>
+                            </>
+                          }
+                          status={
+                            <StatusBadge
+                              status={
+                                medicationLogStatus[dose.medication_log_status]
+                              }
+                            />
+                          }
+                          actions={
+                            isPending ? (
+                              <>
+                                <Button
+                                  size="sm"
+                                  isLoading={isMutating}
+                                  onClick={() =>
+                                    setDoseStatus.mutate({
+                                      doseId: dose.medication_log_id,
+                                      status: 'taken',
+                                    })
+                                  }
+                                >
+                                  Taken
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() =>
+                                    setDoseStatus.mutate({
+                                      doseId: dose.medication_log_id,
+                                      status: 'skipped',
+                                    })
+                                  }
+                                >
+                                  Skip
+                                </Button>
+                              </>
+                            ) : (
                               <Button
                                 size="sm"
                                 variant="ghost"
                                 onClick={() =>
                                   setDoseStatus.mutate({
                                     doseId: dose.medication_log_id,
-                                    status: 'skipped',
+                                    status: 'pending',
                                   })
                                 }
                               >
-                                Skip
+                                Undo
                               </Button>
-                            </div>
-                          ) : (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() =>
-                                setDoseStatus.mutate({
-                                  doseId: dose.medication_log_id,
-                                  status: 'pending',
-                                })
-                              }
-                            >
-                              Undo
-                            </Button>
-                          )}
-                        </li>
+                            )
+                          }
+                        />
                       )
                     })}
-                  </ul>
+                  </ListRows>
                 )}
               </StateView>
             </CardBody>
@@ -192,6 +204,7 @@ export function PatientMedicationsPage() {
           {/* --- Coming up ------------------------------------------------ */}
           <Card>
             <CardHeader
+              icon={CalendarClock}
               title="Coming up"
               description="The next few days, so nothing is a surprise."
             />
@@ -201,30 +214,36 @@ export function PatientMedicationsPage() {
                 error={upcoming.error}
                 data={upcoming.data}
                 empty={
-                  <p className="px-5 py-8 text-center text-sm text-muted">
+                  <p className="px-4 py-8 text-center text-sm text-muted sm:px-5">
                     No doses scheduled in the next few days.
                   </p>
                 }
               >
                 {(doses) => (
-                  <ul className="divide-y divide-[var(--color-border)]">
+                  <ListRows>
                     {doses.slice(0, 12).map((dose) => (
-                      <li
+                      <ListRow
                         key={dose.medication_log_id}
-                        className="flex items-center gap-3 px-5 py-3"
-                      >
-                        <span className="min-w-0 flex-1 text-sm text-heading">
-                          {dose.medication_schedule?.medication_schedule_name}
-                        </span>
-                        <span className="text-sm text-muted" data-numeric>
-                          {formatDateRelative(
-                            dose.medication_log_scheduled_at,
-                          )}{' '}
-                          {formatTime(dose.medication_log_scheduled_at)}
-                        </span>
-                      </li>
+                        className="py-3"
+                        title={
+                          <span className="text-sm font-medium">
+                            {
+                              dose.medication_schedule
+                                ?.medication_schedule_name
+                            }
+                          </span>
+                        }
+                        status={
+                          <span className="text-sm text-muted" data-numeric>
+                            {formatDateRelative(
+                              dose.medication_log_scheduled_at,
+                            )}{' '}
+                            {formatTime(dose.medication_log_scheduled_at)}
+                          </span>
+                        }
+                      />
                     ))}
-                  </ul>
+                  </ListRows>
                 )}
               </StateView>
             </CardBody>
@@ -233,6 +252,7 @@ export function PatientMedicationsPage() {
           {/* --- Prescriptions -------------------------------------------- */}
           <Card>
             <CardHeader
+              icon={ClipboardList}
               title="Your prescriptions"
               description="Everything your doctor has prescribed."
             />
@@ -243,49 +263,52 @@ export function PatientMedicationsPage() {
                 data={schedulesQuery.data}
                 onRetry={() => void schedulesQuery.refetch()}
                 empty={
-                  <p className="px-5 py-8 text-center text-sm text-muted">
+                  <p className="px-4 py-8 text-center text-sm text-muted sm:px-5">
                     You have no prescriptions on record.
                   </p>
                 }
               >
                 {(schedules) => (
-                  <ul className="divide-y divide-[var(--color-border)]">
+                  <ListRows>
                     {schedules.map((schedule) => (
-                      <li
+                      <ListRow
                         key={schedule.medication_schedule_id}
-                        className="px-5 py-4"
+                        title={schedule.medication_schedule_name}
+                        description={
+                          <>
+                            <span className="block text-body">
+                              {schedule.medication_schedule_dosage} ·{' '}
+                              {schedule.medication_schedule_frequency}{' '}
+                              {schedule.medication_schedule_frequency === 1
+                                ? 'time'
+                                : 'times'}{' '}
+                              a day at{' '}
+                              <span data-numeric>
+                                {schedule.medication_schedule_times
+                                  .map(formatScheduleTime)
+                                  .join(', ')}
+                              </span>
+                            </span>
+                            <span className="mt-0.5 block">
+                              From{' '}
+                              {formatDate(
+                                schedule.medication_schedule_start_date,
+                              )}
+                              {schedule.medication_schedule_end_date
+                                ? ` until ${formatDate(schedule.medication_schedule_end_date)}`
+                                : ', ongoing'}
+                            </span>
+                          </>
+                        }
                       >
-                        <p className="font-medium text-heading">
-                          {schedule.medication_schedule_name}
-                        </p>
-                        <p className="mt-0.5 text-sm text-body">
-                          {schedule.medication_schedule_dosage} ·{' '}
-                          {schedule.medication_schedule_frequency}{' '}
-                          {schedule.medication_schedule_frequency === 1
-                            ? 'time'
-                            : 'times'}{' '}
-                          a day at{' '}
-                          <span data-numeric>
-                            {schedule.medication_schedule_times
-                              .map(formatScheduleTime)
-                              .join(', ')}
-                          </span>
-                        </p>
-                        <p className="mt-0.5 text-sm text-muted">
-                          From{' '}
-                          {formatDate(schedule.medication_schedule_start_date)}
-                          {schedule.medication_schedule_end_date
-                            ? ` until ${formatDate(schedule.medication_schedule_end_date)}`
-                            : ', ongoing'}
-                        </p>
                         {schedule.prescription?.prescription_notes ? (
-                          <p className="mt-2 rounded-[var(--radius-sm)] bg-surface-sunken px-3 py-2 text-sm text-body">
+                          <p className="rounded-[var(--radius-md)] bg-surface-sunken px-3 py-2 text-sm leading-relaxed text-body">
                             {schedule.prescription.prescription_notes}
                           </p>
                         ) : null}
-                      </li>
+                      </ListRow>
                     ))}
-                  </ul>
+                  </ListRows>
                 )}
               </StateView>
             </CardBody>
@@ -295,7 +318,7 @@ export function PatientMedicationsPage() {
         {/* --- Adherence --------------------------------------------------- */}
         <div className="space-y-5">
           <Card>
-            <CardHeader title="This week" as="h3" />
+            <CardHeader title="This week" as="h2" />
             <CardBody>
               {adherence ? (
                 <AdherenceSummary adherence={adherence} />

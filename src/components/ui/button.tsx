@@ -6,9 +6,10 @@ import { cn } from '@/lib/utils'
 
 /**
  * Sizes are set in pixels that clear a 44px touch target at `md` and above,
- * which is the minimum comfortable tap area on a phone. `sm` is 40px and is
- * meant for controls inside a table row, where the row itself provides
- * additional hit area.
+ * which is the minimum comfortable tap area on a phone. `sm` is for controls
+ * inside a list row: 44px on a phone, where there is no pointer and the row
+ * offers no extra hit area, dropping to 40px from `sm` up where a mouse is
+ * precise and density starts to pay.
  *
  * The focus ring is inherited from the global `:focus-visible` rule rather
  * than redefined per variant, so it cannot be accidentally removed here.
@@ -44,7 +45,7 @@ const buttonVariants = cva(
         link: 'text-brand-700 underline underline-offset-4 hover:text-brand-800',
       },
       size: {
-        sm: 'h-10 px-3 text-sm [&_svg]:size-4',
+        sm: 'h-11 px-3 text-sm sm:h-10 [&_svg]:size-4',
         md: 'h-11 px-4 text-sm [&_svg]:size-4',
         lg: 'h-12 px-6 text-base [&_svg]:size-5',
         icon: 'size-11 [&_svg]:size-5',

@@ -94,7 +94,7 @@ export function Notice({
       // way to get a message announced twice.
       role={live === 'assertive' ? 'alert' : live === 'polite' ? 'status' : undefined}
       className={cn(
-        'flex flex-wrap items-start gap-4 rounded-[var(--radius-lg)] border p-4',
+        'flex flex-wrap items-start gap-3 rounded-[var(--radius-lg)] border p-3 sm:gap-4 sm:p-4',
         styles.container,
         className,
       )}
@@ -102,11 +102,11 @@ export function Notice({
       <span
         aria-hidden="true"
         className={cn(
-          'flex size-9 shrink-0 items-center justify-center rounded-[var(--radius-md)]',
+          'flex size-8 shrink-0 items-center justify-center rounded-[var(--radius-md)] sm:size-9',
           styles.tile,
         )}
       >
-        <Icon className="size-5" />
+        <Icon className="size-4 sm:size-5" />
       </span>
 
       <div className="min-w-0 flex-1">

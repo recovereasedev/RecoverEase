@@ -24,6 +24,7 @@ export function AnnouncementsPage() {
   return (
     <>
       <PageHeader
+        eyebrow="From your clinic"
         title="Announcements"
         description="Notices from your clinic."
       />
@@ -57,7 +58,7 @@ export function AnnouncementsPage() {
             {announcements.map((announcement) => (
               <Card key={announcement.announcement_id}>
                 <CardBody>
-                  <h2 className="text-lg font-semibold text-heading">
+                  <h2 className="text-headline-md text-heading">
                     {announcement.announcement_title}
                   </h2>
                   <p className="mt-1 text-sm text-muted">

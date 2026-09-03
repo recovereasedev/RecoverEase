@@ -68,9 +68,10 @@ export function DailyEntryForm({
 
       {error ? <ErrorState error={error} /> : null}
 
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
         <Button
           type="submit"
+          className="max-sm:w-full"
           isLoading={isSaving}
           loadingLabel="Saving your entry…"
         >

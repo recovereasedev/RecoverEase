@@ -1,4 +1,4 @@
-import { Flame } from 'lucide-react'
+import { Flame, LineChart, NotebookPen, ScrollText } from 'lucide-react'
 
 import { LoadingState, StateView } from '@/components/feedback/state-view'
 import { PageHeader } from '@/components/layout/page-header'
@@ -40,6 +40,7 @@ export function RecoveryPage() {
   return (
     <>
       <PageHeader
+        eyebrow="Your journal"
         title="My recovery"
         description="Record how each day goes. Your doctor sees these entries."
       />
@@ -49,6 +50,7 @@ export function RecoveryPage() {
           {/* --- Today's entry ------------------------------------------ */}
           <Card>
             <CardHeader
+              icon={NotebookPen}
               title={todaysLog ? 'Edit today’s entry' : 'Log today'}
               description={formatDateRelative(new Date())}
             />
@@ -78,6 +80,7 @@ export function RecoveryPage() {
           {/* --- Journal ------------------------------------------------- */}
           <Card>
             <CardHeader
+              icon={ScrollText}
               title="Your journal"
               description="Everything you have recorded, most recent first."
             />
@@ -88,7 +91,7 @@ export function RecoveryPage() {
                 data={logsQuery.data}
                 onRetry={() => void logsQuery.refetch()}
                 empty={
-                  <div className="px-5 py-10 text-center text-muted">
+                  <div className="px-4 py-10 text-center text-muted sm:px-5">
                     <p className="font-medium text-heading">
                       No entries yet
                     </p>
@@ -101,7 +104,10 @@ export function RecoveryPage() {
                 {(logs) => (
                   <ul className="divide-y divide-[var(--color-border)]">
                     {logs.map((log) => (
-                      <li key={log.recovery_log_id} className="px-5 py-4">
+                      <li
+                        key={log.recovery_log_id}
+                        className="px-4 py-4 sm:px-5"
+                      >
                         <div className="flex flex-wrap items-baseline justify-between gap-2">
                           <p className="font-medium text-heading">
                             {formatDateRelative(log.recovery_log_date)}
@@ -136,24 +142,26 @@ export function RecoveryPage() {
         {/* --- Side column ------------------------------------------------ */}
         <div className="space-y-5">
           <Card>
-            <CardBody className="text-center">
-              <span className="mx-auto flex size-11 items-center justify-center rounded-full bg-warning-50">
-                <Flame className="size-5 text-warning-700" aria-hidden="true" />
+            <CardBody className="flex items-center gap-4 sm:flex-col sm:text-center">
+              <span className="flex size-12 shrink-0 items-center justify-center rounded-full bg-warning-50">
+                <Flame className="size-6 text-warning-700" aria-hidden="true" />
               </span>
-              <p
-                className="mt-3 text-3xl font-semibold text-heading"
-                data-numeric
-              >
-                {streak}
-              </p>
-              <p className="text-sm text-muted">
-                {streak === 1 ? 'day in a row' : 'days in a row'}
-              </p>
+              <div className="min-w-0">
+                <p
+                  className="text-headline-lg font-bold text-heading"
+                  data-numeric
+                >
+                  {streak}
+                </p>
+                <p className="text-sm text-muted">
+                  {streak === 1 ? 'day in a row' : 'days in a row'}
+                </p>
+              </div>
             </CardBody>
           </Card>
 
           <Card>
-            <CardHeader title="How you have felt" as="h3" />
+            <CardHeader icon={LineChart} title="How you have felt" as="h2" />
             <CardBody>
               <MoodTrend logs={logsQuery.data ?? []} />
             </CardBody>

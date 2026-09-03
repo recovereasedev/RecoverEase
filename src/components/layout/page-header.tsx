@@ -110,7 +110,13 @@ export function PageHeader({
         {aside ? <div className="shrink-0">{aside}</div> : null}
 
         {actions ? (
-          <div className="flex shrink-0 flex-wrap gap-2">{actions}</div>
+          // Full width on a phone, so the actions take their own line instead
+          // of holding their intrinsic width beside the title and squeezing
+          // the description into a four-word column. Auto width from `sm`,
+          // where there is room for both on one line.
+          <div className="flex w-full shrink-0 flex-wrap gap-2 sm:w-auto">
+            {actions}
+          </div>
         ) : null}
       </div>
     </header>

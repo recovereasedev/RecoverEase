@@ -1,12 +1,15 @@
+import { ProgressRing } from '@/components/ui/progress'
 import type { Adherence } from '@/features/medications/api'
 import { medicationLogStatus } from '@/lib/status'
 
 /**
  * Modules 4.8 (patient) and 5.3 (doctor).
  *
- * Deliberately not a doughnut chart. Four numbers and a percentage are read
- * faster as four numbers, and a chart here would be decoration standing
- * between the reader and the count.
+ * The ring restates a number that is already written beside it in words; it is
+ * never the only place the rate appears, and it carries the same value as its
+ * accessible name. Below it are the four counts, unchanged — four numbers are
+ * read faster as four numbers than as four slices, and a chart there would
+ * stand between the reader and the count.
  *
  * When nothing has come due yet the percentage is withheld rather than shown
  * as 0%, which would read as total non-adherence from a patient who has
@@ -28,6 +31,8 @@ export function AdherenceSummary({ adherence }: { adherence: Adherence }) {
     )
   }
 
+  const doseWord = adherence.resolved === 1 ? 'dose' : 'doses'
+
   return (
     <div>
       {adherence.rate === null ? (
@@ -35,18 +40,25 @@ export function AdherenceSummary({ adherence }: { adherence: Adherence }) {
           No doses have come due yet, so there is nothing to measure.
         </p>
       ) : (
-        <>
-          <p className="text-3xl font-semibold text-heading" data-numeric>
+        <div className="flex items-center gap-4">
+          <ProgressRing
+            value={adherence.rate}
+            label="Doses taken this week"
+            valueText={`${adherence.rate}% of ${adherence.resolved} ${doseWord} taken`}
+            tone={adherence.rate >= 80 ? 'success' : 'warning'}
+            size={64}
+          >
             {adherence.rate}%
-          </p>
-          <p className="text-sm text-muted">
+          </ProgressRing>
+
+          <p className="min-w-0 text-sm text-muted">
             of{' '}
-            <span data-numeric>
-              {adherence.resolved} {adherence.resolved === 1 ? 'dose' : 'doses'}
+            <span className="font-medium text-heading" data-numeric>
+              {adherence.resolved} {doseWord}
             </span>{' '}
             taken
           </p>
-        </>
+        </div>
       )}
 
       <ul className="mt-4 space-y-2">

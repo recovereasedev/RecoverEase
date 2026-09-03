@@ -1,8 +1,9 @@
-import { ClipboardList, Printer } from 'lucide-react'
+import { ClipboardList, Printer, Target } from 'lucide-react'
 
 import { StateView } from '@/components/feedback/state-view'
 import { PageHeader } from '@/components/layout/page-header'
 import { StatusBadge } from '@/components/ui/badge'
+import { ProgressBar } from '@/components/ui/progress'
 import { Button } from '@/components/ui/button'
 import { Card, CardBody, CardHeader } from '@/components/ui/card'
 import { useCurrentUser } from '@/features/auth/auth-context'
@@ -30,10 +31,15 @@ export function PatientTreatmentPage() {
   return (
     <>
       <PageHeader
+        eyebrow="Your programme"
         title="Treatment plan"
         description="The programme your doctor has set, and the goals along the way."
         actions={
-          <Button variant="secondary" onClick={() => window.print()}>
+          <Button
+            variant="outline"
+            className="max-sm:w-full"
+            onClick={() => window.print()}
+          >
             <Printer aria-hidden="true" />
             Print or save as PDF
           </Button>
@@ -80,6 +86,7 @@ export function PatientTreatmentPage() {
                         ? ` — ${formatDate(plan.treatment_plan_end_date)}`
                         : ' onwards'
                     }`}
+                    icon={ClipboardList}
                     action={
                       <StatusBadge
                         status={
@@ -97,7 +104,11 @@ export function PatientTreatmentPage() {
 
                     <div>
                       <div className="flex flex-wrap items-baseline justify-between gap-2">
-                        <h3 className="font-semibold text-heading">
+                        <h3 className="flex items-center gap-2 font-semibold text-heading">
+                          <Target
+                            className="size-4 text-accent-700"
+                            aria-hidden="true"
+                          />
                           Goals
                         </h3>
                         {progress.total > 0 ? (
@@ -106,6 +117,19 @@ export function PatientTreatmentPage() {
                           </p>
                         ) : null}
                       </div>
+
+                      {/* Restates the count beside it. The percentage comes
+                          from `summariseGoals` over goals the doctor has
+                          already marked - nothing here is inferred. */}
+                      {progress.total > 0 ? (
+                        <ProgressBar
+                          className="mt-2.5"
+                          value={progress.percentage ?? 0}
+                          tone="accent"
+                          label="Goals achieved in this plan"
+                          valueText={`${progress.achieved} of ${progress.total} goals achieved`}
+                        />
+                      ) : null}
 
                       {plan.treatment_goal.length === 0 ? (
                         <p className="mt-2 text-sm text-muted">
@@ -116,9 +140,9 @@ export function PatientTreatmentPage() {
                           {plan.treatment_goal.map((goal) => (
                             <li
                               key={goal.treatment_goal_id}
-                              className="flex flex-wrap items-start justify-between gap-3 rounded-[var(--radius-md)] border border-[var(--color-border)] px-4 py-3"
+                              className="flex flex-col gap-2.5 rounded-[var(--radius-md)] border border-[var(--color-border)] px-4 py-3 sm:flex-row sm:items-start sm:justify-between sm:gap-3"
                             >
-                              <div className="min-w-0 flex-1">
+                              <div className="min-w-0 sm:flex-1">
                                 <p className="text-body">
                                   {goal.treatment_goal_description}
                                 </p>
@@ -129,11 +153,15 @@ export function PatientTreatmentPage() {
                                   </p>
                                 ) : null}
                               </div>
-                              <StatusBadge
-                                status={
-                                  treatmentGoalStatus[goal.treatment_goal_status]
-                                }
-                              />
+                              <div className="sm:shrink-0">
+                                <StatusBadge
+                                  status={
+                                    treatmentGoalStatus[
+                                      goal.treatment_goal_status
+                                    ]
+                                  }
+                                />
+                              </div>
                             </li>
                           ))}
                         </ol>

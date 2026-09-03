@@ -32,7 +32,11 @@ export function MoodScale({
       </legend>
       <p className="mt-1 text-sm text-muted">Optional.</p>
 
-      <div className="mt-3 grid grid-cols-5 gap-2">
+      {/* Five columns at every width. A scale that reflows into two rows
+          stops reading as a scale - the order is the meaning - so the cells
+          get narrower on a phone rather than wrapping. At 375px that is a
+          55px column, comfortably past the 44px tap floor. */}
+      <div className="mt-3 grid grid-cols-5 gap-1.5 sm:gap-2">
         {MOOD_OPTIONS.map((option) => {
           const isSelected = value === option.value
 
@@ -40,7 +44,7 @@ export function MoodScale({
             <label
               key={option.value}
               className={cn(
-                'flex cursor-pointer flex-col items-center gap-1 rounded-[var(--radius-md)] border px-1 py-3 text-center transition-colors',
+                'flex min-h-[4.25rem] cursor-pointer flex-col items-center justify-center gap-1 rounded-[var(--radius-md)] border px-1 py-2.5 text-center transition-colors',
                 'has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-brand-600',
                 isSelected
                   ? 'border-brand-600 bg-brand-50'
@@ -66,7 +70,7 @@ export function MoodScale({
               </span>
               <span
                 className={cn(
-                  'text-[11px] leading-tight',
+                  'text-xs leading-tight',
                   isSelected ? 'font-medium text-brand-700' : 'text-muted',
                 )}
               >

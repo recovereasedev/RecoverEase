@@ -53,6 +53,7 @@ export function NotificationsPage() {
           unreadCount > 0 ? (
             <Button
               variant="secondary"
+              className="max-sm:w-full"
               onClick={() => markAllRead.mutate()}
               isLoading={markAllRead.isPending}
             >
@@ -70,7 +71,7 @@ export function NotificationsPage() {
             data={notificationsQuery.data}
             onRetry={() => void notificationsQuery.refetch()}
             empty={
-              <div className="px-5 py-12 text-center">
+              <div className="px-4 py-12 text-center sm:px-5">
                 <Bell
                   className="mx-auto size-6 text-neutral-400"
                   aria-hidden="true"
@@ -95,60 +96,70 @@ export function NotificationsPage() {
                   return (
                     <li
                       key={notification.notification_id}
+                      // Stacks on a phone: a "Mark read" button competing with
+                      // the message for a 311px line leaves the message about
+                      // 150px, which turns two lines of text into five.
                       className={cn(
-                        'flex gap-3 px-5 py-4',
+                        'flex flex-col gap-2 px-4 py-4 sm:flex-row sm:items-start sm:gap-3 sm:px-5',
                         isUnread && 'bg-brand-50/40',
                       )}
                     >
-                      <span
-                        className={cn(
-                          'flex size-9 shrink-0 items-center justify-center rounded-full',
-                          isCritical ? 'bg-warning-100' : 'bg-neutral-100',
-                        )}
-                      >
-                        <Icon
+                      <div className="flex min-w-0 gap-3 sm:flex-1">
+                        <span
                           className={cn(
-                            'size-4',
-                            isCritical
-                              ? 'text-warning-800'
-                              : 'text-neutral-600',
-                          )}
-                          aria-hidden="true"
-                        />
-                      </span>
-
-                      <div className="min-w-0 flex-1">
-                        <p
-                          className={cn(
-                            'text-body',
-                            isUnread && 'font-medium text-heading',
+                            'flex size-9 shrink-0 items-center justify-center rounded-full',
+                            isCritical ? 'bg-warning-100' : 'bg-neutral-100',
                           )}
                         >
-                          {/* Unread is signalled by a word as well as by the
-                              tint and weight, so it does not rely on colour. */}
-                          {isUnread ? (
-                            <span className="sr-only">Unread. </span>
-                          ) : null}
-                          {notification.notification_message}
-                        </p>
-                        <p className="mt-0.5 text-sm text-muted">
-                          {formatRelative(notification.notification_created_at)}
-                        </p>
+                          <Icon
+                            className={cn(
+                              'size-4',
+                              isCritical
+                                ? 'text-warning-800'
+                                : 'text-neutral-600',
+                            )}
+                            aria-hidden="true"
+                          />
+                        </span>
+
+                        <div className="min-w-0 flex-1">
+                          <p
+                            className={cn(
+                              'text-body',
+                              isUnread && 'font-medium text-heading',
+                            )}
+                          >
+                            {/* Unread is signalled by a word as well as by the
+                                tint and weight, so it does not rely on
+                                colour. */}
+                            {isUnread ? (
+                              <span className="sr-only">Unread. </span>
+                            ) : null}
+                            {notification.notification_message}
+                          </p>
+                          <p className="mt-0.5 text-sm text-muted">
+                            {formatRelative(
+                              notification.notification_created_at,
+                            )}
+                          </p>
+                        </div>
                       </div>
 
                       {isUnread ? (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() =>
-                            markRead.mutate(notification.notification_id)
-                          }
-                        >
-                          Mark read
-                          <span className="sr-only">
-                            : {notification.notification_message}
-                          </span>
-                        </Button>
+                        <div className="max-sm:self-end sm:shrink-0">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() =>
+                              markRead.mutate(notification.notification_id)
+                            }
+                          >
+                            Mark read
+                            <span className="sr-only">
+                              : {notification.notification_message}
+                            </span>
+                          </Button>
+                        </div>
                       ) : null}
                     </li>
                   )

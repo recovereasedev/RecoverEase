@@ -66,7 +66,7 @@ export function Dialog({
         if (event.target === dialogRef.current) onClose()
       }}
     >
-      <div className="flex items-start justify-between gap-4 border-b border-[var(--color-border)] px-5 py-4">
+      <div className="flex items-start justify-between gap-4 border-b border-[var(--color-border)] px-4 py-4 sm:px-5">
         <div className="min-w-0">
           <h2 id={titleId} className="text-lg font-semibold text-heading">
             {title}
@@ -87,10 +87,10 @@ export function Dialog({
         </Button>
       </div>
 
-      <div className="max-h-[70vh] overflow-y-auto px-5 py-5">{children}</div>
+      <div className="max-h-[70dvh] overflow-y-auto px-4 py-5 sm:px-5">{children}</div>
 
       {footer ? (
-        <div className="flex flex-wrap justify-end gap-3 border-t border-[var(--color-border)] px-5 py-4">
+        <div className="flex flex-col-reverse gap-2 border-t border-[var(--color-border)] px-4 py-4 sm:flex-row sm:flex-wrap sm:justify-end sm:gap-3 sm:px-5 [&>*]:w-full sm:[&>*]:w-auto">
           {footer}
         </div>
       ) : null}

@@ -1,11 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, Info, Send } from 'lucide-react'
+import { AlertTriangle, Send } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
 import { StateView } from '@/components/feedback/state-view'
 import { PageHeader } from '@/components/layout/page-header'
 import { Button } from '@/components/ui/button'
 import { Card, CardBody, CardHeader } from '@/components/ui/card'
+import { Notice } from '@/components/ui/notice'
 import { useCurrentUser } from '@/features/auth/auth-context'
 import {
   appendPatientMessage,
@@ -128,23 +129,37 @@ export function PatientChatPage() {
   return (
     <>
       <PageHeader
+        eyebrow="Recovery guidance"
         title="Guidance chat"
         description="Ask about your recovery between appointments."
       />
 
-      {/* Stated before the conversation, not buried under it. */}
-      <div className="mb-5 flex items-start gap-2.5 rounded-[var(--radius-lg)] border border-info-200 bg-info-50 p-4 text-sm text-info-800">
-        <Info className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-        <p>
-          This assistant offers general guidance about recovery. It does not
-          diagnose conditions and cannot change your treatment. If you feel
-          unwell or something is urgent, contact your doctor or emergency
-          services directly.
-        </p>
-      </div>
+      {/* Stated before the conversation, not buried under it. Standing
+          guidance, so it is not announced: it was on the page all along. */}
+      <Notice tone="info" className="mb-5">
+        This assistant offers general guidance about recovery. It does not
+        diagnose conditions and cannot change your treatment. If you feel
+        unwell or something is urgent, contact your doctor or emergency
+        services directly.
+      </Notice>
 
-      <div className="grid gap-5 lg:grid-cols-[1fr_18rem]">
-        <Card className="flex min-h-[28rem] flex-col">
+      <div className="grid gap-5 lg:h-[calc(100dvh-17rem)] lg:grid-cols-[1fr_18rem]">
+        {/*
+          The conversation is sized from the viewport, not from its contents.
+
+          A cap alone is not enough: the card starts about 400px down the page
+          on a phone, under the page heading and the disclaimer, so capping it
+          at "a screen" still puts the composer a screen below the fold. The
+          subtracted height is everything else that is on screen at the same
+          time - the app header, this page's heading, the disclaimer, and the
+          bottom navigation bar. `min-h` keeps it usable if that estimate is
+          ever wrong on an unusually short viewport, at the cost of the page
+          scrolling, which is the safe direction to be wrong in.
+
+          The result is that the transcript is the only thing that scrolls and
+          the composer is always where the thumb already is.
+        */}
+        <Card className="flex h-[calc(100dvh-29rem)] min-h-[20rem] flex-col lg:h-auto lg:min-h-0">
           <CardHeader
             title={
               activeSession
@@ -165,18 +180,18 @@ export function PatientChatPage() {
             }
           />
 
-          <CardBody className="flex-1 overflow-y-auto">
+          {/*
+            `min-h-0` is load-bearing. A flex child defaults to `min-height:
+            auto`, which refuses to shrink below its content, so without it
+            `flex-1 overflow-y-auto` never scrolls - the card just grows and
+            takes the composer with it.
+          */}
+          <CardBody className="min-h-0 flex-1 overflow-y-auto">
             {activeSession?.chat_session_has_critical_flag ? (
-              <div className="mb-4 flex items-start gap-2.5 rounded-[var(--radius-md)] border border-warning-200 bg-warning-50 p-3 text-sm text-warning-800">
-                <AlertTriangle
-                  className="mt-0.5 size-4 shrink-0"
-                  aria-hidden="true"
-                />
-                <p>
-                  Something you raised in this conversation was flagged for
-                  your doctor, and they have been notified.
-                </p>
-              </div>
+              <Notice tone="warning" className="mb-4">
+                Something you raised in this conversation was flagged for your
+                doctor, and they have been notified.
+              </Notice>
             ) : null}
 
             {!activeSessionId ? (
@@ -209,7 +224,7 @@ export function PatientChatPage() {
                         >
                           <div
                             className={cn(
-                              'max-w-[85%] rounded-[var(--radius-lg)] px-4 py-2.5',
+                              'max-w-[88%] rounded-[var(--radius-lg)] px-3.5 py-2.5 sm:max-w-[85%] sm:px-4',
                               isPatient
                                 ? 'bg-brand-600 text-white'
                                 : 'bg-surface-sunken text-body',
@@ -239,12 +254,9 @@ export function PatientChatPage() {
             )}
 
             {unavailableReason ? (
-              <p
-                role="status"
-                className="mt-4 rounded-[var(--radius-md)] border border-warning-200 bg-warning-50 p-3 text-sm text-warning-800"
-              >
+              <Notice tone="warning" live="polite" className="mt-4">
                 {unavailableReason}
-              </p>
+              </Notice>
             ) : null}
 
             <div ref={transcriptEndRef} />
@@ -252,7 +264,7 @@ export function PatientChatPage() {
 
           <form
             onSubmit={onSubmit}
-            className="flex items-end gap-2 border-t border-[var(--color-border)] p-4"
+            className="flex shrink-0 items-end gap-2 border-t border-[var(--color-border)] p-3 sm:p-4"
           >
             <label htmlFor="chat-draft" className="sr-only">
               Your message
@@ -271,7 +283,10 @@ export function PatientChatPage() {
                 }
               }}
               placeholder="Is it normal for swelling to come back after exercise?"
-              className="flex-1 resize-none rounded-[var(--radius-md)] border border-[var(--color-border-strong)] px-3 py-2.5 text-base text-heading placeholder:text-neutral-400"
+              // 16px keeps iOS from zooming the viewport on focus, which
+              // on a fixed-height conversation would push the composer out of
+              // view the moment the keyboard opens.
+              className="min-w-0 flex-1 resize-none rounded-[var(--radius-md)] border border-[var(--color-border-strong)] px-3 py-2.5 text-base text-heading placeholder:text-neutral-400"
             />
             <Button
               type="submit"
@@ -286,16 +301,20 @@ export function PatientChatPage() {
           </form>
         </Card>
 
-        {/* --- Past conversations — module 8.4 --------------------------- */}
-        <Card className="h-fit">
-          <CardHeader title="Past conversations" as="h3" />
+        {/* --- Past conversations — module 8.4 ---------------------------
+            Below the conversation on a phone, beside it from `lg`. Rendered
+            once either way: hiding it on small screens would remove module
+            8.4, and rendering it twice would put every history button in the
+            document twice. */}
+        <Card className="h-fit lg:min-h-0 lg:overflow-y-auto">
+          <CardHeader title="Past conversations" as="h2" />
           <CardBody className="p-0">
             <StateView
               isPending={sessionsQuery.isPending}
               error={sessionsQuery.error}
               data={sessionsQuery.data}
               empty={
-                <p className="px-5 py-6 text-sm text-muted">
+                <p className="px-4 py-6 text-sm text-muted sm:px-5">
                   Your previous conversations will be listed here.
                 </p>
               }
@@ -315,7 +334,7 @@ export function PatientChatPage() {
                             : undefined
                         }
                         className={cn(
-                          'w-full px-5 py-3 text-left text-sm transition-colors hover:bg-neutral-50',
+                          'w-full px-4 py-3 text-left text-sm transition-colors hover:bg-neutral-100 sm:px-5',
                           session.chat_session_id === activeSessionId &&
                             'bg-brand-50',
                         )}

@@ -184,6 +184,7 @@ each rather than being re-cut per page:
 | `Notice` | Guidance, a safety note, or the outcome of an action |
 | `Skeleton` family | Load placeholders that reserve the real content's space |
 | `DataTable` family | Clinical tables: tinted header, horizontal rules only, own scroll container |
+| `ListRow` / `ListRows` | The something / detail / status / action row, stacked on a phone and inline from `sm` |
 
 `StatCard` is deliberately narrow: a label, a number, an optional trend and a
 footer sentence. It will not take an action, a chart or a paragraph, because a
@@ -282,6 +283,17 @@ Three decisions carry that:
   scroll box. That is what happens on a 375×812 phone once the keyboard takes
   half the viewport. `my-auto` collapses to zero when there is no spare room,
   so the layout falls back to scrolling from the top instead of clipping.
+- **List rows stack, they do not wrap.** Doses, prescriptions, appointments,
+  journal entries and notifications are all the same shape: a thing, its
+  detail, its status, and what you can do about it. Every one of them had
+  hand-rolled a `flex flex-wrap`, which at 375px put the buttons underneath
+  the text but left-aligned against it, so the row read as two unrelated
+  things. `ListRow` makes the stack deliberate — text, then status and actions
+  on their own line — and collapses to a single line from `sm`. Nothing is
+  hidden at either size: a patient on a phone is not a patient who needs less.
+- **Small buttons are 44px on a phone.** `Button size="sm"` is meant for
+  controls inside a row, where a desktop row gives extra hit area and a phone
+  gives none. It is `h-11` up to `sm` and `h-10` from there.
 - **"Forgot your password?" sits below the submit button.** On the password
   label row it saves a row of vertical space, but it also lands between the
   email and password fields in the tab order — so a keyboard user filling the

@@ -45,13 +45,17 @@ export function ConsentGate({ children }: { children: ReactNode }) {
   }
 
   return (
-    <main className="mx-auto flex min-h-dvh max-w-2xl items-center px-5 py-10">
-      <div className="w-full rounded-[var(--radius-xl)] border border-[var(--color-border)] bg-surface p-6 sm:p-8">
+    <main className="mx-auto flex min-h-dvh max-w-2xl flex-col px-4 pt-8 pb-[max(2rem,env(safe-area-inset-bottom))] sm:px-5 sm:py-10">
+      {/* `my-auto` rather than `items-center`: this is a long read, and a
+          centred flex item taller than its container overflows past the top
+          where no scrollbar reaches. On a phone this text is always taller
+          than the viewport. */}
+      <div className="my-auto w-full rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-surface p-5 sm:rounded-[var(--radius-xl)] sm:p-8">
         <span className="flex size-11 items-center justify-center rounded-full bg-accent-50">
           <ShieldCheck className="size-5 text-accent-700" aria-hidden="true" />
         </span>
 
-        <h1 className="mt-5 text-2xl font-semibold tracking-tight text-heading">
+        <h1 className="mt-5 text-headline-lg text-brand-800">
           Before you continue
         </h1>
         <p className="mt-2 text-body">
@@ -59,7 +63,7 @@ export function ConsentGate({ children }: { children: ReactNode }) {
           support your recovery. Please read this and confirm you agree.
         </p>
 
-        <div className="mt-6 space-y-4 rounded-[var(--radius-lg)] bg-surface-sunken p-5 text-sm leading-relaxed text-body">
+        <div className="mt-6 space-y-4 rounded-[var(--radius-md)] bg-surface-sunken p-4 text-sm leading-relaxed text-body sm:p-5">
           <div>
             <h2 className="font-semibold text-heading">What we record</h2>
             <p className="mt-1">
@@ -102,7 +106,9 @@ export function ConsentGate({ children }: { children: ReactNode }) {
         </div>
 
         {error ? (
-          <ErrorState error={error} onRetry={() => void accept()} />
+          <div className="mt-6">
+            <ErrorState error={error} onRetry={() => void accept()} />
+          </div>
         ) : null}
 
         <div className="mt-6 flex flex-col gap-3 sm:flex-row">

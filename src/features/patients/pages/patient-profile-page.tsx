@@ -1,3 +1,4 @@
+import { BellRing, IdCard, Stethoscope } from 'lucide-react'
 import { useState } from 'react'
 
 import { ErrorState } from '@/components/feedback/state-view'
@@ -70,6 +71,7 @@ export function PatientProfilePage() {
   return (
     <>
       <PageHeader
+        eyebrow="Your account"
         title="My profile"
         description="Your details and how you would like to be reminded."
       />
@@ -78,6 +80,7 @@ export function PatientProfilePage() {
         <div className="lg:col-span-2">
           <Card>
             <CardHeader
+              icon={IdCard}
               title="Contact details"
               description="Keep these current so your clinic can reach you."
             />
@@ -106,18 +109,25 @@ export function PatientProfilePage() {
 
                 <fieldset className="space-y-4 border-t border-[var(--color-border)] pt-5">
                   <legend className="sr-only">Medication reminders</legend>
-                  <h3 className="font-semibold text-heading">
+                  <h3 className="flex items-center gap-2 font-semibold text-heading">
+                    <BellRing
+                      className="size-4 text-accent-700"
+                      aria-hidden="true"
+                    />
                     Medication reminders
                   </h3>
 
-                  <label className="flex items-start gap-3">
+                  {/* The checkbox itself is 16px, which is not a tap target.
+                      The whole tinted row is the label, so the hit area is the
+                      full width of the card and comfortably past 44px tall. */}
+                  <label className="flex cursor-pointer items-start gap-3 rounded-[var(--radius-md)] bg-surface-sunken p-3 transition-colors hover:bg-neutral-200/60">
                     <input
                       type="checkbox"
                       checked={remindersEnabled}
                       onChange={(event) =>
                         setRemindersEnabled(event.target.checked)
                       }
-                      className="mt-1 size-4 rounded border-[var(--color-border-strong)]"
+                      className="mt-0.5 size-5 shrink-0 rounded border-[var(--color-border-strong)] accent-brand-700"
                     />
                     <span>
                       <span className="block font-medium text-heading">
@@ -147,9 +157,10 @@ export function PatientProfilePage() {
                   <ErrorState error={updatePatient.error} />
                 ) : null}
 
-                <div className="flex flex-wrap items-center gap-3">
+                <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
                   <Button
                     type="submit"
+                    className="max-sm:w-full"
                     isLoading={updatePatient.isPending}
                     loadingLabel="Saving…"
                   >
@@ -172,7 +183,7 @@ export function PatientProfilePage() {
         {/* --- Read-only record ------------------------------------------- */}
         <div className="space-y-5">
           <Card>
-            <CardHeader title="Your record" as="h3" />
+            <CardHeader icon={IdCard} title="Your record" as="h2" />
             <CardBody>
               <dl className="space-y-3 text-sm">
                 <div>
@@ -212,7 +223,7 @@ export function PatientProfilePage() {
           </Card>
 
           <Card>
-            <CardHeader title="Your doctor" as="h3" />
+            <CardHeader icon={Stethoscope} title="Your doctor" as="h2" />
             <CardBody>
               {doctorQuery.isPending ? (
                 <p className="text-sm text-muted">Loading…</p>

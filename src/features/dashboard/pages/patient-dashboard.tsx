@@ -14,6 +14,8 @@ import { PageHeader } from '@/components/layout/page-header'
 import { StatusBadge } from '@/components/ui/badge'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Card, CardBody, CardHeader } from '@/components/ui/card'
+import { ListRow, ListRows } from '@/components/ui/list-row'
+import { ProgressBar } from '@/components/ui/progress'
 import { useAppointments, useSetAppointmentStatus } from '@/features/appointments/hooks'
 import { useCurrentUser } from '@/features/auth/auth-context'
 import { useDoses, useSetDoseStatus } from '@/features/medications/hooks'
@@ -37,6 +39,12 @@ function greeting(now = new Date()): string {
  * Ordered by what the patient has to DO today, not by what is easiest to
  * display. Doses due, then today's log, then the next appointment. Progress
  * and streaks sit to the side: they are encouragement, not instructions.
+ *
+ * That ordering is also the mobile ordering, and it is the reason the
+ * encouragement column is second in the document rather than first. On a
+ * phone the columns become one, and whatever is first is what a patient sees
+ * when they open the app one-handed — which should be the dose that is due,
+ * not a streak counter.
  *
  * There are no summary tiles showing numbers the patient cannot act on.
  */
@@ -88,6 +96,7 @@ export function PatientDashboard() {
   return (
     <>
       <PageHeader
+        eyebrow="Today"
         title={`${greeting()}, ${firstName}`}
         description="Here is what your recovery asks of you today."
       />
@@ -98,6 +107,7 @@ export function PatientDashboard() {
           {/* Today's medication */}
           <Card>
             <CardHeader
+              icon={Pill}
               title="Today’s medication"
               description="Mark each dose once you have taken it."
               action={
@@ -118,7 +128,7 @@ export function PatientDashboard() {
                 onRetry={() => void dosesQuery.refetch()}
                 loadingLabel="Loading today’s doses…"
                 empty={
-                  <div className="px-5 py-10 text-center">
+                  <div className="px-4 py-10 text-center sm:px-5">
                     <Pill
                       className="mx-auto size-6 text-neutral-400"
                       aria-hidden="true"
@@ -134,65 +144,58 @@ export function PatientDashboard() {
                 }
               >
                 {(doses) => (
-                  <ul className="divide-y divide-[var(--color-border)]">
+                  <ListRows>
                     {doses.map((dose) => {
                       const status =
                         medicationLogStatus[dose.medication_log_status]
                       const isDone = dose.medication_log_status === 'taken'
+                      const name =
+                        dose.medication_schedule?.medication_schedule_name ??
+                        'Medication'
+                      const time = formatTime(dose.medication_log_scheduled_at)
 
                       return (
-                        <li
+                        <ListRow
                           key={dose.medication_log_id}
-                          className="flex flex-wrap items-center gap-3 px-5 py-3.5"
-                        >
-                          <div className="min-w-0 flex-1">
-                            <p className="font-medium text-heading">
-                              {dose.medication_schedule
-                                ?.medication_schedule_name ?? 'Medication'}
-                            </p>
-                            <p className="text-sm text-muted">
-                              {dose.medication_schedule
-                                ?.medication_schedule_dosage}{' '}
-                              · due{' '}
-                              <span data-numeric>
-                                {formatTime(dose.medication_log_scheduled_at)}
-                              </span>
-                            </p>
-                          </div>
-
-                          <StatusBadge status={status} />
-
-                          {!isDone ? (
-                            <Button
-                              size="sm"
-                              variant="secondary"
-                              isLoading={
-                                setDoseStatus.isPending &&
-                                setDoseStatus.variables?.doseId ===
-                                  dose.medication_log_id
-                              }
-                              onClick={() =>
-                                setDoseStatus.mutate({
-                                  doseId: dose.medication_log_id,
-                                  status: 'taken',
-                                })
-                              }
-                            >
-                              Mark taken
-                              <span className="sr-only">
-                                :{' '}
-                                {
-                                  dose.medication_schedule
-                                    ?.medication_schedule_name
-                                }{' '}
-                                at {formatTime(dose.medication_log_scheduled_at)}
-                              </span>
-                            </Button>
-                          ) : null}
-                        </li>
+                          title={name}
+                          description={
+                            <>
+                              {
+                                dose.medication_schedule
+                                  ?.medication_schedule_dosage
+                              }{' '}
+                              · due <span data-numeric>{time}</span>
+                            </>
+                          }
+                          status={<StatusBadge status={status} />}
+                          actions={
+                            !isDone ? (
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                isLoading={
+                                  setDoseStatus.isPending &&
+                                  setDoseStatus.variables?.doseId ===
+                                    dose.medication_log_id
+                                }
+                                onClick={() =>
+                                  setDoseStatus.mutate({
+                                    doseId: dose.medication_log_id,
+                                    status: 'taken',
+                                  })
+                                }
+                              >
+                                Mark taken
+                                <span className="sr-only">
+                                  : {name} at {time}
+                                </span>
+                              </Button>
+                            ) : null
+                          }
+                        />
                       )
                     })}
-                  </ul>
+                  </ListRows>
                 )}
               </StateView>
             </CardBody>
@@ -201,45 +204,36 @@ export function PatientDashboard() {
           {/* Today's recovery log */}
           <Card>
             <CardHeader
+              icon={NotebookPen}
               title="Today’s recovery entry"
               description="A short note each day is what your doctor reviews before your next appointment."
             />
             <CardBody>
-              {loggedToday ? (
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <p className="text-body">
-                    You have recorded today’s entry. Thank you.
-                  </p>
-                  <Link
-                    to="/patient/recovery"
-                    className={buttonVariants({
-                      variant: 'secondary',
-                      size: 'sm',
-                    })}
-                  >
-                    Edit today’s entry
-                  </Link>
-                </div>
-              ) : (
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <p className="text-body">
-                    You have not logged today yet.
-                  </p>
-                  <Link
-                    to="/patient/recovery"
-                    className={buttonVariants({ size: 'sm' })}
-                  >
-                    <NotebookPen aria-hidden="true" />
-                    Log today
-                  </Link>
-                </div>
-              )}
+              <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+                <p className="text-body">
+                  {loggedToday
+                    ? 'You have recorded today’s entry. Thank you.'
+                    : 'You have not logged today yet.'}
+                </p>
+                <Link
+                  to="/patient/recovery"
+                  className={buttonVariants({
+                    variant: loggedToday ? 'secondary' : 'primary',
+                    size: 'sm',
+                    className: 'max-sm:w-full',
+                  })}
+                >
+                  {loggedToday ? null : <NotebookPen aria-hidden="true" />}
+                  {loggedToday ? 'Edit today’s entry' : 'Log today'}
+                </Link>
+              </div>
             </CardBody>
           </Card>
 
           {/* Next appointment */}
           <Card>
             <CardHeader
+              icon={CalendarDays}
               title="Next appointment"
               action={
                 <Link
@@ -255,16 +249,16 @@ export function PatientDashboard() {
               {appointmentsQuery.isPending ? (
                 <p className="text-muted">Loading…</p>
               ) : nextAppointment ? (
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <p className="flex items-center gap-2 font-medium text-heading">
+                <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+                  <div className="min-w-0">
+                    <p className="flex items-start gap-2 font-medium text-heading">
                       <CalendarDays
-                        className="size-4 text-brand-600"
+                        className="mt-0.5 size-4 shrink-0 text-brand-700"
                         aria-hidden="true"
                       />
                       {formatDateTime(nextAppointment.appointment_date)}
                     </p>
-                    <div className="mt-1.5">
+                    <div className="mt-2">
                       <StatusBadge
                         status={
                           appointmentStatus[nextAppointment.appointment_status]
@@ -276,6 +270,7 @@ export function PatientDashboard() {
                   {nextAppointment.appointment_status === 'scheduled' ? (
                     <Button
                       size="sm"
+                      className="max-sm:w-full"
                       isLoading={setAppointmentStatus.isPending}
                       onClick={() =>
                         setAppointmentStatus.mutate({
@@ -308,24 +303,28 @@ export function PatientDashboard() {
         <div className="space-y-5">
           {/* Streak — module 5.12 */}
           <Card>
-            <CardBody className="text-center">
-              <span className="mx-auto flex size-11 items-center justify-center rounded-full bg-warning-50">
-                <Flame className="size-5 text-warning-700" aria-hidden="true" />
+            <CardBody className="flex items-center gap-4 sm:flex-col sm:text-center">
+              <span className="flex size-12 shrink-0 items-center justify-center rounded-full bg-warning-50">
+                <Flame className="size-6 text-warning-700" aria-hidden="true" />
               </span>
-              <p
-                className="mt-3 text-3xl font-semibold text-heading"
-                data-numeric
-              >
-                {streak}
-              </p>
-              <p className="text-sm text-muted">
-                {streak === 1 ? 'day logged in a row' : 'days logged in a row'}
-              </p>
-              {streak === 0 ? (
-                <p className="mt-2 text-sm text-muted">
-                  Log today to start a streak.
+              <div className="min-w-0">
+                <p
+                  className="text-headline-lg font-bold text-heading"
+                  data-numeric
+                >
+                  {streak}
                 </p>
-              ) : null}
+                <p className="text-sm text-muted">
+                  {streak === 1
+                    ? 'day logged in a row'
+                    : 'days logged in a row'}
+                </p>
+                {streak === 0 ? (
+                  <p className="mt-1 text-sm text-muted">
+                    Log today to start a streak.
+                  </p>
+                ) : null}
+              </div>
             </CardBody>
           </Card>
 
@@ -333,7 +332,7 @@ export function PatientDashboard() {
           <Card>
             <CardHeader
               title="Treatment goals"
-              as="h3"
+              as="h2"
               action={
                 <Link
                   to="/patient/treatment"
@@ -356,16 +355,13 @@ export function PatientDashboard() {
                   </p>
                   {/* The bar repeats the sentence above rather than replacing
                       it, so the information does not depend on seeing it. */}
-                  <div
-                    className="mt-2 h-2 overflow-hidden rounded-full bg-neutral-200"
-                    role="img"
-                    aria-label={`${goalProgress.percentage ?? 0} percent of goals achieved`}
-                  >
-                    <div
-                      className="h-full rounded-full bg-accent-600"
-                      style={{ width: `${goalProgress.percentage ?? 0}%` }}
-                    />
-                  </div>
+                  <ProgressBar
+                    className="mt-2"
+                    value={goalProgress.percentage ?? 0}
+                    tone="accent"
+                    label="Treatment goals achieved"
+                    valueText={`${goalProgress.achieved} of ${goalProgress.total} goals achieved`}
+                  />
                 </>
               ) : (
                 <p className="flex items-start gap-2 text-sm text-muted">

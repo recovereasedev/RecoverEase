@@ -1,4 +1,4 @@
-import { CalendarPlus, CalendarX } from 'lucide-react'
+import { CalendarClock, CalendarPlus, CalendarX, History } from 'lucide-react'
 import { useState } from 'react'
 
 import { ErrorState, StateView } from '@/components/feedback/state-view'
@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardBody, CardHeader } from '@/components/ui/card'
 import { Dialog } from '@/components/ui/dialog'
 import { Field, Input, Textarea } from '@/components/ui/field'
+import { ListRow, ListRows } from '@/components/ui/list-row'
 import {
   useAppointments,
   useCreateAppointment,
@@ -128,10 +129,14 @@ export function PatientAppointmentsPage() {
   return (
     <>
       <PageHeader
+        eyebrow="Your schedule"
         title="Appointments"
         description="Your upcoming visits and your appointment history."
         actions={
-          <Button onClick={() => setBookingOpen(true)}>
+          <Button
+            className="max-sm:w-full"
+            onClick={() => setBookingOpen(true)}
+          >
             <CalendarPlus aria-hidden="true" />
             Book a follow-up
           </Button>
@@ -141,6 +146,7 @@ export function PatientAppointmentsPage() {
       <div className="space-y-5">
         <Card>
           <CardHeader
+            icon={CalendarClock}
             title="Upcoming"
             description="Confirm that you will attend, or ask for a different time."
           />
@@ -151,7 +157,7 @@ export function PatientAppointmentsPage() {
               data={upcoming}
               onRetry={() => void appointmentsQuery.refetch()}
               empty={
-                <div className="px-5 py-10 text-center">
+                <div className="px-4 py-10 text-center sm:px-5">
                   <CalendarX
                     className="mx-auto size-6 text-neutral-400"
                     aria-hidden="true"
@@ -166,99 +172,100 @@ export function PatientAppointmentsPage() {
               }
             >
               {(items) => (
-                <ul className="divide-y divide-[var(--color-border)]">
+                <ListRows>
                   {items.map((appointment) => {
                     const pending = pendingRequestFor(
                       appointment.appointment_id,
                     )
 
                     return (
-                      <li
+                      <ListRow
                         key={appointment.appointment_id}
-                        className="px-5 py-4"
-                      >
-                        <div className="flex flex-wrap items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="font-medium text-heading">
-                              {formatDateTime(appointment.appointment_date)}
-                            </p>
-                            <div className="mt-1.5 flex flex-wrap gap-2">
+                        title={formatDateTime(appointment.appointment_date)}
+                        status={
+                          <>
+                            <StatusBadge
+                              status={
+                                appointmentStatus[
+                                  appointment.appointment_status
+                                ]
+                              }
+                            />
+                            {pending ? (
                               <StatusBadge
-                                status={
-                                  appointmentStatus[
-                                    appointment.appointment_status
-                                  ]
-                                }
+                                status={rescheduleRequestStatus.pending}
                               />
-                              {pending ? (
-                                <StatusBadge
-                                  status={rescheduleRequestStatus.pending}
-                                />
-                              ) : null}
-                            </div>
-                          </div>
-
-                          <div className="flex flex-wrap gap-2">
-                            {appointment.appointment_status ===
-                            'scheduled' ? (
-                              <Button
-                                size="sm"
-                                isLoading={
-                                  setStatus.isPending &&
-                                  setStatus.variables?.appointmentId ===
-                                    appointment.appointment_id
-                                }
-                                onClick={() =>
-                                  setStatus.mutate({
-                                    appointmentId: appointment.appointment_id,
-                                    status: 'confirmed',
-                                  })
-                                }
-                              >
-                                Confirm
-                              </Button>
                             ) : null}
-
-                            {!pending ? (
-                              <Button
-                                size="sm"
-                                variant="secondary"
-                                onClick={() => {
-                                  setReschedulingId(appointment.appointment_id)
-                                  setRescheduleValue('')
-                                  setRescheduleReason('')
-                                }}
-                              >
-                                Request new time
-                              </Button>
-                            ) : null}
-
+                          </>
+                        }
+                      >
+                        {/* Actions live in the row's own block rather than
+                            beside the status, because three of them beside a
+                            date and two badges is more than a 375px line can
+                            carry. Here they get a full-width two-up grid on a
+                            phone and sit inline from `sm`. */}
+                        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:justify-end">
+                          {appointment.appointment_status === 'scheduled' ? (
                             <Button
                               size="sm"
-                              variant="ghost"
+                             
+                              isLoading={
+                                setStatus.isPending &&
+                                setStatus.variables?.appointmentId ===
+                                  appointment.appointment_id
+                              }
                               onClick={() =>
                                 setStatus.mutate({
                                   appointmentId: appointment.appointment_id,
-                                  status: 'cancelled',
+                                  status: 'confirmed',
                                 })
                               }
                             >
-                              Cancel
+                              Confirm
                             </Button>
-                          </div>
+                          ) : null}
+
+                          {!pending ? (
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                             
+                              onClick={() => {
+                                setReschedulingId(appointment.appointment_id)
+                                setRescheduleValue('')
+                                setRescheduleReason('')
+                              }}
+                            >
+                              Request new time
+                            </Button>
+                          ) : null}
+
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                           
+                            onClick={() =>
+                              setStatus.mutate({
+                                appointmentId: appointment.appointment_id,
+                                status: 'cancelled',
+                              })
+                            }
+                          >
+                            Cancel
+                          </Button>
                         </div>
 
                         {pending ? (
-                          <p className="mt-2 rounded-[var(--radius-sm)] bg-surface-sunken px-3 py-2 text-sm text-body">
+                          <p className="mt-3 rounded-[var(--radius-md)] bg-surface-sunken px-3 py-2 text-sm leading-relaxed text-body">
                             You asked to move this to{' '}
                             {formatDateTime(pending.reschedule_request_date)}.
                             Your doctor has not responded yet.
                           </p>
                         ) : null}
-                      </li>
+                      </ListRow>
                     )
                   })}
-                </ul>
+                </ListRows>
               )}
             </StateView>
           </CardBody>
@@ -266,30 +273,33 @@ export function PatientAppointmentsPage() {
 
         {/* --- History — module 6.7 -------------------------------------- */}
         <Card>
-          <CardHeader title="History" />
+          <CardHeader icon={History} title="History" />
           <CardBody className="p-0">
             {past.length === 0 ? (
-              <p className="px-5 py-8 text-center text-sm text-muted">
+              <p className="px-4 py-8 text-center text-sm text-muted sm:px-5">
                 You have no past appointments.
               </p>
             ) : (
-              <ul className="divide-y divide-[var(--color-border)]">
+              <ListRows>
                 {past.map((appointment) => (
-                  <li
+                  <ListRow
                     key={appointment.appointment_id}
-                    className="flex flex-wrap items-center justify-between gap-3 px-5 py-3.5"
-                  >
-                    <p className="text-body">
-                      {formatDateTime(appointment.appointment_date)}
-                    </p>
-                    <StatusBadge
-                      status={
-                        appointmentStatus[appointment.appointment_status]
-                      }
-                    />
-                  </li>
+                    className="py-3"
+                    title={
+                      <span className="font-normal text-body">
+                        {formatDateTime(appointment.appointment_date)}
+                      </span>
+                    }
+                    status={
+                      <StatusBadge
+                        status={
+                          appointmentStatus[appointment.appointment_status]
+                        }
+                      />
+                    }
+                  />
                 ))}
-              </ul>
+              </ListRows>
             )}
           </CardBody>
         </Card>
