@@ -79,7 +79,7 @@ export function Tabs<T extends string>({
               tabIndex={isSelected ? 0 : -1}
               onClick={() => onChange(tab.id)}
               className={cn(
-                'shrink-0 whitespace-nowrap border-b-2 px-3 py-2.5 text-sm font-medium transition-colors',
+                'shrink-0 whitespace-nowrap border-b-2 px-3 py-3 text-sm font-medium transition-colors sm:py-2.5',
                 isSelected
                   ? 'border-brand-600 text-brand-700'
                   : 'border-transparent text-muted hover:text-heading',

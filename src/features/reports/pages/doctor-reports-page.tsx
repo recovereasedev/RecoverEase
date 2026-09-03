@@ -1,11 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { FileBarChart, Printer } from 'lucide-react'
+import { FileBarChart, ListChecks, Printer } from 'lucide-react'
 import { useState } from 'react'
 
 import { ErrorState, StateView } from '@/components/feedback/state-view'
 import { PageHeader } from '@/components/layout/page-header'
 import { Button } from '@/components/ui/button'
 import { Card, CardBody, CardHeader } from '@/components/ui/card'
+import { ListRow, ListRows } from '@/components/ui/list-row'
 import { Field, Select } from '@/components/ui/field'
 import { useCurrentUser } from '@/features/auth/auth-context'
 import { useMyPatients } from '@/features/patients/hooks'
@@ -50,13 +51,18 @@ export function DoctorReportsPage() {
   return (
     <>
       <PageHeader
+        eyebrow="Records"
         title="Reports"
         description="Recovery reports you have generated."
       />
 
       <div className="grid gap-5 lg:grid-cols-3">
         <Card className="lg:col-span-1 h-fit">
-          <CardHeader title="Generate a recovery report" as="h2" />
+          <CardHeader
+            icon={FileBarChart}
+            title="Generate a recovery report"
+            as="h2"
+          />
           <CardBody>
             <form
               onSubmit={(event) => {
@@ -114,10 +120,12 @@ export function DoctorReportsPage() {
 
         <Card className="lg:col-span-2">
           <CardHeader
+            icon={ListChecks}
             title="Generated reports"
+            as="h2"
             action={
               <Button
-                variant="secondary"
+                variant="outline"
                 size="sm"
                 onClick={() => window.print()}
               >
@@ -133,7 +141,7 @@ export function DoctorReportsPage() {
               data={reportsQuery.data}
               onRetry={() => void reportsQuery.refetch()}
               empty={
-                <div className="px-5 py-12 text-center">
+                <div className="px-4 py-12 text-center sm:px-5">
                   <FileBarChart
                     className="mx-auto size-6 text-neutral-400"
                     aria-hidden="true"
@@ -148,28 +156,23 @@ export function DoctorReportsPage() {
               }
             >
               {(reports) => (
-                <ul className="divide-y divide-[var(--color-border)]">
+                <ListRows>
                   {reports.map((report) => (
-                    <li
+                    <ListRow
                       key={report.report_id}
-                      className="flex flex-wrap items-center justify-between gap-3 px-5 py-3.5"
-                    >
-                      <div className="min-w-0">
-                        <p className="font-medium text-heading">
-                          {report.patient
-                            ? fullName(
-                                report.patient.pat_first_name,
-                                report.patient.pat_last_name,
-                              )
-                            : 'System-wide report'}
-                        </p>
-                        <p className="text-sm text-muted">
-                          {formatDateTime(report.report_generated_at)}
-                        </p>
-                      </div>
-                    </li>
+                      className="py-3"
+                      title={
+                        report.patient
+                          ? fullName(
+                              report.patient.pat_first_name,
+                              report.patient.pat_last_name,
+                            )
+                          : 'System-wide report'
+                      }
+                      description={formatDateTime(report.report_generated_at)}
+                    />
                   ))}
-                </ul>
+                </ListRows>
               )}
             </StateView>
           </CardBody>

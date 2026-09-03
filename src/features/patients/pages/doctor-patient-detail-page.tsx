@@ -1,6 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { subDays, startOfToday, endOfToday } from 'date-fns'
-import { NotebookPen, Printer, Send } from 'lucide-react'
+import {
+  Activity,
+  ClipboardList,
+  IdCard,
+  LineChart,
+  NotebookPen,
+  Pill,
+  Printer,
+  ScrollText,
+  Send,
+  Target,
+} from 'lucide-react'
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 
@@ -10,6 +21,7 @@ import { StatusBadge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardBody, CardHeader } from '@/components/ui/card'
 import { Field, Textarea } from '@/components/ui/field'
+import { ProgressBar } from '@/components/ui/progress'
 import { Tabs } from '@/components/ui/tabs'
 import { useCurrentUser } from '@/features/auth/auth-context'
 import { createDoctorNote, fetchDoctorNotes } from '@/features/doctor-notes/api'
@@ -122,17 +134,18 @@ export function DoctorPatientDetailPage() {
               ]
                 .filter(Boolean)
                 .join(' · ')}
+              meta={
+                <StatusBadge status={patientStatus[patient.pat_status]} />
+              }
               actions={
-                <>
-                  <StatusBadge status={patientStatus[patient.pat_status]} />
-                  <Button
-                    variant="secondary"
-                    onClick={() => window.print()}
-                  >
-                    <Printer aria-hidden="true" />
-                    Print record
-                  </Button>
-                </>
+                <Button
+                  variant="outline"
+                  className="max-sm:w-full"
+                  onClick={() => window.print()}
+                >
+                  <Printer aria-hidden="true" />
+                  Print record
+                </Button>
               }
             />
 
@@ -141,7 +154,7 @@ export function DoctorPatientDetailPage() {
               {tab === 'overview' ? (
                 <div className="grid gap-5 lg:grid-cols-3">
                   <Card className="lg:col-span-2">
-                    <CardHeader title="Patient details" />
+                    <CardHeader icon={IdCard} title="Patient details" />
                     <CardBody>
                       <dl className="grid gap-4 sm:grid-cols-2">
                         <div>
@@ -192,7 +205,11 @@ export function DoctorPatientDetailPage() {
 
                   <div className="space-y-5">
                     <Card>
-                      <CardHeader title="Adherence, last 7 days" as="h3" />
+                      <CardHeader
+                        icon={Pill}
+                        title="Adherence, last 7 days"
+                        as="h2"
+                      />
                       <CardBody>
                         {adherence ? (
                           <AdherenceSummary adherence={adherence} />
@@ -203,7 +220,11 @@ export function DoctorPatientDetailPage() {
                     </Card>
 
                     <Card>
-                      <CardHeader title="Recovery trend" as="h3" />
+                      <CardHeader
+                        icon={LineChart}
+                        title="Recovery trend"
+                        as="h2"
+                      />
                       <CardBody>
                         <MoodTrend logs={logsQuery.data ?? []} />
                       </CardBody>
@@ -216,6 +237,7 @@ export function DoctorPatientDetailPage() {
               {tab === 'recovery' ? (
                 <Card>
                   <CardHeader
+                    icon={Activity}
                     title="Recovery log"
                     description="Entries the patient has recorded."
                   />
@@ -226,7 +248,7 @@ export function DoctorPatientDetailPage() {
                       data={logsQuery.data}
                       onRetry={() => void logsQuery.refetch()}
                       empty={
-                        <p className="px-5 py-10 text-center text-sm text-muted">
+                        <p className="px-4 py-10 text-center text-sm text-muted sm:px-5">
                           This patient has not recorded any entries yet.
                         </p>
                       }
@@ -234,7 +256,10 @@ export function DoctorPatientDetailPage() {
                       {(logs) => (
                         <ul className="divide-y divide-[var(--color-border)]">
                           {logs.map((log) => (
-                            <li key={log.recovery_log_id} className="px-5 py-4">
+                            <li
+                              key={log.recovery_log_id}
+                              className="px-4 py-4 sm:px-5"
+                            >
                               <div className="flex flex-wrap items-baseline justify-between gap-2">
                                 <p className="font-medium text-heading">
                                   {formatDateRelative(log.recovery_log_date)}
@@ -290,6 +315,7 @@ export function DoctorPatientDetailPage() {
                         return (
                           <Card key={plan.treatment_plan_id}>
                             <CardHeader
+                              icon={ClipboardList}
                               title={plan.treatment_plan_title}
                               description={`${formatDate(plan.treatment_plan_start_date)}${
                                 plan.treatment_plan_end_date
@@ -318,13 +344,30 @@ export function DoctorPatientDetailPage() {
                                   No goals defined for this plan.
                                 </p>
                               ) : (
-                                <ul className="space-y-2">
+                                <>
+                                  <div className="mb-4 flex items-center gap-3">
+                                    <Target
+                                      className="size-4 shrink-0 text-accent-700"
+                                      aria-hidden="true"
+                                    />
+                                    {/* Restates the count already in the card
+                                        description. `summariseGoals` counts
+                                        goals the clinician has marked; nothing
+                                        here is inferred. */}
+                                    <ProgressBar
+                                      value={progress.percentage ?? 0}
+                                      tone="accent"
+                                      label="Goals achieved in this plan"
+                                      valueText={`${progress.achieved} of ${progress.total} goals achieved`}
+                                    />
+                                  </div>
+                                  <ul className="space-y-2">
                                   {plan.treatment_goal.map((goal) => (
                                     <li
                                       key={goal.treatment_goal_id}
-                                      className="flex flex-wrap items-start justify-between gap-3 rounded-[var(--radius-md)] border border-[var(--color-border)] px-4 py-3"
+                                      className="flex flex-col gap-2.5 rounded-[var(--radius-md)] border border-[var(--color-border)] px-4 py-3 sm:flex-row sm:items-start sm:justify-between sm:gap-3"
                                     >
-                                      <div className="min-w-0 flex-1">
+                                      <div className="min-w-0 sm:flex-1">
                                         <p className="text-body">
                                           {goal.treatment_goal_description}
                                         </p>
@@ -337,16 +380,19 @@ export function DoctorPatientDetailPage() {
                                           </p>
                                         ) : null}
                                       </div>
-                                      <StatusBadge
-                                        status={
-                                          treatmentGoalStatus[
-                                            goal.treatment_goal_status
-                                          ]
-                                        }
-                                      />
+                                      <div className="sm:shrink-0">
+                                        <StatusBadge
+                                          status={
+                                            treatmentGoalStatus[
+                                              goal.treatment_goal_status
+                                            ]
+                                          }
+                                        />
+                                      </div>
                                     </li>
                                   ))}
-                                </ul>
+                                  </ul>
+                                </>
                               )}
                             </CardBody>
                           </Card>
@@ -361,6 +407,7 @@ export function DoctorPatientDetailPage() {
               {tab === 'medication' ? (
                 <Card>
                   <CardHeader
+                    icon={Pill}
                     title="Prescriptions and schedules"
                     description="What this patient has been prescribed."
                   />
@@ -371,7 +418,7 @@ export function DoctorPatientDetailPage() {
                       data={schedulesQuery.data}
                       onRetry={() => void schedulesQuery.refetch()}
                       empty={
-                        <p className="px-5 py-10 text-center text-sm text-muted">
+                        <p className="px-4 py-10 text-center text-sm text-muted sm:px-5">
                           No prescriptions on record for this patient.
                         </p>
                       }
@@ -381,7 +428,7 @@ export function DoctorPatientDetailPage() {
                           {schedules.map((schedule) => (
                             <li
                               key={schedule.medication_schedule_id}
-                              className="px-5 py-4"
+                              className="px-4 py-4 sm:px-5"
                             >
                               <p className="font-medium text-heading">
                                 {schedule.medication_schedule_name}
@@ -419,6 +466,7 @@ export function DoctorPatientDetailPage() {
                 <div className="space-y-5">
                   <Card>
                     <CardHeader
+                      icon={NotebookPen}
                       title="Add a note"
                       description="Clinical notes are visible to clinicians only. Patients cannot read them."
                     />
@@ -432,7 +480,12 @@ export function DoctorPatientDetailPage() {
                         className="space-y-4"
                       >
                         <Field label="Note">
+                          {/* Six rows rather than the four-row default: a
+                              clinical note is a paragraph, and a box that
+                              shows two lines of it makes reviewing what you
+                              wrote a scrolling exercise on a phone. */}
                           <Textarea
+                            rows={6}
                             value={noteDraft}
                             onChange={(event) =>
                               setNoteDraft(event.target.value)
@@ -447,6 +500,7 @@ export function DoctorPatientDetailPage() {
 
                         <Button
                           type="submit"
+                          className="max-sm:w-full"
                           disabled={!noteDraft.trim()}
                           isLoading={addNote.isPending}
                           loadingLabel="Saving note…"
@@ -459,7 +513,7 @@ export function DoctorPatientDetailPage() {
                   </Card>
 
                   <Card>
-                    <CardHeader title="Note history" />
+                    <CardHeader icon={ScrollText} title="Note history" />
                     <CardBody className="p-0">
                       <StateView
                         isPending={notesQuery.isPending}
@@ -467,7 +521,7 @@ export function DoctorPatientDetailPage() {
                         data={notesQuery.data}
                         onRetry={() => void notesQuery.refetch()}
                         empty={
-                          <div className="px-5 py-10 text-center">
+                          <div className="px-4 py-10 text-center sm:px-5">
                             <NotebookPen
                               className="mx-auto size-6 text-neutral-400"
                               aria-hidden="true"
@@ -483,7 +537,7 @@ export function DoctorPatientDetailPage() {
                             {notes.map((note) => (
                               <li
                                 key={note.doctor_note_id}
-                                className="px-5 py-4"
+                                className="px-4 py-4 sm:px-5"
                               >
                                 <p className="text-sm text-muted">
                                   {formatDateRelative(

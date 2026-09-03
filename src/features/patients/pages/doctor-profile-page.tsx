@@ -107,8 +107,9 @@ export function DoctorProfilePage() {
                 <ErrorState error={updateDoctor.error} />
               ) : null}
 
-              <div className="flex flex-wrap items-center gap-3">
+              <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
                 <Button
+                  className="max-sm:w-full"
                   type="submit"
                   isLoading={updateDoctor.isPending}
                   loadingLabel="Saving…"
@@ -129,7 +130,7 @@ export function DoctorProfilePage() {
         </Card>
 
         <Card className="h-fit">
-          <CardHeader title="Account" as="h3" />
+          <CardHeader title="Account" as="h2" />
           <CardBody>
             <dl className="space-y-3 text-sm">
               <div>

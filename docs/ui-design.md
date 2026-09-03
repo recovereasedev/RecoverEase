@@ -293,7 +293,15 @@ Three decisions carry that:
   hidden at either size: a patient on a phone is not a patient who needs less.
 - **Small buttons are 44px on a phone.** `Button size="sm"` is meant for
   controls inside a row, where a desktop row gives extra hit area and a phone
-  gives none. It is `h-11` up to `sm` and `h-10` from there.
+  gives none. It is `h-11` up to `sm` and `h-10` from there. Tabs follow the
+  same rule.
+- **An inline link that is the way somewhere is a 44px target on a phone.**
+  Breadcrumbs, and a patient's name in a schedule row, are how a clinician
+  gets into and out of a record on a ward round. As bare inline text they
+  measured 20px. They carry `min-h-11` up to `sm` and drop it from there,
+  where a pointer makes 20px fine and the extra row does not earn its space.
+  This is the one that instrumentation catches and screenshots do not: the
+  link looks perfectly normal at every width.
 - **"Forgot your password?" sits below the submit button.** On the password
   label row it saves a row of vertical space, but it also lands between the
   email and password fields in the tab order — so a keyboard user filling the

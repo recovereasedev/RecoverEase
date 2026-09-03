@@ -65,7 +65,12 @@ export function PageHeader({
                   {crumb.to && !isLast ? (
                     <Link
                       to={crumb.to}
-                      className="rounded-[var(--radius-sm)] hover:text-brand-700 hover:underline"
+                      // On a phone the breadcrumb is the way back out of a
+                      // record, and as a bare inline link it was a 20px
+                      // target. Full height there, inline from `sm` where a
+                      // pointer makes 20px fine and the extra row does not
+                      // earn its space.
+                      className="inline-flex min-h-11 items-center rounded-[var(--radius-sm)] hover:text-brand-700 hover:underline sm:min-h-0"
                     >
                       {crumb.label}
                     </Link>

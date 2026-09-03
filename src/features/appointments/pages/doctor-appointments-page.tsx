@@ -1,4 +1,4 @@
-import { CalendarX } from 'lucide-react'
+import { CalendarClock, CalendarX, History, Inbox } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
 import { StateView } from '@/components/feedback/state-view'
@@ -6,6 +6,7 @@ import { PageHeader } from '@/components/layout/page-header'
 import { StatusBadge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardBody, CardHeader } from '@/components/ui/card'
+import { ListRow, ListRows } from '@/components/ui/list-row'
 import {
   useAppointments,
   useDecideRescheduleRequest,
@@ -51,6 +52,7 @@ export function DoctorAppointmentsPage() {
   return (
     <>
       <PageHeader
+        eyebrow="Your clinic"
         title="Appointments"
         description="Your clinic schedule and reschedule requests."
       />
@@ -59,6 +61,7 @@ export function DoctorAppointmentsPage() {
         {/* --- Pending requests ------------------------------------------ */}
         <Card>
           <CardHeader
+            icon={Inbox}
             title="Reschedule requests"
             description="Approving moves the appointment automatically."
           />
@@ -69,42 +72,48 @@ export function DoctorAppointmentsPage() {
               data={pendingRequests}
               onRetry={() => void requestsQuery.refetch()}
               empty={
-                <p className="px-5 py-8 text-center text-sm text-muted">
+                <p className="px-4 py-8 text-center text-sm text-muted sm:px-5">
                   No requests are waiting for a decision.
                 </p>
               }
             >
               {(requests) => (
-                <ul className="divide-y divide-[var(--color-border)]">
+                <ListRows>
                   {requests.map((request) => {
                     const patient = request.appointment?.patient
                     return (
-                      <li key={request.reschedule_request_id} className="px-5 py-4">
-                        <p className="font-medium text-heading">
-                          {patient
+                      <ListRow
+                        key={request.reschedule_request_id}
+                        title={
+                          patient
                             ? fullName(
                                 patient.pat_first_name,
                                 patient.pat_last_name,
                               )
-                            : 'A patient'}
-                        </p>
-                        <p className="mt-1 text-sm text-body">
-                          {request.appointment
-                            ? formatDateTime(
-                                request.appointment.appointment_date,
-                              )
-                            : 'Appointment'}{' '}
-                          →{' '}
-                          <span className="font-medium text-heading">
-                            {formatDateTime(request.reschedule_request_date)}
-                          </span>
-                        </p>
+                            : 'A patient'
+                        }
+                        description={
+                          <>
+                            {request.appointment
+                              ? formatDateTime(
+                                  request.appointment.appointment_date,
+                                )
+                              : 'Appointment'}{' '}
+                            <span aria-hidden="true">→</span>
+                            <span className="sr-only">moved to</span>{' '}
+                            <span className="font-medium text-heading">
+                              {formatDateTime(request.reschedule_request_date)}
+                            </span>
+                          </>
+                        }
+                      >
                         {request.reschedule_request_reason ? (
-                          <p className="mt-2 rounded-[var(--radius-sm)] bg-surface-sunken px-3 py-2 text-sm text-body">
+                          <p className="mb-3 rounded-[var(--radius-md)] bg-surface-sunken px-3 py-2 text-sm leading-relaxed text-body">
                             “{request.reschedule_request_reason}”
                           </p>
                         ) : null}
-                        <div className="mt-3 flex flex-wrap gap-2">
+
+                        <div className="grid grid-cols-2 gap-2 sm:flex sm:justify-end">
                           <Button
                             size="sm"
                             isLoading={
@@ -134,10 +143,10 @@ export function DoctorAppointmentsPage() {
                             Decline
                           </Button>
                         </div>
-                      </li>
+                      </ListRow>
                     )
                   })}
-                </ul>
+                </ListRows>
               )}
             </StateView>
           </CardBody>
@@ -145,7 +154,7 @@ export function DoctorAppointmentsPage() {
 
         {/* --- Upcoming --------------------------------------------------- */}
         <Card>
-          <CardHeader title="Upcoming appointments" />
+          <CardHeader icon={CalendarClock} title="Upcoming appointments" />
           <CardBody className="p-0">
             <StateView
               isPending={appointmentsQuery.isPending}
@@ -153,7 +162,7 @@ export function DoctorAppointmentsPage() {
               data={upcoming}
               onRetry={() => void appointmentsQuery.refetch()}
               empty={
-                <div className="px-5 py-10 text-center">
+                <div className="px-4 py-10 text-center sm:px-5">
                   <CalendarX
                     className="mx-auto size-6 text-neutral-400"
                     aria-hidden="true"
@@ -165,57 +174,63 @@ export function DoctorAppointmentsPage() {
               }
             >
               {(items) => (
-                <ul className="divide-y divide-[var(--color-border)]">
-                  {items.map((appointment) => (
-                    <li
-                      key={appointment.appointment_id}
-                      className="flex flex-wrap items-center gap-3 px-5 py-3.5"
-                    >
-                      <div className="min-w-0 flex-1">
-                        {appointment.patient ? (
-                          <Link
-                            to={`/doctor/patients/${appointment.pat_id}`}
-                            className="font-medium text-brand-700 hover:underline"
-                          >
-                            {fullName(
-                              appointment.patient.pat_first_name,
-                              appointment.patient.pat_last_name,
-                            )}
-                          </Link>
-                        ) : (
-                          <span className="font-medium text-heading">
-                            Patient
-                          </span>
-                        )}
-                        <p className="text-sm text-muted">
-                          {formatDateTime(appointment.appointment_date)}
-                        </p>
-                      </div>
+                <ListRows>
+                  {items.map((appointment) => {
+                    const isOpen =
+                      appointment.appointment_status !== 'completed' &&
+                      appointment.appointment_status !== 'cancelled'
+                    const name = appointment.patient
+                      ? fullName(
+                          appointment.patient.pat_first_name,
+                          appointment.patient.pat_last_name,
+                        )
+                      : 'Patient'
 
-                      <StatusBadge
+                    return (
+                      <ListRow
+                        key={appointment.appointment_id}
+                        title={
+                          appointment.patient ? (
+                            <Link
+                              to={`/doctor/patients/${appointment.pat_id}`}
+                              className="inline-flex min-h-11 items-center text-brand-700 hover:underline sm:min-h-0"
+                            >
+                              {name}
+                            </Link>
+                          ) : (
+                            name
+                          )
+                        }
+                        description={formatDateTime(
+                          appointment.appointment_date,
+                        )}
                         status={
-                          appointmentStatus[appointment.appointment_status]
+                          <StatusBadge
+                            status={
+                              appointmentStatus[appointment.appointment_status]
+                            }
+                          />
+                        }
+                        actions={
+                          isOpen ? (
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              onClick={() =>
+                                setStatus.mutate({
+                                  appointmentId: appointment.appointment_id,
+                                  status: 'completed',
+                                })
+                              }
+                            >
+                              Mark completed
+                            </Button>
+                          ) : null
                         }
                       />
-
-                      {appointment.appointment_status !== 'completed' &&
-                      appointment.appointment_status !== 'cancelled' ? (
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          onClick={() =>
-                            setStatus.mutate({
-                              appointmentId: appointment.appointment_id,
-                              status: 'completed',
-                            })
-                          }
-                        >
-                          Mark completed
-                        </Button>
-                      ) : null}
-                    </li>
-                  ))}
-                </ul>
+                    )
+                  })}
+                </ListRows>
               )}
             </StateView>
           </CardBody>
@@ -223,38 +238,37 @@ export function DoctorAppointmentsPage() {
 
         {/* --- History ----------------------------------------------------- */}
         <Card>
-          <CardHeader title="Past appointments" />
+          <CardHeader icon={History} title="Past appointments" />
           <CardBody className="p-0">
             {past.length === 0 ? (
-              <p className="px-5 py-8 text-center text-sm text-muted">
+              <p className="px-4 py-8 text-center text-sm text-muted sm:px-5">
                 No past appointments.
               </p>
             ) : (
-              <ul className="divide-y divide-[var(--color-border)]">
+              <ListRows>
                 {past.slice(0, 30).map((appointment) => (
-                  <li
+                  <ListRow
                     key={appointment.appointment_id}
-                    className="flex flex-wrap items-center justify-between gap-3 px-5 py-3.5"
-                  >
-                    <div className="min-w-0">
-                      <p className="font-medium text-heading">
-                        {appointment.patient
-                          ? fullName(
-                              appointment.patient.pat_first_name,
-                              appointment.patient.pat_last_name,
-                            )
-                          : 'Patient'}
-                      </p>
-                      <p className="text-sm text-muted">
-                        {formatDateTime(appointment.appointment_date)}
-                      </p>
-                    </div>
-                    <StatusBadge
-                      status={appointmentStatus[appointment.appointment_status]}
-                    />
-                  </li>
+                    className="py-3"
+                    title={
+                      appointment.patient
+                        ? fullName(
+                            appointment.patient.pat_first_name,
+                            appointment.patient.pat_last_name,
+                          )
+                        : 'Patient'
+                    }
+                    description={formatDateTime(appointment.appointment_date)}
+                    status={
+                      <StatusBadge
+                        status={
+                          appointmentStatus[appointment.appointment_status]
+                        }
+                      />
+                    }
+                  />
                 ))}
-              </ul>
+              </ListRows>
             )}
           </CardBody>
         </Card>
@@ -264,35 +278,34 @@ export function DoctorAppointmentsPage() {
           <Card>
             <CardHeader title="Past reschedule decisions" />
             <CardBody className="p-0">
-              <ul className="divide-y divide-[var(--color-border)]">
+              <ListRows>
                 {decidedRequests.slice(0, 20).map((request) => (
-                  <li
+                  <ListRow
                     key={request.reschedule_request_id}
-                    className="flex flex-wrap items-center justify-between gap-3 px-5 py-3.5"
-                  >
-                    <div className="min-w-0">
-                      <p className="text-body">
+                    className="py-3"
+                    title={
+                      <span className="font-normal text-body">
                         {request.appointment?.patient
                           ? fullName(
                               request.appointment.patient.pat_first_name,
                               request.appointment.patient.pat_last_name,
                             )
                           : 'Patient'}
-                      </p>
-                      <p className="text-sm text-muted">
-                        Requested {formatDateTime(request.reschedule_request_date)}
-                      </p>
-                    </div>
-                    <StatusBadge
-                      status={
-                        rescheduleRequestStatus[
-                          request.reschedule_request_status
-                        ]
-                      }
-                    />
-                  </li>
+                      </span>
+                    }
+                    description={`Requested ${formatDateTime(request.reschedule_request_date)}`}
+                    status={
+                      <StatusBadge
+                        status={
+                          rescheduleRequestStatus[
+                            request.reschedule_request_status
+                          ]
+                        }
+                      />
+                    }
+                  />
                 ))}
-              </ul>
+              </ListRows>
             </CardBody>
           </Card>
         ) : null}

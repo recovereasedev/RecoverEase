@@ -7,6 +7,14 @@ import { PageHeader } from '@/components/layout/page-header'
 import { StatusBadge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardBody } from '@/components/ui/card'
+import {
+  DataTable,
+  TBody,
+  TD,
+  TH,
+  THead,
+  TR,
+} from '@/components/ui/data-table'
 import { RegisterAccountDialog } from '@/features/patients/components/register-account-dialog'
 import { useMyPatients } from '@/features/patients/hooks'
 import { calculateAge, formatDate } from '@/lib/format'
@@ -17,11 +25,17 @@ import { fullName, initials } from '@/lib/utils'
  * Module 2.3 "View Patient List".
  *
  * The list contains only this clinician's own patients — enforced by the RLS
- * policy on `patient`, not by a filter here.
+ * policy on `patient`, not by a filter here. The search box filters what has
+ * already been returned; it does not widen the query.
  *
  * Rendered as cards on small screens and a table on wide ones. A table
  * squeezed onto a phone forces horizontal scrolling, which is exactly the
  * pattern that makes clinical software unusable on a ward round.
+ *
+ * The card carries the same facts as the table row — age, contact, registered
+ * date, status — rather than a reduced set. A clinician on a phone is looking
+ * at the same caseload for the same reasons, and dropping the contact number
+ * is what turns "call this patient" into "go and find a desktop".
  */
 export function DoctorPatientsPage() {
   const patientsQuery = useMyPatients()
@@ -42,10 +56,14 @@ export function DoctorPatientsPage() {
   return (
     <>
       <PageHeader
+        eyebrow="Your caseload"
         title="Patients"
         description="Everyone assigned to your care."
         actions={
-          <Button onClick={() => setRegisterOpen(true)}>
+          <Button
+            className="max-sm:w-full"
+            onClick={() => setRegisterOpen(true)}
+          >
             <UserPlus aria-hidden="true" />
             Register a patient
           </Button>
@@ -65,7 +83,7 @@ export function DoctorPatientsPage() {
           </label>
           <div className="relative">
             <Search
-              className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-neutral-400"
+              className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-neutral-500"
               aria-hidden="true"
             />
             <input
@@ -74,7 +92,7 @@ export function DoctorPatientsPage() {
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Search by name"
-              className="h-11 w-full rounded-[var(--radius-md)] border border-[var(--color-border-strong)] bg-surface pl-9 pr-3 text-base text-heading placeholder:text-neutral-400"
+              className="h-11 w-full rounded-[var(--radius-md)] border border-[var(--color-border-strong)] bg-surface pl-9 pr-3 text-base text-heading transition-colors placeholder:text-neutral-400 hover:border-neutral-400"
             />
           </div>
         </div>
@@ -87,7 +105,7 @@ export function DoctorPatientsPage() {
             onRetry={() => void patientsQuery.refetch()}
             loadingLabel="Loading your patients…"
             empty={
-              <div className="px-5 py-12 text-center">
+              <div className="px-4 py-12 text-center sm:px-5">
                 <Users
                   className="mx-auto size-6 text-neutral-400"
                   aria-hidden="true"
@@ -107,72 +125,81 @@ export function DoctorPatientsPage() {
               <>
                 {/* Cards: small screens */}
                 <ul className="divide-y divide-[var(--color-border)] md:hidden">
-                  {patients.map((patient) => (
-                    <li key={patient.pat_id}>
-                      <Link
-                        to={`/doctor/patients/${patient.pat_id}`}
-                        className="flex items-center gap-3 px-5 py-4 hover:bg-neutral-50"
-                      >
-                        <span
-                          aria-hidden="true"
-                          className="flex size-10 shrink-0 items-center justify-center rounded-full bg-brand-50 text-sm font-semibold text-brand-700"
+                  {patients.map((patient) => {
+                    const age = calculateAge(patient.pat_birth_date)
+                    const name = fullName(
+                      patient.pat_first_name,
+                      patient.pat_last_name,
+                    )
+
+                    return (
+                      <li key={patient.pat_id}>
+                        <Link
+                          to={`/doctor/patients/${patient.pat_id}`}
+                          className="flex items-start gap-3 px-4 py-4 transition-colors hover:bg-neutral-100"
                         >
-                          {initials(
-                            patient.pat_first_name,
-                            patient.pat_last_name,
-                          )}
-                        </span>
-                        <span className="min-w-0 flex-1">
-                          <span className="block font-medium text-heading">
-                            {fullName(
+                          <span
+                            aria-hidden="true"
+                            className="flex size-10 shrink-0 items-center justify-center rounded-full bg-brand-50 text-sm font-semibold text-brand-700"
+                          >
+                            {initials(
                               patient.pat_first_name,
                               patient.pat_last_name,
                             )}
                           </span>
-                          <span className="block text-sm text-muted">
-                            Registered {formatDate(patient.pat_created_at)}
+
+                          <span className="min-w-0 flex-1">
+                            <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                              <span className="font-medium text-heading">
+                                {name}
+                              </span>
+                              {/* Full badge, not icon-only. A status a
+                                  clinician has to decode from a glyph is a
+                                  status they will not read. */}
+                              <StatusBadge
+                                status={patientStatus[patient.pat_status]}
+                              />
+                            </span>
+
+                            <span className="mt-1 block text-sm text-muted">
+                              {age !== null ? `${age} years old` : 'Age not recorded'}
+                              {patient.pat_contact_no
+                                ? ` · ${patient.pat_contact_no}`
+                                : ''}
+                            </span>
+                            <span className="mt-0.5 block text-sm text-muted">
+                              Registered {formatDate(patient.pat_created_at)}
+                            </span>
                           </span>
-                        </span>
-                        <StatusBadge
-                          status={patientStatus[patient.pat_status]}
-                          iconOnly
-                        />
-                      </Link>
-                    </li>
-                  ))}
+                        </Link>
+                      </li>
+                    )
+                  })}
                 </ul>
 
                 {/* Table: wide screens */}
-                <div className="hidden overflow-x-auto md:block">
-                  <table className="w-full text-left text-sm">
-                    <caption className="sr-only">
-                      Patients assigned to you
-                    </caption>
-                    <thead className="border-b border-[var(--color-border)] bg-surface-sunken">
+                <div className="hidden md:block">
+                  <DataTable
+                    caption="Patients assigned to you"
+                    // The card already provides the border and the radius;
+                    // the table only needs its scroll container.
+                    containerClassName="rounded-none border-0"
+                  >
+                    <THead>
                       <tr>
-                        <th scope="col" className="px-5 py-3 font-medium text-muted">
-                          Name
-                        </th>
-                        <th scope="col" className="px-5 py-3 font-medium text-muted">
-                          Age
-                        </th>
-                        <th scope="col" className="px-5 py-3 font-medium text-muted">
-                          Contact
-                        </th>
-                        <th scope="col" className="px-5 py-3 font-medium text-muted">
-                          Registered
-                        </th>
-                        <th scope="col" className="px-5 py-3 font-medium text-muted">
-                          Status
-                        </th>
+                        <TH>Name</TH>
+                        <TH>Age</TH>
+                        <TH>Contact</TH>
+                        <TH>Registered</TH>
+                        <TH>Status</TH>
                       </tr>
-                    </thead>
-                    <tbody className="divide-y divide-[var(--color-border)]">
+                    </THead>
+                    <TBody>
                       {patients.map((patient) => {
                         const age = calculateAge(patient.pat_birth_date)
                         return (
-                          <tr key={patient.pat_id} className="hover:bg-neutral-50">
-                            <th scope="row" className="px-5 py-3 font-normal">
+                          <TR key={patient.pat_id}>
+                            <TH scope="row" className="font-normal">
                               <Link
                                 to={`/doctor/patients/${patient.pat_id}`}
                                 className="font-medium text-brand-700 hover:underline"
@@ -182,26 +209,24 @@ export function DoctorPatientsPage() {
                                   patient.pat_last_name,
                                 )}
                               </Link>
-                            </th>
-                            <td className="px-5 py-3 text-body">
-                              {age ?? '—'}
-                            </td>
-                            <td className="px-5 py-3 text-body">
+                            </TH>
+                            <TD className="text-body">{age ?? '—'}</TD>
+                            <TD className="text-body">
                               {patient.pat_contact_no ?? '—'}
-                            </td>
-                            <td className="px-5 py-3 text-body">
+                            </TD>
+                            <TD className="text-body">
                               {formatDate(patient.pat_created_at)}
-                            </td>
-                            <td className="px-5 py-3">
+                            </TD>
+                            <TD>
                               <StatusBadge
                                 status={patientStatus[patient.pat_status]}
                               />
-                            </td>
-                          </tr>
+                            </TD>
+                          </TR>
                         )
                       })}
-                    </tbody>
-                  </table>
+                    </TBody>
+                  </DataTable>
                 </div>
               </>
             )}
