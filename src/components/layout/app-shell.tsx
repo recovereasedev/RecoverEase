@@ -362,7 +362,13 @@ export function AppShell() {
             <Menu aria-hidden="true" />
           </Button>
 
-          <Link to={`/${user.role}`} className="lg:hidden">
+          <Link
+            to={`/${user.role}`}
+            // A navigation target, and the wordmark alone measured 38px. No
+            // `sm:` reset here, unlike the landing header: this link is
+            // `lg:hidden`, so it only ever exists on a touch device.
+            className="inline-flex min-h-11 items-center rounded-[var(--radius-sm)] lg:hidden"
+          >
             <BrandWordmark />
           </Link>
 
