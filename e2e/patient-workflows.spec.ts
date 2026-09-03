@@ -194,4 +194,71 @@ test.describe('guidance chat (module 8)', () => {
       page.getByText('Is swelling normal after two weeks?'),
     ).toBeVisible()
   })
+
+  test('clears the unavailable state when the assistant does answer', async ({
+    page,
+    signInAs,
+  }) => {
+    await signInAs('patient')
+
+    // This overrides the default stub route, which answers 503. It returns
+    // the shape `chatbot-reply` produces after it has validated a Gemini
+    // response against the Zod schema — it is not a claim that Gemini itself
+    // was reached. What is under test here is the UI's handling of a
+    // well-formed success, which is otherwise unreachable until a key exists.
+    await page.route('**/functions/v1/chatbot-reply', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          message: {
+            chat_message_id: 'assistant-1',
+            chat_session_id: 'chat-1',
+            chat_message_role: 'assistant',
+            chat_message_content: 'Some swelling is common at two weeks.',
+            chat_message_created_at: new Date().toISOString(),
+          },
+          raisedCriticalConcern: false,
+          safetyLevel: 'normal',
+          shouldContactProvider: false,
+        }),
+      }),
+    )
+
+    await page.goto('/patient/chat')
+    await page.getByLabel(/your message/i).fill('Is swelling normal?')
+    await page.getByRole('button', { name: /send message/i }).click()
+
+    await expect(page.getByText('Is swelling normal?')).toBeVisible()
+    // The failure banner must not appear on a successful reply.
+    await expect(page.getByRole('status')).toHaveCount(0)
+  })
+
+  test('says so when the assistant answers in a shape we refuse to trust', async ({
+    page,
+    signInAs,
+  }) => {
+    await signInAs('patient')
+
+    // 502 is what `chatbot-reply` returns when Gemini answered but the output
+    // failed Zod validation. The patient must see an honest failure, never a
+    // partially-parsed reply.
+    await page.route('**/functions/v1/chatbot-reply', (route) =>
+      route.fulfill({
+        status: 502,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          error: 'The guidance assistant could not produce a usable reply.',
+        }),
+      }),
+    )
+
+    await page.goto('/patient/chat')
+    await page.getByLabel(/your message/i).fill('Should I change my dose?')
+    await page.getByRole('button', { name: /send message/i }).click()
+
+    await expect(page.getByRole('status')).toContainText(/not available/i)
+    // The patient's own message survives the failure.
+    await expect(page.getByText('Should I change my dose?')).toBeVisible()
+  })
 })

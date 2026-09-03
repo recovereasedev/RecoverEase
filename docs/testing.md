@@ -290,8 +290,11 @@ Stated plainly rather than implied:
   live credentials. Their logic is deliberately thin — verify caller, check
   role, write, audit — with the real rules in the database. Both functions were
   confirmed to boot and to reject unauthenticated calls in production, but the
-  guidance-chatbot model path has never been executed: it needs
-  `ANTHROPIC_API_KEY` and `ALLOWED_ORIGINS`, neither of which is set.
+  guidance assistant's model path has never been executed: it needs
+  `GEMINI_API_KEY`, which is not set. Everything either side of that call —
+  authentication, authorisation, CORS, data minimisation, response validation
+  and every failure branch — is tested and was verified against the deployed
+  function.
 - **The browser suite runs against a stub, not a server.** Playwright drives a
   local production build with Supabase intercepted, so it tests the client's
   behaviour and not the database's. Anything enforced by a trigger or a policy

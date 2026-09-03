@@ -21,10 +21,10 @@
 > | `recovereasedev.vercel.app` | 307 → the canonical host |
 > | `recoverease-zeta.vercel.app` | serves the same deployment directly |
 >
-> **Outstanding:** `ANTHROPIC_API_KEY` is not set (no key available), so the
-> guidance chatbot cannot generate replies — its failure path is verified and
-> degrades cleanly. Leaked-password protection cannot be enabled on the
-> current Supabase plan; see below.
+> **Outstanding:** `GEMINI_API_KEY` is not set (no key available yet), so the
+> recovery guidance assistant cannot generate replies — its failure path is
+> verified and degrades cleanly. Leaked-password protection cannot be enabled
+> on the current Supabase plan; see below.
 
 ## Prerequisites
 
@@ -109,7 +109,7 @@ supabase functions deploy create-account
 supabase functions deploy chatbot-reply
 
 supabase secrets set ALLOWED_ORIGINS="https://<your-app>.vercel.app"
-supabase secrets set ANTHROPIC_API_KEY="sk-ant-..."
+supabase secrets set GEMINI_API_KEY="..."
 ```
 
 `SUPABASE_URL`, `SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY` are
@@ -121,7 +121,7 @@ a request to them in front of a signed-in user's browser. Localhost origins
 are always permitted and are not reachable from outside the developer's
 machine.
 
-If `ANTHROPIC_API_KEY` is unset, `chatbot-reply` returns 503 and the UI says
+If `GEMINI_API_KEY` is unset, `chatbot-reply` returns 503 and the UI says
 the assistant is unavailable. Every other module works. That is a supported
 configuration, not a broken one.
 
@@ -146,11 +146,24 @@ recoverease-zeta.vercel.app -> Access-Control-Allow-Origin: recoverease-zeta.ver
 evil.example.com            -> no header (refused)
 ```
 
-**`ANTHROPIC_API_KEY` is still required and still unset.** It is a real
-secret, so it belongs in **Project Settings → Edge Functions → Secrets**, never
-in source and never in the frontend. Until it is set, `chatbot-reply` returns
-503 and the UI says the assistant is unavailable — a supported configuration,
-and the only part of the product that is not fully exercised in production.
+**`GEMINI_API_KEY` is required and is not set.** It is the only AI provider
+secret RecoverEase uses, and it must be added in exactly one place:
+
+> **Supabase Dashboard → project `kwsezszstdagzllbyjuk` → Project Settings →
+> Edge Functions → Secrets → Add new secret**
+>
+> Name: `GEMINI_API_KEY`
+>
+> <https://supabase.com/dashboard/project/kwsezszstdagzllbyjuk/settings/functions>
+
+Get the key from Google AI Studio. It must never appear in React code, a
+`VITE_` variable, the repository, a client request, browser storage, or these
+docs. `VITE_`-prefixed variables are compiled into the browser bundle, so a
+key placed there is public.
+
+Until it is set, `chatbot-reply` returns 503 after authenticating and
+authorising the caller, and the UI says the assistant is unavailable. Every
+other module works. That is a supported configuration, not a broken one.
 
 ## 6. Deploy the frontend
 

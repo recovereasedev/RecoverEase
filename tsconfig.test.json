@@ -37,6 +37,7 @@
     "tests/**/*.tsx",
     "scripts/**/*.ts",
     "e2e/**/*.ts",
+    "supabase/functions/_shared/assistant.ts",
     "playwright.config.ts"
   ]
 }

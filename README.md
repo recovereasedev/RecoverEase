@@ -99,7 +99,7 @@ Copy [`.env.example`](./.env.example) to `.env.local`.
 | `VITE_SUPABASE_URL` | Browser | Project URL |
 | `VITE_SUPABASE_PUBLISHABLE_KEY` | Browser | Publishable (anon) key. Public by design — RLS is what protects the data. |
 | `SUPABASE_SERVICE_ROLE_KEY` | Edge Function secrets | **Never** `VITE_`-prefixed, never in client code, never committed. Bypasses RLS entirely. |
-| `ANTHROPIC_API_KEY` | Edge Function secrets | Guidance chatbot. Without it the chatbot returns 503 and the UI says so; everything else works. |
+| `GEMINI_API_KEY` | Edge Function secrets | Google Gemini, for the recovery guidance assistant. Without it the assistant returns 503 and the UI says so; everything else works. |
 | `ALLOWED_ORIGINS` | Edge Function secrets | CORS allowlist for the functions. |
 
 Anything prefixed `VITE_` is compiled into the browser bundle.
@@ -213,9 +213,10 @@ older links keep working.
 
 Two items are outstanding, both external rather than code:
 
-- `ANTHROPIC_API_KEY` is not set, so the guidance chatbot cannot generate
-  replies. Its failure path is verified — the patient's message is saved and
-  the UI says the assistant is unavailable rather than inventing an answer.
+- `GEMINI_API_KEY` is not set, so the recovery guidance assistant cannot
+  generate replies. Its failure path is verified — the patient's message is
+  saved and the UI says the assistant is unavailable rather than inventing an
+  answer.
 - Leaked-password protection requires a Supabase Pro plan and cannot be
   enabled on the current one. See [`docs/security.md`](./docs/security.md).
 

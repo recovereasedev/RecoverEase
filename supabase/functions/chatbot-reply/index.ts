@@ -1,61 +1,53 @@
+import {
+  AssistantReplyError,
+  buildInteractionRequest,
+  buildSystemInstruction,
+  extractOutputText,
+  GEMINI_API_REVISION,
+  GEMINI_ENDPOINT,
+  parseAssistantReply,
+  raisesCriticalConcern,
+  toInteractionInput,
+} from '../_shared/assistant.ts'
 import { AuthError, requireCaller, serviceClient } from '../_shared/auth.ts'
 import { handlePreflight, jsonResponse } from '../_shared/cors.ts'
 
 /**
- * Guidance chatbot - modules 8.1, 8.2 and 8.3.
+ * Recovery guidance assistant - modules 8.1, 8.2 and 8.3.
  *
- * Three things force this server-side: the provider credential must not ship
- * in a client bundle; module 8.7 lets an administrator set the system prompt,
- * and a prompt the client supplies is one the client can replace; and module
- * 8.2 requires critical-concern detection to raise a doctor alert, which a
- * check in the patient's browser could simply skip.
+ * Provider: Google Gemini, Interactions API. The browser never calls Gemini.
+ * Three separate reasons force that, and only the first is about the key:
  *
- * If the provider is not configured this returns 503 and the UI says the
- * assistant is unavailable. It never falls back to a canned reply: an
- * invented answer about post-treatment symptoms is worse than no answer.
+ *   - the provider credential must not ship in a client bundle;
+ *   - module 8.7 lets an administrator set the system prompt, and a prompt
+ *     the client supplies is one the client can replace - including the
+ *     safety half of it;
+ *   - module 8.2 requires critical-concern detection to raise a doctor
+ *     alert, and a check performed in the patient's browser is a check the
+ *     patient's browser can skip.
  *
- * The Anthropic SDK is imported dynamically, inside the handler and after the
- * key check, so that a missing or unreachable provider package cannot stop
- * the function loading and turn a clean 503 into a hard crash.
+ * Order of operations matters here. The caller is authenticated, then the
+ * conversation is proved to be theirs, and only then is anything sent to the
+ * provider. Building the request earlier would mean a failed authorisation
+ * had already leaked the transcript.
  *
- * This file is kept behaviourally in step with what is deployed. An earlier revision
- * used `messages.parse()` with `zodOutputFormat` for schema-guaranteed output,
- * which is the better shape for a patient-safety classifier; it was rolled
- * back to a top-level-import-free version so the function could load, and it
- * is recoverable from git history once the provider secrets are set and the
- * model path can actually be exercised end to end.
+ * If Gemini is unconfigured, unreachable, rate limited, slow, or returns
+ * something that does not satisfy the schema, this returns an error status
+ * and the UI says the assistant is unavailable. The patient's own message is
+ * already persisted by then and is never lost. It never falls back to a
+ * canned or partial reply.
  *
  * Deploy:
  *   supabase functions deploy chatbot-reply
- *   supabase secrets set ANTHROPIC_API_KEY=...
- *   supabase secrets set ALLOWED_ORIGINS="https://<your-app>.vercel.app"
+ *   supabase secrets set GEMINI_API_KEY=...
  */
 
-const MODEL = 'claude-opus-5'
+/** Beyond this the patient is better served by an honest failure. */
+const REQUEST_TIMEOUT_MS = 25_000
 
-const DEFAULT_GUIDANCE = `You support patients recovering after treatment.
-Answer questions about the recovery process in plain, calm language.`
-
-// Appended after the administrator's text, so editing module 8.7's prompt can
-// shape tone and clinic-specific guidance but cannot delete the instruction
-// that stops the assistant diagnosing.
-const SAFETY_RULES = `
-Non-negotiable rules:
-- You are not a clinician. Never diagnose a condition, never interpret test
-  results, and never tell a patient to start, stop, or change a medication or
-  a dose. Direct those questions to their doctor.
-- Keep answers short and concrete. Prefer two or three sentences.
-- If the patient describes something that could be an emergency - chest pain,
-  difficulty breathing, heavy bleeding, signs of infection such as fever with
-  a hot swollen wound, fainting, thoughts of self-harm - tell them plainly to
-  contact emergency services or their doctor now, and set has_critical_concern.
-- Set has_critical_concern for anything a treating clinician would want to
-  know about promptly, not merely for emergencies. It is better to raise a
-  concern that turns out to be minor than to miss one.
-- Never claim to have contacted anyone on the patient's behalf.
-
-Reply with JSON only, matching exactly:
-{"reply": string, "has_critical_concern": boolean, "concern_summary": string}`
+/** A recovery conversation does not need unbounded history, and an unbounded
+ *  window is an unbounded bill. */
+const HISTORY_LIMIT = 40
 
 Deno.serve(async (request) => {
   const preflight = handlePreflight(request)
@@ -67,26 +59,19 @@ Deno.serve(async (request) => {
     return jsonResponse({ error: 'Method not allowed' }, 405, origin)
   }
 
-  const apiKey = Deno.env.get('ANTHROPIC_API_KEY')
-  if (!apiKey) {
-    return jsonResponse(
-      { error: 'The guidance assistant is not configured.' },
-      503,
-      origin,
-    )
-  }
-
   const admin = serviceClient()
 
   try {
+    // 1. Who is calling. Verified against Supabase Auth, never taken from the
+    //    request body.
     const caller = await requireCaller(request)
     const { chatSessionId } = (await request.json()) as { chatSessionId?: string }
 
     if (!chatSessionId) throw new AuthError('chatSessionId is required', 400)
 
-    // The session must belong to the caller. Without this check any patient
-    // could pass another patient's session id and read their transcript back
-    // through the model's reply.
+    // 2. Is this conversation theirs. Without this check any patient could
+    //    pass another patient's session id and read that transcript back
+    //    through the model's reply.
     const { data: session, error: sessionError } = await admin
       .from('chat_session')
       .select('chat_session_id, pat_id, patient!inner ( user_id, doc_id )')
@@ -96,24 +81,36 @@ Deno.serve(async (request) => {
     if (sessionError) throw new AuthError('Could not load the conversation', 500)
     if (!session) throw new AuthError('Conversation not found', 404)
 
-    const patient = session.patient as unknown as { user_id: string; doc_id: string }
+    const patient = session.patient as unknown as {
+      user_id: string
+      doc_id: string
+    }
 
     if (patient.user_id !== caller.userId) {
       throw new AuthError('This conversation is not yours', 403)
     }
 
+    // 3. Only now is any content read, and only this conversation's.
     const { data: history, error: historyError } = await admin
       .from('chat_message')
       .select('chat_message_role, chat_message_content')
       .eq('chat_session_id', chatSessionId)
       .order('chat_message_created_at', { ascending: true })
-      // A recovery conversation does not need unbounded history, and an
-      // unbounded window is an unbounded bill.
-      .limit(40)
+      .limit(HISTORY_LIMIT)
 
     if (historyError) throw new AuthError('Could not load the conversation', 500)
     if (!history || history.length === 0) {
       throw new AuthError('There is nothing to reply to', 400)
+    }
+
+    // Configuration is checked here rather than at the top of the handler, so
+    // that an unconfigured deployment still answers "not yours" to a caller
+    // reaching for someone else's conversation. Authorisation should not
+    // depend on whether a provider key happens to be set, and this ordering
+    // also means the refusal paths stay exercisable before a key exists.
+    const apiKey = Deno.env.get('GEMINI_API_KEY')
+    if (!apiKey) {
+      throw new AuthError('The guidance assistant is not configured.', 503)
     }
 
     const { data: promptSetting } = await admin
@@ -122,63 +119,84 @@ Deno.serve(async (request) => {
       .eq('system_setting_key', 'chatbot.system_prompt')
       .maybeSingle()
 
-    const systemPrompt = `${
-      promptSetting?.system_setting_value?.trim() || DEFAULT_GUIDANCE
-    }\n${SAFETY_RULES}`
-
-    const { default: Anthropic } = await import('npm:@anthropic-ai/sdk')
-    const anthropic = new Anthropic({ apiKey })
-
-    // Effort is left at its default. This is a patient-safety classification
-    // as much as a chat reply, and missing a concern costs more than tokens.
-    const completion = await anthropic.messages.create({
-      model: MODEL,
-      max_tokens: 2000,
-      system: systemPrompt,
-      messages: history.map((message) => ({
-        role: message.chat_message_role === 'patient' ? ('user' as const) : ('assistant' as const),
-        content: message.chat_message_content as string,
-      })),
+    // `toInteractionInput` is the data-minimisation boundary: it takes the
+    // role and the text off each row and drops everything else, so the
+    // provider receives this conversation and no other patient data at all.
+    const body = buildInteractionRequest({
+      systemInstruction: buildSystemInstruction(
+        promptSetting?.system_setting_value,
+      ),
+      turns: toInteractionInput(history),
     })
 
-    const text = completion.content
-      .filter((block: { type: string }) => block.type === 'text')
-      .map((block: { text: string }) => block.text)
-      .join('')
+    const abort = AbortSignal.timeout(REQUEST_TIMEOUT_MS)
 
-    let parsed: { reply: string; has_critical_concern: boolean; concern_summary: string }
+    let response: Response
     try {
-      parsed = JSON.parse(text.trim().replace(/^```json\s*|\s*```$/g, ''))
-    } catch {
-      // Saying nothing is the safe outcome; a half-parsed reply is not
-      // something to show a recovering patient.
-      throw new AuthError('The assistant could not produce a usable reply', 502)
+      response = await fetch(GEMINI_ENDPOINT, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': apiKey,
+          'Api-Revision': GEMINI_API_REVISION,
+        },
+        body: JSON.stringify(body),
+        signal: abort,
+      })
+    } catch (cause) {
+      // Timeout, DNS, TLS, connection reset. Deliberately not surfaced to the
+      // patient in detail; the log is where an operator looks.
+      console.error('gemini request failed to complete', cause)
+      throw new AuthError('The guidance assistant is unavailable.', 503)
     }
+
+    if (!response.ok) {
+      // Never echo the provider's body to the client: it can carry request
+      // details, and on some errors the key itself.
+      console.error('gemini returned an error status', response.status)
+      const status = response.status === 429 ? 429 : 502
+      throw new AuthError(
+        status === 429
+          ? 'The guidance assistant is busy. Try again in a moment.'
+          : 'The guidance assistant is unavailable.',
+        status,
+      )
+    }
+
+    // Everything past here is validated before it is trusted.
+    const payload = (await response.json()) as unknown
+    const parsed = parseAssistantReply(extractOutputText(payload))
 
     const { data: inserted, error: insertError } = await admin
       .from('chat_message')
       .insert({
         chat_session_id: chatSessionId,
         chat_message_role: 'assistant',
-        chat_message_content: parsed.reply,
+        chat_message_content: parsed.message,
       })
       .select()
       .single()
 
     if (insertError) throw new AuthError(insertError.message, 500)
 
-    // Module 8.2: raise the doctor alert.
-    if (parsed.has_critical_concern) {
+    const critical = raisesCriticalConcern(parsed)
+
+    // Module 8.2: flag the conversation for the treating clinician.
+    if (critical) {
       await admin
         .from('chat_session')
         .update({
           chat_session_has_critical_flag: true,
           chat_session_summary:
-            parsed.concern_summary || 'A concern was raised in this conversation.',
+            parsed.safety_level === 'urgent'
+              ? 'The assistant advised seeking care now.'
+              : 'The assistant suggested contacting the care team.',
         })
         .eq('chat_session_id', chatSessionId)
 
-      // Module 8.3: the doctor receives the alert.
+      // Module 8.3: the doctor receives the alert. The notification carries no
+      // clinical detail - the doctor can open the conversation, and an
+      // administrator must not learn anything from a notification row.
       const { data: doctor } = await admin
         .from('doctor')
         .select('user_id')
@@ -191,14 +209,18 @@ Deno.serve(async (request) => {
           chat_session_id: chatSessionId,
           notification_type: 'chat_critical',
           notification_message:
-            parsed.concern_summary ||
             'A patient raised a concern in the guidance chat that may need your attention.',
         })
       }
     }
 
     return jsonResponse(
-      { message: inserted, raisedCriticalConcern: parsed.has_critical_concern },
+      {
+        message: inserted,
+        raisedCriticalConcern: critical,
+        safetyLevel: parsed.safety_level,
+        shouldContactProvider: parsed.should_contact_provider,
+      },
       200,
       origin,
     )
@@ -207,7 +229,23 @@ Deno.serve(async (request) => {
       return jsonResponse({ error: error.message }, error.status, origin)
     }
 
+    if (error instanceof AssistantReplyError) {
+      // The model answered but not in a shape we can trust. Saying nothing is
+      // the safe outcome; a half-parsed reply is not something to show a
+      // recovering patient.
+      console.error('gemini output rejected', error.message)
+      return jsonResponse(
+        { error: 'The guidance assistant could not produce a usable reply.' },
+        502,
+        origin,
+      )
+    }
+
     console.error('chatbot-reply failed', error)
-    return jsonResponse({ error: 'The guidance assistant is unavailable.' }, 503, origin)
+    return jsonResponse(
+      { error: 'The guidance assistant is unavailable.' },
+      503,
+      origin,
+    )
   }
 })

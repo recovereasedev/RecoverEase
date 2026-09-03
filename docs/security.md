@@ -201,13 +201,82 @@ which is what an audit trail is for, without being handed the clinical data.
 `tests/db/rls.test.ts` asserts that no patient name, prescription note or
 plan title appears anywhere in audit details.
 
+## The recovery guidance assistant
+
+The AI provider is **Google Gemini** (Interactions API). There is no Anthropic
+dependency anywhere in RecoverEase, and no provider SDK is installed: the Edge
+Function calls the REST endpoint with `fetch`, which keeps the function's
+module graph small and removes a class of cold-start failure.
+
+**The browser never calls Gemini.** Three separate things force that, and only
+the first is about the key:
+
+- the credential must not ship in a client bundle;
+- module 8.7 lets an administrator set the system prompt, and a prompt the
+  client supplies is a prompt the client can replace — including the safety
+  half of it;
+- module 8.2 requires critical-concern detection to raise a doctor alert, and
+  a check performed in the patient's browser is a check that browser can skip.
+
+### Order of operations
+
+`chatbot-reply` authenticates the caller, proves the conversation belongs to
+them, and only then builds the provider request. Constructing it earlier would
+mean a failed authorisation had already assembled someone else's transcript.
+
+The configuration check sits *after* authorisation rather than at the top of
+the handler, so an unconfigured deployment still answers "this conversation is
+not yours" to a caller reaching for another patient's session. Authorisation
+should not depend on whether a provider key happens to be set.
+
+### Data minimisation
+
+`toInteractionInput()` is the boundary, and it is a function rather than a
+convention so it can be tested. It reads exactly two fields off each message
+row — the role and the text — and discards everything else. Gemini therefore
+receives the text of one conversation and nothing else: no name, patient id,
+date of birth, contact details, diagnosis, medication schedule, appointments,
+other conversations, other patients, and nothing from the audit trail.
+
+Because it copies fields out rather than deleting fields off, adding a column
+to `chat_message` later cannot silently widen what leaves the system. A test
+asserts on the serialised payload that no identifier survives.
+
+### Nothing unvalidated reaches a patient
+
+Structured output is requested via `response_format`, and the reply is then
+validated with Zod against the same contract regardless:
+
+```
+{ message: string, safety_level: "normal" | "caution" | "urgent",
+  should_contact_provider: boolean }
+```
+
+Asking a model to conform is not the same as it conforming. Output that does
+not parse, or parses but fails the schema, is refused with a 502 and the UI
+says the assistant is unavailable. Nothing partially-valid is repaired and
+shown — a half-understood reply about post-treatment symptoms is the failure
+this layer exists to prevent.
+
+The response reader only ever takes text from the model's own output steps.
+Echoing the request back as though it were an answer would be a fabricated
+reply that reads convincingly, so it is excluded explicitly and tested.
+
+### Failure never leaks
+
+On timeout, network error, non-2xx, rate limit or malformed output, the
+provider's response body is logged and never forwarded to the client: error
+bodies can carry request detail and, on some providers, the key itself. The
+patient's own message is persisted before the provider is called and survives
+every failure path.
+
 ## Secrets
 
 | Secret | Lives in | Never in |
 | --- | --- | --- |
 | Publishable (anon) key | `VITE_SUPABASE_PUBLISHABLE_KEY` | — it is public by design; RLS is what protects the data |
 | Service-role key | Supabase Edge Function secrets | Any `VITE_`-prefixed variable, any client file, the repo |
-| Chatbot provider key | Edge Function secrets | Same |
+| `GEMINI_API_KEY` | Edge Function secrets | Same |
 
 Anything prefixed `VITE_` is compiled into the browser bundle. `src/lib/env.ts`
 declares only the two publishable values, so a service key cannot be read from
