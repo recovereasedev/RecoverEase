@@ -13,8 +13,10 @@ import {
   forgotPasswordSchema,
   type ForgotPasswordValues,
 } from '@/features/auth/schemas'
+import { useDocumentTitle } from '@/hooks/use-document-title'
 
 export function ForgotPasswordPage() {
+  useDocumentTitle('Reset Password')
   const [isSent, setSent] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
 

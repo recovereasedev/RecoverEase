@@ -6,6 +6,7 @@ import { ErrorState, LoadingState } from '@/components/feedback/state-view'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { useAuth } from '@/features/auth/auth-context'
 import type { AccountProblem, UserRole } from '@/features/auth/types'
+import { useDocumentTitle } from '@/hooks/use-document-title'
 import { cn } from '@/lib/utils'
 
 /**
@@ -199,6 +200,7 @@ export function RedirectIfSignedIn({ children }: { children: ReactNode }) {
 }
 
 export function NotFoundScreen() {
+  useDocumentTitle('Page Not Found')
   const { user } = useAuth()
 
   return (

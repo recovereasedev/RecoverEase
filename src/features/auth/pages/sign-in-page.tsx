@@ -10,6 +10,7 @@ import { signInWithPassword } from '@/features/auth/api'
 import { AuthLayout } from '@/features/auth/components/auth-layout'
 import { AuthFormAlert } from '@/features/auth/components/form-alert'
 import { signInSchema, type SignInValues } from '@/features/auth/schemas'
+import { useDocumentTitle } from '@/hooks/use-document-title'
 
 /**
  * Turns Supabase auth errors into something a person can act on, without
@@ -40,6 +41,7 @@ function describeSignInError(error: unknown): string {
 }
 
 export function SignInPage() {
+  useDocumentTitle('Sign In')
   const [formError, setFormError] = useState<string | null>(null)
   const [showPassword, setShowPassword] = useState(false)
 

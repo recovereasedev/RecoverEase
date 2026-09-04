@@ -14,6 +14,7 @@ import {
   newPasswordSchema,
   type NewPasswordValues,
 } from '@/features/auth/schemas'
+import { useDocumentTitle } from '@/hooks/use-document-title'
 import { supabase } from '@/lib/supabase/client'
 
 /**
@@ -25,6 +26,7 @@ import { supabase } from '@/lib/supabase/client'
  * presenting a form that cannot possibly work.
  */
 export function ResetPasswordPage() {
+  useDocumentTitle('New Password')
   const navigate = useNavigate()
   const [hasSession, setHasSession] = useState<boolean | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
