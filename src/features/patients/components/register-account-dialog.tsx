@@ -1,10 +1,11 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { KeyRound, TriangleAlert } from 'lucide-react'
 import { useState } from 'react'
 
-import { ErrorState } from '@/components/feedback/state-view'
 import { Button } from '@/components/ui/button'
 import { Dialog } from '@/components/ui/dialog'
 import { Field, Input } from '@/components/ui/field'
+import { Notice } from '@/components/ui/notice'
 import {
   createDoctorAccount,
   createPatientAccount,
@@ -17,24 +18,30 @@ const COPY = {
   patient: {
     title: 'Register a patient',
     description:
-      'This creates their account and emails them an invitation to set a password. They are assigned to you.',
+      'This creates their account and gives you a temporary password to hand over. They are assigned to you.',
     submit: 'Register patient',
+    handOver: 'Give this password to the patient.',
   },
   doctor: {
     title: 'Register a doctor',
     description:
-      'This creates a clinician account and emails an invitation to set a password.',
+      'This creates a clinician account and gives you a temporary password to hand over.',
     submit: 'Register doctor',
+    handOver: 'Give this password to the doctor.',
   },
 } as const
 
 /**
  * Modules 2.1 and 2.2.
  *
- * No password field, deliberately. The account holder receives an invitation
- * and chooses their own, so a clinician never knows a patient's credentials
- * and cannot be asked to hand them over. It also means a password is never
- * typed into, or transmitted from, someone else's browser.
+ * There is no password field: the credential is generated on the server and
+ * shown here once, so nobody chooses a weak one and the same value is never
+ * reused across accounts. The holder is required to replace it at first
+ * sign-in, which is enforced server-side rather than by this dialog.
+ *
+ * The value is held in component state for exactly as long as the
+ * confirmation is on screen and is cleared when the dialog closes. It is not
+ * written to storage, a query cache or a log.
  */
 export function RegisterAccountDialog({
   mode,
@@ -55,7 +62,10 @@ export function RegisterAccountDialog({
   const [specialization, setSpecialization] = useState('')
   const [contactNo, setContactNo] = useState('')
   const [birthDate, setBirthDate] = useState('')
-  const [warning, setWarning] = useState<string | null>(null)
+  const [issued, setIssued] = useState<{
+    name: string
+    password: string
+  } | null>(null)
 
   const reset = () => {
     setEmail('')
@@ -65,7 +75,11 @@ export function RegisterAccountDialog({
     setSpecialization('')
     setContactNo('')
     setBirthDate('')
-    setWarning(null)
+    setIssued(null)
+    // Without this the previous attempt's failure is still on screen when the
+    // next account is registered, which is what made a second registration
+    // look broken when the first one had already been dealt with.
+    create.reset()
   }
 
   const create = useMutation({
@@ -92,16 +106,13 @@ export function RegisterAccountDialog({
           mode === 'patient' ? queryKeys.patients.all : queryKeys.doctors.all,
       })
 
-      if (result.invitationSent) {
-        reset()
-        onClose()
-      } else {
-        // The account exists and is usable, but they have no way in yet.
-        // Closing silently would leave the clinician believing it was sent.
-        setWarning(
-          'The account was created, but the invitation email could not be sent. Ask an administrator to resend it.',
-        )
-      }
+      // The dialog switches to the confirmation rather than closing: the
+      // temporary password is shown once and there is no way to retrieve it
+      // afterwards, so it must not disappear on its own.
+      setIssued({
+        name: `${firstName.trim()} ${lastName.trim()}`.trim(),
+        password: result.temporaryPassword,
+      })
     },
   })
 
@@ -121,30 +132,62 @@ export function RegisterAccountDialog({
       title={copy.title}
       description={copy.description}
       footer={
-        <>
+        issued ? (
           <Button
-            variant="ghost"
             onClick={() => {
               reset()
               onClose()
             }}
           >
-            Cancel
+            Done
           </Button>
-          <Button
-            onClick={() => {
-              setWarning(null)
-              create.mutate()
-            }}
-            disabled={!canSubmit}
-            isLoading={create.isPending}
-            loadingLabel="Creating the account…"
-          >
-            {copy.submit}
-          </Button>
-        </>
+        ) : (
+          <>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                reset()
+                onClose()
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => create.mutate()}
+              disabled={!canSubmit}
+              isLoading={create.isPending}
+              loadingLabel="Creating the account…"
+            >
+              {copy.submit}
+            </Button>
+          </>
+        )
       }
     >
+      {issued ? (
+        <div className="space-y-4">
+          <Notice tone="success" title="Account created" icon={KeyRound}>
+            {copy.handOver} They will be asked to choose their own password
+            the first time they sign in, and this one stops working then.
+          </Notice>
+
+          <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-surface-sunken p-4">
+            <p className="text-label-sm font-medium text-muted">
+              Temporary password for {issued.name}
+            </p>
+            {/* Selectable so it can be copied accurately, and in a monospace
+                face so characters that look alike are told apart. */}
+            <p className="mt-2 select-all font-mono text-lg font-semibold tracking-wide text-heading">
+              {issued.password}
+            </p>
+          </div>
+
+          <p className="text-sm text-muted">
+            This is the only time it is shown. If it is lost, an administrator
+            can reset the account rather than recovering this password.
+          </p>
+        </div>
+      ) : (
       <div className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="First name" required>
@@ -216,17 +259,24 @@ export function RegisterAccountDialog({
           />
         </Field>
 
-        {create.isError ? <ErrorState error={create.error} /> : null}
-
-        {warning ? (
-          <p
-            role="alert"
-            className="rounded-[var(--radius-md)] border border-warning-200 bg-warning-50 p-3 text-sm text-warning-800"
+        {/* The server says exactly what went wrong — the email is already
+            taken, the licence number is a duplicate, the session expired.
+            Showing a generic "we could not load this information" instead
+            hid the one sentence the clinician needed. */}
+        {create.isError ? (
+          <Notice
+            tone="danger"
+            title="The account was not created"
+            icon={TriangleAlert}
+            live="assertive"
           >
-            {warning}
-          </p>
+            {create.error instanceof Error
+              ? create.error.message
+              : 'The account could not be created.'}
+          </Notice>
         ) : null}
       </div>
+      )}
     </Dialog>
   )
 }

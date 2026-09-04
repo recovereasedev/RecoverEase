@@ -14,6 +14,7 @@ import type { AppUser, AuthStatus } from './types'
 export async function loadAppUser(
   userId: string,
   email: string,
+  mustChangePassword = false,
 ): Promise<AuthStatus> {
   const { data: account, error: accountError } = await supabase
     .from('user_account')
@@ -37,6 +38,7 @@ export async function loadAppUser(
     userId: account.user_id,
     email: account.user_email || email,
     role: account.user_role,
+    mustChangePassword,
   }
 
   switch (account.user_role) {
@@ -168,4 +170,48 @@ export async function recordPrivacyConsent(patientId: string): Promise<void> {
     .eq('pat_id', patientId)
 
   if (error) throw error
+}
+
+/**
+ * Completes the forced password change for an account still holding the
+ * temporary credential it was created with.
+ *
+ * This goes through an Edge Function rather than `supabase.auth.updateUser`
+ * because the requirement lives in `app_metadata`, which only the
+ * service-role key may clear. Doing both in one server call also means the
+ * password and the requirement cannot end up disagreeing.
+ */
+export async function completePasswordSetup(password: string): Promise<void> {
+  const { data, error } = await supabase.functions.invoke<{ error?: string }>(
+    'complete-password-setup',
+    { body: { password } },
+  )
+
+  if (error) {
+    let message = 'Your password could not be changed.'
+    const context = (error as { context?: Response }).context
+    if (context && typeof context.json === 'function') {
+      try {
+        const payload = (await context.json()) as { error?: string }
+        if (payload?.error) message = payload.error
+      } catch {
+        // Body was not JSON; keep the generic message.
+      }
+    }
+    throw new Error(message)
+  }
+
+  if (data?.error) throw new Error(data.error)
+
+  // The requirement lives in the access token's `app_metadata`, and
+  // `getSession()` hands back the token already in memory — which still says
+  // the password must be changed, however up to date the server now is. A
+  // refresh exchanges it for one minted after the change, so the rest of the
+  // application sees the cleared requirement instead of looping on it.
+  const { error: refreshError } = await supabase.auth.refreshSession()
+  if (refreshError) {
+    throw new Error(
+      'Your password was changed, but the session could not be renewed. Sign in again with your new password.',
+    )
+  }
 }

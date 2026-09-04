@@ -28,6 +28,7 @@ function patient(): AppUser {
     email: 'alice@example.test',
     role: 'patient',
     displayName: 'Alice Santos',
+    mustChangePassword: false,
     profile: {
       kind: 'patient',
       // Only the fields the guards read matter here.

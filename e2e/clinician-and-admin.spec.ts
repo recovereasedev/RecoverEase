@@ -87,10 +87,13 @@ test.describe('doctor workspace', () => {
     const dialog = page.getByRole('dialog')
     await expect(dialog).toBeVisible()
 
-    // No password field: the account holder is invited and chooses their own,
-    // so a clinician never knows a patient's credentials.
+    // No password input: the clinician never types or chooses a credential.
+    // The temporary one is generated server-side and shown once after the
+    // account exists, and the holder must replace it at first sign-in.
     await expect(dialog.getByLabel(/password/i)).toHaveCount(0)
-    await expect(dialog.getByText(/emails them an invitation/i)).toBeVisible()
+    await expect(
+      dialog.getByText(/temporary password to hand over/i),
+    ).toBeVisible()
   })
 })
 

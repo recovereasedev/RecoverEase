@@ -20,6 +20,12 @@ export type TableRows = Record<string, Record<string, unknown>[]>
 export type StubSession = {
   userId: string
   email: string
+  /**
+   * Mirrors Supabase Auth's `app_metadata.must_change_password`, set when an
+   * account is created with a temporary credential. Service-role-only in
+   * production, so the app may read it but never write it.
+   */
+  mustChangePassword?: boolean
 }
 
 const FILTER_OPERATORS = [
@@ -180,7 +186,10 @@ export class SupabaseStub {
       role: 'authenticated',
       email: session.email,
       email_confirmed_at: '2026-01-01T00:00:00Z',
-      app_metadata: { provider: 'email' },
+      app_metadata: {
+        provider: 'email',
+        must_change_password: session.mustChangePassword === true,
+      },
       // Deliberately empty. The app must never read a role from here, and a
       // stub that supplied one could hide a regression that started doing so.
       user_metadata: {},
@@ -197,6 +206,35 @@ export class SupabaseStub {
       const body = JSON.parse(request.postData() ?? '{}') as {
         email?: string
         password?: string
+      }
+
+      // A refresh exchanges the existing session for a token minted now, so
+      // it must reflect the current account state rather than replaying what
+      // was issued at sign-in. The app relies on this to observe a cleared
+      // `must_change_password`.
+      if (url.searchParams.get('grant_type') === 'refresh_token') {
+        if (!this.session) {
+          await route.fulfill({
+            status: 401,
+            contentType: 'application/json',
+            body: JSON.stringify({ message: 'invalid claim' }),
+          })
+          return
+        }
+
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            access_token: `stub-access-${this.session.userId}`,
+            token_type: 'bearer',
+            expires_in: 3600,
+            expires_at: Math.floor(Date.now() / 1000) + 60 * 60 * 24,
+            refresh_token: `stub-refresh-${this.session.userId}`,
+            user: this.authUser(this.session),
+          }),
+        })
+        return
       }
 
       const account = this.rowsIn('user_account').find(

@@ -59,6 +59,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const resolved = await loadAppUser(
         session.user.id,
         session.user.email ?? '',
+        session.user.app_metadata?.must_change_password === true,
       )
       if (sequence !== requestSequence.current) return
       setStatus(resolved)

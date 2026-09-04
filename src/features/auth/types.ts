@@ -20,6 +20,14 @@ export type AppUser = {
   role: UserRole
   displayName: string
   profile: AppProfile
+  /**
+   * True while the account still holds the temporary password it was created
+   * with. Read from Supabase Auth's `app_metadata`, which only the
+   * service-role key can write — the same reason the role is not taken from
+   * `user_metadata`. A requirement the account holder could switch off is not
+   * a requirement.
+   */
+  mustChangePassword: boolean
 }
 
 export type AppProfile =

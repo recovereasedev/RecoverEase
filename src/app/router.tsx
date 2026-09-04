@@ -8,9 +8,11 @@ import {
   RequireRole,
 } from '@/app/routes/guards'
 import * as Page from '@/app/routes/lazy-pages'
+import { RouteErrorBoundary } from '@/components/feedback/route-error-boundary'
 import { LoadingState } from '@/components/feedback/state-view'
 import { AppShell } from '@/components/layout/app-shell'
 import { ConsentGate } from '@/features/auth/components/consent-gate'
+import { PasswordSetupGate } from '@/features/auth/components/password-setup-gate'
 
 function LazyBoundary({ children }: { children: ReactNode }) {
   return (
@@ -42,13 +44,20 @@ function protectedSection(
       <AppShell />
     )
 
+  // The password gate sits outside the consent gate on purpose. An account
+  // still holding its temporary credential has not proved it is in the hands
+  // of the person it belongs to, so it must not be shown the privacy notice
+  // to accept on that person's behalf.
   return {
     path: role,
     element: (
       <RequireAuth>
-        <RequireRole allow={[role]}>{shell}</RequireRole>
+        <RequireRole allow={[role]}>
+          <PasswordSetupGate>{shell}</PasswordSetupGate>
+        </RequireRole>
       </RequireAuth>
     ),
+    errorElement: <RouteErrorBoundary />,
     children: children.map((route) => ({
       ...route,
       element: <LazyBoundary>{route.element}</LazyBoundary>,
@@ -59,6 +68,7 @@ function protectedSection(
 export const router = createBrowserRouter([
   {
     path: '/',
+    errorElement: <RouteErrorBoundary />,
     element: (
       <RedirectIfSignedIn>
         <LazyBoundary>
@@ -69,6 +79,7 @@ export const router = createBrowserRouter([
   },
   {
     path: '/sign-in',
+    errorElement: <RouteErrorBoundary />,
     element: (
       <RedirectIfSignedIn>
         <LazyBoundary>
@@ -79,6 +90,7 @@ export const router = createBrowserRouter([
   },
   {
     path: '/forgot-password',
+    errorElement: <RouteErrorBoundary />,
     element: (
       <LazyBoundary>
         <Page.ForgotPasswordPage />
@@ -90,6 +102,7 @@ export const router = createBrowserRouter([
     // recovery session, so redirecting "signed-in" users away would make the
     // reset link impossible to use.
     path: '/reset-password',
+    errorElement: <RouteErrorBoundary />,
     element: (
       <LazyBoundary>
         <Page.ResetPasswordPage />
@@ -132,5 +145,9 @@ export const router = createBrowserRouter([
 
   // Ambiguous entry point: send people to the root, which routes them on.
   { path: '/app', element: <Navigate to="/" replace /> },
-  { path: '*', element: <NotFoundScreen /> },
+  {
+    path: '*',
+    element: <NotFoundScreen />,
+    errorElement: <RouteErrorBoundary />,
+  },
 ])

@@ -48,6 +48,42 @@ type CreateDoctorRequest = {
 
 type CreateAccountRequest = CreatePatientRequest | CreateDoctorRequest
 
+/**
+ * The alphabet deliberately omits characters that are misread when a
+ * credential is handed over in person or over the phone: 0/O, 1/l/I, 5/S,
+ * 8/B. Groups of four are separated by hyphens for the same reason.
+ */
+const TEMPORARY_PASSWORD_ALPHABET = 'ACDEFGHJKMNPQRTUVWXYZ234679'
+
+/**
+ * A single-use credential for a brand new account.
+ *
+ * 16 characters drawn with `crypto.getRandomValues` — comfortably above the
+ * 12-character policy the application enforces, and unguessable, so an
+ * account holding clinical data is never reachable by trying a default. It
+ * is returned to the administrator or clinician exactly once, at creation,
+ * and is never stored by RecoverEase in readable form: Supabase Auth keeps
+ * only a hash, and nothing here writes it to a table, an audit entry or a
+ * log line.
+ */
+function generateTemporaryPassword(): string {
+  const bytes = new Uint32Array(16)
+  crypto.getRandomValues(bytes)
+
+  const characters = Array.from(
+    bytes,
+    (value) =>
+      TEMPORARY_PASSWORD_ALPHABET[value % TEMPORARY_PASSWORD_ALPHABET.length],
+  )
+
+  return [
+    characters.slice(0, 4).join(''),
+    characters.slice(4, 8).join(''),
+    characters.slice(8, 12).join(''),
+    characters.slice(12, 16).join(''),
+  ].join('-')
+}
+
 function assertNonEmpty(value: unknown, field: string): string {
   if (typeof value !== 'string' || value.trim() === '') {
     throw new AuthError(`${field} is required`, 400)
@@ -103,14 +139,23 @@ Deno.serve(async (request) => {
     const firstName = assertNonEmpty(body.firstName, 'First name')
     const lastName = assertNonEmpty(body.lastName, 'Last name')
 
+    const temporaryPassword = generateTemporaryPassword()
+
     // Creating the auth user first means a duplicate email fails before any
     // profile row is written, leaving nothing to clean up.
     const { data: created, error: createError } =
       await admin.auth.admin.createUser({
         email,
-        // No password is set. The account holder receives an invitation and
-        // chooses their own, so nobody else ever knows their credentials.
-        email_confirm: false,
+        password: temporaryPassword,
+        // Confirmed on creation: the account is handed over in person with a
+        // temporary credential, so there is no confirmation link to follow.
+        // Without this the first sign-in is refused as an unconfirmed email.
+        email_confirm: true,
+        // `app_metadata` is writable only with the service-role key, unlike
+        // `user_metadata`, which the account holder can edit themselves. A
+        // password requirement kept in user_metadata could simply be turned
+        // off by the person it constrains.
+        app_metadata: { must_change_password: true },
       })
 
     if (createError || !created.user) {
@@ -190,14 +235,12 @@ Deno.serve(async (request) => {
       profileId = data.pat_id as string
     }
 
-    // Sends the invitation that lets them set their own password.
-    const { error: inviteError } =
-      await admin.auth.admin.inviteUserByEmail(email)
-    if (inviteError) {
-      // The account exists and is usable; only the email failed. Report it so
-      // the clinician can resend, rather than rolling back a valid account.
-      console.error('invitation email failed', inviteError.message)
-    }
+    // No invitation email is sent. Onboarding is credential handover: the
+    // creator reads the temporary password to the account holder, who is
+    // required to replace it at first sign-in. That removes the dependency
+    // on outbound email, which the project's Supabase instance cannot
+    // deliver reliably, and it means an account is never left unusable
+    // because a message did not arrive.
 
     await writeAuditLog(admin, {
       userId: caller.userId,
@@ -209,11 +252,13 @@ Deno.serve(async (request) => {
       details: { created_by_role: caller.role },
     })
 
+    // The only time this value leaves the server. It is not logged here and
+    // must not be persisted by the caller.
     return jsonResponse(
       {
         userId: createdUserId,
         profileId,
-        invitationSent: !inviteError,
+        temporaryPassword,
       },
       201,
       origin,

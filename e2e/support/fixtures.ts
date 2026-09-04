@@ -336,7 +336,8 @@ type Fixtures = {
   signInAs: (
     role: 'patient' | 'doctor' | 'admin',
     overrides?: Partial<TableRows>,
-  ) => Promise<void>
+    options?: { mustChangePassword?: boolean },
+  ) => Promise<SupabaseStub>
 }
 
 export const test = base.extend<Fixtures>({
@@ -346,7 +347,7 @@ export const test = base.extend<Fixtures>({
   },
 
   signInAs: async ({ page }, use) => {
-    await use(async (role, overrides = {}) => {
+    await use(async (role, overrides = {}, options = {}) => {
       const data: TableRows = datasetFor(role)
       // Assigned rather than spread: spreading a Partial widens every value
       // to `| undefined`, which TableRows does not allow.
@@ -363,7 +364,14 @@ export const test = base.extend<Fixtures>({
             ? { userId: IDS.doctorAUser, email: 'doctor.a@recoverease.test' }
             : { userId: IDS.adminUser, email: 'admin@recoverease.test' }
 
-      await stub.signInAs(page, session)
+      await stub.signInAs(page, {
+        ...session,
+        mustChangePassword: options.mustChangePassword === true,
+      })
+
+      // Returned so a test can move the account on — completing onboarding,
+      // for instance — and have a token refresh observe the new state.
+      return stub
     })
   },
 })

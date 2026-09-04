@@ -36,8 +36,12 @@ export type NewDoctorInput = {
 export type AccountCreated = {
   userId: string
   profileId: string
-  /** False when the account exists but the invitation email did not send. */
-  invitationSent: boolean
+  /**
+   * The single-use credential the new account was created with, generated
+   * server-side and returned exactly once. The holder is required to replace
+   * it at first sign-in. Never persist or log this.
+   */
+  temporaryPassword: string
 }
 
 async function invokeCreateAccount(
