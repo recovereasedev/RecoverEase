@@ -88,18 +88,32 @@ export function EmptyState({
  * cases are translated; anything unrecognised gets a generic message, and the
  * technical detail is kept available for support rather than shown by default.
  */
+export type ErrorKind = 'network' | 'permission' | 'unknown'
+
 export function describeError(error: unknown): {
   icon: LucideIcon
   title: string
   description: string
   detail?: string
+  kind: ErrorKind
 } {
+  // Not every failure arrives as an Error. PostgREST, Supabase Auth and the
+  // Edge Functions all reject with objects carrying a `message`, and reading
+  // only `Error` instances turned every one of them into "Unknown error" —
+  // which meant the network and permission branches below never matched a
+  // database failure, and the refusal a user needed to read was replaced by
+  // "something went wrong".
   const raw =
     error instanceof Error
       ? error.message
       : typeof error === 'string'
         ? error
-        : 'Unknown error'
+        : typeof error === 'object' &&
+            error !== null &&
+            'message' in error &&
+            typeof (error as { message: unknown }).message === 'string'
+          ? (error as { message: string }).message
+          : 'Unknown error'
 
   const lowered = raw.toLowerCase()
 
@@ -114,6 +128,7 @@ export function describeError(error: unknown): {
       description:
         'We could not reach RecoverEase. Check your internet connection and try again.',
       detail: raw,
+      kind: 'network',
     }
   }
 
@@ -129,6 +144,7 @@ export function describeError(error: unknown): {
       description:
         'Your account is not permitted to view or change this information. If you believe this is a mistake, contact your care team.',
       detail: raw,
+      kind: 'permission',
     }
   }
 
@@ -138,7 +154,39 @@ export function describeError(error: unknown): {
     description:
       'We could not load this information. Trying again usually helps.',
     detail: raw,
+    kind: 'unknown',
   }
+}
+
+/**
+ * Markers of a message written by Postgres or PostgREST rather than by
+ * RecoverEase. "new row violates row-level security policy" is true and
+ * useless; "An account already exists for that email address" is neither.
+ */
+const MACHINE_MESSAGE = [
+  'violates',
+  'constraint',
+  'duplicate key',
+  'null value in column',
+  'relation "',
+  'column "',
+  'syntax error',
+  'pgrst',
+  'invalid input syntax',
+  'unknown error',
+]
+
+/**
+ * Whether a message can be shown to whoever pressed Save.
+ *
+ * Application errors — from an Edge Function, or a validation rule — are
+ * already written for the person reading them and are the single most useful
+ * thing on the screen. Database internals are not.
+ */
+export function isPresentableMessage(raw: string): boolean {
+  const lowered = raw.toLowerCase().trim()
+  if (lowered.length === 0 || lowered.length > 200) return false
+  return !MACHINE_MESSAGE.some((marker) => lowered.includes(marker))
 }
 
 export type ErrorStateProps = {

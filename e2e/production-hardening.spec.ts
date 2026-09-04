@@ -262,3 +262,73 @@ test.describe('registering a patient is their first consultation', () => {
     ).toHaveCount(0)
   })
 })
+
+test.describe('a save that fails says why it failed', () => {
+  /**
+   * `ErrorState` describes a query that would not load. Pointed at a
+   * mutation it claimed "we could not load this information. Trying again
+   * usually helps" — wrong about what happened, wrong that retrying helps,
+   * and it dropped the server's explanation entirely, because the technical
+   * detail it keeps is rendered only in development.
+   */
+  test('shows the server reason, not "could not load this information"', async ({
+    page,
+    signInAs,
+  }) => {
+    await signInAs('doctor')
+    await page.goto('/doctor/profile')
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
+
+    await page.route('**/rest/v1/doctor**', async (route) => {
+      if (route.request().method() === 'PATCH') {
+        return route.fulfill({
+          status: 400,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            message: 'That licence number is already registered to another clinician',
+          }),
+        })
+      }
+      return route.fallback()
+    })
+
+    await page.getByLabel(/contact number/i).fill('09170000000')
+    await page.getByRole('button', { name: /save/i }).first().click()
+
+    await expect(
+      page.getByText(/licence number is already registered/i),
+    ).toBeVisible()
+    await expect(
+      page.getByText(/could not load this information/i),
+    ).toHaveCount(0)
+  })
+
+  test('keeps the written copy for a permission failure', async ({
+    page,
+    signInAs,
+  }) => {
+    await signInAs('doctor')
+    await page.goto('/doctor/profile')
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
+
+    await page.route('**/rest/v1/doctor**', async (route) => {
+      if (route.request().method() === 'PATCH') {
+        return route.fulfill({
+          status: 403,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            message: 'new row violates row-level security policy for table "doctor"',
+          }),
+        })
+      }
+      return route.fallback()
+    })
+
+    await page.getByLabel(/contact number/i).fill('09170000001')
+    await page.getByRole('button', { name: /save/i }).first().click()
+
+    // Translated, not the raw policy text.
+    await expect(page.getByText(/do not have access to this/i)).toBeVisible()
+    await expect(page.getByText(/row-level security policy/i)).toHaveCount(0)
+  })
+})

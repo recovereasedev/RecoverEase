@@ -1,7 +1,8 @@
 import { CalendarClock, CalendarPlus, CalendarX, History } from 'lucide-react'
 import { useState } from 'react'
 
-import { ErrorState, StateView } from '@/components/feedback/state-view'
+import { FormError } from '@/components/feedback/form-error'
+import { StateView } from '@/components/feedback/state-view'
 import { PageHeader } from '@/components/layout/page-header'
 import { StatusBadge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -342,7 +343,10 @@ export function PatientAppointmentsPage() {
           </Field>
 
           {createAppointment.isError ? (
-            <ErrorState error={createAppointment.error} />
+            <FormError
+              error={createAppointment.error}
+              title="The appointment was not booked"
+            />
           ) : null}
         </div>
       </Dialog>
@@ -392,7 +396,10 @@ export function PatientAppointmentsPage() {
           </Field>
 
           {createReschedule.isError ? (
-            <ErrorState error={createReschedule.error} />
+            <FormError
+              error={createReschedule.error}
+              title="The request was not sent"
+            />
           ) : null}
         </div>
       </Dialog>

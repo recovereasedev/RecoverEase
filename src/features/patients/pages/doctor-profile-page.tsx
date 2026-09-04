@@ -1,6 +1,7 @@
 import { useState } from 'react'
 
-import { ErrorState } from '@/components/feedback/state-view'
+import { FormError } from '@/components/feedback/form-error'
+
 import { PageHeader } from '@/components/layout/page-header'
 import { Button } from '@/components/ui/button'
 import { Card, CardBody, CardHeader } from '@/components/ui/card'
@@ -104,7 +105,10 @@ export function DoctorProfilePage() {
               </Field>
 
               {updateDoctor.isError ? (
-                <ErrorState error={updateDoctor.error} />
+                <FormError
+                  error={updateDoctor.error}
+                  title="Your profile was not saved"
+                />
               ) : null}
 
               <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">

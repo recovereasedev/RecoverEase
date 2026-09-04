@@ -2,7 +2,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Megaphone, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 
-import { ErrorState, StateView } from '@/components/feedback/state-view'
+import { FormError } from '@/components/feedback/form-error'
+import { StateView } from '@/components/feedback/state-view'
 import { PageHeader } from '@/components/layout/page-header'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -238,7 +239,12 @@ export function AdminAnnouncementsPage() {
             />
           </Field>
 
-          {create.isError ? <ErrorState error={create.error} /> : null}
+          {create.isError ? (
+            <FormError
+              error={create.error}
+              title="The announcement was not posted"
+            />
+          ) : null}
         </div>
       </Dialog>
 
@@ -270,7 +276,12 @@ export function AdminAnnouncementsPage() {
           hide it, unpublish it instead — that keeps the text so you can
           publish it again later.
         </p>
-        {remove.isError ? <ErrorState error={remove.error} /> : null}
+        {remove.isError ? (
+          <FormError
+            error={remove.error}
+            title="The announcement was not deleted"
+          />
+        ) : null}
       </Dialog>
     </>
   )

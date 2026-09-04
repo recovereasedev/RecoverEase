@@ -2,7 +2,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { FileBarChart, ListChecks, Printer } from 'lucide-react'
 import { useState } from 'react'
 
-import { ErrorState, StateView } from '@/components/feedback/state-view'
+import { FormError } from '@/components/feedback/form-error'
+import { StateView } from '@/components/feedback/state-view'
 import { PageHeader } from '@/components/layout/page-header'
 import { Button } from '@/components/ui/button'
 import { Card, CardBody, CardHeader } from '@/components/ui/card'
@@ -91,7 +92,10 @@ export function DoctorReportsPage() {
               </Field>
 
               {generate.isError ? (
-                <ErrorState error={generate.error} />
+                <FormError
+                  error={generate.error}
+                  title="The report was not generated"
+                />
               ) : null}
 
               {generate.isSuccess ? (

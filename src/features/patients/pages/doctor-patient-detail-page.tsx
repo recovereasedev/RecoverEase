@@ -15,7 +15,8 @@ import {
 import { useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 
-import { ErrorState, StateView } from '@/components/feedback/state-view'
+import { FormError } from '@/components/feedback/form-error'
+import { StateView } from '@/components/feedback/state-view'
 import { PageHeader } from '@/components/layout/page-header'
 import { StatusBadge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -504,7 +505,10 @@ export function DoctorPatientDetailPage() {
                         </Field>
 
                         {addNote.isError ? (
-                          <ErrorState error={addNote.error} />
+                          <FormError
+                            error={addNote.error}
+                            title="The note was not saved"
+                          />
                         ) : null}
 
                         <Button

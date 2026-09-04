@@ -588,6 +588,42 @@ describe('row level security', () => {
         ),
       )
     })
+
+    // Module 6.1 from the clinician's side. The interface only offers a
+    // doctor their own caseload, but the interface is not the boundary.
+    it('lets a doctor book for their own patient', async () => {
+      const [row] = await database.asUser<{ appointment_id: string }>(
+        fx.doctorAUserId,
+        `insert into public.appointment (pat_id, doc_id, appointment_date)
+         values ($1, $2, now() + interval '5 days') returning appointment_id`,
+        [fx.alicePatId, fx.doctorAId],
+      )
+      expect(row?.appointment_id).toBeTruthy()
+    })
+
+    it('stops a doctor booking for a patient who is not theirs', async () => {
+      await expectDenied(() =>
+        database.asUser(
+          fx.doctorBUserId,
+          `insert into public.appointment (pat_id, doc_id, appointment_date)
+           values ($1, $2, now() + interval '5 days') returning appointment_id`,
+          [fx.alicePatId, fx.doctorBId],
+        ),
+      )
+    })
+
+    it('stops a doctor booking someone else’s patient onto their own list', async () => {
+      // The pairing is what the trigger checks, so naming the correct
+      // assigned doctor does not make the caller entitled to create it.
+      await expectDenied(() =>
+        database.asUser(
+          fx.doctorBUserId,
+          `insert into public.appointment (pat_id, doc_id, appointment_date)
+           values ($1, $2, now() + interval '5 days') returning appointment_id`,
+          [fx.alicePatId, fx.doctorAId],
+        ),
+      )
+    })
   })
 
   // =========================================================================

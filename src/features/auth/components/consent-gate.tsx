@@ -1,7 +1,8 @@
 import { ShieldCheck } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 
-import { ErrorState } from '@/components/feedback/state-view'
+import { FormError } from '@/components/feedback/form-error'
+
 import { Button } from '@/components/ui/button'
 import { recordPrivacyConsent } from '@/features/auth/api'
 import { useAuth, useCurrentUser } from '@/features/auth/auth-context'
@@ -107,7 +108,7 @@ export function ConsentGate({ children }: { children: ReactNode }) {
 
         {error ? (
           <div className="mt-6">
-            <ErrorState error={error} onRetry={() => void accept()} />
+            <FormError error={error} title="Your consent was not recorded" />
           </div>
         ) : null}
 

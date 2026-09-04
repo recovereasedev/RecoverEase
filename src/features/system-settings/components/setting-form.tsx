@@ -1,6 +1,7 @@
 import { useState } from 'react'
 
-import { ErrorState } from '@/components/feedback/state-view'
+import { FormError } from '@/components/feedback/form-error'
+
 import { Button } from '@/components/ui/button'
 import { Card, CardBody, CardFooter, CardHeader } from '@/components/ui/card'
 import { Field, Input, Textarea } from '@/components/ui/field'
@@ -75,7 +76,9 @@ export function SettingForm({
             )}
           </Field>
 
-          {error ? <ErrorState error={error} /> : null}
+          {error ? (
+            <FormError error={error} title="The setting was not saved" />
+          ) : null}
 
           <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
             <Button

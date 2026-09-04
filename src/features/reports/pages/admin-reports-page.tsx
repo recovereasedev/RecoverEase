@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { FileBarChart, ListChecks, Printer } from 'lucide-react'
 
+import { FormError } from '@/components/feedback/form-error'
 import { ErrorState, StateView } from '@/components/feedback/state-view'
 import { PageHeader } from '@/components/layout/page-header'
 import { Button } from '@/components/ui/button'
@@ -82,7 +83,12 @@ export function AdminReportsPage() {
         }
       />
 
-      {generate.isError ? <ErrorState error={generate.error} /> : null}
+      {generate.isError ? (
+        <FormError
+          error={generate.error}
+          title="The report was not generated"
+        />
+      ) : null}
 
       <div className="space-y-5">
         {/* --- Current figures ------------------------------------------- */}

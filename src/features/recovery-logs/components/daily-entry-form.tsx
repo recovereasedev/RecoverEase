@@ -1,7 +1,8 @@
 import { NotebookPen } from 'lucide-react'
 import { useState } from 'react'
 
-import { ErrorState } from '@/components/feedback/state-view'
+import { FormError } from '@/components/feedback/form-error'
+
 import { Button } from '@/components/ui/button'
 import { Field, Textarea } from '@/components/ui/field'
 import { MoodScale } from '@/features/recovery-logs/components/mood-scale'
@@ -66,7 +67,9 @@ export function DailyEntryForm({
         />
       </Field>
 
-      {error ? <ErrorState error={error} /> : null}
+      {error ? (
+        <FormError error={error} title="Your entry was not saved" />
+      ) : null}
 
       <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
         <Button
