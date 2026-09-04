@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { KeyRound, TriangleAlert } from 'lucide-react'
+import { ClipboardPlus, KeyRound, TriangleAlert } from 'lucide-react'
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
 import { Dialog } from '@/components/ui/dialog'
@@ -53,6 +54,7 @@ export function RegisterAccountDialog({
   onClose: () => void
 }) {
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const copy = COPY[mode]
 
   const [email, setEmail] = useState('')
@@ -65,6 +67,7 @@ export function RegisterAccountDialog({
   const [issued, setIssued] = useState<{
     name: string
     password: string
+    profileId: string
   } | null>(null)
 
   const reset = () => {
@@ -112,6 +115,7 @@ export function RegisterAccountDialog({
       setIssued({
         name: `${firstName.trim()} ${lastName.trim()}`.trim(),
         password: result.temporaryPassword,
+        profileId: result.profileId,
       })
     },
   })
@@ -133,14 +137,36 @@ export function RegisterAccountDialog({
       description={copy.description}
       footer={
         issued ? (
-          <Button
-            onClick={() => {
-              reset()
-              onClose()
-            }}
-          >
-            Done
-          </Button>
+          <>
+            <Button
+              variant={mode === 'patient' ? 'ghost' : 'primary'}
+              onClick={() => {
+                reset()
+                onClose()
+              }}
+            >
+              Done
+            </Button>
+            {/* Registering a patient is their first consultation: the
+                clinician has just seen them. This goes straight to the care
+                plan rather than leaving them to find it, but it creates
+                nothing on the way — every clinical value is still entered
+                deliberately, and the record is reachable again later if they
+                leave now. */}
+            {mode === 'patient' ? (
+              <Button
+                onClick={() => {
+                  const destination = `/doctor/patients/${issued.profileId}?tab=treatment`
+                  reset()
+                  onClose()
+                  void navigate(destination)
+                }}
+              >
+                <ClipboardPlus aria-hidden="true" />
+                Set up care plan
+              </Button>
+            ) : null}
+          </>
         ) : (
           <>
             <Button
@@ -186,6 +212,14 @@ export function RegisterAccountDialog({
             This is the only time it is shown. If it is lost, an administrator
             can reset the account rather than recovering this password.
           </p>
+
+          {mode === 'patient' ? (
+            <p className="text-sm text-muted">
+              This registration is their first consultation. Continue to set
+              up the treatment plan and medication now, or open the patient
+              from your list whenever you are ready.
+            </p>
+          ) : null}
         </div>
       ) : (
       <div className="space-y-4">

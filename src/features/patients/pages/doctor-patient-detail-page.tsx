@@ -13,7 +13,7 @@ import {
   Target,
 } from 'lucide-react'
 import { useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, useSearchParams } from 'react-router-dom'
 
 import { ErrorState, StateView } from '@/components/feedback/state-view'
 import { PageHeader } from '@/components/layout/page-header'
@@ -71,7 +71,16 @@ export function DoctorPatientDetailPage() {
   const doctorId = user.profile.kind === 'doctor' ? user.profile.doctor.doc_id : ''
   const queryClient = useQueryClient()
 
-  const [tab, setTab] = useState<TabId>('overview')
+  // A first consultation arrives here straight from registration, pointed at
+  // the tab the clinician needs to fill in. Anything unrecognised falls back
+  // to the overview rather than rendering nothing.
+  const [searchParams] = useSearchParams()
+  const requestedTab = searchParams.get('tab')
+  const [tab, setTab] = useState<TabId>(
+    TABS.some((candidate) => candidate.id === requestedTab)
+      ? (requestedTab as TabId)
+      : 'overview',
+  )
   const [noteDraft, setNoteDraft] = useState('')
 
   const patientQuery = usePatient(patientId)

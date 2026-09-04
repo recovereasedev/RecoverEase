@@ -36,10 +36,15 @@ export function ForgotPasswordPage() {
       setSent(true)
     } catch (error) {
       const message = error instanceof Error ? error.message.toLowerCase() : ''
+      // The limit counts every message the clinic's mail service sends, not
+      // just this person's — a single request can meet it because an account
+      // was invited minutes earlier. Saying "too many requests" to someone who
+      // pressed the button once reads as an accusation and points them at the
+      // wrong remedy, so name the real one.
       setFormError(
         message.includes('rate limit') || message.includes('too many')
-          ? 'Too many reset requests. Please wait a few minutes and try again.'
-          : 'We could not send the reset email. Please try again shortly.',
+          ? 'Reset emails are temporarily unavailable — the clinic mail service has reached its limit for now. Wait a few minutes and try again, or ask your administrator to reset your password for you.'
+          : 'We could not send the reset email. Please try again shortly, or ask your administrator to reset your password for you.',
       )
     }
   })

@@ -1,4 +1,5 @@
-import { CalendarClock, CalendarX, History, Inbox } from 'lucide-react'
+import { CalendarClock, CalendarPlus, CalendarX, History, Inbox } from 'lucide-react'
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import { StateView } from '@/components/feedback/state-view'
@@ -7,6 +8,7 @@ import { StatusBadge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardBody, CardHeader } from '@/components/ui/card'
 import { ListRow, ListRows } from '@/components/ui/list-row'
+import { ScheduleAppointmentDialog } from '@/features/appointments/components/schedule-appointment-dialog'
 import {
   useAppointments,
   useDecideRescheduleRequest,
@@ -18,8 +20,9 @@ import { appointmentStatus, rescheduleRequestStatus } from '@/lib/status'
 import { fullName } from '@/lib/utils'
 
 /**
- * Modules 6.2 "View Appointment Calendar", 6.3 "Review Appointment Reschedule
- * Request" and 6.4 "Approve or Decline Reschedule Request".
+ * Modules 6.1 "Schedule Follow-up Appointment", 6.2 "View Appointment
+ * Calendar", 6.3 "Review Appointment Reschedule Request" and 6.4 "Approve or
+ * Decline Reschedule Request".
  *
  * Pending requests are placed above the calendar because each one has a
  * patient waiting on it.
@@ -29,6 +32,7 @@ export function DoctorAppointmentsPage() {
   const requestsQuery = useRescheduleRequests()
   const decide = useDecideRescheduleRequest()
   const setStatus = useSetAppointmentStatus()
+  const [isSchedulingOpen, setSchedulingOpen] = useState(false)
 
   const now = new Date()
   const upcoming = (appointmentsQuery.data ?? [])
@@ -55,6 +59,17 @@ export function DoctorAppointmentsPage() {
         eyebrow="Your clinic"
         title="Appointments"
         description="Your clinic schedule and reschedule requests."
+        actions={
+          <Button onClick={() => setSchedulingOpen(true)}>
+            <CalendarPlus aria-hidden="true" />
+            Schedule appointment
+          </Button>
+        }
+      />
+
+      <ScheduleAppointmentDialog
+        isOpen={isSchedulingOpen}
+        onClose={() => setSchedulingOpen(false)}
       />
 
       <div className="space-y-5">
