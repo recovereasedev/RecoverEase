@@ -332,3 +332,60 @@ test.describe('a save that fails says why it failed', () => {
     await expect(page.getByText(/row-level security policy/i)).toHaveCount(0)
   })
 })
+
+test.describe('a failed list does not pretend to be an empty one', () => {
+  /**
+   * "No upcoming appointments" and "the request failed" mean opposite things
+   * to a clinician: one is information about the patient, the other is
+   * information about the network. Rendering the first when the second
+   * happened is a lie the reader acts on.
+   */
+  test('a failing appointments query shows an error, not "none"', async ({
+    page,
+    signInAs,
+  }) => {
+    await signInAs('doctor')
+
+    await page.route('**/rest/v1/appointment**', (route) =>
+      route.request().method() === 'GET'
+        ? route.fulfill({
+            status: 500,
+            contentType: 'application/json',
+            body: JSON.stringify({ message: 'upstream unavailable' }),
+          })
+        : route.fallback(),
+    )
+
+    await page.goto('/doctor/appointments')
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
+
+    await expect(page.getByText(/no upcoming appointments/i)).toHaveCount(0)
+    await expect(page.getByRole('alert').first()).toBeVisible()
+    await expect(
+      page.getByRole('button', { name: /try again/i }).first(),
+    ).toBeVisible()
+  })
+
+  test('a failing recovery query shows an error, not "no entries yet"', async ({
+    page,
+    signInAs,
+  }) => {
+    await signInAs('patient')
+
+    await page.route('**/rest/v1/recovery_log**', (route) =>
+      route.request().method() === 'GET'
+        ? route.fulfill({
+            status: 500,
+            contentType: 'application/json',
+            body: JSON.stringify({ message: 'upstream unavailable' }),
+          })
+        : route.fallback(),
+    )
+
+    await page.goto('/patient/recovery')
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
+
+    await expect(page.getByText(/no entries yet/i)).toHaveCount(0)
+    await expect(page.getByRole('alert').first()).toBeVisible()
+  })
+})

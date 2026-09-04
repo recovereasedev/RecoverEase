@@ -167,6 +167,7 @@ export function PatientMedicationsPage() {
                                 <Button
                                   size="sm"
                                   variant="ghost"
+                                  isLoading={isMutating}
                                   onClick={() =>
                                     setDoseStatus.mutate({
                                       doseId: dose.medication_log_id,
@@ -181,6 +182,7 @@ export function PatientMedicationsPage() {
                               <Button
                                 size="sm"
                                 variant="ghost"
+                                isLoading={isMutating}
                                 onClick={() =>
                                   setDoseStatus.mutate({
                                     doseId: dose.medication_log_id,
