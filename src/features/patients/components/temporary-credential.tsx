@@ -1,7 +1,8 @@
-import { Check, Copy, KeyRound } from 'lucide-react'
+import { Check, Copy, KeyRound, TriangleAlert } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
 import { Notice } from '@/components/ui/notice'
+import { copyToClipboard } from '@/lib/clipboard'
 
 /**
  * A single-use credential, shown once.
@@ -33,8 +34,11 @@ export function TemporaryCredential({
   /** What to do if this value is lost. Must describe something that exists. */
   lostHint: string
 }) {
-  const [copied, setCopied] = useState(false)
+  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>(
+    'idle',
+  )
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const value = useRef<HTMLParagraphElement>(null)
 
   // Without this the timer can fire after the dialog closes and set state on
   // a component that is gone.
@@ -45,17 +49,31 @@ export function TemporaryCredential({
     [],
   )
 
+  /** Puts the passphrase under the cursor so copying it is one keystroke. */
+  const selectValue = () => {
+    const node = value.current
+    if (!node) return
+    const range = document.createRange()
+    range.selectNodeContents(node)
+    const selection = window.getSelection()
+    selection?.removeAllRanges()
+    selection?.addRange(range)
+  }
+
   const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(password)
-      setCopied(true)
-      if (timer.current) clearTimeout(timer.current)
-      timer.current = setTimeout(() => setCopied(false), 2000)
-    } catch {
-      // Clipboard access can be refused, and there is nothing to recover:
-      // the value is on screen and can be read from it. Saying "copy failed"
-      // would be noise at the exact moment the credential must be handed over.
-    }
+    const outcome = await copyToClipboard(password)
+    setCopyState(outcome === 'copied' ? 'copied' : 'failed')
+
+    // A failed copy is the moment the person most needs the value in hand, so
+    // it is selected for them rather than left to be dragged over by mouse.
+    if (outcome === 'failed') selectValue()
+
+    if (timer.current) clearTimeout(timer.current)
+    // The failure stays up longer: it has to be read, not just noticed.
+    timer.current = setTimeout(
+      () => setCopyState('idle'),
+      outcome === 'copied' ? 2000 : 8000,
+    )
   }
 
   return (
@@ -79,7 +97,10 @@ export function TemporaryCredential({
               a word-based passphrase exists to avoid. Left to wrap normally
               the break falls after a hyphen, where the format already has a
               seam and the reader expects one. */}
-          <p className="w-full min-w-0 flex-1 select-all font-mono text-lg leading-relaxed font-semibold tracking-wide break-words text-heading">
+          <p
+            ref={value}
+            className="w-full min-w-0 flex-1 select-all font-mono text-lg leading-relaxed font-semibold tracking-wide break-words text-heading"
+          >
             {password}
           </p>
 
@@ -88,18 +109,35 @@ export function TemporaryCredential({
             onClick={() => void copy()}
             className="flex min-h-11 shrink-0 items-center gap-1.5 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-surface px-3 text-sm font-medium text-heading transition-colors hover:bg-surface-sunken"
           >
-            {copied ? (
+            {copyState === 'copied' ? (
               <Check className="size-4" aria-hidden="true" />
+            ) : copyState === 'failed' ? (
+              <TriangleAlert className="size-4" aria-hidden="true" />
             ) : (
               <Copy className="size-4" aria-hidden="true" />
             )}
-            {copied ? 'Copied' : 'Copy'}
+            {copyState === 'copied' ? 'Copied' : 'Copy'}
           </button>
         </div>
 
-        <p className="mt-3 text-sm text-muted">
-          Four words and a number, all in small letters. Read it out or copy
-          it — the hyphens are part of it.
+        {/* One live region for both outcomes, so a screen reader hears what
+            happened either way. A copy that cannot be completed says so:
+            reporting success we did not achieve is how someone walks away
+            with an empty clipboard and no password. */}
+        <p
+          className={
+            copyState === 'failed'
+              ? 'mt-3 text-sm font-medium text-danger-700'
+              : 'mt-3 text-sm text-muted'
+          }
+          role="status"
+          aria-live="polite"
+        >
+          {copyState === 'failed'
+            ? 'Copy failed — select the password above and copy it manually.'
+            : copyState === 'copied'
+              ? 'Copied to the clipboard.'
+              : 'Four words and a number, all in small letters. Read it out or copy it — the hyphens are part of it.'}
         </p>
       </div>
 
