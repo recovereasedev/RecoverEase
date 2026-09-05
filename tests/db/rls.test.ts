@@ -480,6 +480,155 @@ describe('row level security', () => {
       expect(appointment!.appointment_status).toBe('scheduled')
     })
 
+    it('does not bring a cancelled appointment back when a reschedule is approved', async () => {
+      // The appointment was cancelled; approving a reschedule against it used
+      // to set it straight back to 'scheduled' at a new time, erasing the
+      // cancellation from the record entirely. A cancellation is a clinical
+      // fact and must survive.
+      const [appointment] = await database.asService<{ appointment_id: string }>(
+        `insert into public.appointment (pat_id, doc_id, appointment_date)
+         values ($1, $2, now() + interval '40 days')
+         returning appointment_id`,
+        [fx.alicePatId, fx.doctorAId],
+      )
+      const appointmentId = appointment!.appointment_id
+
+      const [request] = await database.asUser<{ reschedule_request_id: string }>(
+        fx.aliceUserId,
+        `insert into public.reschedule_request
+           (appointment_id, user_id, reschedule_request_date)
+         values ($1, $2, now() + interval '50 days')
+         returning reschedule_request_id`,
+        [appointmentId, fx.aliceUserId],
+      )
+
+      // Cancelled after the request was raised — the exact ordering that made
+      // this reachable.
+      await database.asUser(
+        fx.aliceUserId,
+        `update public.appointment set appointment_status = 'cancelled'
+          where appointment_id = $1`,
+        [appointmentId],
+      )
+
+      const [before] = await database.asService<{ appointment_date: string }>(
+        `select appointment_date from public.appointment
+          where appointment_id = $1`,
+        [appointmentId],
+      )
+
+      await expectDenied(() =>
+        database.asUser(
+          fx.doctorAUserId,
+          `update public.reschedule_request
+              set reschedule_request_status = 'approved'
+            where reschedule_request_id = $1
+            returning reschedule_request_id`,
+          [request!.reschedule_request_id],
+        ),
+      )
+
+      const [after] = await database.asService<{
+        appointment_date: string
+        appointment_status: string
+      }>(
+        `select appointment_date, appointment_status from public.appointment
+          where appointment_id = $1`,
+        [appointmentId],
+      )
+
+      expect(after!.appointment_status).toBe('cancelled')
+      // Not merely still cancelled — not moved either.
+      expect(new Date(after!.appointment_date).getTime()).toBe(
+        new Date(before!.appointment_date).getTime(),
+      )
+    })
+
+    it('does not re-date a completed appointment when a reschedule is approved', async () => {
+      // 'completed' and 'no_show' are history. Moving one would rewrite what
+      // happened, which is worse than refusing the approval.
+      const [appointment] = await database.asService<{ appointment_id: string }>(
+        `insert into public.appointment
+           (pat_id, doc_id, appointment_date, appointment_status)
+         values ($1, $2, now() + interval '60 days', 'scheduled')
+         returning appointment_id`,
+        [fx.alicePatId, fx.doctorAId],
+      )
+      const appointmentId = appointment!.appointment_id
+
+      const [request] = await database.asUser<{ reschedule_request_id: string }>(
+        fx.aliceUserId,
+        `insert into public.reschedule_request
+           (appointment_id, user_id, reschedule_request_date)
+         values ($1, $2, now() + interval '70 days')
+         returning reschedule_request_id`,
+        [appointmentId, fx.aliceUserId],
+      )
+
+      await database.asService(
+        `update public.appointment set appointment_status = 'completed'
+          where appointment_id = $1`,
+        [appointmentId],
+      )
+
+      await expectDenied(() =>
+        database.asUser(
+          fx.doctorAUserId,
+          `update public.reschedule_request
+              set reschedule_request_status = 'approved'
+            where reschedule_request_id = $1
+            returning reschedule_request_id`,
+          [request!.reschedule_request_id],
+        ),
+      )
+
+      const [after] = await database.asService<{ appointment_status: string }>(
+        `select appointment_status from public.appointment
+          where appointment_id = $1`,
+        [appointmentId],
+      )
+      expect(after!.appointment_status).toBe('completed')
+    })
+
+    it('still lets a doctor decline a request against a cancelled appointment', async () => {
+      // Refusing the approval must not strand the request. Declining is the
+      // way out, and it never touches the appointment, so it stays available.
+      const [appointment] = await database.asService<{ appointment_id: string }>(
+        `insert into public.appointment
+           (pat_id, doc_id, appointment_date, appointment_status)
+         values ($1, $2, now() + interval '80 days', 'cancelled')
+         returning appointment_id`,
+        [fx.alicePatId, fx.doctorAId],
+      )
+
+      const [request] = await database.asUser<{ reschedule_request_id: string }>(
+        fx.aliceUserId,
+        `insert into public.reschedule_request
+           (appointment_id, user_id, reschedule_request_date)
+         values ($1, $2, now() + interval '90 days')
+         returning reschedule_request_id`,
+        [appointment!.appointment_id, fx.aliceUserId],
+      )
+
+      const declined = await database.asUser<{ reschedule_request_status: string }>(
+        fx.doctorAUserId,
+        `update public.reschedule_request
+            set reschedule_request_status = 'declined'
+          where reschedule_request_id = $1
+          returning reschedule_request_status`,
+        [request!.reschedule_request_id],
+      )
+
+      expect(declined[0]?.reschedule_request_status).toBe('declined')
+
+      const [after] = await database.asService<{ appointment_status: string }>(
+        `select appointment_status from public.appointment
+          where appointment_id = $1`,
+        [appointment!.appointment_id],
+      )
+      expect(after!.appointment_status).toBe('cancelled')
+    })
+
     it('stops a doctor editing medication adherence', async () => {
       // Module 4.6 gives marking-as-taken to the patient only. An adherence
       // record the treating clinician can edit proves nothing.

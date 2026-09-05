@@ -178,6 +178,18 @@ export function PatientAppointmentsPage() {
                     const pending = pendingRequestFor(
                       appointment.appointment_id,
                     )
+                    // Only an appointment that is still going to happen can
+                    // be moved or called off. 'cancelled', 'completed' and
+                    // 'no_show' are settled, and offering "Cancel" beside a
+                    // cancelled appointment invited a second cancellation of
+                    // something already cancelled — while "Request new time"
+                    // there was worse than pointless, because approving that
+                    // request used to put the appointment back to
+                    // 'scheduled'. The database refuses that now; this keeps
+                    // the action from being offered in the first place.
+                    const isOpen =
+                      appointment.appointment_status === 'scheduled' ||
+                      appointment.appointment_status === 'confirmed'
 
                     return (
                       <ListRow
@@ -226,11 +238,11 @@ export function PatientAppointmentsPage() {
                             </Button>
                           ) : null}
 
-                          {!pending ? (
+                          {isOpen && !pending ? (
                             <Button
                               size="sm"
                               variant="secondary"
-                             
+
                               onClick={() => {
                                 setReschedulingId(appointment.appointment_id)
                                 setRescheduleValue('')
@@ -241,19 +253,21 @@ export function PatientAppointmentsPage() {
                             </Button>
                           ) : null}
 
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                           
-                            onClick={() =>
-                              setStatus.mutate({
-                                appointmentId: appointment.appointment_id,
-                                status: 'cancelled',
-                              })
-                            }
-                          >
-                            Cancel
-                          </Button>
+                          {isOpen ? (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+
+                              onClick={() =>
+                                setStatus.mutate({
+                                  appointmentId: appointment.appointment_id,
+                                  status: 'cancelled',
+                                })
+                              }
+                            >
+                              Cancel
+                            </Button>
+                          ) : null}
                         </div>
 
                         {pending ? (
