@@ -1,4 +1,4 @@
-import { Stethoscope, UserPlus } from 'lucide-react'
+import { KeyRound, Stethoscope, UserPlus } from 'lucide-react'
 import { useState } from 'react'
 
 import { StateView } from '@/components/feedback/state-view'
@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardBody } from '@/components/ui/card'
 import { Notice } from '@/components/ui/notice'
 import { RegisterAccountDialog } from '@/features/patients/components/register-account-dialog'
+import { ResetCredentialDialog } from '@/features/patients/components/reset-credential-dialog'
 import { useAllDoctors, useSetDoctorActive } from '@/features/patients/hooks'
 import { formatDate } from '@/lib/format'
 import { doctorAccountStatus } from '@/lib/status'
@@ -27,6 +28,13 @@ import { fullName } from '@/lib/utils'
  * it.
  */
 export function AdminDoctorsPage() {
+  // Holds the doctor whose credential is being reissued. Null closes the
+  // dialog; the object carries the name so the confirmation can say who it
+  // is for without another lookup.
+  const [resetting, setResetting] = useState<{
+    doctorId: string
+    name: string
+  } | null>(null)
   const doctorsQuery = useAllDoctors()
   const setActive = useSetDoctorActive()
   const [isRegisterOpen, setRegisterOpen] = useState(false)
@@ -53,6 +61,21 @@ export function AdminDoctorsPage() {
         isOpen={isRegisterOpen}
         onClose={() => setRegisterOpen(false)}
       />
+
+      {/* Mounted only while a doctor is selected, so the dialog starts from a
+          clean state for each account rather than carrying the previous
+          one's result. */}
+      {resetting ? (
+        <ResetCredentialDialog
+          isOpen
+          onClose={() => setResetting(null)}
+          subject={{
+            kind: 'doctor',
+            doctorId: resetting.doctorId,
+            name: resetting.name,
+          }}
+        />
+      ) : null}
 
       <Card>
         <CardBody className="p-0">
@@ -121,6 +144,35 @@ export function AdminDoctorsPage() {
                               : doctorAccountStatus.inactive
                           }
                         />
+
+                        {/* Module 11.2. A temporary password is shown once,
+                            and outbound email is not configured, so without
+                            this a lost credential leaves the account
+                            unreachable. */}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() =>
+                            setResetting({
+                              doctorId: doctor.doc_id,
+                              name: `Dr ${fullName(
+                                doctor.doc_first_name,
+                                doctor.doc_last_name,
+                              )}`,
+                            })
+                          }
+                        >
+                          <KeyRound aria-hidden="true" />
+                          Reset password
+                          <span className="sr-only">
+                            {' '}
+                            for Dr{' '}
+                            {fullName(
+                              doctor.doc_first_name,
+                              doctor.doc_last_name,
+                            )}
+                          </span>
+                        </Button>
 
                         <Button
                           size="sm"

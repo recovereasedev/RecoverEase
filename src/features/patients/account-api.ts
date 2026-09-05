@@ -87,3 +87,59 @@ export function createDoctorAccount(
 ): Promise<AccountCreated> {
   return invokeCreateAccount({ kind: 'doctor', ...input })
 }
+
+export type CredentialReissued = {
+  /**
+   * The replacement credential, returned exactly once. The holder must change
+   * it at first sign-in. Never persist or log this.
+   */
+  temporaryPassword: string
+}
+
+async function invokeReset(
+  body: Record<string, unknown>,
+): Promise<CredentialReissued> {
+  const { data, error } = await supabase.functions.invoke<
+    CredentialReissued & { error?: string }
+  >('reset-account-password', { body })
+
+  if (error) {
+    let message = 'That account could not be reset.'
+    const context = (error as { context?: Response }).context
+    if (context && typeof context.json === 'function') {
+      try {
+        const payload = (await context.json()) as { error?: string }
+        if (payload?.error) message = payload.error
+      } catch {
+        // Body was not JSON; keep the generic message.
+      }
+    }
+    throw new Error(message)
+  }
+
+  if (!data || data.error) {
+    throw new Error(data?.error ?? 'That account could not be reset.')
+  }
+
+  return data
+}
+
+/**
+ * Reissues a doctor's temporary credential. Administrators only.
+ *
+ * The previous password stops working immediately and the account is put
+ * back into the first-login password change, so a reissued credential is no
+ * more privileged than a freshly created one.
+ */
+export function resetDoctorPassword(
+  doctorId: string,
+): Promise<CredentialReissued> {
+  return invokeReset({ kind: 'doctor', doctorId })
+}
+
+/** Reissues a patient's temporary credential. Their assigned doctor only. */
+export function resetPatientPassword(
+  patientId: string,
+): Promise<CredentialReissued> {
+  return invokeReset({ kind: 'patient', patientId })
+}

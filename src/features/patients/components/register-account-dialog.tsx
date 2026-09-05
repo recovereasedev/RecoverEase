@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { ClipboardPlus, KeyRound, TriangleAlert } from 'lucide-react'
+import { ClipboardPlus, TriangleAlert } from 'lucide-react'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
@@ -11,6 +11,7 @@ import {
   createDoctorAccount,
   createPatientAccount,
 } from '@/features/patients/account-api'
+import { TemporaryCredential } from '@/features/patients/components/temporary-credential'
 import { queryKeys } from '@/lib/query-keys'
 
 type Mode = 'patient' | 'doctor'
@@ -22,6 +23,8 @@ const COPY = {
       'This creates their account and gives you a temporary password to hand over. They are assigned to you.',
     submit: 'Register patient',
     handOver: 'Give this password to the patient.',
+    lostHint:
+      'If it is lost, reset the account from their record to issue a new one.',
   },
   doctor: {
     title: 'Register a doctor',
@@ -29,6 +32,8 @@ const COPY = {
       'This creates a clinician account and gives you a temporary password to hand over.',
     submit: 'Register doctor',
     handOver: 'Give this password to the doctor.',
+    lostHint:
+      'If it is lost, reset the account from the doctor accounts list to issue a new one.',
   },
 } as const
 
@@ -192,26 +197,13 @@ export function RegisterAccountDialog({
     >
       {issued ? (
         <div className="space-y-4">
-          <Notice tone="success" title="Account created" icon={KeyRound}>
-            {copy.handOver} They will be asked to choose their own password
-            the first time they sign in, and this one stops working then.
-          </Notice>
-
-          <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-surface-sunken p-4">
-            <p className="text-label-sm font-medium text-muted">
-              Temporary password for {issued.name}
-            </p>
-            {/* Selectable so it can be copied accurately, and in a monospace
-                face so characters that look alike are told apart. */}
-            <p className="mt-2 select-all font-mono text-lg font-semibold tracking-wide text-heading">
-              {issued.password}
-            </p>
-          </div>
-
-          <p className="text-sm text-muted">
-            This is the only time it is shown. If it is lost, an administrator
-            can reset the account rather than recovering this password.
-          </p>
+          <TemporaryCredential
+            title="Account created"
+            handOver={copy.handOver}
+            name={issued.name}
+            password={issued.password}
+            lostHint={copy.lostHint}
+          />
 
           {mode === 'patient' ? (
             <p className="text-sm text-muted">
@@ -242,7 +234,10 @@ export function RegisterAccountDialog({
 
         <Field
           label="Email address"
-          description="The invitation is sent here. It becomes their sign-in address."
+          // No message is sent here. Onboarding is credential handover, so the
+          // address is only ever the sign-in identifier; saying an invitation
+          // arrives leaves the creator waiting for an email that is never sent.
+          description="This becomes their sign-in address. No email is sent — give them the temporary password yourself."
           required
         >
           <Input

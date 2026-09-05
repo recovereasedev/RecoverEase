@@ -4,6 +4,7 @@ import {
   Activity,
   ClipboardList,
   IdCard,
+  KeyRound,
   LineChart,
   NotebookPen,
   Pill,
@@ -29,6 +30,7 @@ import { createDoctorNote, fetchDoctorNotes } from '@/features/doctor-notes/api'
 import { AdherenceSummary } from '@/features/medications/components/adherence-summary'
 import { summariseAdherence } from '@/features/medications/api'
 import { useDoses, useMedicationSchedules } from '@/features/medications/hooks'
+import { ResetCredentialDialog } from '@/features/patients/components/reset-credential-dialog'
 import { usePatient } from '@/features/patients/hooks'
 import { MoodTrend } from '@/features/recovery-logs/components/mood-trend'
 import { useRecoveryLogs } from '@/features/recovery-logs/hooks'
@@ -83,6 +85,9 @@ export function DoctorPatientDetailPage() {
       : 'overview',
   )
   const [noteDraft, setNoteDraft] = useState('')
+  // A patient's temporary password is shown once at registration, and no
+  // email is sent, so their assigned clinician needs a way to reissue it.
+  const [isResetOpen, setResetOpen] = useState(false)
 
   const patientQuery = usePatient(patientId)
   const logsQuery = useRecoveryLogs(patientId)
@@ -148,16 +153,41 @@ export function DoctorPatientDetailPage() {
                 <StatusBadge status={patientStatus[patient.pat_status]} />
               }
               actions={
-                <Button
-                  variant="outline"
-                  className="max-sm:w-full"
-                  onClick={() => window.print()}
-                >
-                  <Printer aria-hidden="true" />
-                  Print record
-                </Button>
+                <>
+                  <Button
+                    variant="outline"
+                    className="max-sm:w-full"
+                    onClick={() => setResetOpen(true)}
+                  >
+                    <KeyRound aria-hidden="true" />
+                    Reset password
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="max-sm:w-full"
+                    onClick={() => window.print()}
+                  >
+                    <Printer aria-hidden="true" />
+                    Print record
+                  </Button>
+                </>
               }
             />
+
+            {isResetOpen ? (
+              <ResetCredentialDialog
+                isOpen
+                onClose={() => setResetOpen(false)}
+                subject={{
+                  kind: 'patient',
+                  patientId: patient.pat_id,
+                  name: fullName(
+                    patient.pat_first_name,
+                    patient.pat_last_name,
+                  ),
+                }}
+              />
+            ) : null}
 
             <Tabs tabs={TABS} value={tab} onChange={setTab}>
               {/* --- Overview ------------------------------------------- */}

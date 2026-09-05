@@ -1,4 +1,4 @@
-import { expect, test } from './support/fixtures'
+import { expect, IDS, test } from './support/fixtures'
 
 /**
  * Regressions for defects found in the production QA pass.
@@ -387,5 +387,186 @@ test.describe('a failed list does not pretend to be an empty one', () => {
 
     await expect(page.getByText(/no entries yet/i)).toHaveCount(0)
     await expect(page.getByRole('alert').first()).toBeVisible()
+  })
+})
+
+test.describe('account credentials are described truthfully', () => {
+  /**
+   * Found in live production. The dialog header correctly said a temporary
+   * password is handed over, while the email field still promised an
+   * invitation that `create-account` stopped sending. The creator was told to
+   * wait for a message that never arrives — the same confusion behind the
+   * original "wala sa sako gmail" report.
+   */
+  test('the doctor dialog does not promise an invitation email', async ({
+    page,
+    signInAs,
+  }) => {
+    await signInAs('admin', {
+      'rpc/admin_dashboard_stats': [
+        {
+          patients: { total: 0, active: 0 },
+          doctors: { total: 0, active: 0 },
+          accounts: {},
+          appointments: { upcoming: 0 },
+          generated_at: new Date().toISOString(),
+        },
+      ],
+    })
+    await page.goto('/admin/doctors')
+    await page.getByRole('button', { name: /register a doctor/i }).click()
+
+    const dialog = page.getByRole('dialog')
+    await expect(dialog).toBeVisible()
+    await expect(dialog.getByText(/the invitation is sent here/i)).toHaveCount(0)
+    await expect(dialog.getByText(/becomes their sign-in address/i)).toBeVisible()
+    await expect(dialog.getByText(/no email is sent/i)).toBeVisible()
+  })
+
+  test('the patient dialog does not promise an invitation email', async ({
+    page,
+    signInAs,
+  }) => {
+    await signInAs('doctor')
+    await page.goto('/doctor/patients')
+    await page.getByRole('button', { name: /register a patient/i }).click()
+
+    const dialog = page.getByRole('dialog')
+    await expect(dialog.getByText(/the invitation is sent here/i)).toHaveCount(0)
+    await expect(dialog.getByText(/becomes their sign-in address/i)).toBeVisible()
+  })
+})
+
+test.describe('a lost temporary credential can be reissued', () => {
+  /**
+   * The creation panel told the creator an administrator could reset the
+   * account. No such control existed, and with outbound email unconfigured a
+   * lost credential left the account permanently unreachable.
+   */
+  test('an administrator can reset a doctor and is warned first', async ({
+    page,
+    signInAs,
+  }) => {
+    await signInAs('admin', {
+      'rpc/admin_dashboard_stats': [
+        {
+          patients: { total: 0, active: 0 },
+          doctors: { total: 1, active: 1 },
+          accounts: {},
+          appointments: { upcoming: 0 },
+          generated_at: new Date().toISOString(),
+        },
+      ],
+    })
+
+    let sent: Record<string, unknown> | null = null
+    await page.goto('/admin/doctors')
+    await page.route('**/functions/v1/reset-account-password', async (route) => {
+      sent = JSON.parse(route.request().postData() ?? '{}')
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ temporaryPassword: 'ACDE-FGHJ-KMNP-QRTU' }),
+      })
+    })
+
+    await page.getByRole('button', { name: /reset password/i }).first().click()
+
+    const dialog = page.getByRole('dialog')
+    // The consequence is stated before the action, not discovered after it.
+    await expect(
+      dialog.getByText(/current password stops working/i),
+    ).toBeVisible()
+    await expect(dialog.getByText('ACDE-FGHJ-KMNP-QRTU')).toHaveCount(0)
+
+    await dialog.getByRole('button', { name: /^reset password$/i }).click()
+
+    await expect(dialog.getByText('ACDE-FGHJ-KMNP-QRTU')).toBeVisible()
+    await expect(dialog.getByText(/new password issued/i).first()).toBeVisible()
+    const captured: Record<string, unknown> = sent ?? {}
+    expect(captured).toMatchObject({ kind: 'doctor' })
+    expect(captured.doctorId).toBeTruthy()
+  })
+
+  test('a server refusal is shown and no credential is invented', async ({
+    page,
+    signInAs,
+  }) => {
+    await signInAs('admin', {
+      'rpc/admin_dashboard_stats': [
+        {
+          patients: { total: 0, active: 0 },
+          doctors: { total: 1, active: 1 },
+          accounts: {},
+          appointments: { upcoming: 0 },
+          generated_at: new Date().toISOString(),
+        },
+      ],
+    })
+    await page.goto('/admin/doctors')
+    await page.route('**/functions/v1/reset-account-password', (route) =>
+      route.fulfill({
+        status: 403,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          error: 'Only an administrator can reset a doctor account',
+        }),
+      }),
+    )
+
+    await page.getByRole('button', { name: /reset password/i }).first().click()
+    const dialog = page.getByRole('dialog')
+    await dialog.getByRole('button', { name: /^reset password$/i }).click()
+
+    await expect(
+      dialog.getByText(/only an administrator can reset/i),
+    ).toBeVisible()
+    // No credential panel on failure.
+    await expect(dialog.getByText(/new password issued/i)).toHaveCount(0)
+  })
+
+  test('a doctor can reissue their own patient’s credential', async ({
+    page,
+    signInAs,
+  }) => {
+    await signInAs('doctor')
+
+    let sent: Record<string, unknown> | null = null
+    await page.goto(`/doctor/patients/${IDS.alicePat}`)
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
+
+    await page.route('**/functions/v1/reset-account-password', async (route) => {
+      sent = JSON.parse(route.request().postData() ?? '{}')
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ temporaryPassword: 'WXYZ-2346-79AC-DEFG' }),
+      })
+    })
+
+    await page.getByRole('button', { name: /reset password/i }).first().click()
+    const dialog = page.getByRole('dialog')
+    await dialog.getByRole('button', { name: /^reset password$/i }).click()
+
+    await expect(dialog.getByText('WXYZ-2346-79AC-DEFG')).toBeVisible()
+    // The patient is named by profile id, never by a raw auth user id.
+    const capturedPatient: Record<string, unknown> = sent ?? {}
+    expect(capturedPatient).toMatchObject({
+      kind: 'patient',
+      patientId: IDS.alicePat,
+    })
+  })
+
+  test('the reset control is absent for a patient', async ({
+    page,
+    signInAs,
+  }) => {
+    await signInAs('patient')
+    await page.goto('/patient/profile')
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
+
+    await expect(
+      page.getByRole('button', { name: /reset password/i }),
+    ).toHaveCount(0)
   })
 })
