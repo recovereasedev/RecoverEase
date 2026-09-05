@@ -97,7 +97,11 @@ export function ResetCredentialDialog({
       <div className="space-y-4">
         {issued ? (
           <TemporaryCredential
-            title="New password issued"
+            // Not "New password issued" again — that is the dialog's own
+            // title, directly above this. The heading here is the one thing
+            // the title does not say, and the thing that decides whether the
+            // account holder is about to be locked out without warning.
+            title="Their previous password has stopped working"
             handOver={
               subject.kind === 'doctor'
                 ? 'Give this password to the doctor.'

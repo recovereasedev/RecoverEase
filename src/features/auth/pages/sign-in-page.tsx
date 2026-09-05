@@ -9,6 +9,7 @@ import { Field, Input } from '@/components/ui/field'
 import { signInWithPassword } from '@/features/auth/api'
 import { AuthLayout } from '@/features/auth/components/auth-layout'
 import { AuthFormAlert } from '@/features/auth/components/form-alert'
+import { takeFlash } from '@/features/auth/flash'
 import { signInSchema, type SignInValues } from '@/features/auth/schemas'
 import { useDocumentTitle } from '@/hooks/use-document-title'
 
@@ -44,6 +45,12 @@ export function SignInPage() {
   useDocumentTitle('Sign In')
   const [formError, setFormError] = useState<string | null>(null)
   const [showPassword, setShowPassword] = useState(false)
+
+  // Something that already happened, left for this page by whoever sent the
+  // person here — a saved password whose session could not be rebuilt, for
+  // instance. It is news, not a failure, so it does not use the error alert.
+  // Read once on arrival: a reload should not repeat it.
+  const [notice] = useState(takeFlash)
 
   const {
     register,
@@ -86,6 +93,15 @@ export function SignInPage() {
       }
     >
       <form onSubmit={onSubmit} noValidate className="space-y-5">
+        {notice ? (
+          <p
+            className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-surface-sunken px-4 py-3 text-body text-heading"
+            role="status"
+            aria-live="polite"
+          >
+            {notice}
+          </p>
+        ) : null}
         {formError ? <AuthFormAlert message={formError} /> : null}
 
         <Field label="Email address" error={errors.email?.message} required>
@@ -104,6 +120,12 @@ export function SignInPage() {
             <Input
               type={showPassword ? 'text' : 'password'}
               autoComplete="current-password"
+              // Never autocapitalised or autocorrected. Once "show password" makes
+              // this a text field a phone will silently alter what was typed, and
+              // the failure that follows reads as a wrong password.
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
               className="pr-12"
               {...register('password')}
             />

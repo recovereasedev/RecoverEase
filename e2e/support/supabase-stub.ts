@@ -126,6 +126,15 @@ function matches(
 export class SupabaseStub {
   private tables: TableRows
   private session: StubSession | null = null
+  /**
+   * The password the stubbed accounts currently accept.
+   *
+   * Not a constant, because completing the forced password setup changes it:
+   * the app re-authenticates with the password it has just set, and a stub
+   * that only ever honoured the original one would reject that and make the
+   * fallback look like the normal path.
+   */
+  private password = 'correct-horse-battery'
   /** Requests the app made, for assertions about what it asked for. */
   readonly requests: string[] = []
 
@@ -136,6 +145,11 @@ export class SupabaseStub {
 
   setSession(session: StubSession | null): void {
     this.session = session
+  }
+
+  /** Models an account whose password has been changed server-side. */
+  setPassword(password: string): void {
+    this.password = password
   }
 
   rowsIn(table: string): Record<string, unknown>[] {
@@ -242,7 +256,7 @@ export class SupabaseStub {
       )
 
       // Wrong password, or unknown address, must be indistinguishable.
-      if (!account || body.password !== 'correct-horse-battery') {
+      if (!account || body.password !== this.password) {
         await route.fulfill({
           status: 400,
           contentType: 'application/json',

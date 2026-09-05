@@ -1,13 +1,16 @@
 import { zodResolver } from '@hookform/resolvers/zod'
-import { KeyRound } from 'lucide-react'
+import { Eye, EyeOff, KeyRound } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { useForm } from 'react-hook-form'
+import { useNavigate } from 'react-router-dom'
 
+import { roleHome } from '@/app/routes/guards'
 import { Button } from '@/components/ui/button'
 import { Field, Input } from '@/components/ui/field'
 import { completePasswordSetup } from '@/features/auth/api'
 import { useAuth, useCurrentUser } from '@/features/auth/auth-context'
 import { AuthFormAlert } from '@/features/auth/components/form-alert'
+import { setFlash } from '@/features/auth/flash'
 import { newPasswordSchema, type NewPasswordValues } from '@/features/auth/schemas'
 
 /**
@@ -28,7 +31,12 @@ import { newPasswordSchema, type NewPasswordValues } from '@/features/auth/schem
 export function PasswordSetupGate({ children }: { children: ReactNode }) {
   const user = useCurrentUser()
   const { signOut, refresh } = useAuth()
+  const navigate = useNavigate()
   const [formError, setFormError] = useState<string | null>(null)
+  // Replaces the form while the session is being rebuilt, so the last thing
+  // seen is progress rather than a form that has already done its job.
+  const [handingOff, setHandingOff] = useState<string | null>(null)
+  const [showPassword, setShowPassword] = useState(false)
 
   const form = useForm<NewPasswordValues>({
     resolver: zodResolver(newPasswordSchema),
@@ -42,12 +50,28 @@ export function PasswordSetupGate({ children }: { children: ReactNode }) {
   const submit = form.handleSubmit(async (values) => {
     setFormError(null)
     try {
-      await completePasswordSetup(values.password)
+      const { signedIn } = await completePasswordSetup(values.password)
+
+      if (!signedIn) {
+        // The password did change. Only the session could not be rebuilt, so
+        // say that plainly and send them somewhere their new password works,
+        // rather than leaving them on a form that would now reject it.
+        setHandingOff('Your password is saved. Taking you to sign in…')
+        setFlash(
+          'Your password is saved. Sign in with your new password to continue.',
+        )
+        navigate('/sign-in', { replace: true })
+        return
+      }
+
       // Re-reads the session so the cleared requirement is what the rest of
       // the application sees. Without this the gate would still be holding a
       // stale `true` and would render over the app it just unlocked.
+      setHandingOff('Your password is saved. Signing you in…')
       await refresh()
+      navigate(roleHome(user.role), { replace: true })
     } catch (caught) {
+      setHandingOff(null)
       setFormError(
         caught instanceof Error
           ? caught.message
@@ -71,6 +95,18 @@ export function PasswordSetupGate({ children }: { children: ReactNode }) {
           your own now — the temporary one stops working once you do.
         </p>
 
+        {handingOff ? (
+          // The password is already saved at this point. Nothing here can be
+          // retried or cancelled, so the form is gone rather than merely
+          // disabled, and the only thing on screen is what is happening.
+          <p
+            className="mt-6 text-body text-heading"
+            role="status"
+            aria-live="polite"
+          >
+            {handingOff}
+          </p>
+        ) : (
         <form onSubmit={submit} className="mt-6 space-y-4" noValidate>
           {formError ? <AuthFormAlert message={formError} /> : null}
 
@@ -80,22 +116,56 @@ export function PasswordSetupGate({ children }: { children: ReactNode }) {
             error={form.formState.errors.password?.message}
             description="At least 12 characters. A short phrase is easier to remember than a jumble."
           >
-            <Input
-              type="password"
-              autoComplete="new-password"
-              autoFocus
-              {...form.register('password')}
-            />
+            <div className="relative">
+              <Input
+                type={showPassword ? 'text' : 'password'}
+                autoComplete="new-password"
+                // Never autocapitalised or autocorrected. Once "show password" makes
+                // this a text field a phone will silently alter what was typed, and
+                // the failure that follows reads as a wrong password.
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                autoFocus
+                className="pr-12"
+                {...form.register('password')}
+              />
+              {/* Typing a password you cannot see, twice, is the step people
+                  give up on. A real button so it is reachable by keyboard and
+                  announced with its state. */}
+              <button
+                type="button"
+                onClick={() => setShowPassword((current) => !current)}
+                aria-pressed={showPassword}
+                className="absolute inset-y-0 right-0 flex w-12 items-center justify-center rounded-r-[var(--radius-md)] text-muted transition-colors hover:text-heading"
+              >
+                {showPassword ? (
+                  <EyeOff className="size-5" aria-hidden="true" />
+                ) : (
+                  <Eye className="size-5" aria-hidden="true" />
+                )}
+                <span className="sr-only">
+                  {showPassword ? 'Hide password' : 'Show password'}
+                </span>
+              </button>
+            </div>
           </Field>
 
           <Field
             label="Confirm new password"
             required
             error={form.formState.errors.confirmPassword?.message}
+            description="Type the same password again so a typo cannot lock you out."
           >
             <Input
-              type="password"
+              type={showPassword ? 'text' : 'password'}
               autoComplete="new-password"
+              // Never autocapitalised or autocorrected. Once "show password" makes
+              // this a text field a phone will silently alter what was typed, and
+              // the failure that follows reads as a wrong password.
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
               {...form.register('confirmPassword')}
             />
           </Field>
@@ -104,6 +174,7 @@ export function PasswordSetupGate({ children }: { children: ReactNode }) {
               start a second change while the first is in flight. */}
           <Button
             type="submit"
+            size="lg"
             block
             isLoading={form.formState.isSubmitting}
             loadingLabel="Saving your password…"
@@ -111,17 +182,20 @@ export function PasswordSetupGate({ children }: { children: ReactNode }) {
             Save and continue
           </Button>
         </form>
+        )}
 
-        <p className="mt-6 text-center text-sm text-muted">
-          Not your account?{' '}
-          <button
-            type="button"
-            onClick={() => void signOut()}
-            className="min-h-11 font-medium text-brand-700 underline underline-offset-2 sm:min-h-0"
-          >
-            Sign out
-          </button>
-        </p>
+        {handingOff ? null : (
+          <p className="mt-6 text-center text-sm text-muted">
+            Not your account?{' '}
+            <button
+              type="button"
+              onClick={() => void signOut()}
+              className="min-h-11 font-medium text-brand-700 underline underline-offset-2 sm:min-h-0"
+            >
+              Sign out
+            </button>
+          </p>
+        )}
       </div>
     </main>
   )

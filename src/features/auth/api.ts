@@ -172,6 +172,9 @@ export async function recordPrivacyConsent(patientId: string): Promise<void> {
   if (error) throw error
 }
 
+/** Whether the account is still signed in once its password has changed. */
+export type PasswordSetupOutcome = { signedIn: boolean }
+
 /**
  * Completes the forced password change for an account still holding the
  * temporary credential it was created with.
@@ -180,8 +183,32 @@ export async function recordPrivacyConsent(patientId: string): Promise<void> {
  * because the requirement lives in `app_metadata`, which only the
  * service-role key may clear. Doing both in one server call also means the
  * password and the requirement cannot end up disagreeing.
+ *
+ * The session is then re-established by signing in again, not by refreshing.
+ * A service-role password change revokes the account's refresh tokens — every
+ * one of them, deliberately, so that a second browser still holding the
+ * temporary credential is put out at the same moment. The previous version
+ * called `refreshSession()` immediately afterwards with a token the server
+ * had just revoked, so it failed every single time and told the account
+ * holder to sign in again the instant they had finished setting up. The
+ * revocation is worth keeping; reusing a revoked token is not.
+ *
+ * Signing in again is the strongest possible re-authentication: it is a full
+ * password grant for the same account, using the password the person typed a
+ * moment ago and nothing else. The identity comes from the verified session
+ * that existed before the change, never from user input, so this cannot be
+ * steered at another account.
  */
-export async function completePasswordSetup(password: string): Promise<void> {
+export async function completePasswordSetup(
+  password: string,
+): Promise<PasswordSetupOutcome> {
+  // Read before the change: afterwards there is no session left to read it
+  // from. This is the address Supabase already authenticated, not typed input.
+  const {
+    data: { session: current },
+  } = await supabase.auth.getSession()
+  const email = current?.user.email ?? null
+
   const { data, error } = await supabase.functions.invoke<{ error?: string }>(
     'complete-password-setup',
     { body: { password } },
@@ -203,15 +230,27 @@ export async function completePasswordSetup(password: string): Promise<void> {
 
   if (data?.error) throw new Error(data.error)
 
-  // The requirement lives in the access token's `app_metadata`, and
-  // `getSession()` hands back the token already in memory — which still says
-  // the password must be changed, however up to date the server now is. A
-  // refresh exchanges it for one minted after the change, so the rest of the
-  // application sees the cleared requirement instead of looping on it.
-  const { error: refreshError } = await supabase.auth.refreshSession()
-  if (refreshError) {
-    throw new Error(
-      'Your password was changed, but the session could not be renewed. Sign in again with your new password.',
-    )
+  // Past this point the password IS changed. Nothing below may throw: a
+  // failure to re-establish the session is an inconvenience, not a failed
+  // password change, and reporting it as one would send the account holder
+  // back to try again with a password that no longer exists.
+  if (!email) return { signedIn: false }
+
+  const { error: signInError } = await supabase.auth.signInWithPassword({
+    email,
+    password,
+  })
+
+  if (signInError) {
+    // The tokens still in storage were revoked by the change and every
+    // request made with them will fail. Left in place the application still
+    // believes it is signed in, so it bounces anyone sent to the sign-in page
+    // straight back to a dashboard that cannot load. `local` clears them
+    // without a network call, which is the point: there is no live session
+    // left to end.
+    await supabase.auth.signOut({ scope: 'local' })
+    return { signedIn: false }
   }
+
+  return { signedIn: true }
 }

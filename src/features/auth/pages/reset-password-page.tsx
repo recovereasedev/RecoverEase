@@ -10,6 +10,7 @@ import { Notice } from '@/components/ui/notice'
 import { updatePassword } from '@/features/auth/api'
 import { AuthLayout } from '@/features/auth/components/auth-layout'
 import { AuthFormAlert } from '@/features/auth/components/form-alert'
+import { setFlash } from '@/features/auth/flash'
 import {
   newPasswordSchema,
   type NewPasswordValues,
@@ -60,6 +61,9 @@ export function ResetPasswordPage() {
       // password is actually used, rather than the user continuing on a
       // session granted by an email link.
       await supabase.auth.signOut()
+      // Said on arrival, so the sign-in page is not an unexplained dead end
+      // after what the person just did.
+      setFlash('Your password is saved. Sign in with your new password.')
       void navigate('/sign-in', { replace: true })
     } catch (error) {
       const message = error instanceof Error ? error.message : ''
@@ -122,6 +126,12 @@ export function ResetPasswordPage() {
           <Input
             type="password"
             autoComplete="new-password"
+            // Never autocapitalised or autocorrected. Once "show password" makes
+            // this a text field a phone will silently alter what was typed, and
+            // the failure that follows reads as a wrong password.
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
             autoFocus
             {...register('password')}
           />
@@ -135,6 +145,12 @@ export function ResetPasswordPage() {
           <Input
             type="password"
             autoComplete="new-password"
+            // Never autocapitalised or autocorrected. Once "show password" makes
+            // this a text field a phone will silently alter what was typed, and
+            // the failure that follows reads as a wrong password.
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
             {...register('confirmPassword')}
           />
         </Field>

@@ -22,6 +22,7 @@ async function acceptPasswordChange(
   page: Page,
   stub: SupabaseStub,
   account: { userId: string; email: string },
+  newPassword?: string,
 ): Promise<() => number> {
   let calls = 0
 
@@ -29,8 +30,13 @@ async function acceptPasswordChange(
     calls += 1
 
     // Auth now holds a cleared requirement, so the next token minted for this
-    // account carries it. The app only sees that if it actually refreshes.
+    // account carries it. The app only sees that if it re-authenticates.
     stub.setSession({ ...account, mustChangePassword: false })
+
+    // And the account's password really is the new one from this moment. A
+    // service-role change also revokes the old refresh tokens, which is why
+    // the app signs in again rather than refreshing.
+    if (newPassword) stub.setPassword(newPassword)
 
     await route.fulfill({
       status: 200,
@@ -148,7 +154,12 @@ test.describe('completing the password change', () => {
     const stub = await signInAs('doctor', undefined, {
       mustChangePassword: true,
     })
-    const callCount = await acceptPasswordChange(page, stub, DOCTOR_ACCOUNT)
+    const callCount = await acceptPasswordChange(
+      page,
+      stub,
+      DOCTOR_ACCOUNT,
+      'a-long-enough-passphrase',
+    )
     await page.goto('/doctor')
     await expect(page.getByRole('heading', { name: GATE_HEADING })).toBeVisible()
 
@@ -169,6 +180,35 @@ test.describe('completing the password change', () => {
     await page.reload()
     await expect(page.getByRole('heading', { name: /good day/i })).toBeVisible()
     await expect(page.getByRole('heading', { name: GATE_HEADING })).toHaveCount(0)
+  })
+
+  test('falls back to sign-in, without alarm, if the session cannot be rebuilt', async ({
+    page,
+    signInAs,
+  }) => {
+    // The password change succeeded; only the re-authentication after it did
+    // not. That is the fallback path, and the one thing it must not do is
+    // read like a failure — the password really has changed, and telling
+    // someone it "could not be changed" sends them back to a form that will
+    // now reject the password they just chose.
+    const stub = await signInAs('doctor', undefined, {
+      mustChangePassword: true,
+    })
+    // Deliberately not calling `stub.setPassword`, so the sign-in that
+    // follows the change is refused exactly as a revoked session would be.
+    await acceptPasswordChange(page, stub, DOCTOR_ACCOUNT)
+    await page.goto('/doctor')
+    await expect(page.getByRole('heading', { name: GATE_HEADING })).toBeVisible()
+
+    await page.getByLabel(/^new password/i).fill('a-long-enough-passphrase')
+    await page.getByLabel(/confirm new password/i).fill('a-long-enough-passphrase')
+    await page.getByRole('button', { name: /save and continue/i }).click()
+
+    await expect(page).toHaveURL(/\/sign-in$/)
+    await expect(page.getByText(/your password is saved/i)).toBeVisible()
+    // Not framed as an error, and no invitation to change it again.
+    await expect(page.getByText(/could not be changed/i)).toHaveCount(0)
+    await expect(page.getByText(/could not be renewed/i)).toHaveCount(0)
   })
 
   test('surfaces a server refusal without letting the account through', async ({

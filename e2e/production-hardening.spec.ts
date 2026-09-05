@@ -187,7 +187,7 @@ test.describe('registering a patient is their first consultation', () => {
         body: JSON.stringify({
           userId: 'new-user-1',
           profileId: 'new-patient-1',
-          temporaryPassword: 'ACDE-FGHJ-KMNP-QRTU',
+          temporaryPassword: 'cedar-harbor-lantern-willow-42',
         }),
       }),
     )
@@ -200,7 +200,7 @@ test.describe('registering a patient is their first consultation', () => {
     await dialog.getByRole('button', { name: /register patient/i }).click()
 
     // The credential is shown once, with who it belongs to.
-    await expect(dialog.getByText('ACDE-FGHJ-KMNP-QRTU')).toBeVisible()
+    await expect(dialog.getByText('cedar-harbor-lantern-willow-42')).toBeVisible()
     await expect(dialog.getByText(/temporary password for dana cruz/i)).toBeVisible()
     await expect(dialog.getByText(/first consultation/i)).toBeVisible()
 
@@ -235,7 +235,7 @@ test.describe('registering a patient is their first consultation', () => {
         body: JSON.stringify({
           userId: 'new-user-2',
           profileId: 'new-patient-2',
-          temporaryPassword: 'WXYZ-2346-79AC-DEFG',
+          temporaryPassword: 'basalt-crocus-thimble-kestrel-73',
         }),
       })
     })
@@ -256,7 +256,7 @@ test.describe('registering a patient is their first consultation', () => {
     await dialog.getByLabel(/email address/i).fill('fresh@example.test')
     await dialog.getByRole('button', { name: /register patient/i }).click()
 
-    await expect(dialog.getByText('WXYZ-2346-79AC-DEFG')).toBeVisible()
+    await expect(dialog.getByText('basalt-crocus-thimble-kestrel-73')).toBeVisible()
     await expect(
       dialog.getByText(/an account already exists/i),
     ).toHaveCount(0)
@@ -466,7 +466,7 @@ test.describe('a lost temporary credential can be reissued', () => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ temporaryPassword: 'ACDE-FGHJ-KMNP-QRTU' }),
+        body: JSON.stringify({ temporaryPassword: 'cedar-harbor-lantern-willow-42' }),
       })
     })
 
@@ -477,11 +477,11 @@ test.describe('a lost temporary credential can be reissued', () => {
     await expect(
       dialog.getByText(/current password stops working/i),
     ).toBeVisible()
-    await expect(dialog.getByText('ACDE-FGHJ-KMNP-QRTU')).toHaveCount(0)
+    await expect(dialog.getByText('cedar-harbor-lantern-willow-42')).toHaveCount(0)
 
     await dialog.getByRole('button', { name: /^reset password$/i }).click()
 
-    await expect(dialog.getByText('ACDE-FGHJ-KMNP-QRTU')).toBeVisible()
+    await expect(dialog.getByText('cedar-harbor-lantern-willow-42')).toBeVisible()
     await expect(dialog.getByText(/new password issued/i).first()).toBeVisible()
     const captured: Record<string, unknown> = sent ?? {}
     expect(captured).toMatchObject({ kind: 'doctor' })
@@ -540,7 +540,7 @@ test.describe('a lost temporary credential can be reissued', () => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ temporaryPassword: 'WXYZ-2346-79AC-DEFG' }),
+        body: JSON.stringify({ temporaryPassword: 'basalt-crocus-thimble-kestrel-73' }),
       })
     })
 
@@ -548,7 +548,7 @@ test.describe('a lost temporary credential can be reissued', () => {
     const dialog = page.getByRole('dialog')
     await dialog.getByRole('button', { name: /^reset password$/i }).click()
 
-    await expect(dialog.getByText('WXYZ-2346-79AC-DEFG')).toBeVisible()
+    await expect(dialog.getByText('basalt-crocus-thimble-kestrel-73')).toBeVisible()
     // The patient is named by profile id, never by a raw auth user id.
     const capturedPatient: Record<string, unknown> = sent ?? {}
     expect(capturedPatient).toMatchObject({
