@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   describeError,
+  errorMessage,
   isPresentableMessage,
 } from '@/components/feedback/state-view'
 
@@ -25,14 +26,48 @@ describe('describeError', () => {
   })
 
   it('reads a Supabase-shaped error object, not only an Error', () => {
-    // PostgrestError is an Error subclass, but an Edge Function failure or a
-    // rejected promise can arrive as a plain object with a message.
+    // `PostgrestError` is an Error subclass, but postgrest-js only constructs
+    // one when `.throwOnError()` is used. Reading `{ data, error }` and
+    // throwing `error` — which is what this codebase does — throws the parsed
+    // response body instead: a plain object. Edge Function failures arrive
+    // the same way.
     const described = describeError({
       message: 'An account already exists for that email address',
     })
     expect(described.detail).toBe(
       'An account already exists for that email address',
     )
+  })
+})
+
+describe('errorMessage', () => {
+  it('reads an Error', () => {
+    expect(errorMessage(new Error('Failed to fetch'))).toBe('Failed to fetch')
+  })
+
+  it('reads the plain object PostgREST throws', () => {
+    expect(
+      errorMessage({
+        code: '23505',
+        details: 'Key (a)=(b) already exists.',
+        hint: null,
+        message: 'duplicate key value violates unique constraint "x"',
+      }),
+    ).toBe('duplicate key value violates unique constraint "x"')
+  })
+
+  it('reads a bare string', () => {
+    expect(errorMessage('something failed')).toBe('something failed')
+  })
+
+  it('returns an empty string when there is no message to read', () => {
+    // Empty rather than a sentence, so each caller picks its own fallback.
+    expect(errorMessage(null)).toBe('')
+    expect(errorMessage(undefined)).toBe('')
+    expect(errorMessage({})).toBe('')
+    expect(errorMessage({ code: '23505' })).toBe('')
+    expect(errorMessage({ message: 42 })).toBe('')
+    expect(errorMessage(42)).toBe('')
   })
 })
 

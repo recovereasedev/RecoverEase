@@ -90,6 +90,37 @@ export function EmptyState({
  */
 export type ErrorKind = 'network' | 'permission' | 'unknown'
 
+/**
+ * The message carried by a thrown value, whatever shape it arrived in.
+ *
+ * Not every failure is an Error. PostgREST is the one that catches people
+ * out: it only constructs a `PostgrestError` when `.throwOnError()` is used,
+ * so code that reads `{ data, error }` and throws `error` is throwing the
+ * parsed response body — a plain object with `code`, `details`, `hint` and
+ * `message`. Supabase Auth and the Edge Functions reject with objects too.
+ *
+ * Reading only `Error` instances silently turns all of those into no message
+ * at all, which is how a translated refusal becomes "something went wrong".
+ * This is shared rather than repeated because it has now been got wrong twice
+ * in two different classifiers, and the second one shipped.
+ *
+ * Returns an empty string when there is no message to read, so each caller
+ * chooses its own fallback.
+ */
+export function errorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message
+  if (typeof error === 'string') return error
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    'message' in error &&
+    typeof (error as { message: unknown }).message === 'string'
+  ) {
+    return (error as { message: string }).message
+  }
+  return ''
+}
+
 export function describeError(error: unknown): {
   icon: LucideIcon
   title: string
@@ -97,23 +128,7 @@ export function describeError(error: unknown): {
   detail?: string
   kind: ErrorKind
 } {
-  // Not every failure arrives as an Error. PostgREST, Supabase Auth and the
-  // Edge Functions all reject with objects carrying a `message`, and reading
-  // only `Error` instances turned every one of them into "Unknown error" —
-  // which meant the network and permission branches below never matched a
-  // database failure, and the refusal a user needed to read was replaced by
-  // "something went wrong".
-  const raw =
-    error instanceof Error
-      ? error.message
-      : typeof error === 'string'
-        ? error
-        : typeof error === 'object' &&
-            error !== null &&
-            'message' in error &&
-            typeof (error as { message: unknown }).message === 'string'
-          ? (error as { message: string }).message
-          : 'Unknown error'
+  const raw = errorMessage(error) || 'Unknown error'
 
   const lowered = raw.toLowerCase()
 

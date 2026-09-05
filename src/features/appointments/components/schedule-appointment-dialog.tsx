@@ -1,7 +1,10 @@
 import { TriangleAlert } from 'lucide-react'
 import { useRef, useState } from 'react'
 
-import { isPresentableMessage } from '@/components/feedback/state-view'
+import {
+  errorMessage,
+  isPresentableMessage,
+} from '@/components/feedback/state-view'
 import { Button } from '@/components/ui/button'
 import { Dialog } from '@/components/ui/dialog'
 import { Field, Input, Select } from '@/components/ui/field'
@@ -23,6 +26,19 @@ import { fullName } from '@/lib/utils'
  * before it is sent. Storing the typed string instead would make the meaning
  * of an appointment depend on where it was later read.
  */
+/** Postgres SQLSTATE for a unique violation, if the failure carries one. */
+function sqlStateOf(error: unknown): string {
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    typeof (error as { code: unknown }).code === 'string'
+  ) {
+    return (error as { code: string }).code
+  }
+  return ''
+}
+
 /**
  * Turns a scheduling failure into something a clinician can act on.
  *
@@ -32,12 +48,22 @@ import { fullName } from '@/lib/utils'
  * translated; anything else falls back to the server's own sentence when that
  * sentence was written for a person, and to a plain statement otherwise.
  */
-function describeSchedulingError(error: unknown): string {
-  const raw = error instanceof Error ? error.message : ''
+export function describeSchedulingError(error: unknown): string {
+  // Read through `errorMessage`: what `createAppointment` throws is the
+  // PostgREST response body, a plain object, not an Error. Checking
+  // `instanceof Error` here left `raw` empty for every database refusal, so
+  // both translations below were skipped and production only ever saw the
+  // generic sentence — including for the duplicate this release added.
+  const raw = errorMessage(error)
   const lowered = raw.toLowerCase()
+  const code = sqlStateOf(error)
 
+  // Named index first, then SQLSTATE 23505 corroborated by the table. The
+  // code is not trusted on its own: a unique violation raised anywhere else
+  // in a future insert path must not be announced as a double booking.
   if (
     lowered.includes('appointment_one_active_per_slot') ||
+    (code === '23505' && lowered.includes('appointment')) ||
     (lowered.includes('duplicate key') && lowered.includes('appointment'))
   ) {
     return 'That appointment already exists. Refresh to see it in the schedule.'
