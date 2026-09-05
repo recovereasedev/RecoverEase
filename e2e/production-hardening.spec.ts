@@ -570,3 +570,91 @@ test.describe('a lost temporary credential can be reissued', () => {
     ).toHaveCount(0)
   })
 })
+
+test.describe('one action creates one appointment', () => {
+  /**
+   * Found in live production: two submissions dispatched in the same task
+   * both reached `mutate()` and the database ended up with two identical
+   * appointments — same patient, same doctor, same instant, both scheduled.
+   *
+   * `isLoading={create.isPending}` cannot prevent this on its own. React
+   * commits the disabled state on a later render, so anything that submits
+   * twice before that render passes straight through, and React Query does
+   * not deduplicate concurrent `mutate()` calls.
+   */
+  async function openScheduleDialog(page: import('@playwright/test').Page) {
+    await page.goto('/doctor/appointments')
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
+    await page.getByRole('button', { name: /schedule appointment/i }).first().click()
+    await expect(page.getByRole('dialog')).toBeVisible()
+  }
+
+  test('two submissions in one task create exactly one appointment', async ({
+    page,
+    signInAs,
+  }) => {
+    await signInAs('doctor')
+
+    const posted: string[] = []
+    await page.route('**/rest/v1/appointment**', async (route) => {
+      if (route.request().method() === 'POST') {
+        posted.push(route.request().postData() ?? '')
+      }
+      await route.fallback()
+    })
+
+    await openScheduleDialog(page)
+    const dialog = page.getByRole('dialog')
+    await dialog.getByLabel(/patient/i).selectOption({ index: 1 })
+    await dialog.getByLabel(/date and time/i).fill('2030-06-01T09:30')
+
+    // Both clicks dispatched before React can commit a disabled state.
+    await page.evaluate(() => {
+      const buttons = [...document.querySelectorAll('button')].filter((b) =>
+        /^schedule appointment$/i.test((b.textContent || '').trim()),
+      )
+      const submit = buttons[buttons.length - 1] as HTMLButtonElement
+      submit.click()
+      submit.click()
+    })
+
+    await expect.poll(() => posted.length, { timeout: 5000 }).toBeGreaterThan(0)
+    await page.waitForTimeout(1500)
+
+    expect(posted).toHaveLength(1)
+  })
+
+  test('a failed submission can still be retried', async ({
+    page,
+    signInAs,
+  }) => {
+    await signInAs('doctor')
+
+    let attempt = 0
+    await page.route('**/rest/v1/appointment**', async (route) => {
+      if (route.request().method() === 'POST') {
+        attempt += 1
+        if (attempt === 1) {
+          return route.fulfill({
+            status: 500,
+            contentType: 'application/json',
+            body: JSON.stringify({ message: 'upstream unavailable' }),
+          })
+        }
+      }
+      return route.fallback()
+    })
+
+    await openScheduleDialog(page)
+    const dialog = page.getByRole('dialog')
+    await dialog.getByLabel(/patient/i).selectOption({ index: 1 })
+    await dialog.getByLabel(/date and time/i).fill('2030-06-02T09:30')
+    await dialog.getByRole('button', { name: /^schedule appointment$/i }).click()
+
+    // The failure is reported and the guard released, not stuck.
+    await expect(dialog.getByText(/was not scheduled/i)).toBeVisible()
+    await dialog.getByRole('button', { name: /^schedule appointment$/i }).click()
+
+    await expect.poll(() => attempt, { timeout: 5000 }).toBe(2)
+  })
+})

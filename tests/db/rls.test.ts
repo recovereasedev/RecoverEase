@@ -612,6 +612,101 @@ describe('row level security', () => {
       )
     })
 
+    // ---------------------------------------------------------------------
+    // One action, one appointment. The interface refuses a second submission
+    // synchronously, but that guard lives in one browser tab; these are the
+    // rules that hold when two requests arrive concurrently from anywhere.
+    it('refuses a second live appointment in the same slot', async () => {
+      const insert = () =>
+        database.asUser(
+          fx.doctorAUserId,
+          `insert into public.appointment (pat_id, doc_id, appointment_date)
+           values ($1, $2, timestamptz '2030-06-01 09:30+00')
+           returning appointment_id`,
+          [fx.alicePatId, fx.doctorAId],
+        )
+
+      await insert()
+      await expect(insert()).rejects.toThrow(/duplicate key|unique/i)
+    })
+
+    it('still allows a second appointment at a different time', async () => {
+      const [row] = await database.asUser<{ appointment_id: string }>(
+        fx.doctorAUserId,
+        `insert into public.appointment (pat_id, doc_id, appointment_date)
+         values ($1, $2, timestamptz '2030-06-02 11:00+00')
+         returning appointment_id`,
+        [fx.alicePatId, fx.doctorAId],
+      )
+      expect(row?.appointment_id).toBeTruthy()
+    })
+
+    it('lets a cancelled slot be booked again', async () => {
+      await database.asUser(
+        fx.doctorAUserId,
+        `insert into public.appointment (pat_id, doc_id, appointment_date)
+         values ($1, $2, timestamptz '2030-07-01 09:00+00')`,
+        [fx.alicePatId, fx.doctorAId],
+      )
+      await database.asService(
+        `update public.appointment set appointment_status = 'cancelled'
+          where pat_id = $1 and appointment_date = timestamptz '2030-07-01 09:00+00'`,
+        [fx.alicePatId],
+      )
+
+      // Cancelling frees the slot; the rule only covers live appointments.
+      const [row] = await database.asUser<{ appointment_id: string }>(
+        fx.doctorAUserId,
+        `insert into public.appointment (pat_id, doc_id, appointment_date)
+         values ($1, $2, timestamptz '2030-07-01 09:00+00')
+         returning appointment_id`,
+        [fx.alicePatId, fx.doctorAId],
+      )
+      expect(row?.appointment_id).toBeTruthy()
+    })
+
+    it('does not let history block a new booking', async () => {
+      await database.asUser(
+        fx.doctorAUserId,
+        `insert into public.appointment (pat_id, doc_id, appointment_date)
+         values ($1, $2, timestamptz '2030-08-01 09:00+00')`,
+        [fx.alicePatId, fx.doctorAId],
+      )
+      await database.asService(
+        `update public.appointment set appointment_status = 'completed'
+          where pat_id = $1 and appointment_date = timestamptz '2030-08-01 09:00+00'`,
+        [fx.alicePatId],
+      )
+
+      const [row] = await database.asUser<{ appointment_id: string }>(
+        fx.doctorAUserId,
+        `insert into public.appointment (pat_id, doc_id, appointment_date)
+         values ($1, $2, timestamptz '2030-08-01 09:00+00')
+         returning appointment_id`,
+        [fx.alicePatId, fx.doctorAId],
+      )
+      expect(row?.appointment_id).toBeTruthy()
+    })
+
+    it('keeps the rule per patient and per clinician', async () => {
+      // Same instant, different patient: legitimate, and a clinic that could
+      // not do this could not run two rooms.
+      await database.asUser(
+        fx.doctorAUserId,
+        `insert into public.appointment (pat_id, doc_id, appointment_date)
+         values ($1, $2, timestamptz '2030-09-01 09:00+00')`,
+        [fx.alicePatId, fx.doctorAId],
+      )
+      const [row] = await database.asUser<{ appointment_id: string }>(
+        fx.doctorAUserId,
+        `insert into public.appointment (pat_id, doc_id, appointment_date)
+         values ($1, $2, timestamptz '2030-09-01 09:00+00')
+         returning appointment_id`,
+        [fx.bobPatId, fx.doctorAId],
+      )
+      expect(row?.appointment_id).toBeTruthy()
+    })
+
     it('stops a doctor booking someone else’s patient onto their own list', async () => {
       // The pairing is what the trigger checks, so naming the correct
       // assigned doctor does not make the caller entitled to create it.

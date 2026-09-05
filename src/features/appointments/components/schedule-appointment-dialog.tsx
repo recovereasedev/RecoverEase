@@ -1,6 +1,7 @@
 import { TriangleAlert } from 'lucide-react'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 
+import { isPresentableMessage } from '@/components/feedback/state-view'
 import { Button } from '@/components/ui/button'
 import { Dialog } from '@/components/ui/dialog'
 import { Field, Input, Select } from '@/components/ui/field'
@@ -22,6 +23,35 @@ import { fullName } from '@/lib/utils'
  * before it is sent. Storing the typed string instead would make the meaning
  * of an appointment depend on where it was later read.
  */
+/**
+ * Turns a scheduling failure into something a clinician can act on.
+ *
+ * The database is the last line against a double booking, and it answers in
+ * its own language: "duplicate key value violates unique constraint" is true
+ * and useless. Both rules it enforces here have a plain meaning, so they are
+ * translated; anything else falls back to the server's own sentence when that
+ * sentence was written for a person, and to a plain statement otherwise.
+ */
+function describeSchedulingError(error: unknown): string {
+  const raw = error instanceof Error ? error.message : ''
+  const lowered = raw.toLowerCase()
+
+  if (
+    lowered.includes('appointment_one_active_per_slot') ||
+    (lowered.includes('duplicate key') && lowered.includes('appointment'))
+  ) {
+    return 'That appointment already exists. Refresh to see it in the schedule.'
+  }
+
+  if (lowered.includes('assigned doctor')) {
+    return 'An appointment can only be booked with the patient’s assigned doctor.'
+  }
+
+  return isPresentableMessage(raw)
+    ? raw
+    : 'The appointment could not be scheduled. Check the details and try again.'
+}
+
 export function ScheduleAppointmentDialog({
   isOpen,
   onClose,
@@ -35,6 +65,14 @@ export function ScheduleAppointmentDialog({
   const patientsQuery = useMyPatients()
   const create = useCreateAppointment()
 
+  // Set synchronously, before the mutation is dispatched. `create.isPending`
+  // cannot do this job on its own: React commits the disabled button on a
+  // later render, so two submissions in the same task both get through, and
+  // React Query does not deduplicate concurrent `mutate()` calls. In
+  // production that put two identical appointments — same patient, same
+  // clinician, same instant — into the record from one double click.
+  const inFlight = useRef(false)
+
   const [patientId, setPatientId] = useState(fixedPatientId ?? '')
   const [scheduledFor, setScheduledFor] = useState('')
   const [validationError, setValidationError] = useState<string | null>(null)
@@ -43,6 +81,7 @@ export function ScheduleAppointmentDialog({
   const selected = patients.find((p) => p.pat_id === (fixedPatientId ?? patientId))
 
   const close = () => {
+    inFlight.current = false
     setPatientId(fixedPatientId ?? '')
     setScheduledFor('')
     setValidationError(null)
@@ -74,13 +113,24 @@ export function ScheduleAppointmentDialog({
       return
     }
 
+    // Nothing below this line may run twice for one user action.
+    if (inFlight.current) return
+    inFlight.current = true
+
     create.mutate(
       {
         patientId: selected.pat_id,
         doctorId: selected.doc_id,
         scheduledFor: when.toISOString(),
       },
-      { onSuccess: close },
+      {
+        onSuccess: close,
+        // Released however it ends, so a genuine failure can be retried and
+        // the form is never left permanently locked.
+        onSettled: () => {
+          inFlight.current = false
+        },
+      },
     )
   }
 
@@ -164,9 +214,7 @@ export function ScheduleAppointmentDialog({
             icon={TriangleAlert}
             live="assertive"
           >
-            {create.error instanceof Error
-              ? create.error.message
-              : 'The appointment could not be scheduled.'}
+            {describeSchedulingError(create.error)}
           </Notice>
         ) : null}
       </div>
