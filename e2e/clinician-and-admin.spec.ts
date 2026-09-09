@@ -98,6 +98,67 @@ test.describe('doctor workspace', () => {
     )
   })
 
+  test('records a whole consultation: plan, goal, then medication', async ({
+    page,
+    signInAs,
+  }) => {
+    // F-01. Every hook behind this existed and was tested; nothing called
+    // them, so a clinician could read a treatment plan they had no way to
+    // write. Bob has no plan, which is where the road used to end.
+    await signInAs('doctor')
+    await page.goto(`/doctor/patients/${IDS.bobPat}`)
+
+    await page.getByRole('button', { name: /start consultation/i }).click()
+    await expect(page.getByRole('tab', { name: 'Treatment' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
+    await expect(
+      page.getByText('Consultation with Bob Reyes'),
+    ).toBeVisible()
+
+    // Step 1 — the treatment plan.
+    await page.getByLabel(/plan title/i).fill('Shoulder rehabilitation')
+    await page.getByLabel(/start date/i).fill('2026-03-01')
+    await page
+      .getByRole('button', { name: /^Create treatment plan$/ })
+      .click()
+
+    // Step 2 — goals, added one at a time against that plan.
+    await expect(page.getByRole('button', { name: /^Add goal$/ })).toBeVisible()
+    await page.getByLabel(/goal/i).first().fill('Raise arm above shoulder')
+    await page.getByRole('button', { name: /^Add goal$/ }).click()
+    await expect(page.getByText('Raise arm above shoulder')).toBeVisible()
+
+    // Step 3 — the prescription and its schedule, in one submit.
+    await page.getByRole('button', { name: /continue to medication/i }).click()
+    await page.getByLabel(/prescription notes/i).fill('Take with food.')
+    await page.getByLabel(/medicine/i).fill('Ibuprofen')
+    await page.getByLabel(/dosage/i).fill('200 mg')
+    await page.getByRole('button', { name: /^Add prescription$/ }).click()
+    await expect(page.getByText('Ibuprofen')).toBeVisible()
+
+    // Step 4 — review reads back what was saved, not what was typed.
+    await page.getByRole('button', { name: /continue to review/i }).click()
+    await expect(page.getByText(/Shoulder rehabilitation/)).toBeVisible()
+    await expect(page.getByText('Raise arm above shoulder')).toBeVisible()
+
+    // Step 5 — finish, and stay on the patient record.
+    await page.getByRole('button', { name: /finish consultation/i }).click()
+    await expect(page.getByText('Consultation recorded')).toBeVisible()
+    await page
+      .getByRole('button', { name: /back to the patient record/i })
+      .click()
+
+    // The records are the patient's now, not the wizard's.
+    await expect(page.getByText('Shoulder rehabilitation')).toBeVisible()
+    await expect(page.getByText('Raise arm above shoulder')).toBeVisible()
+
+    await page.getByRole('tab', { name: 'Medication' }).click()
+    await expect(page.getByText('Ibuprofen')).toBeVisible()
+    await expect(page.getByText(/200 mg/)).toBeVisible()
+  })
+
   test('writes a clinical note', async ({ page, signInAs }) => {
     await signInAs('doctor')
     await page.goto(`/doctor/patients/${IDS.alicePat}`)

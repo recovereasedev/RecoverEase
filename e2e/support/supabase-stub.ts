@@ -409,6 +409,7 @@ export class SupabaseStub {
       }))
 
       this.tables[table] = [...this.rowsIn(table), ...created]
+      for (const row of created) this.link(table, row)
 
       await route.fulfill({
         status: 201,
@@ -458,6 +459,39 @@ export class SupabaseStub {
     await route.fulfill({ status: 200, contentType: 'application/json', body: '[]' })
   }
 
+  /**
+   * Attaches a freshly inserted row to the parent it is read through.
+   *
+   * PostgREST resolves an embedded select (`treatment_plan(*, treatment_goal
+   * (*))`) through the foreign key at read time. The fixtures carry those
+   * embeds as literal nested objects, so a row inserted during a test would
+   * otherwise be invisible to the very query that is meant to show it — and
+   * `fetchTreatmentPlans` sorts `plan.treatment_goal`, so a plan created
+   * without the key would throw rather than render.
+   */
+  private link(table: string, row: Record<string, unknown>): void {
+    if (table === 'treatment_goal') {
+      for (const plan of this.rowsIn('treatment_plan')) {
+        if (plan['treatment_plan_id'] !== row['treatment_plan_id']) continue
+        const goals = Array.isArray(plan['treatment_goal'])
+          ? (plan['treatment_goal'] as Record<string, unknown>[])
+          : []
+        plan['treatment_goal'] = [...goals, row]
+      }
+      return
+    }
+
+    if (table === 'medication_schedule') {
+      // The schedule is read filtered by `prescription.pat_id`, so it needs
+      // the prescription hanging off it exactly as the fixture rows do.
+      const prescription = this.rowsIn('prescription').find(
+        (candidate) =>
+          candidate['prescription_id'] === row['prescription_id'],
+      )
+      if (prescription) row['prescription'] = prescription
+    }
+  }
+
   /** Server-side defaults the database would supply on insert. */
   private defaultsFor(table: string): Record<string, unknown> {
     const now = new Date().toISOString()
@@ -477,6 +511,26 @@ export class SupabaseStub {
         }
       case 'doctor_note':
         return { doctor_note_created_at: now }
+      case 'treatment_plan':
+        return {
+          treatment_plan_status: 'active',
+          treatment_plan_created_at: now,
+          treatment_plan_updated_at: now,
+          // The embed the read query expects, empty until goals are added.
+          treatment_goal: [],
+        }
+      case 'treatment_goal':
+        return {
+          treatment_goal_status: 'pending',
+          treatment_goal_created_at: now,
+        }
+      case 'prescription':
+        return {
+          prescription_issued_date: now.slice(0, 10),
+          prescription_created_at: now,
+        }
+      case 'medication_schedule':
+        return { medication_schedule_created_at: now }
       case 'chat_session':
         return {
           chat_session_started_at: now,

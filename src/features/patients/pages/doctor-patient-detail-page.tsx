@@ -3,10 +3,12 @@ import { subDays, startOfToday, endOfToday } from 'date-fns'
 import {
   Activity,
   ClipboardList,
+  ClipboardPlus,
   IdCard,
   KeyRound,
   LineChart,
   NotebookPen,
+  Pencil,
   Pill,
   Printer,
   ScrollText,
@@ -23,20 +25,30 @@ import { PageHeader } from '@/components/layout/page-header'
 import { StatusBadge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardBody, CardHeader } from '@/components/ui/card'
-import { Field, Textarea } from '@/components/ui/field'
+import { Field, Select, Textarea } from '@/components/ui/field'
 import { ProgressBar } from '@/components/ui/progress'
 import { Tabs } from '@/components/ui/tabs'
 import { useCurrentUser } from '@/features/auth/auth-context'
 import { createDoctorNote, fetchDoctorNotes } from '@/features/doctor-notes/api'
 import { AdherenceSummary } from '@/features/medications/components/adherence-summary'
+import { MedicationForm } from '@/features/medications/components/medication-form'
 import { summariseAdherence } from '@/features/medications/api'
 import { useDoses, useMedicationSchedules } from '@/features/medications/hooks'
+import { ConsultationFlow } from '@/features/patients/components/consultation-flow'
 import { ResetCredentialDialog } from '@/features/patients/components/reset-credential-dialog'
 import { usePatient } from '@/features/patients/hooks'
 import { MoodTrend } from '@/features/recovery-logs/components/mood-trend'
 import { useRecoveryLogs } from '@/features/recovery-logs/hooks'
-import { useTreatmentPlans } from '@/features/treatment-plans/hooks'
-import { summariseGoals } from '@/features/treatment-plans/api'
+import { TreatmentGoalForm } from '@/features/treatment-plans/components/treatment-goal-form'
+import { TreatmentPlanForm } from '@/features/treatment-plans/components/treatment-plan-form'
+import {
+  useTreatmentPlans,
+  useUpdateGoalStatus,
+} from '@/features/treatment-plans/hooks'
+import {
+  summariseGoals,
+  type TreatmentGoalStatus,
+} from '@/features/treatment-plans/api'
 import {
   calculateAge,
   formatDate,
@@ -90,6 +102,26 @@ export function DoctorPatientDetailPage() {
   // email is sent, so their assigned clinician needs a way to reissue it.
   const [isResetOpen, setResetOpen] = useState(false)
 
+  // The guided consultation. Deliberately component state and not a URL
+  // parameter: the URL contract is `?tab=treatment` and registration hands
+  // off to exactly that, and there is no half-finished wizard worth
+  // resuming. Every step writes its own record as it is submitted, so a
+  // reload lands on the treatment tab with all of that already there.
+  const [isConsulting, setConsulting] = useState(false)
+  const startConsultation = () => {
+    setConsulting(true)
+    setTab('treatment')
+    // Kept in the URL so a reload, a shared link or the back button all
+    // land on the same tab.
+    setSearchParams({ tab: 'treatment' })
+  }
+
+  // Authoring state for the tabs, outside the guided flow.
+  const [isCreatingPlan, setCreatingPlan] = useState(false)
+  const [editingPlanId, setEditingPlanId] = useState<string | null>(null)
+  const [goalPlanId, setGoalPlanId] = useState<string | null>(null)
+  const [isPrescribing, setPrescribing] = useState(false)
+
   const patientQuery = usePatient(patientId)
   const logsQuery = useRecoveryLogs(patientId)
   const plansQuery = useTreatmentPlans(patientId)
@@ -106,6 +138,15 @@ export function DoctorPatientDetailPage() {
     queryFn: () => fetchDoctorNotes(patientId),
     enabled: Boolean(patientId),
   })
+
+  const goalStatus = useUpdateGoalStatus(patientId)
+
+  // A second medicine belongs to the prescription already issued, not to a
+  // new one. Only prescriptions carrying a schedule are visible to this
+  // query, which is exactly the set another medicine could join.
+  const prescriptionId =
+    schedulesQuery.data?.[0]?.prescription?.prescription_id
+  const hasPrescription = Boolean(prescriptionId)
 
   const addNote = useMutation({
     mutationFn: (text: string) =>
@@ -166,12 +207,7 @@ export function DoctorPatientDetailPage() {
                       patient, this one covers every visit after. */}
                   <Button
                     className="max-sm:w-full"
-                    onClick={() => {
-                      setTab('treatment')
-                      // Kept in the URL so a reload, a shared link or the
-                      // back button all land on the same tab.
-                      setSearchParams({ tab: 'treatment' })
-                    }}
+                    onClick={startConsultation}
                   >
                     <Stethoscope aria-hidden="true" />
                     Start consultation
@@ -354,7 +390,25 @@ export function DoctorPatientDetailPage() {
               ) : null}
 
               {/* --- Treatment ------------------------------------------- */}
-              {tab === 'treatment' ? (
+              {/* The guided consultation lives inside this tab rather than
+                  replacing the record: the clinician keeps the header, the
+                  tabs and every other part of the patient's history one
+                  click away while they work through it. */}
+              {tab === 'treatment' && isConsulting ? (
+                <ConsultationFlow
+                  patientId={patientId}
+                  doctorId={doctorId}
+                  patientName={fullName(
+                    patient.pat_first_name,
+                    patient.pat_last_name,
+                  )}
+                  plans={plansQuery.data ?? []}
+                  schedules={schedulesQuery.data ?? []}
+                  onFinish={() => setConsulting(false)}
+                />
+              ) : null}
+
+              {tab === 'treatment' && !isConsulting ? (
                 <StateView
                   isPending={plansQuery.isPending}
                   error={plansQuery.error}
@@ -362,10 +416,34 @@ export function DoctorPatientDetailPage() {
                   onRetry={() => void plansQuery.refetch()}
                   empty={
                     <Card>
+                      <CardHeader
+                        icon={ClipboardList}
+                        title="Treatment plan"
+                        description="Nothing has been planned for this patient yet."
+                      />
                       <CardBody>
-                        <p className="py-8 text-center text-sm text-muted">
-                          No treatment plan has been created for this patient.
-                        </p>
+                        {isCreatingPlan ? (
+                          <TreatmentPlanForm
+                            patientId={patientId}
+                            doctorId={doctorId}
+                            onDone={() => setCreatingPlan(false)}
+                            onCancel={() => setCreatingPlan(false)}
+                          />
+                        ) : (
+                          <div className="py-6 text-center">
+                            <p className="text-sm text-muted">
+                              No treatment plan has been created for this
+                              patient.
+                            </p>
+                            <Button
+                              className="mt-4 max-sm:w-full"
+                              onClick={() => setCreatingPlan(true)}
+                            >
+                              <ClipboardPlus aria-hidden="true" />
+                              Create treatment plan
+                            </Button>
+                          </div>
+                        )}
                       </CardBody>
                     </Card>
                   }
@@ -385,16 +463,44 @@ export function DoctorPatientDetailPage() {
                                   : ' onwards'
                               } · ${progress.achieved} of ${progress.total} goals achieved`}
                               action={
-                                <StatusBadge
-                                  status={
-                                    treatmentPlanStatus[
-                                      plan.treatment_plan_status
-                                    ]
-                                  }
-                                />
+                                <div className="flex items-center gap-2">
+                                  <StatusBadge
+                                    status={
+                                      treatmentPlanStatus[
+                                        plan.treatment_plan_status
+                                      ]
+                                    }
+                                  />
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() =>
+                                      setEditingPlanId(
+                                        editingPlanId === plan.treatment_plan_id
+                                          ? null
+                                          : plan.treatment_plan_id,
+                                      )
+                                    }
+                                  >
+                                    <Pencil aria-hidden="true" />
+                                    Edit plan
+                                  </Button>
+                                </div>
                               }
                             />
                             <CardBody>
+                              {editingPlanId === plan.treatment_plan_id ? (
+                                <div className="mb-5 border-b border-[var(--color-border)] pb-5">
+                                  <TreatmentPlanForm
+                                    patientId={patientId}
+                                    doctorId={doctorId}
+                                    plan={plan}
+                                    onDone={() => setEditingPlanId(null)}
+                                    onCancel={() => setEditingPlanId(null)}
+                                  />
+                                </div>
+                              ) : null}
+
                               {plan.treatment_plan_description ? (
                                 <p className="mb-4 whitespace-pre-wrap leading-relaxed text-body">
                                   {plan.treatment_plan_description}
@@ -442,7 +548,7 @@ export function DoctorPatientDetailPage() {
                                           </p>
                                         ) : null}
                                       </div>
-                                      <div className="sm:shrink-0">
+                                      <div className="flex items-center gap-2 sm:shrink-0">
                                         <StatusBadge
                                           status={
                                             treatmentGoalStatus[
@@ -450,12 +556,76 @@ export function DoctorPatientDetailPage() {
                                             ]
                                           }
                                         />
+                                        {/* Module 3.3's other half: the
+                                            clinician records progress
+                                            against the goal they set. */}
+                                        <Field
+                                          label="Progress"
+                                          className="[&>label]:sr-only"
+                                        >
+                                          <Select
+                                            className="h-9 w-auto text-sm"
+                                            value={goal.treatment_goal_status}
+                                            disabled={goalStatus.isPending}
+                                            onChange={(event) =>
+                                              goalStatus.mutate({
+                                                goalId: goal.treatment_goal_id,
+                                                status: event.target
+                                                  .value as TreatmentGoalStatus,
+                                              })
+                                            }
+                                          >
+                                            <option value="pending">
+                                              Not started
+                                            </option>
+                                            <option value="in_progress">
+                                              In progress
+                                            </option>
+                                            <option value="achieved">
+                                              Achieved
+                                            </option>
+                                            <option value="missed">
+                                              Missed
+                                            </option>
+                                          </Select>
+                                        </Field>
                                       </div>
                                     </li>
                                   ))}
                                   </ul>
                                 </>
                               )}
+
+                              {goalStatus.isError ? (
+                                <div className="mt-4">
+                                  <FormError
+                                    error={goalStatus.error}
+                                    title="The goal was not updated"
+                                  />
+                                </div>
+                              ) : null}
+
+                              {/* Adding a goal to a plan that already exists,
+                                  outside a guided consultation. */}
+                              <div className="mt-5 border-t border-[var(--color-border)] pt-5">
+                                {goalPlanId === plan.treatment_plan_id ? (
+                                  <TreatmentGoalForm
+                                    patientId={patientId}
+                                    planId={plan.treatment_plan_id}
+                                  />
+                                ) : (
+                                  <Button
+                                    variant="secondary"
+                                    size="sm"
+                                    onClick={() =>
+                                      setGoalPlanId(plan.treatment_plan_id)
+                                    }
+                                  >
+                                    <Target aria-hidden="true" />
+                                    Add goal
+                                  </Button>
+                                )}
+                              </div>
                             </CardBody>
                           </Card>
                         )
@@ -480,7 +650,7 @@ export function DoctorPatientDetailPage() {
                       data={schedulesQuery.data}
                       onRetry={() => void schedulesQuery.refetch()}
                       empty={
-                        <p className="px-4 py-10 text-center text-sm text-muted sm:px-5">
+                        <p className="px-4 pb-2 pt-10 text-center text-sm text-muted sm:px-5">
                           No prescriptions on record for this patient.
                         </p>
                       }
@@ -519,6 +689,32 @@ export function DoctorPatientDetailPage() {
                         </ul>
                       )}
                     </StateView>
+
+                    {/* Modules 4.3 and 4.1, outside a guided consultation.
+                        One block whether or not anything is prescribed yet,
+                        so there is a single place to look for it. */}
+                    <div className="border-t border-[var(--color-border)] px-4 py-4 sm:px-5">
+                      {isPrescribing ? (
+                        <MedicationForm
+                          patientId={patientId}
+                          doctorId={doctorId}
+                          {...(prescriptionId ? { prescriptionId } : {})}
+                          onDone={() => setPrescribing(false)}
+                          onCancel={() => setPrescribing(false)}
+                        />
+                      ) : (
+                        <Button
+                          variant={hasPrescription ? 'secondary' : 'primary'}
+                          className="max-sm:w-full"
+                          onClick={() => setPrescribing(true)}
+                        >
+                          <Pill aria-hidden="true" />
+                          {hasPrescription
+                            ? 'Add another medicine'
+                            : 'Add prescription'}
+                        </Button>
+                      )}
+                    </div>
                   </CardBody>
                 </Card>
               ) : null}
