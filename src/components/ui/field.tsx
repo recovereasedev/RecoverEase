@@ -196,6 +196,13 @@ export function Select({
 
 export type ComboboxOption = { value: string; label: string }
 
+/** Tallest the list is ever allowed to be, room permitting. */
+const DEFAULT_LIST_MAX_HEIGHT = 256
+/** Two rows. Below this a list is more annoying than a scroll. */
+const MIN_LIST_MAX_HEIGHT = 88
+/** Breathing room so the list never sits flush against the clip edge. */
+const LIST_GUTTER = 8
+
 export function Combobox({
   options,
   value,
@@ -221,6 +228,9 @@ export function Combobox({
   const listId = `${inputId}-listbox`
 
   const [isOpen, setOpen] = useState(false)
+  const field = useRef<HTMLDivElement>(null)
+  /** Room below the field, or null before it has been measured. */
+  const [listMaxHeight, setListMaxHeight] = useState<number | null>(null)
   const [query, setQuery] = useState('')
   const [activeIndex, setActiveIndex] = useState(0)
   const blurTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -244,11 +254,51 @@ export function Combobox({
     setQuery('')
     setActiveIndex(Math.max(0, matches.findIndex((o) => o.value === value)))
     setOpen(true)
+
+    // The list is absolutely positioned, so the nearest ancestor with a
+    // non-visible overflow clips it. Inside a dialog body
+    // (`max-h-[70dvh] overflow-y-auto`) roughly 128px sits below this field
+    // against a list that grows to 256px, so half of a full caseload was cut
+    // off and unreachable — on every viewport, and precisely in the case the
+    // search exists for.
+    //
+    // Scrolling the field up does not help: that body is not actually
+    // scrollable (its content fits, the max-height is never reached), and an
+    // overflow container clips whether or not it scrolls. So the list is
+    // sized to the room that is actually there instead. It already scrolls
+    // internally, so every option stays reachable — nothing is repositioned
+    // and nothing needs to know where it sits on screen.
+    requestAnimationFrame(() => setListMaxHeight(spaceBelowField()))
+  }
+
+  /**
+   * Pixels between the bottom of the field and the bottom of whatever would
+   * clip the list. Falls back to the viewport when nothing clips.
+   */
+  const spaceBelowField = (): number => {
+    const node = field.current
+    if (!node) return DEFAULT_LIST_MAX_HEIGHT
+
+    let clipper: HTMLElement | null = node.parentElement
+    while (clipper) {
+      const overflow = getComputedStyle(clipper).overflowY
+      if (overflow !== 'visible') break
+      clipper = clipper.parentElement
+    }
+
+    const floor = clipper
+      ? clipper.getBoundingClientRect().bottom
+      : window.innerHeight
+    const room = floor - node.getBoundingClientRect().bottom - LIST_GUTTER
+
+    // Never smaller than two rows: a one-line list is worse than a scroll.
+    return Math.max(MIN_LIST_MAX_HEIGHT, Math.min(DEFAULT_LIST_MAX_HEIGHT, room))
   }
 
   const close = () => {
     setOpen(false)
     setQuery('')
+    setListMaxHeight(null)
   }
 
   const commit = (option: ComboboxOption) => {
@@ -299,7 +349,7 @@ export function Combobox({
   }
 
   return (
-    <div className="relative">
+    <div className="relative" ref={field}>
       <input
         id={inputId}
         type="text"
@@ -341,7 +391,8 @@ export function Combobox({
         <ul
           id={listId}
           role="listbox"
-          className="absolute z-10 mt-1 max-h-64 w-full overflow-auto rounded-[var(--radius-md)] border border-[var(--color-border)] bg-surface py-1 shadow-lg"
+          style={{ maxHeight: listMaxHeight ?? DEFAULT_LIST_MAX_HEIGHT }}
+          className="absolute z-10 mt-1 w-full overflow-auto rounded-[var(--radius-md)] border border-[var(--color-border)] bg-surface py-1 shadow-lg"
         >
           {matches.length === 0 ? (
             <li className="px-3 py-2 text-sm text-muted">{emptyLabel}</li>

@@ -1,9 +1,11 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useState, type ReactNode } from 'react'
 
+import { errorMessage } from '@/components/feedback/state-view'
 import { AuthProvider } from '@/features/auth/auth-context'
 
-function createQueryClient(): QueryClient {
+/** Exported so the retry policy can be exercised directly in tests. */
+export function createQueryClient(): QueryClient {
   return new QueryClient({
     defaultOptions: {
       queries: {
@@ -13,8 +15,12 @@ function createQueryClient(): QueryClient {
         staleTime: 60_000,
         gcTime: 5 * 60_000,
         retry: (failureCount, error) => {
-          const message =
-            error instanceof Error ? error.message.toLowerCase() : ''
+          // Read through `errorMessage`, not `instanceof Error`. What the
+          // data layer throws is the PostgREST response body — a plain
+          // object — so the check below matched nothing and every
+          // authorization failure was retried anyway, which is the exact
+          // thing this guard exists to prevent.
+          const message = errorMessage(error).toLowerCase()
 
           // Retrying an authorization failure cannot succeed, and turns one
           // clear denial into three slow ones.

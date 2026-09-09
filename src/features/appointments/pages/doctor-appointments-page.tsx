@@ -7,6 +7,7 @@ import { PageHeader } from '@/components/layout/page-header'
 import { StatusBadge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardBody, CardHeader } from '@/components/ui/card'
+import { Dialog } from '@/components/ui/dialog'
 import { ListRow, ListRows } from '@/components/ui/list-row'
 import { ScheduleAppointmentDialog } from '@/features/appointments/components/schedule-appointment-dialog'
 import {
@@ -18,6 +19,18 @@ import {
 import { formatDateTime } from '@/lib/format'
 import { appointmentStatus, rescheduleRequestStatus } from '@/lib/status'
 import { fullName } from '@/lib/utils'
+import type { Enums } from '@/types/database.types'
+
+/**
+ * Whether an appointment can still be called off.
+ *
+ * Only one that is still going to happen. 'completed' and 'no_show' are
+ * history and 'cancelled' is already there — cancelling any of them would
+ * either rewrite what happened or do nothing.
+ */
+function canCancel(status: Enums<'appointment_status'>): boolean {
+  return status === 'scheduled' || status === 'confirmed'
+}
 
 /**
  * Modules 6.1 "Schedule Follow-up Appointment", 6.2 "View Appointment
@@ -33,6 +46,15 @@ export function DoctorAppointmentsPage() {
   const decide = useDecideRescheduleRequest()
   const setStatus = useSetAppointmentStatus()
   const [isSchedulingOpen, setSchedulingOpen] = useState(false)
+  // Cancelling is not undoable from this screen, so it is confirmed first.
+  // Held as the appointment itself rather than a boolean, so the dialog can
+  // name who and when — "are you sure" about nothing in particular is how
+  // the wrong appointment gets cancelled.
+  const [cancelling, setCancelling] = useState<{
+    id: string
+    name: string
+    when: string
+  } | null>(null)
 
   const now = new Date()
   const upcoming = (appointmentsQuery.data ?? [])
@@ -66,6 +88,40 @@ export function DoctorAppointmentsPage() {
           </Button>
         }
       />
+
+      {cancelling ? (
+        <Dialog
+          isOpen
+          onClose={() => setCancelling(null)}
+          title="Cancel this appointment?"
+          description={`${cancelling.name}, ${cancelling.when}. The patient sees the cancellation in their own calendar, and no reminder is sent.`}
+          footer={
+            <>
+              <Button variant="ghost" onClick={() => setCancelling(null)}>
+                Keep appointment
+              </Button>
+              <Button
+                variant="danger"
+                isLoading={setStatus.isPending}
+                loadingLabel="Cancelling…"
+                onClick={() =>
+                  setStatus.mutate(
+                    { appointmentId: cancelling.id, status: 'cancelled' },
+                    { onSettled: () => setCancelling(null) },
+                  )
+                }
+              >
+                Cancel appointment
+              </Button>
+            </>
+          }
+        >
+          <p className="text-body">
+            This cannot be undone from here. Book a new appointment if the
+            patient still needs to be seen.
+          </p>
+        </Dialog>
+      ) : null}
 
       <ScheduleAppointmentDialog
         isOpen={isSchedulingOpen}
@@ -227,20 +283,46 @@ export function DoctorAppointmentsPage() {
                           />
                         }
                         actions={
-                          isOpen ? (
-                            <Button
-                              size="sm"
-                              variant="secondary"
-                              onClick={() =>
-                                setStatus.mutate({
-                                  appointmentId: appointment.appointment_id,
-                                  status: 'completed',
-                                })
-                              }
-                            >
-                              Mark completed
-                            </Button>
-                          ) : null
+                          <>
+                            {isOpen ? (
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                onClick={() =>
+                                  setStatus.mutate({
+                                    appointmentId: appointment.appointment_id,
+                                    status: 'completed',
+                                  })
+                                }
+                              >
+                                Mark completed
+                              </Button>
+                            ) : null}
+
+                            {/* Only an appointment that is still going to
+                                happen can be called off. A separate check
+                                from `isOpen`, which also covers 'no_show' —
+                                that one can still be marked completed if it
+                                was recorded in error, but cancelling it
+                                means nothing. */}
+                            {canCancel(appointment.appointment_status) ? (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() =>
+                                  setCancelling({
+                                    id: appointment.appointment_id,
+                                    name,
+                                    when: formatDateTime(
+                                      appointment.appointment_date,
+                                    ),
+                                  })
+                                }
+                              >
+                                Cancel
+                              </Button>
+                            ) : null}
+                          </>
                         }
                       />
                     )

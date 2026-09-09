@@ -96,6 +96,51 @@ describe('appointment reminders', () => {
     },
   )
 
+  it('goes quiet once the clinician cancels it', async () => {
+    // QA-03. Before the doctor had a Cancel button, an appointment the
+    // patient had called off by phone stayed 'scheduled', and this job then
+    // reminded both of them about a visit that was not going to happen. The
+    // cancellation is written by the doctor, under RLS, exactly as the
+    // client's `setAppointmentStatus` writes it.
+    const id = await appointmentIn(12)
+
+    await database.asUser(
+      fx.doctorAUserId,
+      `update public.appointment set appointment_status = 'cancelled'
+        where appointment_id = $1`,
+      [id],
+    )
+
+    const [row] = await database.asService<{ appointment_status: string }>(
+      'select appointment_status from public.appointment where appointment_id = $1',
+      [id],
+    )
+    // The doctor's own update was allowed — no separate endpoint needed.
+    expect(row!.appointment_status).toBe('cancelled')
+
+    expect(await dispatch()).toBe(0)
+    expect(await notificationsFor(fx.doctorAUserId)).toHaveLength(0)
+    expect(await notificationsFor(fx.aliceUserId)).toHaveLength(0)
+  })
+
+  it('sends nothing further when the cancellation follows the reminder', async () => {
+    // The other order: the reminder has already gone out and the doctor
+    // cancels afterwards. Neither party may be reminded a second time.
+    const id = await appointmentIn(12)
+    expect(await dispatch()).toBe(2)
+
+    await database.asUser(
+      fx.doctorAUserId,
+      `update public.appointment set appointment_status = 'cancelled'
+        where appointment_id = $1`,
+      [id],
+    )
+
+    expect(await dispatch()).toBe(0)
+    expect(await notificationsFor(fx.doctorAUserId)).toHaveLength(1)
+    expect(await notificationsFor(fx.aliceUserId)).toHaveLength(1)
+  })
+
   it('does not duplicate when the hourly job runs again', async () => {
     // The whole point of the guard: the scheduler fires every hour and an
     // appointment sits inside a 24-hour window for 24 of them.
