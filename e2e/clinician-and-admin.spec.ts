@@ -54,6 +54,50 @@ test.describe('doctor workspace', () => {
     ).toBeVisible()
   })
 
+  test('starts a consultation from the patient header', async ({
+    page,
+    signInAs,
+  }) => {
+    // QA 09/06/2026 #2. The consultation workflow already existed but was
+    // only reachable straight after registering a new patient. This is the
+    // same destination, offered from the screen the clinician is on when the
+    // patient is actually in front of them — it opens no second workflow.
+    await signInAs('doctor')
+    await page.goto(`/doctor/patients/${IDS.alicePat}`)
+
+    await expect(
+      page.getByRole('tab', { name: 'Overview' }),
+    ).toHaveAttribute('aria-selected', 'true')
+
+    await page.getByRole('button', { name: /start consultation/i }).click()
+
+    // The existing treatment workflow, not a new one.
+    await expect(page.getByRole('tab', { name: 'Treatment' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
+    // Kept in the URL, so a reload or a shared link lands in the same place.
+    await expect(page).toHaveURL(/\?tab=treatment$/)
+
+    // And medication is the next step of that same flow, already present.
+    await expect(page.getByRole('tab', { name: 'Medication' })).toBeVisible()
+  })
+
+  test('a consultation deep link still opens on the treatment tab', async ({
+    page,
+    signInAs,
+  }) => {
+    // The destination registration hands off to. The header button and the
+    // registration button must agree on it.
+    await signInAs('doctor')
+    await page.goto(`/doctor/patients/${IDS.alicePat}?tab=treatment`)
+
+    await expect(page.getByRole('tab', { name: 'Treatment' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
+  })
+
   test('writes a clinical note', async ({ page, signInAs }) => {
     await signInAs('doctor')
     await page.goto(`/doctor/patients/${IDS.alicePat}`)

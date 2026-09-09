@@ -61,6 +61,18 @@ function open() {
   return screen.getByRole('button', { name: /^Schedule appointment$/ })
 }
 
+/**
+ * Picks the seeded patient from the searchable combobox.
+ *
+ * It replaced a native `<select>`, where setting `value` chose an option. A
+ * combobox is a text input whose value is the label, so selection is made by
+ * opening the list and taking the option — which is what a person does too.
+ */
+function choosePatient(name: RegExp = /ZZ Smoke Patient/) {
+  fireEvent.focus(screen.getByRole('combobox'))
+  fireEvent.mouseDown(screen.getByRole('option', { name }))
+}
+
 describe('schedule appointment validation', () => {
   it('asks which patient when none is chosen', () => {
     fireEvent.click(open())
@@ -73,9 +85,7 @@ describe('schedule appointment validation', () => {
 
   it('asks for a date and time when the slot is empty', () => {
     const submit = open()
-    fireEvent.change(screen.getByRole('combobox'), {
-      target: { value: 'p-1' },
-    })
+    choosePatient()
     fireEvent.click(submit)
     expect(screen.getByText('Choose a date and time.')).toBeInTheDocument()
     expect(mockCreate.mutate).not.toHaveBeenCalled()
@@ -83,9 +93,7 @@ describe('schedule appointment validation', () => {
 
   it('refuses a time in the past', () => {
     const submit = open()
-    fireEvent.change(screen.getByRole('combobox'), {
-      target: { value: 'p-1' },
-    })
+    choosePatient()
     fireEvent.change(screen.getByLabelText(/Date and time/), {
       target: { value: '2020-01-01T09:00' },
     })
@@ -96,9 +104,7 @@ describe('schedule appointment validation', () => {
 
   it('submits once for a complete, future appointment', () => {
     const submit = open()
-    fireEvent.change(screen.getByRole('combobox'), {
-      target: { value: 'p-1' },
-    })
+    choosePatient()
     fireEvent.change(screen.getByLabelText(/Date and time/), {
       target: { value: '2099-01-01T09:00' },
     })
@@ -111,9 +117,7 @@ describe('schedule appointment validation', () => {
     // `isPending` has not re-rendered yet, so only the synchronous ref stops
     // the second call. Two identical appointments reached production this way.
     const submit = open()
-    fireEvent.change(screen.getByRole('combobox'), {
-      target: { value: 'p-1' },
-    })
+    choosePatient()
     fireEvent.change(screen.getByLabelText(/Date and time/), {
       target: { value: '2099-01-01T09:00' },
     })

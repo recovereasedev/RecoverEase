@@ -1,9 +1,13 @@
-import { AlertCircle } from 'lucide-react'
+import { AlertCircle, Check, ChevronDown } from 'lucide-react'
 import {
   createContext,
   useContext,
   useId,
+  useMemo,
+  useRef,
+  useState,
   type InputHTMLAttributes,
+  type KeyboardEvent,
   type ReactNode,
   type SelectHTMLAttributes,
   type TextareaHTMLAttributes,
@@ -187,5 +191,189 @@ export function Select({
     >
       {children}
     </select>
+  )
+}
+
+export type ComboboxOption = { value: string; label: string }
+
+export function Combobox({
+  options,
+  value,
+  onChange,
+  placeholder,
+  emptyLabel = 'No matches',
+  id,
+}: {
+  options: ComboboxOption[]
+  value: string
+  onChange: (value: string) => void
+  placeholder?: string
+  /** Shown when the filter excludes everything. */
+  emptyLabel?: string
+  id?: string
+}) {
+  // Joins the surrounding <Field> exactly as Input and Select do, so the
+  // label points at this input and the description and error are announced
+  // with it. Minting its own id here would leave the label pointing at
+  // nothing, which is a control a screen reader cannot name.
+  const context = useFieldContext('Combobox')
+  const inputId = id ?? context.inputId
+  const listId = `${inputId}-listbox`
+
+  const [isOpen, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const [activeIndex, setActiveIndex] = useState(0)
+  const blurTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const selected = options.find((option) => option.value === value) ?? null
+
+  const matches = useMemo(() => {
+    const needle = query.trim().toLowerCase()
+    if (!needle) return options
+    return options.filter((option) =>
+      option.label.toLowerCase().includes(needle),
+    )
+  }, [options, query])
+
+  // While closed the input shows the chosen label; while open it shows what
+  // is being typed, so the filter is visible as it narrows.
+  const shown = isOpen ? query : (selected?.label ?? '')
+
+  const open = () => {
+    if (isOpen) return
+    setQuery('')
+    setActiveIndex(Math.max(0, matches.findIndex((o) => o.value === value)))
+    setOpen(true)
+  }
+
+  const close = () => {
+    setOpen(false)
+    setQuery('')
+  }
+
+  const commit = (option: ComboboxOption) => {
+    onChange(option.value)
+    close()
+  }
+
+  const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault()
+      if (!isOpen) {
+        open()
+        return
+      }
+      if (matches.length === 0) return
+      const step = event.key === 'ArrowDown' ? 1 : -1
+      setActiveIndex(
+        (current) => (current + step + matches.length) % matches.length,
+      )
+      return
+    }
+
+    if (event.key === 'Home' && isOpen) {
+      event.preventDefault()
+      setActiveIndex(0)
+      return
+    }
+    if (event.key === 'End' && isOpen) {
+      event.preventDefault()
+      setActiveIndex(Math.max(0, matches.length - 1))
+      return
+    }
+
+    if (event.key === 'Enter' && isOpen) {
+      const option = matches[activeIndex]
+      if (option) {
+        event.preventDefault()
+        commit(option)
+      }
+      return
+    }
+
+    if (event.key === 'Escape' && isOpen) {
+      event.preventDefault()
+      // Closes without choosing: the previous value stands.
+      close()
+    }
+  }
+
+  return (
+    <div className="relative">
+      <input
+        id={inputId}
+        type="text"
+        role="combobox"
+        aria-expanded={isOpen}
+        aria-controls={listId}
+        aria-autocomplete="list"
+        aria-activedescendant={
+          isOpen && matches[activeIndex]
+            ? `${listId}-${matches[activeIndex].value}`
+            : undefined
+        }
+        autoComplete="off"
+        placeholder={placeholder}
+        value={shown}
+        onChange={(event) => {
+          if (!isOpen) setOpen(true)
+          setQuery(event.target.value)
+          setActiveIndex(0)
+        }}
+        onFocus={open}
+        onClick={open}
+        onKeyDown={onKeyDown}
+        onBlur={() => {
+          // Deferred so a click on an option lands before the list unmounts.
+          blurTimer.current = setTimeout(close, 120)
+        }}
+        aria-invalid={context.hasError || undefined}
+        aria-describedby={describedBy(context)}
+        className={cn(controlClasses, 'h-11 pr-10')}
+      />
+
+      <ChevronDown
+        className="pointer-events-none absolute inset-y-0 right-3 my-auto size-5 text-muted"
+        aria-hidden="true"
+      />
+
+      {isOpen ? (
+        <ul
+          id={listId}
+          role="listbox"
+          className="absolute z-10 mt-1 max-h-64 w-full overflow-auto rounded-[var(--radius-md)] border border-[var(--color-border)] bg-surface py-1 shadow-lg"
+        >
+          {matches.length === 0 ? (
+            <li className="px-3 py-2 text-sm text-muted">{emptyLabel}</li>
+          ) : (
+            matches.map((option, index) => (
+              <li
+                key={option.value}
+                id={`${listId}-${option.value}`}
+                role="option"
+                aria-selected={option.value === value}
+                onMouseDown={(event) => {
+                  // Before blur, so the selection is not lost to the close.
+                  event.preventDefault()
+                  if (blurTimer.current) clearTimeout(blurTimer.current)
+                  commit(option)
+                }}
+                onMouseEnter={() => setActiveIndex(index)}
+                className={`flex min-h-11 cursor-pointer items-center justify-between gap-2 px-3 text-body ${
+                  index === activeIndex
+                    ? 'bg-brand-50 text-brand-800'
+                    : 'text-heading'
+                }`}
+              >
+                {option.label}
+                {option.value === value ? (
+                  <Check className="size-4 shrink-0" aria-hidden="true" />
+                ) : null}
+              </li>
+            ))
+          )}
+        </ul>
+      ) : null}
+    </div>
   )
 }

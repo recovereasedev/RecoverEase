@@ -7,7 +7,7 @@ import {
 } from '@/components/feedback/state-view'
 import { Button } from '@/components/ui/button'
 import { Dialog } from '@/components/ui/dialog'
-import { Field, Input, Select } from '@/components/ui/field'
+import { Combobox, Field, Input } from '@/components/ui/field'
 import { Notice } from '@/components/ui/notice'
 import { useCreateAppointment } from '@/features/appointments/hooks'
 import { useMyPatients } from '@/features/patients/hooks'
@@ -191,18 +191,29 @@ export function ScheduleAppointmentDialog({
     >
       <div className="space-y-4">
         {fixedPatientId ? null : (
-          <Field label="Patient" required>
-            <Select
+          <Field
+            label="Patient"
+            required
+            description="Start typing to narrow the list."
+          >
+            {/* Searchable rather than a plain select: a full caseload is a
+                long popup to scroll on a phone. It still offers only this
+                clinician's own patients — the same `useMyPatients()` list as
+                before — and still yields a patient id, so the assigned
+                doctor is derived exactly as it was. */}
+            <Combobox
+              options={patients.map((patient) => ({
+                value: patient.pat_id,
+                label: fullName(
+                  patient.pat_first_name,
+                  patient.pat_last_name,
+                ),
+              }))}
               value={patientId}
-              onChange={(event) => setPatientId(event.target.value)}
-            >
-              <option value="">Select a patient…</option>
-              {patients.map((patient) => (
-                <option key={patient.pat_id} value={patient.pat_id}>
-                  {fullName(patient.pat_first_name, patient.pat_last_name)}
-                </option>
-              ))}
-            </Select>
+              onChange={setPatientId}
+              placeholder="Select a patient…"
+              emptyLabel="No patient of yours matches that name"
+            />
           </Field>
         )}
 

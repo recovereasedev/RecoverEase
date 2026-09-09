@@ -11,6 +11,7 @@ import {
   Printer,
   ScrollText,
   Send,
+  Stethoscope,
   Target,
 } from 'lucide-react'
 import { useState } from 'react'
@@ -77,7 +78,7 @@ export function DoctorPatientDetailPage() {
   // A first consultation arrives here straight from registration, pointed at
   // the tab the clinician needs to fill in. Anything unrecognised falls back
   // to the overview rather than rendering nothing.
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const requestedTab = searchParams.get('tab')
   const [tab, setTab] = useState<TabId>(
     TABS.some((candidate) => candidate.id === requestedTab)
@@ -154,6 +155,27 @@ export function DoctorPatientDetailPage() {
               }
               actions={
                 <>
+                  {/* The consultation itself, from the one screen a
+                      clinician is already on when the patient is in front
+                      of them. It creates nothing and opens no second
+                      workflow: it is the same destination registration
+                      hands off to, `?tab=treatment`, so the care plan and
+                      then the medication schedule are entered exactly where
+                      they always were. Registration keeps its own "Set up
+                      care plan" button — that one covers a brand new
+                      patient, this one covers every visit after. */}
+                  <Button
+                    className="max-sm:w-full"
+                    onClick={() => {
+                      setTab('treatment')
+                      // Kept in the URL so a reload, a shared link or the
+                      // back button all land on the same tab.
+                      setSearchParams({ tab: 'treatment' })
+                    }}
+                  >
+                    <Stethoscope aria-hidden="true" />
+                    Start consultation
+                  </Button>
                   <Button
                     variant="outline"
                     className="max-sm:w-full"

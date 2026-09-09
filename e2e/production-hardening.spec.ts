@@ -117,7 +117,10 @@ test.describe('a doctor scheduling a follow-up', () => {
     await expect(dialog.getByText(/choose which patient/i)).toBeVisible()
 
     // A patient, but a time that has already been and gone.
-    await dialog.getByLabel(/patient/i).selectOption({ index: 1 })
+    // The patient picker is a searchable combobox now, not a native
+    // select: open it and take the first option.
+    await dialog.getByRole('combobox').click()
+    await dialog.getByRole('option').first().click()
     await dialog.getByLabel(/date and time/i).fill('2020-01-01T09:00')
     await dialog
       .getByRole('button', { name: /schedule appointment/i })
@@ -145,7 +148,10 @@ test.describe('a doctor scheduling a follow-up', () => {
 
     await page.getByRole('button', { name: /schedule appointment/i }).click()
     const dialog = page.getByRole('dialog')
-    await dialog.getByLabel(/patient/i).selectOption({ index: 1 })
+    // The patient picker is a searchable combobox now, not a native
+    // select: open it and take the first option.
+    await dialog.getByRole('combobox').click()
+    await dialog.getByRole('option').first().click()
     await dialog.getByLabel(/date and time/i).fill('2030-06-01T09:30')
     await dialog
       .getByRole('button', { name: /schedule appointment/i })
@@ -605,7 +611,10 @@ test.describe('one action creates one appointment', () => {
 
     await openScheduleDialog(page)
     const dialog = page.getByRole('dialog')
-    await dialog.getByLabel(/patient/i).selectOption({ index: 1 })
+    // The patient picker is a searchable combobox now, not a native
+    // select: open it and take the first option.
+    await dialog.getByRole('combobox').click()
+    await dialog.getByRole('option').first().click()
     await dialog.getByLabel(/date and time/i).fill('2030-06-01T09:30')
 
     // Both clicks dispatched before React can commit a disabled state.
@@ -647,7 +656,10 @@ test.describe('one action creates one appointment', () => {
 
     await openScheduleDialog(page)
     const dialog = page.getByRole('dialog')
-    await dialog.getByLabel(/patient/i).selectOption({ index: 1 })
+    // The patient picker is a searchable combobox now, not a native
+    // select: open it and take the first option.
+    await dialog.getByRole('combobox').click()
+    await dialog.getByRole('option').first().click()
     await dialog.getByLabel(/date and time/i).fill('2030-06-02T09:30')
     await dialog.getByRole('button', { name: /^schedule appointment$/i }).click()
 
