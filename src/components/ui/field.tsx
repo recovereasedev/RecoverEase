@@ -3,6 +3,7 @@ import {
   createContext,
   useContext,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -203,6 +204,36 @@ const MIN_LIST_MAX_HEIGHT = 88
 /** Breathing room so the list never sits flush against the clip edge. */
 const LIST_GUTTER = 8
 
+/**
+ * Top of a fixed element drawn over the bottom edge of the screen beneath
+ * `field` — the mobile navigation bar — or the viewport bottom if none is.
+ *
+ * Found by asking what is actually painted at the bottom edge, so no page or
+ * component has to know the bar exists. A fixed element that holds the field
+ * itself is the field's own container, not something drawn over it, and one
+ * that starts above the field cannot be the floor beneath it.
+ */
+function fixedBarTopBelow(field: HTMLElement): number {
+  const viewportBottom = window.innerHeight
+  if (typeof document.elementFromPoint !== 'function') return viewportBottom
+
+  const rect = field.getBoundingClientRect()
+  const x = Math.min(
+    Math.max(rect.left + rect.width / 2, 0),
+    window.innerWidth - 1,
+  )
+  let hit = document.elementFromPoint(x, viewportBottom - 1)
+  while (hit && hit !== document.body) {
+    if (hit.contains(field)) return viewportBottom
+    if (getComputedStyle(hit).position === 'fixed') {
+      const top = hit.getBoundingClientRect().top
+      return top > rect.bottom ? top : viewportBottom
+    }
+    hit = hit.parentElement
+  }
+  return viewportBottom
+}
+
 export function Combobox({
   options,
   value,
@@ -234,6 +265,12 @@ export function Combobox({
   const [query, setQuery] = useState('')
   const [activeIndex, setActiveIndex] = useState(0)
   const blurTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const list = useRef<HTMLUListElement>(null)
+  // Whether the highlight was last moved by the keyboard — or by opening, or
+  // by typing — rather than by the pointer. Only then does the list scroll to
+  // keep it in view: a pointer already knows where it is, and scrolling the
+  // list under it would fight the wheel.
+  const followHighlight = useRef(false)
 
   const selected = options.find((option) => option.value === value) ?? null
 
@@ -254,6 +291,7 @@ export function Combobox({
     setQuery('')
     setActiveIndex(Math.max(0, matches.findIndex((o) => o.value === value)))
     setOpen(true)
+    followHighlight.current = true
 
     // The list is absolutely positioned, so the nearest ancestor with a
     // non-visible overflow clips it. Inside a dialog body
@@ -286,9 +324,15 @@ export function Combobox({
       clipper = clipper.parentElement
     }
 
+    // With nothing clipping it, the list can still be painted over: the
+    // mobile navigation bar is fixed to the bottom of the screen and sits
+    // above it, so on a short phone the last options were under the bar and
+    // could be neither seen nor tapped. Inside a clipping container — the
+    // scheduling dialog, which is in the top layer above the bar — the bar
+    // is not consulted.
     const floor = clipper
       ? clipper.getBoundingClientRect().bottom
-      : window.innerHeight
+      : Math.min(window.innerHeight, fixedBarTopBelow(node))
     const room = floor - node.getBoundingClientRect().bottom - LIST_GUTTER
 
     // Never smaller than two rows: a one-line list is worse than a scroll.
@@ -306,6 +350,33 @@ export function Combobox({
     close()
   }
 
+  // Keeps the highlighted option on screen as the keyboard moves it. The
+  // highlight and `aria-activedescendant` were always right — a screen reader
+  // heard the correct option — but nothing scrolled the list, so past the
+  // last visible row a sighted keyboard user was choosing blind.
+  //
+  // This sets the list's own `scrollTop` rather than calling
+  // `scrollIntoView`, which also scrolls every scrollable ancestor: inside
+  // the scheduling dialog that would shift the dialog body, and on a page it
+  // would scroll the page. It runs again once the list's measured height
+  // lands, so an option revealed against the default height is not hidden
+  // again when the list shrinks to fit.
+  useLayoutEffect(() => {
+    if (!isOpen || !followHighlight.current) return
+    const listNode = list.current
+    const option =
+      listNode?.querySelectorAll<HTMLElement>('[role="option"]')[activeIndex]
+    if (!listNode || !option) return
+
+    const top = option.offsetTop
+    const bottom = top + option.offsetHeight
+    if (top < listNode.scrollTop) {
+      listNode.scrollTop = top
+    } else if (bottom > listNode.scrollTop + listNode.clientHeight) {
+      listNode.scrollTop = bottom - listNode.clientHeight
+    }
+  }, [isOpen, activeIndex, matches, listMaxHeight])
+
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault()
@@ -314,6 +385,7 @@ export function Combobox({
         return
       }
       if (matches.length === 0) return
+      followHighlight.current = true
       const step = event.key === 'ArrowDown' ? 1 : -1
       setActiveIndex(
         (current) => (current + step + matches.length) % matches.length,
@@ -323,11 +395,13 @@ export function Combobox({
 
     if (event.key === 'Home' && isOpen) {
       event.preventDefault()
+      followHighlight.current = true
       setActiveIndex(0)
       return
     }
     if (event.key === 'End' && isOpen) {
       event.preventDefault()
+      followHighlight.current = true
       setActiveIndex(Math.max(0, matches.length - 1))
       return
     }
@@ -368,6 +442,7 @@ export function Combobox({
         onChange={(event) => {
           if (!isOpen) setOpen(true)
           setQuery(event.target.value)
+          followHighlight.current = true
           setActiveIndex(0)
         }}
         onFocus={open}
@@ -389,6 +464,7 @@ export function Combobox({
 
       {isOpen ? (
         <ul
+          ref={list}
           id={listId}
           role="listbox"
           style={{ maxHeight: listMaxHeight ?? DEFAULT_LIST_MAX_HEIGHT }}
@@ -409,7 +485,10 @@ export function Combobox({
                   if (blurTimer.current) clearTimeout(blurTimer.current)
                   commit(option)
                 }}
-                onMouseEnter={() => setActiveIndex(index)}
+                onMouseEnter={() => {
+                  followHighlight.current = false
+                  setActiveIndex(index)
+                }}
                 className={`flex min-h-11 cursor-pointer items-center justify-between gap-2 px-3 text-body ${
                   index === activeIndex
                     ? 'bg-brand-50 text-brand-800'
