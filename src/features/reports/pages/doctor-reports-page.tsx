@@ -8,7 +8,7 @@ import { PageHeader } from '@/components/layout/page-header'
 import { Button } from '@/components/ui/button'
 import { Card, CardBody, CardHeader } from '@/components/ui/card'
 import { ListRow, ListRows } from '@/components/ui/list-row'
-import { Field, Select } from '@/components/ui/field'
+import { Combobox, Field } from '@/components/ui/field'
 import { useCurrentUser } from '@/features/auth/auth-context'
 import { useMyPatients } from '@/features/patients/hooks'
 import { fetchReports, recordGeneratedReport } from '@/features/reports/api'
@@ -75,22 +75,24 @@ export function DoctorReportsPage() {
               className="space-y-4"
             >
               <Field label="Patient" required>
-                <Select
+                {/* Searchable rather than a native select, for the same
+                    reason as the scheduling dialog: a full caseload is a
+                    long list to scroll. It reads the same `useMyPatients()`
+                    list as before, so it still offers only this clinician's
+                    own patients, and still yields a patient id. */}
+                <Combobox
+                  options={(patientsQuery.data ?? []).map((patient) => ({
+                    value: patient.pat_id,
+                    label: fullName(
+                      patient.pat_first_name,
+                      patient.pat_last_name,
+                    ),
+                  }))}
                   value={selectedPatientId}
-                  onChange={(event) =>
-                    setSelectedPatientId(event.target.value)
-                  }
-                >
-                  <option value="">Choose a patient…</option>
-                  {(patientsQuery.data ?? []).map((patient) => (
-                    <option key={patient.pat_id} value={patient.pat_id}>
-                      {fullName(
-                        patient.pat_first_name,
-                        patient.pat_last_name,
-                      )}
-                    </option>
-                  ))}
-                </Select>
+                  onChange={setSelectedPatientId}
+                  placeholder="Choose a patient…"
+                  emptyLabel="No patient of yours matches that name"
+                />
               </Field>
 
               {generate.isError ? (

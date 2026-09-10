@@ -182,6 +182,39 @@ test.describe('doctor workspace', () => {
     await expect(page).toHaveTitle('RecoverEase | Appointments')
   })
 
+  test('finds a patient by name to generate a report', async ({
+    page,
+    signInAs,
+  }) => {
+    // F-03. The Reports picker was a native select; it now searches, and
+    // still offers only this clinician's own caseload.
+    await signInAs('doctor')
+    await page.goto('/doctor/reports')
+
+    const picker = page.getByRole('combobox', { name: /patient/i })
+    await picker.click()
+    // doctorA's caseload is exactly Alice and Bob. Carol belongs to doctorB
+    // and must not be offered.
+    await expect(page.getByRole('option')).toHaveCount(2)
+
+    await picker.fill('rey')
+    await expect(page.getByRole('option')).toHaveCount(1)
+    await page.getByRole('option', { name: 'Bob Reyes' }).click()
+    await expect(picker).toHaveValue('Bob Reyes')
+
+    // The existing report flow, unchanged: the patient id is what it records.
+    const recorded = page.waitForRequest(
+      (request) =>
+        request.url().includes('/rest/v1/report') && request.method() === 'POST',
+    )
+    await page.getByRole('button', { name: /generate report/i }).click()
+    expect((await recorded).postDataJSON()).toMatchObject({
+      pat_id: IDS.bobPat,
+      report_type: 'patient_recovery',
+    })
+    await expect(page.getByText(/report recorded/i)).toBeVisible()
+  })
+
   test('writes a clinical note', async ({ page, signInAs }) => {
     await signInAs('doctor')
     await page.goto(`/doctor/patients/${IDS.alicePat}`)
