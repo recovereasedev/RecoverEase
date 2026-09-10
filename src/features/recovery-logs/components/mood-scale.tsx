@@ -1,6 +1,6 @@
 import { cn } from '@/lib/utils'
 
-const MOOD_OPTIONS = [
+export const MOOD_OPTIONS = [
   { value: 1, label: 'Very poor' },
   { value: 2, label: 'Poor' },
   { value: 3, label: 'Okay' },

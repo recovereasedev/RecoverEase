@@ -188,7 +188,7 @@ function MobileDrawer({
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 z-50 lg:hidden">
+    <div className="fixed inset-0 z-50 lg:hidden print:hidden!">
       <button
         type="button"
         aria-label="Close menu"
@@ -239,7 +239,7 @@ function BottomNav({ items }: { items: NavItem[] }) {
     <nav
       aria-label="Primary"
       // The bottom padding keeps the bar clear of the iOS home indicator.
-      className="fixed inset-x-0 bottom-0 z-40 border-t border-[var(--color-border)] bg-surface pb-[env(safe-area-inset-bottom)] md:hidden"
+      className="fixed inset-x-0 bottom-0 z-40 border-t border-[var(--color-border)] bg-surface pb-[env(safe-area-inset-bottom)] md:hidden print:hidden!"
     >
       <ul className="grid grid-cols-5">
         {items.map((item) => (
@@ -305,16 +305,19 @@ export function AppShell() {
   const handleSignOut = () => void signOut()
 
   return (
-    <div className="min-h-dvh bg-canvas">
+    // In print only the page content goes to paper: the sidebar, header,
+    // drawer and bottom bar are navigation for a screen, and printed they
+    // turn every report and plan into a screenshot of the app.
+    <div className="min-h-dvh bg-canvas print:min-h-0 print:bg-white">
       <a
         href="#main-content"
-        className="sr-only-focusable absolute left-4 top-4 z-[60] rounded-[var(--radius-md)] bg-brand-800 px-4 py-2 text-sm font-medium text-white"
+        className="sr-only-focusable absolute left-4 top-4 z-[60] rounded-[var(--radius-md)] bg-brand-800 px-4 py-2 text-sm font-medium text-white print:hidden!"
       >
         Skip to main content
       </a>
 
       {/* --- Desktop sidebar --------------------------------------------- */}
-      <div className="hidden lg:fixed lg:inset-y-0 lg:left-0 lg:flex lg:w-sidebar lg:flex-col lg:border-r lg:border-[var(--color-border)] lg:bg-surface">
+      <div className="hidden lg:fixed lg:inset-y-0 lg:left-0 lg:flex lg:w-sidebar lg:flex-col lg:border-r lg:border-[var(--color-border)] lg:bg-surface print:hidden!">
         <div className="flex h-20 items-center border-b border-[var(--color-border)] px-5">
           <Link
             to={`/${user.role}`}
@@ -349,8 +352,8 @@ export function AppShell() {
       />
 
       {/* --- Content column ----------------------------------------------- */}
-      <div className="lg:pl-sidebar">
-        <header className="sticky top-0 z-30 flex h-16 items-center gap-2 border-b border-[var(--color-border)] bg-surface/95 px-4 backdrop-blur-sm sm:px-6 lg:h-20">
+      <div className="lg:pl-sidebar print:pl-0!">
+        <header className="sticky top-0 z-30 flex h-16 items-center gap-2 border-b border-[var(--color-border)] bg-surface/95 px-4 backdrop-blur-sm sm:px-6 lg:h-20 print:hidden!">
           <Button
             variant="ghost"
             size="icon"
@@ -402,7 +405,7 @@ export function AppShell() {
           tabIndex={-1}
           // Capped at the design system's 1280px reading width so line
           // lengths stay readable on an ultra-wide monitor.
-          className="content-width px-4 pb-24 pt-6 sm:px-6 md:pb-10 lg:px-8 lg:pt-8"
+          className="content-width px-4 pb-24 pt-6 sm:px-6 md:pb-10 lg:px-8 lg:pt-8 print:max-w-none! print:p-0!"
         >
           <Outlet />
         </main>

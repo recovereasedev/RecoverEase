@@ -25,7 +25,8 @@ export async function fetchReports(): Promise<ReportWithPatient[]> {
  *
  * This records that a report was generated, by whom and about whom. The
  * document itself is produced by the browser's print pipeline (see
- * `printable-report.tsx`), which is why `report_file_path` stays null here.
+ * `components/patient-report.tsx`), which is why `report_file_path` stays
+ * null here.
  *
  * `report_file_path` exists in the ERD for a stored artefact. Populating it
  * means uploading a rendered file to Supabase Storage from an Edge Function;

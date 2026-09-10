@@ -30,6 +30,14 @@ vi.mock('@/features/reports/api', () => ({
   recordGeneratedReport: mockRecord,
 }))
 
+// The document itself is covered by `patient-report.test.tsx` and
+// `doctor-report-preview.test.tsx`. Here it is only a witness that generating
+// opens the report for the patient that was chosen.
+const mockPreview = vi.hoisted(() => vi.fn((_props: { patientId: string }) => null))
+vi.mock('@/features/reports/components/report-preview', () => ({
+  ReportPreview: mockPreview,
+}))
+
 const { DoctorReportsPage } = await import(
   '@/features/reports/pages/doctor-reports-page'
 )
@@ -44,6 +52,7 @@ const MINE = [
 beforeEach(() => {
   mockRecord.mockReset()
   mockRecord.mockResolvedValue({})
+  mockPreview.mockClear()
   mockPatients.data = MINE
 })
 
@@ -177,6 +186,18 @@ describe('the Reports patient picker', () => {
       type: 'patient_recovery',
       patientId: 'p-2',
     })
+
+    // And the report that was just recorded opens, for that same patient.
+    await waitFor(() => expect(mockPreview).toHaveBeenCalled())
+    expect(mockPreview.mock.calls.at(-1)?.[0]).toMatchObject({ patientId: 'p-2' })
+  })
+
+  it('opens no report before one has been recorded', () => {
+    const { input } = renderPage()
+    open(input)
+    fireEvent.mouseDown(screen.getByRole('option', { name: /Bob Reyes/ }))
+
+    expect(mockPreview).not.toHaveBeenCalled()
   })
 
   it('keeps a long caseload fully reachable', () => {

@@ -314,6 +314,50 @@
 }
 
 /* ===========================================================================
+   Print
+   ---------------------------------------------------------------------------
+   A report prints on the `report` named page: A4 portrait, margins the
+   printer can reach, and the running footer in the page margin where the
+   browser supports margin boxes (Chromium does; elsewhere the footer inside
+   the document still carries the same line). The page number cannot live in
+   the document itself: a static "Page 1 of 1" is wrong the moment a long
+   recovery log runs onto a second sheet.
+
+   The application's own chrome is hidden in print by `print:hidden` in the
+   shell, not here, so this file never has to know its class names.
+   =========================================================================== */
+
+@page report {
+  size: A4 portrait;
+  margin: 14mm 14mm 16mm;
+
+  @bottom-left {
+    content: 'RecoverEase · Confidential health record';
+    font-family: 'Inter Variable', 'Inter', ui-sans-serif, system-ui, sans-serif;
+    font-size: 7.5pt;
+    color: #5f6672;
+  }
+
+  @bottom-right {
+    content: 'Page ' counter(page) ' of ' counter(pages);
+    font-family: 'Inter Variable', 'Inter', ui-sans-serif, system-ui, sans-serif;
+    font-size: 7.5pt;
+    color: #5f6672;
+  }
+}
+
+@media print {
+  .report-sheet {
+    page: report;
+  }
+
+  html,
+  body {
+    background: #ffffff;
+  }
+}
+
+/* ===========================================================================
    Utilities
    =========================================================================== */
 
@@ -345,6 +389,14 @@
     margin-inline: auto;
     width: 100%;
     max-width: var(--container-content);
+  }
+
+  /* A printed report asks for its tinted panels, table header and status
+     chips to be printed. Browsers drop backgrounds by default to save ink,
+     which on this layout leaves white text on white paper. */
+  .report-sheet {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
   }
 
   /* Hidden until focused. Used by the skip link, which must be reachable by
