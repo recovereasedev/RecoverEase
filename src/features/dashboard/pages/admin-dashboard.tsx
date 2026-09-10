@@ -16,6 +16,7 @@ import { buttonVariants } from '@/components/ui/button'
 import { Card, CardBody, CardHeader } from '@/components/ui/card'
 import { StatCard } from '@/components/ui/stat-card'
 import { fetchAdminDashboardStats, fetchChatbotUsage } from '@/features/reports/api'
+import { useDocumentTitle } from '@/hooks/use-document-title'
 import { queryKeys } from '@/lib/query-keys'
 
 /**
@@ -32,6 +33,7 @@ import { queryKeys } from '@/lib/query-keys'
  * no health score, no growth rate, no derived percentage.
  */
 export function AdminDashboard() {
+  useDocumentTitle('Dashboard')
   const statsQuery = useQuery({
     queryKey: queryKeys.admin.dashboard(),
     queryFn: fetchAdminDashboardStats,

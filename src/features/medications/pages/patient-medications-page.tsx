@@ -15,6 +15,7 @@ import {
   useMedicationSchedules,
   useSetDoseStatus,
 } from '@/features/medications/hooks'
+import { useDocumentTitle } from '@/hooks/use-document-title'
 import {
   formatDate,
   formatDateRelative,
@@ -34,6 +35,7 @@ import { medicationLogStatus } from '@/lib/status'
  * first screen.
  */
 export function PatientMedicationsPage() {
+  useDocumentTitle('Medications')
   const user = useCurrentUser()
   const patientId =
     user.profile.kind === 'patient' ? user.profile.patient.pat_id : ''

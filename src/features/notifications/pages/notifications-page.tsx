@@ -18,6 +18,7 @@ import {
   useMarkNotificationRead,
   useNotifications,
 } from '@/features/notifications/hooks'
+import { useDocumentTitle } from '@/hooks/use-document-title'
 import { formatRelative } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
@@ -37,6 +38,7 @@ const TYPE_ICON: Record<NotificationType, LucideIcon> = {
 
 /** Module 7.3 "View Notifications and Reminders". */
 export function NotificationsPage() {
+  useDocumentTitle('Notifications')
   const notificationsQuery = useNotifications()
   const markRead = useMarkNotificationRead()
   const markAllRead = useMarkAllNotificationsRead()

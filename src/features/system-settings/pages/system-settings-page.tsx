@@ -10,6 +10,7 @@ import {
   SETTING_DEFINITIONS,
 } from '@/features/system-settings/api'
 import { SettingForm } from '@/features/system-settings/components/setting-form'
+import { useDocumentTitle } from '@/hooks/use-document-title'
 import { queryKeys } from '@/lib/query-keys'
 
 /**
@@ -22,6 +23,7 @@ import { queryKeys } from '@/lib/query-keys'
  * that matter.
  */
 export function SystemSettingsPage() {
+  useDocumentTitle('System Settings')
   const user = useCurrentUser()
   const adminId = user.profile.kind === 'admin' ? user.profile.admin.admin_id : ''
   const queryClient = useQueryClient()

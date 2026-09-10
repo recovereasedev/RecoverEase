@@ -8,11 +8,13 @@ import { Button } from '@/components/ui/button'
 import { Card, CardBody, CardHeader } from '@/components/ui/card'
 import { Field, Input } from '@/components/ui/field'
 import { useAuth, useCurrentUser } from '@/features/auth/auth-context'
+import { useDocumentTitle } from '@/hooks/use-document-title'
 import { supabase } from '@/lib/supabase/client'
 import { fullName } from '@/lib/utils'
 
 /** Module 14.2 "View and Update Admin Profile". */
 export function AdminProfilePage() {
+  useDocumentTitle('My Profile')
   const user = useCurrentUser()
   const { refresh } = useAuth()
   const admin = user.profile.kind === 'admin' ? user.profile.admin : null

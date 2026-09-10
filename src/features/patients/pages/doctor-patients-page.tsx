@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/data-table'
 import { RegisterAccountDialog } from '@/features/patients/components/register-account-dialog'
 import { useMyPatients } from '@/features/patients/hooks'
+import { useDocumentTitle } from '@/hooks/use-document-title'
 import { calculateAge, formatDate } from '@/lib/format'
 import { patientStatus } from '@/lib/status'
 import { fullName, initials } from '@/lib/utils'
@@ -38,6 +39,7 @@ import { fullName, initials } from '@/lib/utils'
  * is what turns "call this patient" into "go and find a desktop".
  */
 export function DoctorPatientsPage() {
+  useDocumentTitle('Patients')
   const patientsQuery = useMyPatients()
   const [search, setSearch] = useState('')
   const [isRegisterOpen, setRegisterOpen] = useState(false)

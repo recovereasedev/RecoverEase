@@ -10,6 +10,7 @@ import { Notice } from '@/components/ui/notice'
 import { RegisterAccountDialog } from '@/features/patients/components/register-account-dialog'
 import { ResetCredentialDialog } from '@/features/patients/components/reset-credential-dialog'
 import { useAllDoctors, useSetDoctorActive } from '@/features/patients/hooks'
+import { useDocumentTitle } from '@/hooks/use-document-title'
 import { formatDate } from '@/lib/format'
 import { doctorAccountStatus } from '@/lib/status'
 import { fullName } from '@/lib/utils'
@@ -28,6 +29,7 @@ import { fullName } from '@/lib/utils'
  * it.
  */
 export function AdminDoctorsPage() {
+  useDocumentTitle('Doctor Accounts')
   // Holds the doctor whose credential is being reissued. Null closes the
   // dialog; the object carries the name so the confirmation can say who it
   // is for without another lookup.

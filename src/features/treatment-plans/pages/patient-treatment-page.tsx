@@ -9,6 +9,7 @@ import { Card, CardBody, CardHeader } from '@/components/ui/card'
 import { useCurrentUser } from '@/features/auth/auth-context'
 import { summariseGoals } from '@/features/treatment-plans/api'
 import { useTreatmentPlans } from '@/features/treatment-plans/hooks'
+import { useDocumentTitle } from '@/hooks/use-document-title'
 import { formatDate } from '@/lib/format'
 import { treatmentGoalStatus, treatmentPlanStatus } from '@/lib/status'
 
@@ -22,6 +23,7 @@ import { treatmentGoalStatus, treatmentPlanStatus } from '@/lib/status'
  * that never arrives.
  */
 export function PatientTreatmentPage() {
+  useDocumentTitle('Treatment Plan')
   const user = useCurrentUser()
   const patientId =
     user.profile.kind === 'patient' ? user.profile.patient.pat_id : ''

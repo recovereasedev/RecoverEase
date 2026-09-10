@@ -8,6 +8,7 @@ import { Card, CardBody, CardHeader } from '@/components/ui/card'
 import { Field, Input } from '@/components/ui/field'
 import { useAuth, useCurrentUser } from '@/features/auth/auth-context'
 import { useUpdateDoctor } from '@/features/patients/hooks'
+import { useDocumentTitle } from '@/hooks/use-document-title'
 import { fullName } from '@/lib/utils'
 
 /**
@@ -19,6 +20,7 @@ import { fullName } from '@/lib/utils'
  * form submits.
  */
 export function DoctorProfilePage() {
+  useDocumentTitle('My Profile')
   const user = useCurrentUser()
   const { refresh } = useAuth()
   const doctor = user.profile.kind === 'doctor' ? user.profile.doctor : null

@@ -11,6 +11,7 @@ import {
   useRecoveryLogs,
   useSaveRecoveryLog,
 } from '@/features/recovery-logs/hooks'
+import { useDocumentTitle } from '@/hooks/use-document-title'
 import { formatDateRelative, toDateKey } from '@/lib/format'
 
 /**
@@ -23,6 +24,7 @@ import { formatDateRelative, toDateKey } from '@/lib/format'
  * something later in the day simply can.
  */
 export function RecoveryPage() {
+  useDocumentTitle('My Recovery')
   const user = useCurrentUser()
   const patientId =
     user.profile.kind === 'patient' ? user.profile.patient.pat_id : ''

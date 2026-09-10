@@ -17,6 +17,7 @@ import {
   setAnnouncementPublished,
 } from '@/features/announcements/api'
 import { useCurrentUser } from '@/features/auth/auth-context'
+import { useDocumentTitle } from '@/hooks/use-document-title'
 import { formatDateTime } from '@/lib/format'
 import { queryKeys } from '@/lib/query-keys'
 
@@ -31,6 +32,7 @@ import { queryKeys } from '@/lib/query-keys'
  * administrator's interface and it cannot be undone.
  */
 export function AdminAnnouncementsPage() {
+  useDocumentTitle('Announcements')
   const user = useCurrentUser()
   const adminId = user.profile.kind === 'admin' ? user.profile.admin.admin_id : ''
   const queryClient = useQueryClient()

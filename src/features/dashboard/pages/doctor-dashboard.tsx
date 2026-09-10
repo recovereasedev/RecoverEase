@@ -21,6 +21,7 @@ import {
 } from '@/features/appointments/hooks'
 import { useCurrentUser } from '@/features/auth/auth-context'
 import { useMyPatients } from '@/features/patients/hooks'
+import { useDocumentTitle } from '@/hooks/use-document-title'
 import { formatDateTime, formatTime } from '@/lib/format'
 import { appointmentStatus } from '@/lib/status'
 import { fullName } from '@/lib/utils'
@@ -41,6 +42,7 @@ import { fullName } from '@/lib/utils'
  * cannot act on is display, not information.
  */
 export function DoctorDashboard() {
+  useDocumentTitle('Dashboard')
   const user = useCurrentUser()
   const doctor = user.profile.kind === 'doctor' ? user.profile.doctor : null
 

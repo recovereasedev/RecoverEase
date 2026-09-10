@@ -16,6 +16,7 @@ import {
   fetchChatSessions,
   requestAssistantReply,
 } from '@/features/chat/api'
+import { useDocumentTitle } from '@/hooks/use-document-title'
 import { formatDateTime, formatTime } from '@/lib/format'
 import { queryKeys } from '@/lib/query-keys'
 import { cn } from '@/lib/utils'
@@ -33,6 +34,7 @@ import { cn } from '@/lib/utils'
  * post-treatment symptoms is worse than no answer at all.
  */
 export function PatientChatPage() {
+  useDocumentTitle('Guidance Chat')
   const user = useCurrentUser()
   const patientId =
     user.profile.kind === 'patient' ? user.profile.patient.pat_id : ''

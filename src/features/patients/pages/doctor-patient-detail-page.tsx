@@ -49,6 +49,7 @@ import {
   summariseGoals,
   type TreatmentGoalStatus,
 } from '@/features/treatment-plans/api'
+import { useDocumentTitle } from '@/hooks/use-document-title'
 import {
   calculateAge,
   formatDate,
@@ -82,6 +83,7 @@ const TABS = [
  * past four other sections.
  */
 export function DoctorPatientDetailPage() {
+  useDocumentTitle('Patient Record')
   const { patientId = '' } = useParams()
   const user = useCurrentUser()
   const doctorId = user.profile.kind === 'doctor' ? user.profile.doctor.doc_id : ''

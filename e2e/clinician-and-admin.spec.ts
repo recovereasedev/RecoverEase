@@ -159,6 +159,29 @@ test.describe('doctor workspace', () => {
     await expect(page.getByText(/200 mg/)).toBeVisible()
   })
 
+  test('names each screen in the browser tab', async ({ page, signInAs }) => {
+    // F-02. Every signed-in page used to be "RecoverEase", so history was a
+    // column of identical entries and a screen reader announced the same
+    // title on every navigation.
+    await signInAs('doctor')
+
+    await page.goto('/doctor')
+    await expect(page).toHaveTitle('RecoverEase | Dashboard')
+
+    // Client-side navigation, not a fresh load: the title has to follow the
+    // router, and must not stay stuck on the page just left.
+    await page.getByRole('link', { name: 'Patients', exact: true }).first().click()
+    await expect(page).toHaveTitle('RecoverEase | Patients')
+
+    await page.goto(`/doctor/patients/${IDS.alicePat}`)
+    await expect(page).toHaveTitle('RecoverEase | Patient Record')
+    // The record names the patient; the tab and the history entry do not.
+    await expect(page).not.toHaveTitle(/Alice|Santos/)
+
+    await page.goto('/doctor/appointments')
+    await expect(page).toHaveTitle('RecoverEase | Appointments')
+  })
+
   test('writes a clinical note', async ({ page, signInAs }) => {
     await signInAs('doctor')
     await page.goto(`/doctor/patients/${IDS.alicePat}`)
@@ -294,6 +317,19 @@ test.describe('administrator boundaries', () => {
     await expect(
       page.getByText(/withdraws their access to all\s+patient records/i),
     ).toBeVisible()
+  })
+
+  test('names the administrator screens too', async ({ page, signInAs }) => {
+    await signInAs('admin')
+
+    await page.goto('/admin')
+    await expect(page).toHaveTitle('RecoverEase | Dashboard')
+
+    await page.goto('/admin/audit')
+    await expect(page).toHaveTitle('RecoverEase | Audit Log')
+
+    await page.goto('/admin/settings')
+    await expect(page).toHaveTitle('RecoverEase | System Settings')
   })
 
   test('cannot reach a patient screen by typing the URL', async ({

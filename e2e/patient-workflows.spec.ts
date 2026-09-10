@@ -262,3 +262,23 @@ test.describe('guidance chat (module 8)', () => {
     await expect(page.getByText('Should I change my dose?')).toBeVisible()
   })
 })
+
+test.describe('browser tab titles (F-02)', () => {
+  test('names the patient screens', async ({ page, signInAs }) => {
+    await signInAs('patient')
+
+    await page.goto('/patient')
+    await expect(page).toHaveTitle('RecoverEase | Dashboard')
+
+    await page.goto('/patient/appointments')
+    await expect(page).toHaveTitle('RecoverEase | Appointments')
+
+    await page.goto('/patient/medications')
+    await expect(page).toHaveTitle('RecoverEase | Medications')
+
+    // Back out to a page that names nothing of its own: the previous title
+    // must not follow it there.
+    await page.goto('/')
+    await expect(page).toHaveTitle('RecoverEase')
+  })
+})

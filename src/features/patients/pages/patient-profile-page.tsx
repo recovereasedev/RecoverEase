@@ -10,6 +10,7 @@ import { Card, CardBody, CardHeader } from '@/components/ui/card'
 import { Field, Input } from '@/components/ui/field'
 import { useAuth, useCurrentUser } from '@/features/auth/auth-context'
 import { useMyDoctor, useUpdatePatient } from '@/features/patients/hooks'
+import { useDocumentTitle } from '@/hooks/use-document-title'
 import { calculateAge, formatDate } from '@/lib/format'
 import { fullName } from '@/lib/utils'
 import { patientStatus } from '@/lib/status'
@@ -27,6 +28,7 @@ import { patientStatus } from '@/lib/status'
  * form sends.
  */
 export function PatientProfilePage() {
+  useDocumentTitle('My Profile')
   const user = useCurrentUser()
   const { refresh } = useAuth()
   const patient =

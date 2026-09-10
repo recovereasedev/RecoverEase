@@ -5,6 +5,7 @@ import { StateView } from '@/components/feedback/state-view'
 import { PageHeader } from '@/components/layout/page-header'
 import { Card, CardBody } from '@/components/ui/card'
 import { fetchAnnouncements } from '@/features/announcements/api'
+import { useDocumentTitle } from '@/hooks/use-document-title'
 import { formatDate } from '@/lib/format'
 import { queryKeys } from '@/lib/query-keys'
 
@@ -16,6 +17,7 @@ import { queryKeys } from '@/lib/query-keys'
  * guessing a URL.
  */
 export function AnnouncementsPage() {
+  useDocumentTitle('Announcements')
   const announcementsQuery = useQuery({
     queryKey: queryKeys.announcements.list(),
     queryFn: fetchAnnouncements,

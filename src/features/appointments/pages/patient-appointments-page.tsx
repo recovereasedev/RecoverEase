@@ -17,6 +17,7 @@ import {
   useSetAppointmentStatus,
 } from '@/features/appointments/hooks'
 import { useCurrentUser } from '@/features/auth/auth-context'
+import { useDocumentTitle } from '@/hooks/use-document-title'
 import { formatDateTime } from '@/lib/format'
 import { appointmentStatus, rescheduleRequestStatus } from '@/lib/status'
 import { supabase } from '@/lib/supabase/client'
@@ -41,6 +42,7 @@ function minimumBookingValue(): string {
  * choice would only produce rejected bookings.
  */
 export function PatientAppointmentsPage() {
+  useDocumentTitle('Appointments')
   const user = useCurrentUser()
   const patient =
     user.profile.kind === 'patient' ? user.profile.patient : null

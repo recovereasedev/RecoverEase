@@ -23,6 +23,7 @@ import { calculateStreak } from '@/features/recovery-logs/api'
 import { useRecoveryLogs } from '@/features/recovery-logs/hooks'
 import { summariseGoals } from '@/features/treatment-plans/api'
 import { useTreatmentPlans } from '@/features/treatment-plans/hooks'
+import { useDocumentTitle } from '@/hooks/use-document-title'
 import { formatDateTime, formatTime, toDateKey } from '@/lib/format'
 import { appointmentStatus, medicationLogStatus } from '@/lib/status'
 
@@ -49,6 +50,7 @@ function greeting(now = new Date()): string {
  * There are no summary tiles showing numbers the patient cannot act on.
  */
 export function PatientDashboard() {
+  useDocumentTitle('Dashboard')
   const user = useCurrentUser()
   const patient =
     user.profile.kind === 'patient' ? user.profile.patient : null

@@ -16,6 +16,7 @@ import {
   useRescheduleRequests,
   useSetAppointmentStatus,
 } from '@/features/appointments/hooks'
+import { useDocumentTitle } from '@/hooks/use-document-title'
 import { formatDateTime } from '@/lib/format'
 import { appointmentStatus, rescheduleRequestStatus } from '@/lib/status'
 import { fullName } from '@/lib/utils'
@@ -41,6 +42,7 @@ function canCancel(status: Enums<'appointment_status'>): boolean {
  * patient waiting on it.
  */
 export function DoctorAppointmentsPage() {
+  useDocumentTitle('Appointments')
   const appointmentsQuery = useAppointments()
   const requestsQuery = useRescheduleRequests()
   const decide = useDecideRescheduleRequest()

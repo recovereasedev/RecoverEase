@@ -12,6 +12,7 @@ import { Field, Select } from '@/components/ui/field'
 import { useCurrentUser } from '@/features/auth/auth-context'
 import { useMyPatients } from '@/features/patients/hooks'
 import { fetchReports, recordGeneratedReport } from '@/features/reports/api'
+import { useDocumentTitle } from '@/hooks/use-document-title'
 import { formatDateTime } from '@/lib/format'
 import { queryKeys } from '@/lib/query-keys'
 import { fullName } from '@/lib/utils'
@@ -27,6 +28,7 @@ import { fullName } from '@/lib/utils'
  * every platform.
  */
 export function DoctorReportsPage() {
+  useDocumentTitle('Reports')
   const user = useCurrentUser()
   const queryClient = useQueryClient()
   const patientsQuery = useMyPatients()

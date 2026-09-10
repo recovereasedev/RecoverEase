@@ -13,6 +13,7 @@ import {
   fetchReports,
   recordGeneratedReport,
 } from '@/features/reports/api'
+import { useDocumentTitle } from '@/hooks/use-document-title'
 import { formatDateTime } from '@/lib/format'
 import { queryKeys } from '@/lib/query-keys'
 
@@ -26,6 +27,7 @@ import { queryKeys } from '@/lib/query-keys'
  * return none to this role.
  */
 export function AdminReportsPage() {
+  useDocumentTitle('Reports')
   const user = useCurrentUser()
   const queryClient = useQueryClient()
 
