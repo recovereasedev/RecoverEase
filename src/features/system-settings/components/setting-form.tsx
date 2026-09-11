@@ -5,7 +5,10 @@ import { FormError } from '@/components/feedback/form-error'
 import { Button } from '@/components/ui/button'
 import { Card, CardBody, CardFooter, CardHeader } from '@/components/ui/card'
 import { Field, Input, Textarea } from '@/components/ui/field'
-import type { SystemSetting } from '@/features/system-settings/api'
+import type {
+  SettingParseResult,
+  SystemSetting,
+} from '@/features/system-settings/api'
 import { formatDateTime } from '@/lib/format'
 
 export type SettingDefinition = {
@@ -14,6 +17,12 @@ export type SettingDefinition = {
   description: string
   placeholder: string
   multiline: boolean
+  /**
+   * For a setting the application reads as more than free text: checks a
+   * value before it is saved and gives the form to store. Without one, the
+   * value is saved exactly as typed.
+   */
+  parse?: (value: string) => SettingParseResult
 }
 
 /**
@@ -41,6 +50,7 @@ export function SettingForm({
 }) {
   const savedValue = record?.system_setting_value ?? ''
   const [value, setValue] = useState(savedValue)
+  const [invalid, setInvalid] = useState<string | undefined>(undefined)
 
   const isDirty = value !== savedValue
 
@@ -55,11 +65,23 @@ export function SettingForm({
         <form
           onSubmit={(event) => {
             event.preventDefault()
-            onSave(value)
+            if (!definition.parse) {
+              onSave(value)
+              return
+            }
+            // Refused here rather than saved and then ignored, so the stored
+            // value stays as it was.
+            const parsed = definition.parse(value)
+            if (!parsed.ok) {
+              setInvalid(parsed.message)
+              return
+            }
+            setInvalid(undefined)
+            onSave(parsed.value)
           }}
           className="space-y-4"
         >
-          <Field label={definition.label}>
+          <Field label={definition.label} error={invalid}>
             {definition.multiline ? (
               <Textarea
                 rows={6}
@@ -71,7 +93,10 @@ export function SettingForm({
               <Input
                 value={value}
                 placeholder={definition.placeholder}
-                onChange={(event) => setValue(event.target.value)}
+                onChange={(event) => {
+                  setValue(event.target.value)
+                  setInvalid(undefined)
+                }}
               />
             )}
           </Field>

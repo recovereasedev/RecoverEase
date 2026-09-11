@@ -3,6 +3,28 @@ import type { Tables } from '@/types/database.types'
 
 export type SystemSetting = Tables<'system_setting'>
 
+/** What a setting makes of a value typed in: the value to store, or why not. */
+export type SettingParseResult =
+  | { ok: true; value: string }
+  | { ok: false; message: string }
+
+/**
+ * QA-03. The overdue job reads the missed-dose grace period as a whole number
+ * of hours from 1 to 24, and falls back to six hours on anything else
+ * (migration 20260902100024). The same rule is checked here so that an
+ * administrator is told at once, rather than saving a value the job then
+ * ignores. ASCII digits only; spaces around the number and leading zeros are
+ * ignored, and the number is stored without them.
+ */
+const GRACE_HOURS = /^0*([1-9]|1[0-9]|2[0-4])$/
+
+export function parseGraceHours(input: string): SettingParseResult {
+  const hours = GRACE_HOURS.exec(input.trim())?.[1]
+  return hours === undefined
+    ? { ok: false, message: 'Enter a whole number of hours from 1 to 24.' }
+    : { ok: true, value: hours }
+}
+
 /**
  * The settings the application understands, with the guidance an
  * administrator needs to set them sensibly.
@@ -33,9 +55,10 @@ export const SETTING_DEFINITIONS = [
     key: 'medication.reminder_grace_hours',
     label: 'Missed dose grace period (hours)',
     description:
-      'How long after a scheduled time a dose stays open before it is recorded as missed.',
+      'How long after a scheduled time a dose stays open before it is recorded as missed. A whole number of hours from 1 to 24.',
     placeholder: '6',
     multiline: false,
+    parse: parseGraceHours,
   },
 ] as const
 

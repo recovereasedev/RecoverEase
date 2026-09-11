@@ -235,6 +235,12 @@ select public.dispatch_medication_reminders(30);
 select public.mark_overdue_medication_logs(6);
 ```
 
+The 6 is a fallback, not the grace period itself. `mark_overdue_medication_logs`
+uses the **Missed dose grace period** setting (`medication.reminder_grace_hours`)
+whenever it holds a whole number of hours from 1 to 24, and its argument only
+when the setting is missing or unusable. Change the grace period from
+**Admin → System settings**, not in the job.
+
 Reminders are delivered as in-app notifications, which is what the ERD's
 `notification` table models. Email or push delivery would be a further step
 and is not implemented.
