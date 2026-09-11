@@ -146,6 +146,33 @@ export async function createMedicationSchedule(input: {
   return data
 }
 
+/**
+ * Ends a medication course (QA-01): its end date becomes the clinic's today.
+ *
+ * The date comes from the database rather than the browser's clock, so the
+ * course ends on the day the clinic is in wherever the clinician happens to
+ * be. The course keeps today and stops after it; a database trigger removes
+ * the doses still waiting after that, and leaves every dose already taken,
+ * missed or skipped exactly as recorded.
+ */
+export async function endMedicationSchedule(scheduleId: string): Promise<void> {
+  const { data: today, error: todayError } = await supabase.rpc('app_today')
+  if (todayError) throw todayError
+
+  const { data, error } = await supabase
+    .from('medication_schedule')
+    .update({ medication_schedule_end_date: today })
+    .eq('medication_schedule_id', scheduleId)
+    .select('medication_schedule_id')
+
+  if (error) throw error
+  // RLS reports a refused update as zero rows rather than an error. Saying
+  // the medication ended when nothing changed would be worse than failing.
+  if (!data || data.length === 0) {
+    throw new Error('This medication could not be ended.')
+  }
+}
+
 export type Adherence = {
   taken: number
   missed: number

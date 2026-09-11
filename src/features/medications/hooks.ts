@@ -5,6 +5,7 @@ import { queryKeys } from '@/lib/query-keys'
 import {
   createMedicationSchedule,
   createPrescription,
+  endMedicationSchedule,
   fetchDoses,
   fetchSchedules,
   setDoseStatus,
@@ -54,6 +55,24 @@ export function useCreatePrescription(patientId: string, doctorId: string) {
     mutationFn: (input: { notes: string | null }) =>
       createPrescription({ patientId, doctorId, notes: input.notes }),
     onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.prescriptions.forPatient(patientId),
+      })
+    },
+  })
+}
+
+export function useEndMedicationSchedule(patientId: string) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: endMedicationSchedule,
+    onSuccess: () => {
+      // Ending a course dates the schedule and removes its later doses, so
+      // the schedule list, the dose lists and the adherence summary all move.
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.medications.all,
+      })
       void queryClient.invalidateQueries({
         queryKey: queryKeys.prescriptions.forPatient(patientId),
       })

@@ -31,6 +31,7 @@ import { Tabs } from '@/components/ui/tabs'
 import { useCurrentUser } from '@/features/auth/auth-context'
 import { createDoctorNote, fetchDoctorNotes } from '@/features/doctor-notes/api'
 import { AdherenceSummary } from '@/features/medications/components/adherence-summary'
+import { EndMedicationAction } from '@/features/medications/components/end-medication'
 import { MedicationForm } from '@/features/medications/components/medication-form'
 import { summariseAdherence } from '@/features/medications/api'
 import { useDoses, useMedicationSchedules } from '@/features/medications/hooks'
@@ -662,30 +663,39 @@ export function DoctorPatientDetailPage() {
                           {schedules.map((schedule) => (
                             <li
                               key={schedule.medication_schedule_id}
-                              className="px-4 py-4 sm:px-5"
+                              className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-start sm:justify-between sm:px-5"
                             >
-                              <p className="font-medium text-heading">
-                                {schedule.medication_schedule_name}
-                              </p>
-                              <p className="mt-0.5 text-sm text-body">
-                                {schedule.medication_schedule_dosage} ·{' '}
-                                {schedule.medication_schedule_frequency}× daily
-                                at{' '}
-                                <span data-numeric>
-                                  {schedule.medication_schedule_times
-                                    .map(formatScheduleTime)
-                                    .join(', ')}
-                                </span>
-                              </p>
-                              <p className="mt-0.5 text-sm text-muted">
-                                From{' '}
-                                {formatDate(
-                                  schedule.medication_schedule_start_date,
-                                )}
-                                {schedule.medication_schedule_end_date
-                                  ? ` until ${formatDate(schedule.medication_schedule_end_date)}`
-                                  : ', ongoing'}
-                              </p>
+                              <div className="min-w-0">
+                                <p className="font-medium text-heading">
+                                  {schedule.medication_schedule_name}
+                                </p>
+                                <p className="mt-0.5 text-sm text-body">
+                                  {schedule.medication_schedule_dosage} ·{' '}
+                                  {schedule.medication_schedule_frequency}×
+                                  daily at{' '}
+                                  <span data-numeric>
+                                    {schedule.medication_schedule_times
+                                      .map(formatScheduleTime)
+                                      .join(', ')}
+                                  </span>
+                                </p>
+                                <p className="mt-0.5 text-sm text-muted">
+                                  From{' '}
+                                  {formatDate(
+                                    schedule.medication_schedule_start_date,
+                                  )}
+                                  {schedule.medication_schedule_end_date
+                                    ? ` until ${formatDate(schedule.medication_schedule_end_date)}`
+                                    : ', ongoing'}
+                                </p>
+                              </div>
+
+                              {/* QA-01. Only on a course that is still
+                                  running; see canEndSchedule. */}
+                              <EndMedicationAction
+                                patientId={patientId}
+                                schedule={schedule}
+                              />
                             </li>
                           ))}
                         </ul>

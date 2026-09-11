@@ -837,6 +837,10 @@ export type Database = {
         Args: { window_days?: number }
         Returns: Json
       }
+      app_today: {
+        Args: Record<PropertyKey, never>
+        Returns: string
+      }
     }
     Enums: {
       appointment_status: 'scheduled' | 'confirmed' | 'completed' | 'cancelled' | 'no_show'
