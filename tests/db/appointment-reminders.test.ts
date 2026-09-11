@@ -288,4 +288,227 @@ describe('appointment reminders', () => {
       database.asAnon('select public.dispatch_appointment_reminders(24)'),
     ).rejects.toThrow()
   })
+
+  describe('after a reschedule', () => {
+    // F-01. The duplicate guard is one timestamp on the appointment, and an
+    // approved reschedule moves that same row to a new time. Before this was
+    // fixed the guard survived the move: an appointment reminded about its
+    // old time was never reminded about its new one, and both people were
+    // left holding a notification with the wrong time on it.
+
+    /** An instant `interval` from now, as the timestamptz text the client sends. */
+    async function timeFromNow(interval: string): Promise<string> {
+      const [row] = await database.asService<{ at: string }>(
+        'select (now() + $1::interval)::text as at',
+        [interval],
+      )
+      return row!.at
+    }
+
+    /** The patient asks for a new time, as `createRescheduleRequest` does, under RLS. */
+    async function requestReschedule(
+      appointmentId: string,
+      proposedFor: string,
+    ): Promise<string> {
+      const [row] = await database.asUser<{ reschedule_request_id: string }>(
+        fx.aliceUserId,
+        `insert into public.reschedule_request
+           (appointment_id, user_id, reschedule_request_date, reschedule_request_reason)
+         values ($1, $2, $3::timestamptz, 'Work commitment')
+         returning reschedule_request_id`,
+        [appointmentId, fx.aliceUserId, proposedFor],
+      )
+      return row!.reschedule_request_id
+    }
+
+    /** The clinician approves, as `decideRescheduleRequest` does: the status only, under RLS. */
+    async function approve(requestId: string): Promise<void> {
+      await database.asUser(
+        fx.doctorAUserId,
+        `update public.reschedule_request
+            set reschedule_request_status = 'approved'
+          where reschedule_request_id = $1`,
+        [requestId],
+      )
+    }
+
+    async function rescheduleTo(appointmentId: string, proposedFor: string) {
+      await approve(await requestReschedule(appointmentId, proposedFor))
+    }
+
+    /** The appointment as the dispatcher sees it, with its time as a reminder prints it. */
+    async function appointmentRow(appointmentId: string) {
+      const [row] = await database.asService<{
+        appointment_date: string
+        appointment_status: string
+        stamped: boolean
+        clock: string
+      }>(
+        `select appointment_date::text as appointment_date,
+                appointment_status,
+                appointment_reminder_sent_at is not null as stamped,
+                to_char(
+                  appointment_date at time zone coalesce(
+                    (select system_setting_value from public.system_setting
+                      where system_setting_key = 'app.timezone'),
+                    'UTC'),
+                  'HH24:MI') as clock
+           from public.appointment where appointment_id = $1`,
+        [appointmentId],
+      )
+      return row!
+    }
+
+    /** One person's appointment notifications, oldest first. */
+    async function messagesFor(userId: string): Promise<string[]> {
+      const rows = await database.asService<{ notification_message: string }>(
+        `select notification_message from public.notification
+          where user_id = $1 and notification_type = 'appointment'
+          order by notification_created_at`,
+        [userId],
+      )
+      return rows.map((row) => row.notification_message)
+    }
+
+    it('reminds the patient and the clinician again, at the new time', async () => {
+      const id = await appointmentIn(12)
+      expect(await dispatch()).toBe(2)
+
+      const before = await appointmentRow(id)
+      expect(before.stamped).toBe(true)
+      expect(await messagesFor(fx.aliceUserId)).toHaveLength(1)
+      expect(await messagesFor(fx.doctorAUserId)).toHaveLength(1)
+
+      // Eight hours later: still inside the 24-hour window, at a new time.
+      await rescheduleTo(id, await timeFromNow('20 hours'))
+
+      const after = await appointmentRow(id)
+      expect(after.appointment_date).not.toBe(before.appointment_date)
+      expect(after.appointment_status).toBe('scheduled')
+      expect(after.stamped).toBe(false)
+
+      // The existing hourly job sends the reminder; the approval does not.
+      expect(await dispatch()).toBe(2)
+      expect((await appointmentRow(id)).stamped).toBe(true)
+
+      const patient = await messagesFor(fx.aliceUserId)
+      const doctor = await messagesFor(fx.doctorAUserId)
+      expect(patient).toHaveLength(2)
+      expect(doctor).toHaveLength(2)
+      // The earlier notification is history and is kept; the new one names
+      // the new time.
+      expect(patient[0]).toContain(`at ${before.clock}.`)
+      expect(patient[1]).toContain(`at ${after.clock}.`)
+      expect(doctor[1]).toContain(`at ${after.clock}.`)
+    })
+
+    it('does the same for a confirmed appointment, which the move makes scheduled again', async () => {
+      const id = await appointmentIn(12, 'confirmed')
+      expect(await dispatch()).toBe(2)
+
+      await rescheduleTo(id, await timeFromNow('20 hours'))
+
+      const after = await appointmentRow(id)
+      expect(after.appointment_status).toBe('scheduled')
+      expect(after.stamped).toBe(false)
+      expect(await dispatch()).toBe(2)
+    })
+
+    it('reminds once at the new time when the reschedule came before any reminder', async () => {
+      const id = await appointmentIn(72)
+      expect(await dispatch()).toBe(0)
+
+      await rescheduleTo(id, await timeFromNow('20 hours'))
+
+      expect(await dispatch()).toBe(2)
+      expect(await dispatch()).toBe(0)
+      const clock = (await appointmentRow(id)).clock
+      expect(await messagesFor(fx.aliceUserId)).toEqual([
+        expect.stringContaining(`at ${clock}.`),
+      ])
+      expect(await messagesFor(fx.doctorAUserId)).toHaveLength(1)
+    })
+
+    it('keeps the reminder guard when an approval leaves the time unchanged', async () => {
+      // Nothing about the appointment moved, so the reminder already sent is
+      // still the right one and must not be sent again.
+      const id = await appointmentIn(12)
+      expect(await dispatch()).toBe(2)
+      const before = await appointmentRow(id)
+
+      await rescheduleTo(id, before.appointment_date)
+
+      const after = await appointmentRow(id)
+      expect(after.appointment_date).toBe(before.appointment_date)
+      expect(after.stamped).toBe(true)
+      expect(await dispatch()).toBe(0)
+      expect(await messagesFor(fx.aliceUserId)).toHaveLength(1)
+      expect(await messagesFor(fx.doctorAUserId)).toHaveLength(1)
+    })
+
+    it.each(['cancelled', 'completed', 'no_show'])(
+      'cannot revive a %s appointment, and leaves its reminder state alone',
+      async (status) => {
+        const id = await appointmentIn(12)
+        expect(await dispatch()).toBe(2)
+        // Asked for while it was still active, decided after it was settled.
+        const requestId = await requestReschedule(id, await timeFromNow('20 hours'))
+        await database.asService(
+          'update public.appointment set appointment_status = $2 where appointment_id = $1',
+          [id, status],
+        )
+
+        await expect(approve(requestId)).rejects.toThrow(/no longer active/)
+
+        const after = await appointmentRow(id)
+        expect(after.appointment_status).toBe(status)
+        expect(after.stamped).toBe(true)
+        expect(await dispatch()).toBe(0)
+      },
+    )
+
+    it('does not duplicate the new-time reminder when the hourly job runs again', async () => {
+      const id = await appointmentIn(12)
+      expect(await dispatch()).toBe(2)
+      await rescheduleTo(id, await timeFromNow('20 hours'))
+
+      expect(await dispatch()).toBe(2)
+      expect(await dispatch()).toBe(0)
+      expect(await dispatch()).toBe(0)
+
+      expect(await messagesFor(fx.aliceUserId)).toHaveLength(2)
+      expect(await messagesFor(fx.doctorAUserId)).toHaveLength(2)
+    })
+
+    it('still reminds only the two people involved', async () => {
+      const id = await appointmentIn(12)
+      await dispatch()
+      await rescheduleTo(id, await timeFromNow('20 hours'))
+      await dispatch()
+
+      for (const outsider of [fx.doctorBUserId, fx.bobUserId, fx.adminUserId]) {
+        expect(await messagesFor(outsider)).toHaveLength(0)
+      }
+    })
+
+    it('keeps the decision function a definer with an empty search path, not callable directly', async () => {
+      const [fn] = await database.asService<{
+        definer: boolean
+        config: string[] | null
+        authenticated: boolean
+        anon: boolean
+      }>(
+        `select p.prosecdef as definer,
+                p.proconfig as config,
+                has_function_privilege('authenticated', p.oid, 'EXECUTE') as authenticated,
+                has_function_privilege('anon', p.oid, 'EXECUTE') as anon
+           from pg_proc p
+          where p.oid = 'public.reschedule_request_apply_decision'::regproc`,
+      )
+      expect(fn!.definer).toBe(true)
+      expect(fn!.config).toEqual(['search_path=""'])
+      expect(fn!.authenticated).toBe(false)
+      expect(fn!.anon).toBe(false)
+    })
+  })
 })
