@@ -138,6 +138,20 @@ describe('doctor cancelling an appointment', () => {
     expect(setStatus.mutate).not.toHaveBeenCalled()
   })
 
+  it('tells the doctor the patient is notified and no reminder is sent', () => {
+    // F-02. The cancellation now notifies the patient; the dialog used to
+    // say they would only see it in their own calendar.
+    appointments.data = [appointment('scheduled')]
+    renderPage()
+    fireEvent.click(cancelButton() as HTMLElement)
+
+    const confirmation = within(screen.getByRole('dialog'))
+    expect(
+      confirmation.getByText(/The patient is notified, and no reminder is sent\./),
+    ).toBeInTheDocument()
+    expect(confirmation.queryByText(/in their own calendar/)).not.toBeInTheDocument()
+  })
+
   it('cancels only once the confirmation is accepted', async () => {
     appointments.data = [appointment('scheduled')]
     renderPage()

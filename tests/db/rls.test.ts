@@ -873,10 +873,11 @@ describe('row level security', () => {
   // =========================================================================
   describe('notifications', () => {
     it('shows a user only their own notifications', async () => {
-      await database.asService(
+      const [inserted] = await database.asService<{ notification_id: string }>(
         `insert into public.notification
            (user_id, notification_type, notification_message)
-         values ($1, 'general', 'For Alice only')`,
+         values ($1, 'general', 'For Alice only')
+         returning notification_id`,
         [fx.aliceUserId],
       )
 
@@ -886,11 +887,25 @@ describe('row level security', () => {
       )
       expect(bobsView).toEqual([])
 
-      const alicesView = await database.asUser(
+      // Earlier tests in this file cancel Alice's appointments, and since
+      // F-02 each cancellation writes her a notice too. So this checks what
+      // she sees against what is addressed to her, not against a fixed count.
+      const alicesView = await database.asUser<{
+        notification_id: string
+        user_id: string
+      }>(
         fx.aliceUserId,
-        'select notification_id from public.notification',
+        'select notification_id, user_id from public.notification',
       )
-      expect(alicesView).toHaveLength(1)
+      const [addressed] = await database.asService<{ count: number }>(
+        'select count(*)::int as count from public.notification where user_id = $1',
+        [fx.aliceUserId],
+      )
+      expect(alicesView.map((row) => row.notification_id)).toContain(
+        inserted!.notification_id,
+      )
+      expect(alicesView.every((row) => row.user_id === fx.aliceUserId)).toBe(true)
+      expect(alicesView).toHaveLength(addressed!.count)
     })
 
     it('lets a doctor notify their own patient but nobody else’s', async () => {

@@ -49,10 +49,18 @@ export function useSetAppointmentStatus() {
       appointmentId: string
       status: AppointmentStatus
     }) => setAppointmentStatus(input.appointmentId, input.status),
-    onSuccess: () => {
+    onSuccess: (_data, input) => {
       void queryClient.invalidateQueries({
         queryKey: queryKeys.appointments.all,
       })
+      // Cancelling writes a notification to both people in the same
+      // transaction, the one who cancelled included. Without this their bell
+      // and list would sit out the minute-long stale time before showing it.
+      if (input.status === 'cancelled') {
+        void queryClient.invalidateQueries({
+          queryKey: queryKeys.notifications.all,
+        })
+      }
     },
   })
 }

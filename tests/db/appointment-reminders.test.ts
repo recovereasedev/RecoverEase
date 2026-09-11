@@ -63,6 +63,17 @@ describe('appointment reminders', () => {
     return rows.map((r) => r.notification_message)
   }
 
+  /**
+   * Only the reminders. Since F-02 a cancellation writes its own notice to
+   * both people (appointment-cancellation.test.ts); where a test cancels,
+   * what it pins is that no reminder follows.
+   */
+  async function remindersFor(userId: string): Promise<string[]> {
+    return (await notificationsFor(userId)).filter(
+      (message) => !message.endsWith('has been cancelled.'),
+    )
+  }
+
   it('tells both the clinician and the patient about a scheduled appointment', async () => {
     await appointmentIn(12)
 
@@ -119,8 +130,8 @@ describe('appointment reminders', () => {
     expect(row!.appointment_status).toBe('cancelled')
 
     expect(await dispatch()).toBe(0)
-    expect(await notificationsFor(fx.doctorAUserId)).toHaveLength(0)
-    expect(await notificationsFor(fx.aliceUserId)).toHaveLength(0)
+    expect(await remindersFor(fx.doctorAUserId)).toHaveLength(0)
+    expect(await remindersFor(fx.aliceUserId)).toHaveLength(0)
   })
 
   it('sends nothing further when the cancellation follows the reminder', async () => {
@@ -137,8 +148,8 @@ describe('appointment reminders', () => {
     )
 
     expect(await dispatch()).toBe(0)
-    expect(await notificationsFor(fx.doctorAUserId)).toHaveLength(1)
-    expect(await notificationsFor(fx.aliceUserId)).toHaveLength(1)
+    expect(await remindersFor(fx.doctorAUserId)).toHaveLength(1)
+    expect(await remindersFor(fx.aliceUserId)).toHaveLength(1)
   })
 
   it('does not duplicate when the hourly job runs again', async () => {

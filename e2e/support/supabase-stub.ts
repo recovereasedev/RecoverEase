@@ -156,6 +156,14 @@ export class SupabaseStub {
     return this.tables[table] ?? []
   }
 
+  /**
+   * Adds rows the database writes by itself — a trigger's output, which a
+   * PostgREST stub cannot derive from the request it was sent.
+   */
+  addRows(table: string, rows: Record<string, unknown>[]): void {
+    this.tables[table] = [...this.rowsIn(table), ...rows]
+  }
+
   async install(page: Page): Promise<void> {
     await page.route('**/auth/v1/**', (route) => this.handleAuth(route))
     await page.route('**/rest/v1/**', (route) => this.handleRest(route))
@@ -359,10 +367,16 @@ export class SupabaseStub {
       }
 
       if (method === 'HEAD') {
-        // Used by the notification bell's exact-count query.
+        // Used by the notification bell's exact-count query. The request is
+        // cross-origin, so the browser hides `content-range` from the page
+        // unless it is exposed — which Supabase does, and without which the
+        // bell here would always read zero.
         await route.fulfill({
           status: 200,
-          headers: { 'content-range': `0-${rows.length}/${rows.length}` },
+          headers: {
+            'content-range': `0-${rows.length}/${rows.length}`,
+            'access-control-expose-headers': 'content-range',
+          },
           body: '',
         })
         return

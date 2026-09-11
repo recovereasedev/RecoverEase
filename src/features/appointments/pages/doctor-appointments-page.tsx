@@ -96,7 +96,7 @@ export function DoctorAppointmentsPage() {
           isOpen
           onClose={() => setCancelling(null)}
           title="Cancel this appointment?"
-          description={`${cancelling.name}, ${cancelling.when}. The patient sees the cancellation in their own calendar, and no reminder is sent.`}
+          description={`${cancelling.name}, ${cancelling.when}. The patient is notified, and no reminder is sent.`}
           footer={
             <>
               <Button variant="ghost" onClick={() => setCancelling(null)}>

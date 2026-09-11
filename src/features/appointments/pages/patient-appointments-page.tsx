@@ -58,6 +58,13 @@ export function PatientAppointmentsPage() {
   const [reschedulingId, setReschedulingId] = useState<string | null>(null)
   const [rescheduleValue, setRescheduleValue] = useState('')
   const [rescheduleReason, setRescheduleReason] = useState('')
+  // Cancelling cannot be undone from this screen, and it tells the doctor, so
+  // it is confirmed first — as it is on the clinician's side. Held as the
+  // appointment rather than a boolean so the dialog can say which one.
+  const [cancelling, setCancelling] = useState<{
+    id: string
+    when: string
+  } | null>(null)
 
   // The patient's own reschedule requests, so a pending one is visible rather
   // than the patient wondering whether the request went anywhere.
@@ -261,9 +268,11 @@ export function PatientAppointmentsPage() {
                               variant="ghost"
 
                               onClick={() =>
-                                setStatus.mutate({
-                                  appointmentId: appointment.appointment_id,
-                                  status: 'cancelled',
+                                setCancelling({
+                                  id: appointment.appointment_id,
+                                  when: formatDateTime(
+                                    appointment.appointment_date,
+                                  ),
                                 })
                               }
                             >
@@ -321,6 +330,41 @@ export function PatientAppointmentsPage() {
           </CardBody>
         </Card>
       </div>
+
+      {/* --- Cancel confirmation ----------------------------------------- */}
+      {cancelling ? (
+        <Dialog
+          isOpen
+          onClose={() => setCancelling(null)}
+          title="Cancel this appointment?"
+          description={`${cancelling.when}. This appointment will be cancelled. Your doctor is notified, and no reminder is sent for it.`}
+          footer={
+            <>
+              <Button variant="ghost" onClick={() => setCancelling(null)}>
+                Keep appointment
+              </Button>
+              <Button
+                variant="danger"
+                isLoading={setStatus.isPending}
+                loadingLabel="Cancelling…"
+                onClick={() =>
+                  setStatus.mutate(
+                    { appointmentId: cancelling.id, status: 'cancelled' },
+                    { onSettled: () => setCancelling(null) },
+                  )
+                }
+              >
+                Cancel appointment
+              </Button>
+            </>
+          }
+        >
+          <p className="text-body">
+            This cannot be undone from here. Book a follow-up if you still
+            need to see your doctor.
+          </p>
+        </Dialog>
+      ) : null}
 
       {/* --- Booking dialog ---------------------------------------------- */}
       <Dialog
