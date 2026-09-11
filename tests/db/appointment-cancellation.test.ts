@@ -322,8 +322,6 @@ describe('appointment cancellation notifications', () => {
   describe('sends nothing when', () => {
     it.each([
       ['cancelled', 'cancelled'],
-      ['completed', 'cancelled'],
-      ['no_show', 'cancelled'],
       ['scheduled', 'scheduled'],
       ['confirmed', 'confirmed'],
       ['scheduled', 'confirmed'],
@@ -338,6 +336,22 @@ describe('appointment cancellation notifications', () => {
 
       expect(await allNotifications()).toHaveLength(0)
     })
+
+    it.each(['completed', 'no_show'])(
+      'a %s appointment is cancelled — refused before any notice',
+      async (from) => {
+        // A closed appointment cannot change status at all (migration 21), so
+        // this never reaches the cancellation trigger.
+        const id = await appointmentIn(12, from)
+
+        await expect(setStatusAs(fx.doctorAUserId, id, 'cancelled')).rejects.toThrow(
+          /has already been/,
+        )
+
+        expect((await appointmentRow(id)).status).toBe(from)
+        expect(await allNotifications()).toHaveLength(0)
+      },
+    )
 
     it('the patient confirms attendance', async () => {
       const id = await appointmentIn(12)
