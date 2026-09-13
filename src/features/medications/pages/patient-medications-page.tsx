@@ -10,19 +10,21 @@ import { ListRow, ListRows } from '@/components/ui/list-row'
 import { useCurrentUser } from '@/features/auth/auth-context'
 import { summariseAdherence } from '@/features/medications/api'
 import { AdherenceSummary } from '@/features/medications/components/adherence-summary'
+import { patientDoseState } from '@/features/medications/dose-status'
 import {
   useDoses,
   useMedicationSchedules,
   useSetDoseStatus,
 } from '@/features/medications/hooks'
 import { useDocumentTitle } from '@/hooks/use-document-title'
+import { useNow } from '@/hooks/use-now'
 import {
   formatDate,
   formatDateRelative,
   formatScheduleTime,
   formatTime,
 } from '@/lib/format'
-import { medicationLogStatus } from '@/lib/status'
+import { patientDoseStatus } from '@/lib/status'
 
 /**
  * Modules 4.5 "View Medication Schedule", 4.6 "Mark Medication as Taken",
@@ -62,6 +64,7 @@ export function PatientMedicationsPage() {
 
   const schedulesQuery = useMedicationSchedules(patientId)
   const setDoseStatus = useSetDoseStatus(patientId)
+  const now = useNow()
 
   const adherence = weekDoses.data
     ? summariseAdherence(weekDoses.data)
@@ -147,7 +150,7 @@ export function PatientMedicationsPage() {
                           status={
                             <StatusBadge
                               status={
-                                medicationLogStatus[dose.medication_log_status]
+                                patientDoseStatus[patientDoseState(dose, now)]
                               }
                             />
                           }

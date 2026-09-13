@@ -19,14 +19,16 @@ import { ListRow, ListRows } from '@/components/ui/list-row'
 import { ProgressBar } from '@/components/ui/progress'
 import { useAppointments, useSetAppointmentStatus } from '@/features/appointments/hooks'
 import { useCurrentUser } from '@/features/auth/auth-context'
+import { patientDoseState } from '@/features/medications/dose-status'
 import { useDoses, useSetDoseStatus } from '@/features/medications/hooks'
 import { calculateStreak } from '@/features/recovery-logs/api'
 import { useRecoveryLogs } from '@/features/recovery-logs/hooks'
 import { summariseGoals } from '@/features/treatment-plans/api'
 import { useTreatmentPlans } from '@/features/treatment-plans/hooks'
 import { useDocumentTitle } from '@/hooks/use-document-title'
+import { useNow } from '@/hooks/use-now'
 import { formatDateTime, formatTime, toDateKey } from '@/lib/format'
-import { appointmentStatus, medicationLogStatus } from '@/lib/status'
+import { appointmentStatus, patientDoseStatus } from '@/lib/status'
 
 function greeting(now = new Date()): string {
   const hour = now.getHours()
@@ -69,6 +71,7 @@ export function PatientDashboard() {
   const plansQuery = useTreatmentPlans(patientId)
 
   const setDoseStatus = useSetDoseStatus(patientId)
+  const now = useNow()
   const setAppointmentStatus = useSetAppointmentStatus()
 
   const todayKey = toDateKey()
@@ -150,7 +153,7 @@ export function PatientDashboard() {
                   <ListRows>
                     {doses.map((dose) => {
                       const status =
-                        medicationLogStatus[dose.medication_log_status]
+                        patientDoseStatus[patientDoseState(dose, now)]
                       const isDone = dose.medication_log_status === 'taken'
                       const name =
                         dose.medication_schedule?.medication_schedule_name ??

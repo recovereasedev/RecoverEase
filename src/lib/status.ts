@@ -1,4 +1,5 @@
 import {
+  AlarmClock,
   AlertTriangle,
   Ban,
   CalendarCheck,
@@ -193,6 +194,31 @@ export const medicationLogStatus: Record<
     tone: 'neutral',
     description: 'Deliberately not taken.',
   },
+}
+
+/**
+ * How a dose reads on the patient's own screens (QA 9/13): Due, then Overdue
+ * once its time has passed while it can still be recorded, then Missed once
+ * the system has written it off after the grace period.
+ *
+ * Timing, not clinical severity. Overdue is a presentation state and never a
+ * database status: the row stays `pending`. This is kept apart from
+ * `medicationLogStatus`, which the adherence summaries share with the
+ * clinician's view, so strengthening Missed here changes nothing there.
+ */
+export type PatientDoseState = 'due' | 'overdue' | 'missed' | 'taken' | 'skipped'
+
+export const patientDoseStatus: Record<PatientDoseState, StatusDescriptor> = {
+  due: medicationLogStatus.pending,
+  overdue: {
+    label: 'Overdue',
+    icon: AlarmClock,
+    tone: 'warning',
+    description: 'The time has passed. You can still record this dose.',
+  },
+  missed: { ...medicationLogStatus.missed, tone: 'danger' },
+  taken: medicationLogStatus.taken,
+  skipped: medicationLogStatus.skipped,
 }
 
 export const patientStatus: Record<
