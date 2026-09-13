@@ -11,9 +11,10 @@ import { Link } from 'react-router-dom'
 import { StateView } from '@/components/feedback/state-view'
 import { PageHeader } from '@/components/layout/page-header'
 import { StatusBadge } from '@/components/ui/badge'
-import { Button, buttonVariants } from '@/components/ui/button'
+import { buttonVariants } from '@/components/ui/button'
 import { Card, CardBody, CardHeader } from '@/components/ui/card'
 import { ListRow, ListRows } from '@/components/ui/list-row'
+import { RescheduleRequestDecision } from '@/features/appointments/components/reschedule-request-decision'
 import {
   useAppointments,
   useDecideRescheduleRequest,
@@ -115,10 +116,6 @@ export function DoctorDashboard() {
                   <ListRows>
                     {requests.map((request) => {
                       const patient = request.appointment?.patient
-                      const isDeciding =
-                        decide.isPending &&
-                        decide.variables?.requestId ===
-                          request.reschedule_request_id
 
                       return (
                         <ListRow
@@ -155,35 +152,10 @@ export function DoctorDashboard() {
                             </p>
                           ) : null}
 
-                          {/* Two decisions, side by side on a phone rather
-                              than stacked: they are alternatives to each
-                              other, and stacking reads as a sequence. */}
-                          <div className="grid grid-cols-2 gap-2 sm:flex sm:justify-end">
-                            <Button
-                              size="sm"
-                              isLoading={isDeciding}
-                              onClick={() =>
-                                decide.mutate({
-                                  requestId: request.reschedule_request_id,
-                                  decision: 'approved',
-                                })
-                              }
-                            >
-                              Approve and move
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="secondary"
-                              onClick={() =>
-                                decide.mutate({
-                                  requestId: request.reschedule_request_id,
-                                  decision: 'declined',
-                                })
-                              }
-                            >
-                              Decline
-                            </Button>
-                          </div>
+                          <RescheduleRequestDecision
+                            request={request}
+                            decide={decide}
+                          />
                         </ListRow>
                       )
                     })}

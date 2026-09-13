@@ -74,7 +74,10 @@ export async function setAppointmentStatus(
 
 export type RescheduleRequestWithAppointment = RescheduleRequest & {
   appointment:
-    | (Pick<Appointment, 'appointment_id' | 'appointment_date' | 'pat_id'> & {
+    | (Pick<
+        Appointment,
+        'appointment_id' | 'appointment_date' | 'appointment_status' | 'pat_id'
+      > & {
         patient: Pick<
           Tables<'patient'>,
           'pat_first_name' | 'pat_last_name'
@@ -94,6 +97,7 @@ export async function fetchRescheduleRequests(): Promise<
        appointment (
          appointment_id,
          appointment_date,
+         appointment_status,
          pat_id,
          patient ( pat_first_name, pat_last_name )
        )`,

@@ -2,6 +2,7 @@ import { CalendarClock, CalendarPlus, CalendarX, History, Inbox } from 'lucide-r
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 
+import { FormError } from '@/components/feedback/form-error'
 import { StateView } from '@/components/feedback/state-view'
 import { PageHeader } from '@/components/layout/page-header'
 import { StatusBadge } from '@/components/ui/badge'
@@ -9,6 +10,8 @@ import { Button } from '@/components/ui/button'
 import { Card, CardBody, CardHeader } from '@/components/ui/card'
 import { Dialog } from '@/components/ui/dialog'
 import { ListRow, ListRows } from '@/components/ui/list-row'
+import { isActiveAppointment } from '@/features/appointments/appointment-rules'
+import { RescheduleRequestDecision } from '@/features/appointments/components/reschedule-request-decision'
 import { ScheduleAppointmentDialog } from '@/features/appointments/components/schedule-appointment-dialog'
 import {
   useAppointments,
@@ -20,18 +23,6 @@ import { useDocumentTitle } from '@/hooks/use-document-title'
 import { formatDateTime } from '@/lib/format'
 import { appointmentStatus, rescheduleRequestStatus } from '@/lib/status'
 import { fullName } from '@/lib/utils'
-import type { Enums } from '@/types/database.types'
-
-/**
- * Whether an appointment can still be called off.
- *
- * Only one that is still going to happen. 'completed' and 'no_show' are
- * history and 'cancelled' is already there — cancelling any of them would
- * either rewrite what happened or do nothing.
- */
-function canCancel(status: Enums<'appointment_status'>): boolean {
-  return status === 'scheduled' || status === 'confirmed'
-}
 
 /**
  * Modules 6.1 "Schedule Follow-up Appointment", 6.2 "View Appointment
@@ -40,6 +31,12 @@ function canCancel(status: Enums<'appointment_status'>): boolean {
  *
  * Pending requests are placed above the calendar because each one has a
  * patient waiting on it.
+ *
+ * What the clinician can do follows the appointment's time and status. Ahead
+ * of it, an open appointment can be called off. Once its time has passed it
+ * is closed out instead, as completed or as a no-show (NA-01) — an outcome
+ * recorded before the visit would be a guess. A closed appointment is
+ * offered nothing: the database keeps it closed (migration 21).
  */
 export function DoctorAppointmentsPage() {
   useDocumentTitle('Appointments')
@@ -77,6 +74,17 @@ export function DoctorAppointmentsPage() {
     (request) => request.reschedule_request_status !== 'pending',
   )
 
+  /** The status write last attempted on this appointment, if it failed. */
+  const failedStatusFor = (appointmentId: string) =>
+    setStatus.isError && setStatus.variables?.appointmentId === appointmentId
+      ? setStatus.variables.status
+      : null
+
+  const isSettingStatus = (appointmentId: string, status: string) =>
+    setStatus.isPending &&
+    setStatus.variables?.appointmentId === appointmentId &&
+    setStatus.variables.status === status
+
   return (
     <>
       <PageHeader
@@ -109,7 +117,9 @@ export function DoctorAppointmentsPage() {
                 onClick={() =>
                   setStatus.mutate(
                     { appointmentId: cancelling.id, status: 'cancelled' },
-                    { onSettled: () => setCancelling(null) },
+                    // Closed only once it has worked. A failure stays on
+                    // screen, with the reason, to be tried again (NA-02).
+                    { onSuccess: () => setCancelling(null) },
                   )
                 }
               >
@@ -118,10 +128,18 @@ export function DoctorAppointmentsPage() {
             </>
           }
         >
-          <p className="text-body">
-            This cannot be undone from here. Book a new appointment if the
-            patient still needs to be seen.
-          </p>
+          <div className="space-y-4">
+            <p className="text-body">
+              This cannot be undone from here. Book a new appointment if the
+              patient still needs to be seen.
+            </p>
+            {failedStatusFor(cancelling.id) === 'cancelled' ? (
+              <FormError
+                error={setStatus.error}
+                title="The appointment was not cancelled"
+              />
+            ) : null}
+          </div>
         </Dialog>
       ) : null}
 
@@ -186,36 +204,10 @@ export function DoctorAppointmentsPage() {
                           </p>
                         ) : null}
 
-                        <div className="grid grid-cols-2 gap-2 sm:flex sm:justify-end">
-                          <Button
-                            size="sm"
-                            isLoading={
-                              decide.isPending &&
-                              decide.variables?.requestId ===
-                                request.reschedule_request_id
-                            }
-                            onClick={() =>
-                              decide.mutate({
-                                requestId: request.reschedule_request_id,
-                                decision: 'approved',
-                              })
-                            }
-                          >
-                            Approve and move
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            onClick={() =>
-                              decide.mutate({
-                                requestId: request.reschedule_request_id,
-                                decision: 'declined',
-                              })
-                            }
-                          >
-                            Decline
-                          </Button>
-                        </div>
+                        <RescheduleRequestDecision
+                          request={request}
+                          decide={decide}
+                        />
                       </ListRow>
                     )
                   })}
@@ -249,9 +241,6 @@ export function DoctorAppointmentsPage() {
               {(items) => (
                 <ListRows>
                   {items.map((appointment) => {
-                    const isOpen =
-                      appointment.appointment_status !== 'completed' &&
-                      appointment.appointment_status !== 'cancelled'
                     const name = appointment.patient
                       ? fullName(
                           appointment.patient.pat_first_name,
@@ -285,46 +274,26 @@ export function DoctorAppointmentsPage() {
                           />
                         }
                         actions={
-                          <>
-                            {isOpen ? (
-                              <Button
-                                size="sm"
-                                variant="secondary"
-                                onClick={() =>
-                                  setStatus.mutate({
-                                    appointmentId: appointment.appointment_id,
-                                    status: 'completed',
-                                  })
-                                }
-                              >
-                                Mark completed
-                              </Button>
-                            ) : null}
-
-                            {/* Only an appointment that is still going to
-                                happen can be called off. A separate check
-                                from `isOpen`, which also covers 'no_show' —
-                                that one can still be marked completed if it
-                                was recorded in error, but cancelling it
-                                means nothing. */}
-                            {canCancel(appointment.appointment_status) ? (
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() =>
-                                  setCancelling({
-                                    id: appointment.appointment_id,
-                                    name,
-                                    when: formatDateTime(
-                                      appointment.appointment_date,
-                                    ),
-                                  })
-                                }
-                              >
-                                Cancel
-                              </Button>
-                            ) : null}
-                          </>
+                          // Ahead of the visit the only thing to do is call
+                          // it off. Completed or no-show waits until it has
+                          // happened (NA-01).
+                          isActiveAppointment(appointment.appointment_status) ? (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() =>
+                                setCancelling({
+                                  id: appointment.appointment_id,
+                                  name,
+                                  when: formatDateTime(
+                                    appointment.appointment_date,
+                                  ),
+                                })
+                              }
+                            >
+                              Cancel
+                            </Button>
+                          ) : null
                         }
                       />
                     )
@@ -345,28 +314,82 @@ export function DoctorAppointmentsPage() {
               </p>
             ) : (
               <ListRows>
-                {past.slice(0, 30).map((appointment) => (
-                  <ListRow
-                    key={appointment.appointment_id}
-                    className="py-3"
-                    title={
-                      appointment.patient
-                        ? fullName(
-                            appointment.patient.pat_first_name,
-                            appointment.patient.pat_last_name,
-                          )
-                        : 'Patient'
-                    }
-                    description={formatDateTime(appointment.appointment_date)}
-                    status={
-                      <StatusBadge
-                        status={
-                          appointmentStatus[appointment.appointment_status]
-                        }
-                      />
-                    }
-                  />
-                ))}
+                {past.slice(0, 30).map((appointment) => {
+                  const failed = failedStatusFor(appointment.appointment_id)
+                  return (
+                    <ListRow
+                      key={appointment.appointment_id}
+                      className="py-3"
+                      title={
+                        appointment.patient
+                          ? fullName(
+                              appointment.patient.pat_first_name,
+                              appointment.patient.pat_last_name,
+                            )
+                          : 'Patient'
+                      }
+                      description={formatDateTime(appointment.appointment_date)}
+                      status={
+                        <StatusBadge
+                          status={
+                            appointmentStatus[appointment.appointment_status]
+                          }
+                        />
+                      }
+                      actions={
+                        // A visit whose time has passed and that is still
+                        // open is waiting to be closed out (NA-01).
+                        isActiveAppointment(appointment.appointment_status) ? (
+                          <>
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              isLoading={isSettingStatus(
+                                appointment.appointment_id,
+                                'completed',
+                              )}
+                              onClick={() =>
+                                setStatus.mutate({
+                                  appointmentId: appointment.appointment_id,
+                                  status: 'completed',
+                                })
+                              }
+                            >
+                              Mark completed
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              isLoading={isSettingStatus(
+                                appointment.appointment_id,
+                                'no_show',
+                              )}
+                              onClick={() =>
+                                setStatus.mutate({
+                                  appointmentId: appointment.appointment_id,
+                                  status: 'no_show',
+                                })
+                              }
+                            >
+                              Mark no-show
+                            </Button>
+                          </>
+                        ) : null
+                      }
+                    >
+                      {failed === 'completed' || failed === 'no_show' ? (
+                        <FormError
+                          error={setStatus.error}
+                          title={
+                            failed === 'completed'
+                              ? 'The visit was not marked completed'
+                              : 'The visit was not marked as a no-show'
+                          }
+                        />
+                      ) : null}
+                    </ListRow>
+                  )
+                })}
               </ListRows>
             )}
           </CardBody>

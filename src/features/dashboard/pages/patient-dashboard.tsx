@@ -9,6 +9,7 @@ import {
 import { Link } from 'react-router-dom'
 import { endOfToday, startOfToday } from 'date-fns'
 
+import { FormError } from '@/components/feedback/form-error'
 import { StateView } from '@/components/feedback/state-view'
 import { PageHeader } from '@/components/layout/page-header'
 import { StatusBadge } from '@/components/ui/badge'
@@ -283,6 +284,18 @@ export function PatientDashboard() {
                     >
                       Confirm attendance
                     </Button>
+                  ) : null}
+
+                  {/* A confirmation the server refused says so (NA-02). */}
+                  {setAppointmentStatus.isError &&
+                  setAppointmentStatus.variables?.appointmentId ===
+                    nextAppointment.appointment_id ? (
+                    <div className="w-full">
+                      <FormError
+                        error={setAppointmentStatus.error}
+                        title="Your attendance was not confirmed"
+                      />
+                    </div>
                   ) : null}
                 </div>
               ) : (

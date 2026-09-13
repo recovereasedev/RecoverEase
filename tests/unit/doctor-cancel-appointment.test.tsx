@@ -107,15 +107,15 @@ describe('doctor cancelling an appointment', () => {
     },
   )
 
-  it('preserves Mark completed where it was already offered', () => {
-    // The Cancel guard is separate from `isOpen` precisely so this does not
-    // change: a no_show recorded in error can still be marked completed.
+  it('does not offer Mark completed on an upcoming appointment', () => {
+    // NA-01: an outcome is recorded once the visit has happened, from the
+    // past appointments list — never ahead of it, whatever the status.
     for (const status of ['scheduled', 'confirmed', 'no_show']) {
       appointments.data = [appointment(status)]
       const { unmount } = renderPage()
       expect(
-        screen.getByRole('button', { name: /mark completed/i }),
-      ).toBeInTheDocument()
+        screen.queryByRole('button', { name: /mark completed/i }),
+      ).not.toBeInTheDocument()
       unmount()
     }
   })

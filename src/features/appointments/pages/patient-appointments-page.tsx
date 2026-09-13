@@ -1,5 +1,5 @@
 import { CalendarClock, CalendarPlus, CalendarX, History } from 'lucide-react'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 
 import { FormError } from '@/components/feedback/form-error'
 import { StateView } from '@/components/feedback/state-view'
@@ -10,6 +10,11 @@ import { Card, CardBody, CardHeader } from '@/components/ui/card'
 import { Dialog } from '@/components/ui/dialog'
 import { Field, Input, Textarea } from '@/components/ui/field'
 import { ListRow, ListRows } from '@/components/ui/list-row'
+import {
+  appointmentTimeError,
+  closedAppointmentPhrase,
+  isActiveAppointment,
+} from '@/features/appointments/appointment-rules'
 import {
   useAppointments,
   useCreateAppointment,
@@ -55,9 +60,11 @@ export function PatientAppointmentsPage() {
 
   const [isBookingOpen, setBookingOpen] = useState(false)
   const [bookingValue, setBookingValue] = useState('')
+  const [bookingProblem, setBookingProblem] = useState<string | null>(null)
   const [reschedulingId, setReschedulingId] = useState<string | null>(null)
   const [rescheduleValue, setRescheduleValue] = useState('')
   const [rescheduleReason, setRescheduleReason] = useState('')
+  const [rescheduleProblem, setRescheduleProblem] = useState<string | null>(null)
   // Cancelling cannot be undone from this screen, and it tells the doctor, so
   // it is confirmed first — as it is on the clinician's side. Held as the
   // appointment rather than a boolean so the dialog can say which one.
@@ -65,6 +72,14 @@ export function PatientAppointmentsPage() {
     id: string
     when: string
   } | null>(null)
+
+  // Set synchronously, before a mutation is dispatched (NA-04). The disabled
+  // state that `isPending` drives is committed on a later render, so two
+  // clicks in the same task both got through, and React Query does not
+  // deduplicate concurrent `mutate()` calls. The same guard the clinician's
+  // scheduling dialog has.
+  const bookingInFlight = useRef(false)
+  const rescheduleInFlight = useRef(false)
 
   // The patient's own reschedule requests, so a pending one is visible rather
   // than the patient wondering whether the request went anywhere.
@@ -99,8 +114,31 @@ export function PatientAppointmentsPage() {
         request.reschedule_request_status === 'pending',
     )
 
+  /** The status write last attempted on this appointment, if it failed. */
+  const failedStatusFor = (appointmentId: string) =>
+    setStatus.isError && setStatus.variables?.appointmentId === appointmentId
+      ? setStatus.variables.status
+      : null
+
+  const openBooking = () => {
+    // A failure from an earlier attempt is not this attempt's.
+    createAppointment.reset()
+    setBookingProblem(null)
+    setBookingOpen(true)
+  }
+
   const submitBooking = () => {
     if (!patient) return
+
+    // Before anything is sent: the picker's `min` does not stop a typed date.
+    const problem = appointmentTimeError(bookingValue)
+    setBookingProblem(problem)
+    if (problem) return
+
+    // Nothing below this line may run twice for one user action.
+    if (bookingInFlight.current) return
+    bookingInFlight.current = true
+
     createAppointment.mutate(
       {
         patientId: patient.pat_id,
@@ -112,12 +150,33 @@ export function PatientAppointmentsPage() {
           setBookingOpen(false)
           setBookingValue('')
         },
+        // Released however it ends, so a genuine failure can be retried.
+        onSettled: () => {
+          bookingInFlight.current = false
+        },
       },
     )
   }
 
+  const openReschedule = (appointmentId: string) => {
+    createReschedule.reset()
+    setRescheduleProblem(null)
+    setReschedulingId(appointmentId)
+    setRescheduleValue('')
+    setRescheduleReason('')
+  }
+
   const submitReschedule = () => {
     if (!reschedulingId) return
+
+    const problem = appointmentTimeError(rescheduleValue)
+    setRescheduleProblem(problem)
+    if (problem) return
+
+    // Nothing below this line may run twice for one user action.
+    if (rescheduleInFlight.current) return
+    rescheduleInFlight.current = true
+
     createReschedule.mutate(
       {
         appointmentId: reschedulingId,
@@ -132,6 +191,9 @@ export function PatientAppointmentsPage() {
           setRescheduleReason('')
           void requestsQuery.refetch()
         },
+        onSettled: () => {
+          rescheduleInFlight.current = false
+        },
       },
     )
   }
@@ -143,10 +205,7 @@ export function PatientAppointmentsPage() {
         title="Appointments"
         description="Your upcoming visits and your appointment history."
         actions={
-          <Button
-            className="max-sm:w-full"
-            onClick={() => setBookingOpen(true)}
-          >
+          <Button className="max-sm:w-full" onClick={openBooking}>
             <CalendarPlus aria-hidden="true" />
             Book a follow-up
           </Button>
@@ -196,9 +255,14 @@ export function PatientAppointmentsPage() {
                     // request used to put the appointment back to
                     // 'scheduled'. The database refuses that now; this keeps
                     // the action from being offered in the first place.
-                    const isOpen =
-                      appointment.appointment_status === 'scheduled' ||
-                      appointment.appointment_status === 'confirmed'
+                    const isOpen = isActiveAppointment(
+                      appointment.appointment_status,
+                    )
+                    // A request can outlive its appointment (NA-03): it is
+                    // not awaiting the doctor once the appointment is closed.
+                    const closedPhrase = closedAppointmentPhrase(
+                      appointment.appointment_status,
+                    )
 
                     return (
                       <ListRow
@@ -213,7 +277,7 @@ export function PatientAppointmentsPage() {
                                 ]
                               }
                             />
-                            {pending ? (
+                            {pending && isOpen ? (
                               <StatusBadge
                                 status={rescheduleRequestStatus.pending}
                               />
@@ -230,7 +294,7 @@ export function PatientAppointmentsPage() {
                           {appointment.appointment_status === 'scheduled' ? (
                             <Button
                               size="sm"
-                             
+
                               isLoading={
                                 setStatus.isPending &&
                                 setStatus.variables?.appointmentId ===
@@ -252,11 +316,9 @@ export function PatientAppointmentsPage() {
                               size="sm"
                               variant="secondary"
 
-                              onClick={() => {
-                                setReschedulingId(appointment.appointment_id)
-                                setRescheduleValue('')
-                                setRescheduleReason('')
-                              }}
+                              onClick={() =>
+                                openReschedule(appointment.appointment_id)
+                              }
                             >
                               Request new time
                             </Button>
@@ -283,10 +345,31 @@ export function PatientAppointmentsPage() {
 
                         {pending ? (
                           <p className="mt-3 rounded-[var(--radius-md)] bg-surface-sunken px-3 py-2 text-sm leading-relaxed text-body">
-                            You asked to move this to{' '}
-                            {formatDateTime(pending.reschedule_request_date)}.
-                            Your doctor has not responded yet.
+                            {closedPhrase ? (
+                              <>
+                                This appointment {closedPhrase}, so your
+                                request to move it to{' '}
+                                {formatDateTime(pending.reschedule_request_date)}{' '}
+                                will not be acted on.
+                              </>
+                            ) : (
+                              <>
+                                You asked to move this to{' '}
+                                {formatDateTime(pending.reschedule_request_date)}.
+                                Your doctor has not responded yet.
+                              </>
+                            )}
                           </p>
+                        ) : null}
+
+                        {failedStatusFor(appointment.appointment_id) ===
+                        'confirmed' ? (
+                          <div className="mt-3">
+                            <FormError
+                              error={setStatus.error}
+                              title="Your attendance was not confirmed"
+                            />
+                          </div>
                         ) : null}
                       </ListRow>
                     )
@@ -350,7 +433,9 @@ export function PatientAppointmentsPage() {
                 onClick={() =>
                   setStatus.mutate(
                     { appointmentId: cancelling.id, status: 'cancelled' },
-                    { onSettled: () => setCancelling(null) },
+                    // Closed only once it has worked. A failure stays on
+                    // screen, with the reason, to be tried again (NA-02).
+                    { onSuccess: () => setCancelling(null) },
                   )
                 }
               >
@@ -359,10 +444,18 @@ export function PatientAppointmentsPage() {
             </>
           }
         >
-          <p className="text-body">
-            This cannot be undone from here. Book a follow-up if you still
-            need to see your doctor.
-          </p>
+          <div className="space-y-4">
+            <p className="text-body">
+              This cannot be undone from here. Book a follow-up if you still
+              need to see your doctor.
+            </p>
+            {failedStatusFor(cancelling.id) === 'cancelled' ? (
+              <FormError
+                error={setStatus.error}
+                title="The appointment was not cancelled"
+              />
+            ) : null}
+          </div>
         </Dialog>
       ) : null}
 
@@ -392,13 +485,17 @@ export function PatientAppointmentsPage() {
           <Field
             label="Date and time"
             description="Choose when you would like to be seen. Your doctor will confirm."
+            error={bookingProblem ?? undefined}
             required
           >
             <Input
               type="datetime-local"
               min={minimumBookingValue()}
               value={bookingValue}
-              onChange={(event) => setBookingValue(event.target.value)}
+              onChange={(event) => {
+                setBookingValue(event.target.value)
+                setBookingProblem(null)
+              }}
             />
           </Field>
 
@@ -434,12 +531,19 @@ export function PatientAppointmentsPage() {
         }
       >
         <div className="space-y-4">
-          <Field label="Preferred new date and time" required>
+          <Field
+            label="Preferred new date and time"
+            error={rescheduleProblem ?? undefined}
+            required
+          >
             <Input
               type="datetime-local"
               min={minimumBookingValue()}
               value={rescheduleValue}
-              onChange={(event) => setRescheduleValue(event.target.value)}
+              onChange={(event) => {
+                setRescheduleValue(event.target.value)
+                setRescheduleProblem(null)
+              }}
             />
           </Field>
 
