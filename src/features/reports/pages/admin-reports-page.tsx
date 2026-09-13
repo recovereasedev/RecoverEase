@@ -63,9 +63,10 @@ export function AdminReportsPage() {
         description="System-wide reporting."
         actions={
           <>
+            {/* Controls, so on screen only: the printout is the report. */}
             <Button
               variant="outline"
-              className="max-sm:w-full"
+              className="max-sm:w-full print:hidden"
               onClick={() => window.print()}
               disabled={!stats}
             >
@@ -73,7 +74,7 @@ export function AdminReportsPage() {
               Print or save as PDF
             </Button>
             <Button
-              className="max-sm:w-full"
+              className="max-sm:w-full print:hidden"
               onClick={() => generate.mutate()}
               isLoading={generate.isPending}
               loadingLabel="Generating…"
