@@ -33,6 +33,7 @@ import { createDoctorNote, fetchDoctorNotes } from '@/features/doctor-notes/api'
 import { AdherenceSummary } from '@/features/medications/components/adherence-summary'
 import { EndMedicationAction } from '@/features/medications/components/end-medication'
 import { MedicationForm } from '@/features/medications/components/medication-form'
+import { PrescriptionPrintHeader } from '@/features/medications/components/prescription-print-header'
 import { summariseAdherence } from '@/features/medications/api'
 import { useDoses, useMedicationSchedules } from '@/features/medications/hooks'
 import { ConsultationFlow } from '@/features/patients/components/consultation-flow'
@@ -51,6 +52,7 @@ import {
   type TreatmentGoalStatus,
 } from '@/features/treatment-plans/api'
 import { useDocumentTitle } from '@/hooks/use-document-title'
+import { useNow } from '@/hooks/use-now'
 import {
   calculateAge,
   formatDate,
@@ -88,7 +90,10 @@ export function DoctorPatientDetailPage() {
   const { patientId = '' } = useParams()
   const user = useCurrentUser()
   const doctorId = user.profile.kind === 'doctor' ? user.profile.doctor.doc_id : ''
+  const doctor = user.profile.kind === 'doctor' ? user.profile.doctor : null
   const queryClient = useQueryClient()
+  // Stamps the printed prescription (QA 9/12).
+  const now = useNow()
 
   // A first consultation arrives here straight from registration, pointed at
   // the tab the clinician needs to fill in. Anything unrecognised falls back
@@ -178,6 +183,8 @@ export function DoctorPatientDetailPage() {
         return (
           <>
             <PageHeader
+              // The printed prescription carries its own letterhead.
+              className={tab === 'medication' ? 'print:hidden' : ''}
               breadcrumbs={[
                 { label: 'Patients', to: '/doctor/patients' },
                 {
@@ -223,14 +230,9 @@ export function DoctorPatientDetailPage() {
                     <KeyRound aria-hidden="true" />
                     Reset password
                   </Button>
-                  <Button
-                    variant="outline"
-                    className="max-sm:w-full"
-                    onClick={() => window.print()}
-                  >
-                    <Printer aria-hidden="true" />
-                    Print record
-                  </Button>
+                  {/* No "Print record" here (QA 9/12): Reports prints the
+                      record. Printing lives on the Medication tab, as the
+                      patient's prescription. */}
                 </>
               }
             />
@@ -247,6 +249,18 @@ export function DoctorPatientDetailPage() {
                     patient.pat_last_name,
                   ),
                 }}
+              />
+            ) : null}
+
+            {/* The printed prescription's letterhead (QA 9/12), shown on
+                paper only. The clinician is named as the prescriber only
+                when they are this patient's assigned doctor, who issues
+                their prescriptions (module 4.3). */}
+            {tab === 'medication' ? (
+              <PrescriptionPrintHeader
+                patient={patient}
+                doctor={doctor?.doc_id === patient.doc_id ? doctor : null}
+                printedAt={new Date(now).toISOString()}
               />
             ) : null}
 
@@ -645,6 +659,19 @@ export function DoctorPatientDetailPage() {
                     icon={Pill}
                     title="Prescriptions and schedules"
                     description="What this patient has been prescribed."
+                    action={
+                      // QA 9/12: printing belongs here, as the patient's
+                      // prescription. Reports prints the rest of the record.
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="print:hidden"
+                        onClick={() => window.print()}
+                      >
+                        <Printer aria-hidden="true" />
+                        Print prescription
+                      </Button>
+                    }
                   />
                   <CardBody className="p-0">
                     <StateView
@@ -688,14 +715,26 @@ export function DoctorPatientDetailPage() {
                                     ? ` until ${formatDate(schedule.medication_schedule_end_date)}`
                                     : ', ongoing'}
                                 </p>
+                                {/* The prescription's notes, which the
+                                    patient's own printed prescription also
+                                    carries. Paper only (QA 9/12). */}
+                                {schedule.prescription?.prescription_notes ? (
+                                  <p className="mt-1.5 hidden whitespace-pre-wrap text-sm leading-relaxed text-body print:block">
+                                    {schedule.prescription.prescription_notes}
+                                  </p>
+                                ) : null}
                               </div>
 
                               {/* QA-01. Only on a course that is still
-                                  running; see canEndSchedule. */}
-                              <EndMedicationAction
-                                patientId={patientId}
-                                schedule={schedule}
-                              />
+                                  running; see canEndSchedule. `contents`
+                                  keeps the row's layout exactly as it was;
+                                  the control stays off the paper. */}
+                              <div className="contents print:hidden">
+                                <EndMedicationAction
+                                  patientId={patientId}
+                                  schedule={schedule}
+                                />
+                              </div>
                             </li>
                           ))}
                         </ul>
@@ -705,7 +744,7 @@ export function DoctorPatientDetailPage() {
                     {/* Modules 4.3 and 4.1, outside a guided consultation.
                         One block whether or not anything is prescribed yet,
                         so there is a single place to look for it. */}
-                    <div className="border-t border-[var(--color-border)] px-4 py-4 sm:px-5">
+                    <div className="border-t border-[var(--color-border)] px-4 py-4 sm:px-5 print:hidden">
                       {isPrescribing ? (
                         <MedicationForm
                           patientId={patientId}

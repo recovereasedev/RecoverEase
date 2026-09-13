@@ -63,8 +63,9 @@ export function Tabs<T extends string>({
         role="tablist"
         onKeyDown={onKeyDown}
         // Scrollable rather than wrapping, so a long tab list on a phone stays
-        // one row instead of pushing the panel off screen.
-        className="-mx-4 flex gap-1 overflow-x-auto border-b border-[var(--color-border)] px-4 sm:mx-0 sm:px-0"
+        // one row instead of pushing the panel off screen. Controls, so never
+        // on paper: a printout is the panel's content alone.
+        className="-mx-4 flex gap-1 overflow-x-auto border-b border-[var(--color-border)] px-4 sm:mx-0 sm:px-0 print:hidden"
       >
         {tabs.map((tab) => {
           const isSelected = tab.id === value
