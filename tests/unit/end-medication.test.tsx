@@ -37,6 +37,11 @@ vi.mock('@/features/auth/auth-context', () => ({
   }),
 }))
 
+// The printed prescription's letterhead names the patient's doctor.
+vi.mock('@/features/patients/hooks', () => ({
+  useMyDoctor: () => ({ data: null, isPending: false, error: null }),
+}))
+
 const { EndMedicationAction, canEndSchedule } = await import(
   '@/features/medications/components/end-medication'
 )

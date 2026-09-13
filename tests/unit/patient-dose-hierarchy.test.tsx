@@ -38,6 +38,11 @@ vi.mock('@/features/auth/auth-context', () => ({
   }),
 }))
 
+// The printed prescription's letterhead names the patient's doctor.
+vi.mock('@/features/patients/hooks', () => ({
+  useMyDoctor: () => ({ data: null, isPending: false, error: null }),
+}))
+
 // The dashboard's other cards.
 vi.mock('@/features/appointments/hooks', () => ({
   useAppointments: () => ({ data: [], isPending: false, error: null, refetch: vi.fn() }),

@@ -10,12 +10,14 @@ import { ListRow, ListRows } from '@/components/ui/list-row'
 import { useCurrentUser } from '@/features/auth/auth-context'
 import { summariseAdherence } from '@/features/medications/api'
 import { AdherenceSummary } from '@/features/medications/components/adherence-summary'
+import { PrescriptionPrintHeader } from '@/features/medications/components/prescription-print-header'
 import { patientDoseState } from '@/features/medications/dose-status'
 import {
   useDoses,
   useMedicationSchedules,
   useSetDoseStatus,
 } from '@/features/medications/hooks'
+import { useMyDoctor } from '@/features/patients/hooks'
 import { useDocumentTitle } from '@/hooks/use-document-title'
 import { useNow } from '@/hooks/use-now'
 import {
@@ -39,8 +41,11 @@ import { patientDoseStatus } from '@/lib/status'
 export function PatientMedicationsPage() {
   useDocumentTitle('Medications')
   const user = useCurrentUser()
-  const patientId =
-    user.profile.kind === 'patient' ? user.profile.patient.pat_id : ''
+  const patient =
+    user.profile.kind === 'patient' ? user.profile.patient : null
+  const patientId = patient?.pat_id ?? ''
+  // The printed prescription names the patient's doctor (QA 9/13).
+  const doctorQuery = useMyDoctor(patient?.doc_id)
 
   const todayDoses = useDoses(
     patientId,
@@ -72,7 +77,16 @@ export function PatientMedicationsPage() {
 
   return (
     <>
+      {patient ? (
+        <PrescriptionPrintHeader
+          patient={patient}
+          doctor={doctorQuery.data}
+          printedAt={new Date(now).toISOString()}
+        />
+      ) : null}
+
       <PageHeader
+        className="print:hidden"
         eyebrow="Your medication"
         title="Medication"
         description="What is due, what you have taken, and what your doctor has prescribed."
@@ -91,7 +105,7 @@ export function PatientMedicationsPage() {
       <div className="grid gap-5 lg:grid-cols-3">
         <div className="space-y-5 lg:col-span-2">
           {/* --- Today --------------------------------------------------- */}
-          <Card>
+          <Card className="print:hidden">
             <CardHeader
               icon={Pill}
               title="Due today"
@@ -209,7 +223,7 @@ export function PatientMedicationsPage() {
           </Card>
 
           {/* --- Coming up ------------------------------------------------ */}
-          <Card>
+          <Card className="print:hidden">
             <CardHeader
               icon={CalendarClock}
               title="Coming up"
@@ -323,7 +337,7 @@ export function PatientMedicationsPage() {
         </div>
 
         {/* --- Adherence --------------------------------------------------- */}
-        <div className="space-y-5">
+        <div className="space-y-5 print:hidden">
           <Card>
             <CardHeader title="This week" as="h2" />
             <CardBody>
