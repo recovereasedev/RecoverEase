@@ -65,6 +65,14 @@ describe('missed-dose grace period', () => {
           set pat_reminder_is_enabled = true, pat_reminder_preferred_time = null`,
     )
     scheduleId = await schedule()
+    // The generator fills the course's slots from its start date, so today's
+    // 08:00 dose already exists — overdue or not depending on the time of
+    // day. Every case records its own doses; without this the job's counts
+    // included that slot, and the suite passed in the morning and failed in
+    // the afternoon.
+    await database.asService('delete from public.medication_log where medication_schedule_id = $1', [
+      scheduleId,
+    ])
   })
 
   // --- Helpers --------------------------------------------------------------
