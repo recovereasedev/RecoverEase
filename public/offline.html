@@ -1,0 +1,89 @@
+<!doctype html>
+<!--
+  Shown by public/sw.js when RecoverEase is opened with no connection.
+  Self-contained on purpose: no scripts (the site's CSP allows none inline),
+  no external resources, and no care information of any kind.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light" />
+    <meta name="theme-color" content="#004269" />
+    <title>RecoverEase | Offline</title>
+    <style>
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        background: #f9f9ff;
+        color: #41474f;
+        font-family: 'Inter Variable', 'Inter', ui-sans-serif, system-ui, -apple-system,
+          'Segoe UI', Roboto, sans-serif;
+      }
+      main {
+        box-sizing: border-box;
+        max-width: 28rem;
+        padding: 2rem 1.5rem;
+        text-align: center;
+      }
+      svg {
+        width: 3.5rem;
+        height: 3.5rem;
+      }
+      h1 {
+        margin: 1.25rem 0 0.5rem;
+        color: #111c2d;
+        font-size: 1.5rem;
+      }
+      p {
+        margin: 0 0 0.75rem;
+        line-height: 1.55;
+      }
+      a {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 44px;
+        margin-top: 1rem;
+        padding: 0 1.25rem;
+        border-radius: 0.5rem;
+        background: #004269;
+        color: #ffffff;
+        font-weight: 600;
+        text-decoration: none;
+      }
+      a:focus-visible {
+        outline: 2px solid #0e5a8a;
+        outline-offset: 2px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <svg viewBox="0 0 32 32" aria-hidden="true">
+        <defs>
+          <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#2563eb" />
+            <stop offset="100%" stop-color="#14b8a6" />
+          </linearGradient>
+        </defs>
+        <rect width="32" height="32" rx="7" fill="url(#g)" />
+        <path d="M13 6h6v7h7v6h-7v7h-6v-7H6v-6h7z" fill="#fff" opacity=".22" />
+        <path
+          d="M5 16h4.6l2.2-4.4 3.4 8.2 2.6-5.4 1.7 1.6H27"
+          fill="none"
+          stroke="#fff"
+          stroke-width="2.4"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+      </svg>
+      <h1>You are offline</h1>
+      <p>RecoverEase needs an internet connection to show your care information.</p>
+      <p>Nothing is shown from an old copy, so what you see when you are back online is current.</p>
+      <a href="/">Try again</a>
+    </main>
+  </body>
+</html>

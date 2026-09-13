@@ -21,6 +21,11 @@ export default defineConfig({
     baseURL: BASE_URL,
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
+    // The production build registers a service worker. Every spec here stubs
+    // Supabase with page.route, which a worker's own requests would bypass,
+    // so workers are off by default; e2e/pwa.spec.ts turns them on to test
+    // the worker itself.
+    serviceWorkers: 'block',
   },
 
   projects: [
