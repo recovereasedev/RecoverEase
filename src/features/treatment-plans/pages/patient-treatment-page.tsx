@@ -39,7 +39,8 @@ export function PatientTreatmentPage() {
         actions={
           <Button
             variant="outline"
-            className="max-sm:w-full"
+            // A control, so on screen only: the printout is the plan.
+            className="max-sm:w-full print:hidden"
             onClick={() => window.print()}
           >
             <Printer aria-hidden="true" />
