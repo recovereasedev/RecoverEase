@@ -71,6 +71,25 @@ test.describe('medication (modules 4.5, 4.6)', () => {
     await expect(page.getByText('Taken').first()).toBeVisible()
   })
 
+  test('offers no option to skip a dose (QA 9/13)', async ({
+    page,
+    signInAs,
+  }) => {
+    await signInAs('patient')
+    await page.goto('/patient/medications')
+
+    await expect(
+      page.getByRole('button', { name: 'Taken', exact: true }).first(),
+    ).toBeVisible()
+    await expect(page.getByRole('button', { name: /skip/i })).toHaveCount(0)
+
+    await page.goto('/patient')
+    await expect(
+      page.getByRole('button', { name: /^Mark taken/ }).first(),
+    ).toBeVisible()
+    await expect(page.getByRole('button', { name: /skip/i })).toHaveCount(0)
+  })
+
   test('shows the prescription with its schedule', async ({
     page,
     signInAs,

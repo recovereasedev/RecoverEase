@@ -138,11 +138,16 @@ export function PatientMedicationsPage() {
                         setDoseStatus.isPending &&
                         setDoseStatus.variables?.doseId ===
                           dose.medication_log_id
-                      // The button labels stay bare ("Taken", "Skip") so
-                      // they read cleanly in a row and so the accessible name
-                      // is exactly the word. In a list of identical controls a
-                      // screen reader announces the row's own text alongside
-                      // the button, which is what disambiguates them.
+                      // The button label stays bare ("Taken") so it reads
+                      // cleanly in a row and so the accessible name is exactly
+                      // the word. In a list of identical controls a screen
+                      // reader announces the row's own text alongside the
+                      // button, which is what disambiguates them.
+                      //
+                      // There is no Skip (QA 9/13): a patient records a dose
+                      // as taken or leaves it to become Missed. A dose already
+                      // recorded as Skipped still reads Skipped, and Undo
+                      // returns it to Due like any other recorded dose.
                       const name =
                         dose.medication_schedule?.medication_schedule_name ??
                         'Medication'
@@ -170,33 +175,18 @@ export function PatientMedicationsPage() {
                           }
                           actions={
                             isPending ? (
-                              <>
-                                <Button
-                                  size="sm"
-                                  isLoading={isMutating}
-                                  onClick={() =>
-                                    setDoseStatus.mutate({
-                                      doseId: dose.medication_log_id,
-                                      status: 'taken',
-                                    })
-                                  }
-                                >
-                                  Taken
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  isLoading={isMutating}
-                                  onClick={() =>
-                                    setDoseStatus.mutate({
-                                      doseId: dose.medication_log_id,
-                                      status: 'skipped',
-                                    })
-                                  }
-                                >
-                                  Skip
-                                </Button>
-                              </>
+                              <Button
+                                size="sm"
+                                isLoading={isMutating}
+                                onClick={() =>
+                                  setDoseStatus.mutate({
+                                    doseId: dose.medication_log_id,
+                                    status: 'taken',
+                                  })
+                                }
+                              >
+                                Taken
+                              </Button>
                             ) : (
                               <Button
                                 size="sm"
