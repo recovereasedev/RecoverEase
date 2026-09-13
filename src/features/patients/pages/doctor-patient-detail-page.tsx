@@ -29,6 +29,7 @@ import { Field, Select, Textarea } from '@/components/ui/field'
 import { ProgressBar } from '@/components/ui/progress'
 import { Tabs } from '@/components/ui/tabs'
 import { useCurrentUser } from '@/features/auth/auth-context'
+import { PatientChatTranscript } from '@/features/chat/components/patient-chat-transcript'
 import { createDoctorNote, fetchDoctorNotes } from '@/features/doctor-notes/api'
 import { AdherenceSummary } from '@/features/medications/components/adherence-summary'
 import { EndMedicationAction } from '@/features/medications/components/end-medication'
@@ -67,7 +68,13 @@ import {
 } from '@/lib/status'
 import { fullName } from '@/lib/utils'
 
-type TabId = 'overview' | 'recovery' | 'treatment' | 'medication' | 'notes'
+type TabId =
+  | 'overview'
+  | 'recovery'
+  | 'treatment'
+  | 'medication'
+  | 'notes'
+  | 'chat'
 
 const TABS = [
   { id: 'overview', label: 'Overview' },
@@ -75,10 +82,11 @@ const TABS = [
   { id: 'treatment', label: 'Treatment' },
   { id: 'medication', label: 'Medication' },
   { id: 'notes', label: 'Notes' },
+  { id: 'chat', label: 'Chat' },
 ] as const satisfies readonly { id: TabId; label: string }[]
 
 /**
- * Modules 2.4, 5.1-5.5 and 5.3.
+ * Modules 2.4, 5.1-5.5, 5.3 and 8.5.
  *
  * The clinician's single view of one patient. Tabs rather than one long
  * scroll: a consultation asks a specific question — how has adherence been,
@@ -867,6 +875,16 @@ export function DoctorPatientDetailPage() {
                     </CardBody>
                   </Card>
                 </div>
+              ) : null}
+
+              {/* --- Chat — module 8.5 ------------------------------------
+                  Read-only. A critical-chat notification links here with
+                  `?tab=chat&session=<id>`, which opens that conversation. */}
+              {tab === 'chat' ? (
+                <PatientChatTranscript
+                  patientId={patient.pat_id}
+                  initialSessionId={searchParams.get('session')}
+                />
               ) : null}
             </Tabs>
           </>

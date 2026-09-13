@@ -7,10 +7,11 @@ import {
   Pill,
   type LucideIcon,
 } from 'lucide-react'
+import { Link } from 'react-router-dom'
 
 import { StateView } from '@/components/feedback/state-view'
 import { PageHeader } from '@/components/layout/page-header'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
 import { Card, CardBody } from '@/components/ui/card'
 import type { NotificationType } from '@/features/notifications/api'
 import {
@@ -94,6 +95,17 @@ export function NotificationsPage() {
                   const isUnread = !notification.notification_is_read
                   const isCritical =
                     notification.notification_type === 'chat_critical'
+                  // Module 8.5: a critical-chat alert opens the conversation
+                  // it is about. The patient is only there when the database
+                  // lets this reader see that conversation, which is the
+                  // patient's assigned doctor; otherwise there is no link.
+                  const conversationPatientId = isCritical
+                    ? notification.chat_session?.pat_id
+                    : undefined
+                  const conversationPath =
+                    conversationPatientId && notification.chat_session_id
+                      ? `/doctor/patients/${conversationPatientId}?tab=chat&session=${notification.chat_session_id}`
+                      : null
 
                   return (
                     <li
@@ -147,20 +159,36 @@ export function NotificationsPage() {
                         </div>
                       </div>
 
-                      {isUnread ? (
-                        <div className="max-sm:self-end sm:shrink-0">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() =>
-                              markRead.mutate(notification.notification_id)
-                            }
-                          >
-                            Mark read
-                            <span className="sr-only">
-                              : {notification.notification_message}
-                            </span>
-                          </Button>
+                      {isUnread || conversationPath ? (
+                        <div className="flex gap-2 max-sm:self-end sm:shrink-0">
+                          {conversationPath ? (
+                            <Link
+                              to={conversationPath}
+                              className={buttonVariants({
+                                size: 'sm',
+                                variant: 'outline',
+                              })}
+                            >
+                              View conversation
+                              <span className="sr-only">
+                                : {notification.notification_message}
+                              </span>
+                            </Link>
+                          ) : null}
+                          {isUnread ? (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() =>
+                                markRead.mutate(notification.notification_id)
+                              }
+                            >
+                              Mark read
+                              <span className="sr-only">
+                                : {notification.notification_message}
+                              </span>
+                            </Button>
+                          ) : null}
                         </div>
                       ) : null}
                     </li>
