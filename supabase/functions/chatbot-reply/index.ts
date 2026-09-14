@@ -2,10 +2,12 @@ import {
   AssistantReplyError,
   buildInteractionRequest,
   buildSystemInstruction,
+  chronologicalWindow,
   extractOutputText,
   GEMINI_API_REVISION,
   GEMINI_ENDPOINT,
   hasUnansweredPatientMessage,
+  HISTORY_LIMIT,
   parseAssistantReply,
   raisesCriticalConcern,
   toInteractionInput,
@@ -45,10 +47,6 @@ import { handlePreflight, jsonResponse } from '../_shared/cors.ts'
 
 /** Beyond this the patient is better served by an honest failure. */
 const REQUEST_TIMEOUT_MS = 25_000
-
-/** A recovery conversation does not need unbounded history, and an unbounded
- *  window is an unbounded bill. */
-const HISTORY_LIMIT = 40
 
 Deno.serve(async (request) => {
   const preflight = handlePreflight(request)
@@ -91,18 +89,26 @@ Deno.serve(async (request) => {
       throw new AuthError('This conversation is not yours', 403)
     }
 
-    // 3. Only now is any content read, and only this conversation's.
-    const { data: history, error: historyError } = await admin
+    // 3. Only now is any content read, and only this conversation's: its
+    //    newest HISTORY_LIMIT messages. They are fetched newest first so the
+    //    limit keeps the end of the conversation - fetched oldest first, a
+    //    long conversation was cut off at its fortieth message and the
+    //    patient's latest question never reached the model - and are put back
+    //    in order before anything is built from them. The id breaks ties
+    //    between identical timestamps, so the window is the same every time.
+    const { data: newestFirst, error: historyError } = await admin
       .from('chat_message')
       .select('chat_message_role, chat_message_content')
       .eq('chat_session_id', chatSessionId)
-      .order('chat_message_created_at', { ascending: true })
+      .order('chat_message_created_at', { ascending: false })
+      .order('chat_message_id', { ascending: false })
       .limit(HISTORY_LIMIT)
 
     if (historyError) throw new AuthError('Could not load the conversation', 500)
-    if (!history || history.length === 0) {
+    if (!newestFirst || newestFirst.length === 0) {
       throw new AuthError('There is nothing to reply to', 400)
     }
+    const history = chronologicalWindow(newestFirst)
 
     // Configuration is checked here rather than at the top of the handler, so
     // that an unconfigured deployment still answers "not yours" to a caller

@@ -188,6 +188,31 @@ export function hasUnansweredPatientMessage(
   return turns.at(-1)?.type === 'user_input'
 }
 
+/**
+ * How much of a conversation is replayed to the model. A recovery
+ * conversation does not need unbounded history, and an unbounded window is an
+ * unbounded bill.
+ */
+export const HISTORY_LIMIT = 40
+
+/**
+ * The part of a conversation the model is given: its newest `limit`
+ * messages, oldest first.
+ *
+ * `chatbot-reply` reads the rows newest first, because that is the only way a
+ * limit keeps the end of a conversation rather than its beginning. This puts
+ * them back in the order they were written, which is the order the model
+ * reads a conversation in and the order `hasUnansweredPatientMessage` relies
+ * on. The rows passed in are not modified, and nothing leaves storage: older
+ * messages stay in the transcript, they are only not replayed.
+ */
+export function chronologicalWindow<T>(
+  newestFirst: readonly T[],
+  limit: number = HISTORY_LIMIT,
+): T[] {
+  return newestFirst.slice(0, limit).reverse()
+}
+
 export function buildInteractionRequest(input: {
   systemInstruction: string
   turns: InteractionTurn[]
