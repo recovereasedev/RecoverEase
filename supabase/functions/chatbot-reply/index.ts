@@ -14,6 +14,12 @@ import {
 } from '../_shared/assistant.ts'
 import { AuthError, requireCaller, serviceClient } from '../_shared/auth.ts'
 import { handlePreflight, jsonResponse } from '../_shared/cors.ts'
+import {
+  answerOrRequestReview,
+  NEEDS_REVIEW_MESSAGE,
+  requestReview,
+  type ReviewRequestStore,
+} from '../_shared/escalation.ts'
 
 /**
  * Recovery guidance assistant - modules 8.1, 8.2 and 8.3.
@@ -37,8 +43,9 @@ import { handlePreflight, jsonResponse } from '../_shared/cors.ts'
  * If Gemini is unconfigured, unreachable, rate limited, slow, or returns
  * something that does not satisfy the schema, this returns an error status
  * and the UI says the assistant is unavailable. The patient's own message is
- * already persisted by then and is never lost. It never falls back to a
- * canned or partial reply.
+ * already persisted by then and is never lost, and their doctor is asked to
+ * review the conversation (see _shared/escalation.ts). It never falls back
+ * to a canned or partial reply.
  *
  * Deploy:
  *   supabase functions deploy chatbot-reply
@@ -47,6 +54,54 @@ import { handlePreflight, jsonResponse } from '../_shared/cors.ts'
 
 /** Beyond this the patient is better served by an honest failure. */
 const REQUEST_TIMEOUT_MS = 25_000
+
+/**
+ * The database side of a review request (_shared/escalation.ts), for one
+ * conversation and the patient's assigned doctor. Written with the service
+ * key, like every other write here.
+ */
+function reviewStore(
+  admin: ReturnType<typeof serviceClient>,
+  docId: string,
+  chatSessionId: string,
+): ReviewRequestStore {
+  return {
+    async assignedDoctorUserId() {
+      const { data, error } = await admin
+        .from('doctor')
+        .select('user_id, doc_is_active')
+        .eq('doc_id', docId)
+        .maybeSingle()
+      if (error) throw error
+      return data?.doc_is_active ? (data.user_id as string) : null
+    },
+    async hasUnreadReviewRequest(doctorUserId) {
+      const { data, error } = await admin
+        .from('notification')
+        .select('notification_id')
+        .eq('user_id', doctorUserId)
+        .eq('chat_session_id', chatSessionId)
+        .eq('notification_type', 'chat_critical')
+        .eq('notification_message', NEEDS_REVIEW_MESSAGE)
+        .eq('notification_is_read', false)
+        .limit(1)
+      if (error) throw error
+      return (data?.length ?? 0) > 0
+    },
+    async insertReviewRequest(doctorUserId) {
+      const { error } = await admin.from('notification').insert({
+        user_id: doctorUserId,
+        chat_session_id: chatSessionId,
+        // The chat alert type, so it opens the conversation like one does
+        // (module 8.5). The message says a reply is missing, not that a
+        // concern was found, and the conversation is not flagged.
+        notification_type: 'chat_critical',
+        notification_message: NEEDS_REVIEW_MESSAGE,
+      })
+      if (error) throw error
+    },
+  }
+}
 
 Deno.serve(async (request) => {
   const preflight = handlePreflight(request)
@@ -110,22 +165,6 @@ Deno.serve(async (request) => {
     }
     const history = chronologicalWindow(newestFirst)
 
-    // Configuration is checked here rather than at the top of the handler, so
-    // that an unconfigured deployment still answers "not yours" to a caller
-    // reaching for someone else's conversation. Authorisation should not
-    // depend on whether a provider key happens to be set, and this ordering
-    // also means the refusal paths stay exercisable before a key exists.
-    const apiKey = Deno.env.get('GEMINI_API_KEY')
-    if (!apiKey) {
-      throw new AuthError('The guidance assistant is not configured.', 503)
-    }
-
-    const { data: promptSetting } = await admin
-      .from('system_setting')
-      .select('system_setting_value')
-      .eq('system_setting_key', 'chatbot.system_prompt')
-      .maybeSingle()
-
     // `toInteractionInput` is the data-minimisation boundary: it takes the
     // role and the text off each row and drops everything else, so the
     // provider receives this conversation and no other patient data at all.
@@ -134,80 +173,123 @@ Deno.serve(async (request) => {
       throw new AuthError('There is nothing to reply to', 400)
     }
 
-    const body = buildInteractionRequest({
-      systemInstruction: buildSystemInstruction(
-        promptSetting?.system_setting_value,
-      ),
-      turns,
-    })
+    // 4. From here the patient is owed an answer: their message is saved and
+    //    nobody has replied. If the assistant cannot give one - for any
+    //    reason, from an unconfigured key to a reply that cannot be saved -
+    //    their doctor is asked to review the conversation, and the patient
+    //    still gets the failure, never a stand-in reply.
+    //
+    //    Configuration is checked in here rather than at the top of the
+    //    handler, so that an unconfigured deployment still answers "not
+    //    yours" to a caller reaching for someone else's conversation.
+    //    Authorisation should not depend on whether a provider key happens to
+    //    be set, and this ordering also means the refusal paths stay
+    //    exercisable before a key exists.
+    const { parsed, inserted } = await answerOrRequestReview(
+      async () => {
+        const apiKey = Deno.env.get('GEMINI_API_KEY')
+        if (!apiKey) {
+          throw new AuthError('The guidance assistant is not configured.', 503)
+        }
 
-    const abort = AbortSignal.timeout(REQUEST_TIMEOUT_MS)
+        const { data: promptSetting } = await admin
+          .from('system_setting')
+          .select('system_setting_value')
+          .eq('system_setting_key', 'chatbot.system_prompt')
+          .maybeSingle()
 
-    let response: Response
-    try {
-      response = await fetch(GEMINI_ENDPOINT, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-goog-api-key': apiKey,
-          'Api-Revision': GEMINI_API_REVISION,
-        },
-        body: JSON.stringify(body),
-        signal: abort,
-      })
-    } catch (cause) {
-      // Timeout, DNS, TLS, connection reset. Deliberately not surfaced to the
-      // patient in detail; the log is where an operator looks.
-      console.error('gemini request failed to complete', cause)
-      throw new AuthError('The guidance assistant is unavailable.', 503)
-    }
+        const body = buildInteractionRequest({
+          systemInstruction: buildSystemInstruction(
+            promptSetting?.system_setting_value,
+          ),
+          turns,
+        })
 
-    if (!response.ok) {
-      // Logged for operators, never forwarded: provider error bodies can carry
-      // request detail and, on some providers, the key itself. Reading it here
-      // is what made the `model_output` turn-type failure diagnosable at all,
-      // since the platform log pipeline was unavailable.
-      const detail = await response.text().catch(() => '')
-      console.error(
-        'gemini returned an error status',
-        response.status,
-        detail.slice(0, 500),
-      )
-      // A 5xx from the provider is transient far more often than not - the
-      // documented response to "high demand" is to retry - so it is reported
-      // as busy rather than broken. Telling a patient the assistant is
-      // permanently unavailable when it will work in a minute is the wrong
-      // failure message.
-      const busy = response.status === 429 || response.status >= 500
-      throw new AuthError(
-        busy
-          ? 'The guidance assistant is busy. Try again in a moment.'
-          : 'The guidance assistant is unavailable.',
-        busy ? 429 : 502,
-      )
-    }
+        const abort = AbortSignal.timeout(REQUEST_TIMEOUT_MS)
 
-    // Everything past here is validated before it is trusted.
-    const payload = (await response.json()) as unknown
-    const parsed = parseAssistantReply(extractOutputText(payload))
+        let response: Response
+        try {
+          response = await fetch(GEMINI_ENDPOINT, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-goog-api-key': apiKey,
+              'Api-Revision': GEMINI_API_REVISION,
+            },
+            body: JSON.stringify(body),
+            signal: abort,
+          })
+        } catch (cause) {
+          // Timeout, DNS, TLS, connection reset. Deliberately not surfaced to
+          // the patient in detail; the log is where an operator looks.
+          console.error('gemini request failed to complete', cause)
+          throw new AuthError('The guidance assistant is unavailable.', 503)
+        }
 
-    const { data: inserted, error: insertError } = await admin
-      .from('chat_message')
-      .insert({
-        chat_session_id: chatSessionId,
-        chat_message_role: 'assistant',
-        chat_message_content: parsed.message,
-      })
-      .select()
-      .single()
+        if (!response.ok) {
+          // Logged for operators, never forwarded: provider error bodies can
+          // carry request detail and, on some providers, the key itself.
+          // Reading it here is what made the `model_output` turn-type failure
+          // diagnosable at all, since the platform log pipeline was
+          // unavailable.
+          const detail = await response.text().catch(() => '')
+          console.error(
+            'gemini returned an error status',
+            response.status,
+            detail.slice(0, 500),
+          )
+          // A 5xx from the provider is transient far more often than not - the
+          // documented response to "high demand" is to retry - so it is
+          // reported as busy rather than broken. Telling a patient the
+          // assistant is permanently unavailable when it will work in a
+          // minute is the wrong failure message.
+          const busy = response.status === 429 || response.status >= 500
+          throw new AuthError(
+            busy
+              ? 'The guidance assistant is busy. Try again in a moment.'
+              : 'The guidance assistant is unavailable.',
+            busy ? 429 : 502,
+          )
+        }
 
-    if (insertError) throw new AuthError(insertError.message, 500)
+        // Everything past here is validated before it is trusted. A body that
+        // is not even JSON is the same failure as one that fails the schema.
+        let payload: unknown
+        try {
+          payload = await response.json()
+        } catch {
+          throw new AssistantReplyError('The assistant returned malformed output')
+        }
+        const parsed = parseAssistantReply(extractOutputText(payload))
+
+        const { data: inserted, error: insertError } = await admin
+          .from('chat_message')
+          .insert({
+            chat_session_id: chatSessionId,
+            chat_message_role: 'assistant',
+            chat_message_content: parsed.message,
+          })
+          .select()
+          .single()
+
+        if (insertError) {
+          // Logged for operators; the database's own wording is not something
+          // to show a patient.
+          console.error('assistant reply could not be saved', insertError.message)
+          throw new AuthError("The guidance assistant's reply could not be saved.", 500)
+        }
+
+        return { parsed, inserted }
+      },
+      () => requestReview(reviewStore(admin, patient.doc_id, chatSessionId)),
+      (error) => console.error('review request could not be written', error),
+    )
 
     const critical = raisesCriticalConcern(parsed)
 
     // Module 8.2: flag the conversation for the treating clinician.
     if (critical) {
-      await admin
+      const { error: flagError } = await admin
         .from('chat_session')
         .update({
           chat_session_has_critical_flag: true,
@@ -217,6 +299,10 @@ Deno.serve(async (request) => {
               : 'The assistant suggested contacting the care team.',
         })
         .eq('chat_session_id', chatSessionId)
+
+      if (flagError) {
+        console.error('critical flag could not be set', flagError.message)
+      }
 
       // Module 8.3: the doctor receives the alert. The notification carries no
       // clinical detail - the doctor can open the conversation, and an
@@ -228,13 +314,17 @@ Deno.serve(async (request) => {
         .maybeSingle()
 
       if (doctor?.user_id) {
-        await admin.from('notification').insert({
+        const { error: alertError } = await admin.from('notification').insert({
           user_id: doctor.user_id,
           chat_session_id: chatSessionId,
           notification_type: 'chat_critical',
           notification_message:
             'A patient raised a concern in the guidance chat that may need your attention.',
         })
+
+        if (alertError) {
+          console.error('critical alert could not be written', alertError.message)
+        }
       }
     }
 
