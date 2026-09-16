@@ -79,14 +79,17 @@ export function DoctorReportsPage() {
   return (
     <>
       <div className={cn(isPageHiddenInPrint && 'print:hidden')}>
+        {/* The header and the form are the screen's, as is "Print list": the
+            printout of this page is the list of generated reports. */}
         <PageHeader
           eyebrow="Records"
           title="Reports"
           description="Recovery reports you have generated."
+          className="print:hidden"
         />
 
         <div className="grid gap-5 lg:grid-cols-3">
-          <Card className="lg:col-span-1 h-fit">
+          <Card className="lg:col-span-1 h-fit print:hidden">
             <CardHeader
               icon={FileBarChart}
               title="Generate a recovery report"
@@ -168,6 +171,7 @@ export function DoctorReportsPage() {
                 <Button
                   variant="outline"
                   size="sm"
+                  className="print:hidden"
                   onClick={() => printOnly('list')}
                 >
                   <Printer aria-hidden="true" />

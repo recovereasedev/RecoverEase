@@ -152,9 +152,12 @@ async function generateFor(name: RegExp) {
   return screen.findByRole('region', { name: 'Report preview' })
 }
 
-/** What would reach the paper: the page's own content, and the report. */
+/**
+ * What would reach the paper: the page's own content - the list of generated
+ * reports, which is all of the page that ever prints - and the report.
+ */
 function printState() {
-  const heading = screen.getByRole('heading', { level: 1, name: 'Reports' })
+  const heading = screen.getByRole('heading', { name: 'Generated reports' })
   const preview = document.querySelector('[data-report-preview]')
   return {
     pageHidden: heading.closest('.print\\:hidden') !== null,
