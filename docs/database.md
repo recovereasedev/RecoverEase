@@ -71,6 +71,41 @@ three doses a day while listing two times:
 check (cardinality(medication_schedule_times) = medication_schedule_frequency)
 ```
 
+**How the times are set.** The clinician does not type them. The medication
+form asks for **Doses a day**, **Hours between doses** and **First dose at**,
+and `calculateDoseTimes()` in `src/features/medications/dose-times.ts` works
+out the day's times, which the form shows before anything is saved (group QA
+9/12/26, item 4). For example, 3 doses a day, 4 hours apart, first at 08:00
+gives 08:00, 12:00 and 16:00. The rules:
+
+- Doses a day is a whole number from 1 to 12, the range
+  `medication_schedule_frequency_sane` allows.
+- Hours between doses is a whole number from 1 to 23. It is not asked for when
+  there is one dose a day.
+- Every dose falls on the same day, before midnight. A combination whose doses
+  would cross midnight is refused with the reason, never wrapped into the next
+  day or shortened: 4 doses 6 hours apart from 06:00 would put the last at
+  24:00 and is refused, while from 00:00 it gives 00:00, 06:00, 12:00 and
+  18:00. The stored times are a daily set that dose generation repeats on each
+  day of the course, so a time past midnight would be scheduled on the first
+  day before the first dose.
+- The calculation is clock arithmetic on times of day, with no date or time
+  zone involved. Dose generation places the times in the `app.timezone`
+  setting, as it always has.
+
+Only the calculated times are stored, in `medication_schedule_times`, with
+`medication_schedule_frequency` counted from them. There is no interval
+column, so there is one source of truth and nothing that could disagree with
+the times. Dose generation, reminders, the patient's checklist, reports and
+printing read them exactly as before. Schedules created before this, including
+any whose times are not evenly spaced, remain valid and readable unchanged;
+new schedules are always evenly spaced.
+
+Covered by `tests/unit/medication-dose-times.test.ts`,
+`tests/unit/medication-form-dose-times.test.tsx`,
+`tests/db/medication-dose-times.test.ts` and
+`e2e/medication-dose-times.spec.ts`.
+
 ### 5. `auditLogDetails` is `jsonb`, not `text`
 
 Module 13.2 is "Filter / Search Audit Logs" — a structured query over

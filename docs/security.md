@@ -242,6 +242,26 @@ Because it copies fields out rather than deleting fields off, adding a column
 to `chat_message` later cannot silently widen what leaves the system. A test
 asserts on the serialised payload that no identifier survives.
 
+### Only the newest 40 messages are replayed
+
+The model is given the newest 40 messages of the conversation
+(`HISTORY_LIMIT` in `supabase/functions/_shared/assistant.ts`), not the whole
+of it. `chatbot-reply` reads them newest first, ordered by
+`chat_message_created_at` and then by `chat_message_id`, both descending, so
+two messages with the same timestamp always fall in the same order and the
+window is the same every time. `chronologicalWindow()` then puts them back in
+the order they were written before `toInteractionInput()` builds the request.
+
+Reading newest first is what makes the limit keep the end of a conversation.
+Read oldest first, a conversation longer than 40 messages was cut off at its
+fortieth message and the patient's latest question never reached the model.
+Older messages are not deleted or hidden: they stay in the transcript the
+patient and their doctor see, and are only not replayed to the model. A reply
+is requested only when the last of those messages is the patient's.
+
+Covered by `tests/unit/chat-history-window.test.ts` and
+`tests/db/chat-history-window.test.ts`.
+
 ### Nothing unvalidated reaches a patient
 
 Structured output is requested via `response_format`, and the reply is then

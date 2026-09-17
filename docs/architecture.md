@@ -136,6 +136,42 @@ silently if a policy changed.
   Copying server data into form state with `useEffect` renders an empty form
   first and can discard what the user typed in between.
 
+### Installable app (PWA)
+
+RecoverEase can be installed as an app (group QA 9/12/26, "Integrate PWM",
+confirmed to mean a progressive web app). It is a thin layer over the same
+site, not an offline copy of it.
+
+- **Manifest.** `public/manifest.webmanifest` names the app "RecoverEase",
+  with `start_url` and `scope` of `/`, `display: standalone`, theme colour
+  `#004269`, background `#f9f9ff`, and 192 px, 512 px and 512 px maskable
+  icons in `public/icons/`. `index.html` links it, along with the theme colour
+  and an Apple touch icon.
+- **Service worker.** `public/sw.js`, registered by
+  `src/lib/register-service-worker.ts` in production builds only, after the
+  page has loaded, with `updateViaCache: 'none'` so the browser checks for a
+  newer worker on every visit. A failed registration is ignored: the site
+  works exactly as it does without one.
+- **Offline behaviour.** Page loads always go to the network. Only when the
+  network cannot be reached does the worker answer with `public/offline.html`,
+  a self-contained page with no scripts, no external resources and no care
+  information. That page is the only thing the worker stores.
+- **Clinical data is never cached.** Requests to Supabase, sign-in and the
+  app's own code are not intercepted, and no response is stored, so no
+  patient record, token or session can end up in a cache. An installed app
+  therefore still needs a connection to show any data.
+- **Standalone installation.** With the manifest and worker in place, Chrome
+  offers to install the site, which then opens in its own window without the
+  browser's address bar. This was confirmed on a real installation in Chrome.
+- **Updates.** A changed `sw.js` (its `VERSION`) installs a new worker, which
+  takes over immediately and deletes the previous worker's stored offline
+  page. Because pages are never cached, a deployment is visible on the next
+  load either way.
+
+Covered by `tests/unit/pwa-manifest.test.ts`,
+`tests/unit/service-worker.test.ts`,
+`tests/unit/register-service-worker.test.ts` and `e2e/pwa.spec.ts`.
+
 ## Where the module list is implemented
 
 | Module | Lives in |
