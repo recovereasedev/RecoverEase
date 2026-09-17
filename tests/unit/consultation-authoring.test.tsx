@@ -299,22 +299,24 @@ describe('issuing a prescription and its schedule (modules 4.3 and 4.1)', () => 
     expect(created.schedule.mutate).not.toHaveBeenCalled()
   })
 
-  it('refuses two doses at the same time', () => {
-    // `medication_schedule_times_match_frequency` counts entries, so a
-    // duplicate would silently mean one fewer dose than the clinician set.
+  it('refuses doses that would not fit in the day', () => {
+    // The times are worked out, not typed (QA 9/12/26), and are a daily set.
+    // Wrapping past midnight would schedule a dose on the first day before
+    // the first one, so the schedule is refused rather than saved as
+    // something other than what the clinician set.
     render(<MedicationForm patientId={PATIENT} doctorId={DOCTOR} />)
     typeInto(/medicine/i, 'Paracetamol')
     typeInto(/dosage/i, '500 mg')
-    fireEvent.click(screen.getByRole('button', { name: /add another time/i }))
-    fireEvent.change(screen.getByLabelText(/dose 2 time/i), {
-      target: { value: '08:00' },
-    })
+    typeInto(/doses a day/i, '3')
+    typeInto(/hours between doses/i, '8')
+    typeInto(/first dose at/i, '20:00')
     fireEvent.click(screen.getByRole('button', { name: /add prescription/i }))
 
     expect(
-      screen.getByText('Each dose needs a different time.'),
-    ).toBeInTheDocument()
+      screen.getAllByText(/would run past midnight/i).length,
+    ).toBeGreaterThan(0)
     expect(created.prescription.mutate).not.toHaveBeenCalled()
+    expect(created.schedule.mutate).not.toHaveBeenCalled()
   })
 
   it('writes the prescription first, then the schedule against it', () => {

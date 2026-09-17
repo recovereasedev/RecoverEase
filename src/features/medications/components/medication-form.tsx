@@ -1,17 +1,19 @@
-import { Pill, Plus, X } from 'lucide-react'
-import { useRef, useState } from 'react'
+import { Pill } from 'lucide-react'
+import { useId, useRef, useState } from 'react'
 
 import { FormError } from '@/components/feedback/form-error'
 import { Button } from '@/components/ui/button'
 import { Field, Input, Textarea } from '@/components/ui/field'
 import {
+  calculateDoseTimes,
+  needsInterval,
+  type DoseTimeField,
+} from '@/features/medications/dose-times'
+import {
   useCreateMedicationSchedule,
   useCreatePrescription,
 } from '@/features/medications/hooks'
 import { toDateKey } from '@/lib/format'
-
-/** The database allows between one and twelve doses a day. */
-const MAX_TIMES = 12
 
 /**
  * Modules 4.3 "Create/Issue Prescription" and 4.1 "Set Medication Schedule".
@@ -22,6 +24,11 @@ const MAX_TIMES = 12
  * issued in this consultation its id is passed in, the notes field goes away
  * and only the schedule is written — a second medicine belongs to the same
  * prescription, not a new one.
+ *
+ * The clinician says how many doses a day, how many hours apart and when the
+ * first is, and the times are worked out for them (group QA 9/12/26, item 4;
+ * see `dose-times.ts`). Only those times are saved, exactly as typed times
+ * were, so everything that reads a schedule is unchanged.
  *
  * Nothing is written until submit. Inserting the schedule is all that is
  * needed for the patient's checklist: a database trigger generates the
@@ -44,29 +51,43 @@ export function MedicationForm({
 }) {
   const createPrescription = useCreatePrescription(patientId, doctorId)
   const createSchedule = useCreateMedicationSchedule(patientId)
+  const doseTimesLabelId = useId()
 
   const [notes, setNotes] = useState('')
   const [name, setName] = useState('')
   const [dosage, setDosage] = useState('')
-  const [times, setTimes] = useState<string[]>(['08:00'])
+  const [frequency, setFrequency] = useState('1')
+  const [intervalHours, setIntervalHours] = useState('')
+  const [startTime, setStartTime] = useState('08:00')
   const [startDate, setStartDate] = useState(toDateKey())
   const [endDate, setEndDate] = useState('')
-  const [errors, setErrors] = useState<{
-    name?: string
-    dosage?: string
-    times?: string
-    startDate?: string
-    endDate?: string
-  }>({})
+  const [errors, setErrors] = useState<
+    Partial<Record<'name' | 'dosage' | DoseTimeField | 'startDate' | 'endDate', string>>
+  >({})
 
   const inFlight = useRef(false)
   const isPending = createPrescription.isPending || createSchedule.isPending
 
-  const setTimeAt = (index: number, value: string) => {
-    setTimes((current) =>
-      current.map((time, position) => (position === index ? value : time)),
-    )
-  }
+  // Worked out on every render, so the times shown are always the ones that
+  // would be saved.
+  const doseTimes = calculateDoseTimes({
+    frequency,
+    intervalHours,
+    startTime,
+  })
+  const intervalApplies = needsInterval(frequency)
+
+  // A refusal is about the times as they were when saved. Once any of the
+  // three fields changes, the preview below already shows the new result, so
+  // a message still pointing at the old one would contradict it.
+  const clearDoseTimeErrors = () =>
+    setErrors((current) => {
+      const next = { ...current }
+      delete next.frequency
+      delete next.interval
+      delete next.startTime
+      return next
+    })
 
   const submit = () => {
     // Mirrors the CHECK constraints on `medication_schedule`: a non-blank
@@ -75,17 +96,13 @@ export function MedicationForm({
     const next: typeof errors = {}
     if (!name.trim()) next.name = 'Name the medicine.'
     if (!dosage.trim()) next.dosage = 'Say how much to take, e.g. 500 mg.'
-    if (times.length === 0 || times.some((time) => !time)) {
-      next.times = 'Give a time for every dose.'
-    } else if (new Set(times).size !== times.length) {
-      next.times = 'Each dose needs a different time.'
-    }
+    if (!doseTimes.ok) next[doseTimes.field] = doseTimes.message
     if (!startDate) next.startDate = 'Choose when the course starts.'
     if (endDate && startDate && endDate < startDate) {
       next.endDate = 'The end date cannot be before the start date.'
     }
     setErrors(next)
-    if (Object.keys(next).length > 0) return
+    if (Object.keys(next).length > 0 || !doseTimes.ok) return
 
     if (inFlight.current) return
     inFlight.current = true
@@ -93,6 +110,8 @@ export function MedicationForm({
     const release = () => {
       inFlight.current = false
     }
+
+    const times = doseTimes.times
 
     const writeSchedule = (id: string) => {
       createSchedule.mutate(
@@ -165,52 +184,92 @@ export function MedicationForm({
         </Field>
       </div>
 
-      <Field
-        label="Times of day"
-        required
-        description="One row per dose. The patient's checklist and reminders follow these."
-        error={errors.times}
-      >
-        <div className="space-y-2">
-          {times.map((time, index) => (
-            // Times are positional and may repeat while being typed, so the
-            // index is the only stable key here.
-            <div key={index} className="flex items-center gap-2">
-              <Input
-                type="time"
-                value={time}
-                aria-label={`Dose ${index + 1} time`}
-                onChange={(event) => setTimeAt(index, event.target.value)}
-              />
-              {times.length > 1 ? (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  aria-label={`Remove dose ${index + 1}`}
-                  onClick={() =>
-                    setTimes((current) =>
-                      current.filter((_, position) => position !== index),
-                    )
-                  }
-                >
-                  <X aria-hidden="true" />
-                </Button>
-              ) : null}
-            </div>
-          ))}
+      {/* `step="any"` rather than the default whole-number step: a value the
+          browser considers invalid blocks submission before any handler
+          runs, and the clinician would get a native bubble instead of the
+          field-level message. Whole numbers are checked on submit. */}
+      <div className="grid gap-4 sm:grid-cols-3">
+        <Field label="Doses a day" required error={errors.frequency}>
+          <Input
+            type="number"
+            inputMode="numeric"
+            step="any"
+            value={frequency}
+            onChange={(event) => {
+              setFrequency(event.target.value)
+              clearDoseTimeErrors()
+            }}
+          />
+        </Field>
 
-          {times.length < MAX_TIMES ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setTimes((current) => [...current, ''])}
+        <Field
+          label="Hours between doses"
+          required={intervalApplies}
+          {...(intervalApplies
+            ? {}
+            : { description: 'Not needed for one dose a day.' })}
+          error={errors.interval}
+        >
+          <Input
+            type="number"
+            inputMode="numeric"
+            step="any"
+            value={intervalHours}
+            disabled={!intervalApplies}
+            onChange={(event) => {
+              setIntervalHours(event.target.value)
+              clearDoseTimeErrors()
+            }}
+          />
+        </Field>
+
+        <Field label="First dose at" required error={errors.startTime}>
+          <Input
+            type="time"
+            value={startTime}
+            onChange={(event) => {
+              setStartTime(event.target.value)
+              clearDoseTimeErrors()
+            }}
+          />
+        </Field>
+      </div>
+
+      <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-surface-sunken px-3.5 py-3">
+        <p id={doseTimesLabelId} className="text-sm font-medium text-heading">
+          Dose times
+        </p>
+        <p className="text-sm text-muted">
+          Worked out from the fields above. The patient&apos;s checklist and
+          reminders follow these.
+        </p>
+        <div aria-live="polite">
+          {doseTimes.ok ? (
+            <ul
+              aria-labelledby={doseTimesLabelId}
+              className="mt-2 flex flex-wrap gap-2"
             >
-              <Plus aria-hidden="true" />
-              Add another time
-            </Button>
-          ) : null}
+              {doseTimes.times.map((time) => (
+                <li
+                  key={time}
+                  className="rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-surface px-2.5 py-1 text-sm font-medium text-heading"
+                  data-numeric
+                >
+                  {time}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-2 text-sm text-muted">
+              {/* Said once: next to the field when a save was refused, here
+                  while the clinician is still filling the form in. */}
+              {errors[doseTimes.field]
+                ? 'Correct the highlighted field to see the times.'
+                : doseTimes.message}
+            </p>
+          )}
         </div>
-      </Field>
+      </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Start date" required error={errors.startDate}>
