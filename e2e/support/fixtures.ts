@@ -1,4 +1,4 @@
-import { test as base, type Page } from '@playwright/test'
+import { test as base, type Browser, type Page } from '@playwright/test'
 
 import { SupabaseStub, type TableRows } from './supabase-stub'
 
@@ -406,4 +406,4 @@ export const test = base.extend<Fixtures>({
 
 export { expect } from '@playwright/test'
 export { SupabaseStub }
-export type { Page }
+export type { Browser, Page }

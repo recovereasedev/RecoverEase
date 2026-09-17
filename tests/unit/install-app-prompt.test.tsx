@@ -37,12 +37,19 @@ beforeAll(() => {
   }
 })
 
-/** A store holding whatever the browser is pretended to have offered. */
+/**
+ * A store holding whatever the browser is pretended to have offered, and able
+ * to hand one over later - which is what Chromium actually does.
+ */
 function storeHolding(event: InstallPromptEvent | null): InstallPromptStore & {
   clear: ReturnType<typeof vi.fn>
+  deliver: (event: InstallPromptEvent) => void
 } {
   let held = event
   const listeners = new Set<() => void>()
+  const publish = () => {
+    for (const listener of listeners) listener()
+  }
 
   return {
     start: vi.fn(),
@@ -50,8 +57,12 @@ function storeHolding(event: InstallPromptEvent | null): InstallPromptStore & {
     get: () => held,
     clear: vi.fn(() => {
       held = null
-      for (const listener of listeners) listener()
+      publish()
     }),
+    deliver: (arrived: InstallPromptEvent) => {
+      held = arrived
+      publish()
+    },
     subscribe: (listener: () => void) => {
       listeners.add(listener)
       return () => {
@@ -73,6 +84,8 @@ function browserPrompt(outcome: 'accepted' | 'dismissed') {
 /** Properties jsdom's navigator has on its prototype, overridden per test. */
 const overridden: string[] = []
 
+/** Properties put on the window itself, removed again after each test. */
+const windowProperties: string[] = []
 
 function pretendDevice(
   properties: Partial<{
@@ -97,6 +110,16 @@ function pretendBrowserReports(
     configurable: true,
   })
   overridden.push('getInstalledRelatedApps')
+}
+
+/** Gives the window the event Chromium defines, without firing one. */
+function pretendBrowserHasInstallEvent() {
+  Object.defineProperty(window, 'onbeforeinstallprompt', {
+    value: null,
+    configurable: true,
+    writable: true,
+  })
+  windowProperties.push('onbeforeinstallprompt')
 }
 
 const RECOVEREASE_WEB_APP = {
@@ -136,6 +159,9 @@ afterEach(() => {
   vi.restoreAllMocks()
   for (const key of overridden.splice(0)) {
     Reflect.deleteProperty(window.navigator, key)
+  }
+  for (const key of windowProperties.splice(0)) {
+    Reflect.deleteProperty(window, key)
   }
 })
 
@@ -292,6 +318,46 @@ describe('installing through the browser', () => {
     expect(screen.queryByText(/cannot install RecoverEase/)).not.toBeInTheDocument()
   })
 
+  it('steps aside as soon as the browser’s dialog is up, answer or none', async () => {
+    // A dialog dismissed by a click elsewhere can leave `userChoice` pending
+    // for ever. The popup must not wait on it.
+    const prompt = vi.fn(async () => undefined)
+    const event = {
+      prompt,
+      userChoice: new Promise<{ outcome: 'accepted' | 'dismissed' }>(() => {}),
+    } as unknown as InstallPromptEvent
+    const store = storeHolding(event)
+    render(<InstallAppPrompt store={store} appearsAfterMs={0} />)
+    await waitForTheOffer()
+
+    await act(async () => {
+      fireEvent.click(installButton())
+    })
+
+    expect(prompt).toHaveBeenCalledTimes(1)
+    expect(popup()).not.toBeInTheDocument()
+    expect(store.clear).toHaveBeenCalled()
+  })
+
+  it('records the answer the moment the browser is asked', async () => {
+    // Chrome closes this popup itself while its own dialog is up, without
+    // telling the page. The visit must still know it was answered.
+    const prompt = vi.fn(async () => undefined)
+    const event = {
+      prompt,
+      userChoice: new Promise<{ outcome: 'accepted' | 'dismissed' }>(() => {}),
+    } as unknown as InstallPromptEvent
+    render(<InstallAppPrompt store={storeHolding(event)} appearsAfterMs={0} />)
+    await waitForTheOffer()
+
+    await act(async () => {
+      fireEvent.click(installButton())
+    })
+
+    expect(window.sessionStorage.getItem(INSTALL_PROMPT_DISMISSED_KEY)).toBe('1')
+    expect(window.localStorage.getItem(INSTALL_PROMPT_DISMISSED_KEY)).toBeNull()
+  })
+
   it('closes when the app is installed, however that happened', async () => {
     render(<InstallAppPrompt store={storeHolding(null)} appearsAfterMs={0} />)
     await waitForTheOffer()
@@ -323,13 +389,129 @@ describe('installing through the browser', () => {
   })
 })
 
+describe('when the browser hands its install event over late', () => {
+  it('asks the browser with an event that arrives while the popup is open', async () => {
+    const { event, prompt } = browserPrompt('accepted')
+    const store = storeHolding(null)
+    render(<InstallAppPrompt store={store} appearsAfterMs={0} graceMs={50} />)
+    await waitForTheOffer()
+
+    // Chromium offers it after the popup is already on screen.
+    await act(async () => {
+      store.deliver(event)
+    })
+    await act(async () => {
+      fireEvent.click(installButton())
+    })
+
+    expect(prompt).toHaveBeenCalledTimes(1)
+    expect(popup()).not.toBeInTheDocument()
+    expect(screen.queryByRole('listitem')).not.toBeInTheDocument()
+  })
+
+  it('waits for an event that has not arrived when Install is pressed', async () => {
+    const { event, prompt } = browserPrompt('accepted')
+    const store = storeHolding(null)
+    render(<InstallAppPrompt store={store} appearsAfterMs={0} graceMs={500} />)
+    await waitForTheOffer()
+
+    await act(async () => {
+      fireEvent.click(installButton())
+      // Still nothing to install with: the popup waits rather than deciding
+      // the browser cannot install.
+      await new Promise((resolve) => setTimeout(resolve, 20))
+      store.deliver(event)
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+
+    expect(prompt).toHaveBeenCalledTimes(1)
+    expect(popup()).not.toBeInTheDocument()
+    expect(screen.queryByText(/cannot install RecoverEase/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/has not offered to install/)).not.toBeInTheDocument()
+  })
+
+  it('drops the instructions when an event turns up afterwards', async () => {
+    pretendBrowserHasInstallEvent()
+    const { event, prompt } = browserPrompt('accepted')
+    const store = storeHolding(null)
+    render(<InstallAppPrompt store={store} appearsAfterMs={0} graceMs={0} />)
+    await waitForTheOffer()
+
+    await act(async () => {
+      fireEvent.click(installButton())
+    })
+    expect(
+      screen.getByText(/Your browser has not offered to install RecoverEase/),
+    ).toBeInTheDocument()
+
+    // Chromium offers the event late. The button can work now, so the
+    // instructions have no business being on screen.
+    await act(async () => {
+      store.deliver(event)
+    })
+
+    expect(
+      screen.queryByText(/Your browser has not offered to install RecoverEase/),
+    ).not.toBeInTheDocument()
+    expect(popup()).toBeInTheDocument()
+
+    await act(async () => {
+      fireEvent.click(installButton())
+    })
+    expect(prompt).toHaveBeenCalledTimes(1)
+  })
+
+  it('says how to install from the browser’s own menu when none arrives', async () => {
+    // A browser that has the event, but has not fired one here - Chromium
+    // with the app already installed, most often.
+    pretendBrowserHasInstallEvent()
+    render(
+      <InstallAppPrompt store={storeHolding(null)} appearsAfterMs={0} graceMs={0} />,
+    )
+    await waitForTheOffer()
+
+    await act(async () => {
+      fireEvent.click(installButton())
+    })
+
+    expect(
+      screen.getByText(/Your browser has not offered to install RecoverEase/),
+    ).toBeInTheDocument()
+    expect(screen.getAllByRole('listitem')).toHaveLength(3)
+    expect(
+      screen.getByText(/Already installed RecoverEase\? Open it from your list of apps/),
+    ).toBeInTheDocument()
+    // The untrue thing it used to say to an installable browser.
+    expect(screen.queryByText(/cannot install RecoverEase/)).not.toBeInTheDocument()
+  })
+
+  it('still adds by hand on an iPhone, without waiting for an event', async () => {
+    pretendDevice({ userAgent: IPHONE })
+    pretendBrowserHasInstallEvent()
+    render(
+      <InstallAppPrompt store={storeHolding(null)} appearsAfterMs={0} graceMs={5000} />,
+    )
+    await waitForTheOffer()
+
+    // No await: iOS is answered at once, because no event can ever arrive.
+    fireEvent.click(installButton())
+
+    expect(screen.getAllByRole('listitem')).toHaveLength(3)
+    expect(screen.getByText(/On iPhone and iPad you add RecoverEase yourself/)).toBeInTheDocument()
+  })
+})
+
 describe('where the browser offers no install event', () => {
   it('shows an iPhone the three steps, and no pretend installation', async () => {
     pretendDevice({ userAgent: IPHONE })
-    render(<InstallAppPrompt store={storeHolding(null)} appearsAfterMs={0} />)
+    render(
+      <InstallAppPrompt store={storeHolding(null)} appearsAfterMs={0} graceMs={0} />,
+    )
     await waitForTheOffer()
 
-    fireEvent.click(installButton())
+    await act(async () => {
+      fireEvent.click(installButton())
+    })
 
     const steps = screen.getAllByRole('listitem')
     expect(steps).toHaveLength(3)
@@ -344,20 +526,28 @@ describe('where the browser offers no install event', () => {
 
   it('tells an iPad it is the same three steps', async () => {
     pretendDevice({ userAgent: WINDOWS_CHROME, platform: 'MacIntel', maxTouchPoints: 5 })
-    render(<InstallAppPrompt store={storeHolding(null)} appearsAfterMs={0} />)
+    render(
+      <InstallAppPrompt store={storeHolding(null)} appearsAfterMs={0} graceMs={0} />,
+    )
     await waitForTheOffer()
 
-    fireEvent.click(installButton())
+    await act(async () => {
+      fireEvent.click(installButton())
+    })
 
     expect(screen.getAllByRole('listitem')).toHaveLength(3)
   })
 
   it('names Safari to an iPhone browsing in something else', async () => {
     pretendDevice({ userAgent: IPHONE.replace('Version/17.5', 'CriOS/126.0') })
-    render(<InstallAppPrompt store={storeHolding(null)} appearsAfterMs={0} />)
+    render(
+      <InstallAppPrompt store={storeHolding(null)} appearsAfterMs={0} graceMs={0} />,
+    )
     await waitForTheOffer()
 
-    fireEvent.click(installButton())
+    await act(async () => {
+      fireEvent.click(installButton())
+    })
 
     expect(
       screen.getByText(/If you are using another browser, open RecoverEase in Safari first/),
@@ -365,10 +555,14 @@ describe('where the browser offers no install event', () => {
   })
 
   it('says so plainly where the browser cannot install at all', async () => {
-    render(<InstallAppPrompt store={storeHolding(null)} appearsAfterMs={0} />)
+    render(
+      <InstallAppPrompt store={storeHolding(null)} appearsAfterMs={0} graceMs={0} />,
+    )
     await waitForTheOffer()
 
-    fireEvent.click(installButton())
+    await act(async () => {
+      fireEvent.click(installButton())
+    })
 
     expect(screen.getByText(/This browser cannot install RecoverEase/)).toBeInTheDocument()
     expect(screen.getByText(/Chrome or Microsoft Edge/)).toBeInTheDocument()

@@ -182,10 +182,17 @@ site, not an offline copy of it.
   as "not installed", so the offer behaves exactly as it did before. Pressing
   Install triggers the browser's installation and nothing else: it uses the
   `beforeinstallprompt` event the browser handed over, held from before the
-  first render because Chrome offers it once and early. Where there is no
-  such event the popup says how to add the app by hand — Share, then Add to
-  Home Screen, on iPhone and iPad — or that this browser cannot install it,
-  and never imitates an installation that is not happening. "Maybe Later" is
+  first render because Chrome offers it once and early. Chromium also decides
+  for itself *when* to offer it, so an Install pressed before one has arrived
+  waits `INSTALL_PROMPT_GRACE_MS` for it rather than concluding anything —
+  treating "not here yet" as "cannot install" is what once put an installable
+  Chrome in front of instructions it did not need. Only when no event is
+  coming does the popup fall back, and to the true one of three: Share then
+  Add to Home Screen on iPhone and iPad; the browser's own menu where the
+  browser has the event but has not offered one here, which is what Chromium
+  does once the app is installed; and "this browser cannot install
+  RecoverEase" only where the browser has no installation of any kind. It
+  never imitates an installation that is not happening. "Maybe Later" is
   remembered in `sessionStorage`, so the offer is answered for the visit and
   comes back on the next one; nothing about it is stored where it would
   outlive the visit.

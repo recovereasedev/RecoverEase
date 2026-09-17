@@ -1,4 +1,4 @@
-import { expect, test, type Page } from './support/fixtures'
+import { expect, test, type Browser, type Page } from './support/fixtures'
 
 /**
  * RecoverEase's own offer to install itself as an app, in a real browser.
@@ -9,10 +9,14 @@ import { expect, test, type Page } from './support/fixtures'
  * This is the one spec that lets the popup appear; every other spec answers
  * it first (see `e2e/support/fixtures.ts`).
  *
- * Chromium under Playwright never fires `beforeinstallprompt`, which is
- * exactly the case the popup has to handle honestly: Install shows how to do
- * it by hand, or says it cannot be done here, and never imitates the
- * browser's own installation.
+ * Chromium under Playwright never fires `beforeinstallprompt` of its own
+ * accord, so the tests that need one dispatch the event the way the browser
+ * would - after the page has loaded, into the listener the app registered
+ * before the first render. Everything downstream of that is the real thing:
+ * the real build, the real store, the real button.
+ *
+ * The tests that need no event cover the other half: Install must never claim
+ * an installable browser cannot install RecoverEase.
  */
 
 test.use({ installPrompt: 'allow' })
@@ -189,15 +193,96 @@ test.describe('offering to install RecoverEase', () => {
     await context.close()
   })
 
-  test('says plainly where a browser cannot install it', async ({ page }) => {
+  /**
+   * Chromium's own event, dispatched as Chromium dispatches it: after load,
+   * to whatever registered a listener beforehand. `promptCalls` is what the
+   * test is really asking about - whether the button reached the browser.
+   */
+  async function withBrowserInstallEvent(
+    browser: Browser,
+    { delayMs = 0 }: { delayMs?: number } = {},
+  ) {
+    const context = await browser.newContext()
+    await context.addInitScript((wait) => {
+      const state = { promptCalls: 0, choiceRead: false }
+      ;(window as unknown as { __install: typeof state }).__install = state
+
+      const event = new Event('beforeinstallprompt', { cancelable: true })
+      Object.assign(event, {
+        platforms: ['web'],
+        prompt: async () => {
+          state.promptCalls += 1
+        },
+        get userChoice() {
+          state.choiceRead = true
+          return Promise.resolve({ outcome: 'accepted', platform: 'web' })
+        },
+      })
+
+      window.addEventListener('load', () => {
+        setTimeout(() => window.dispatchEvent(event), wait)
+      })
+    }, delayMs)
+
+    const page = await context.newPage()
+    return { context, page }
+  }
+
+  const promptCalls = (page: Page) =>
+    page.evaluate(
+      () => (window as unknown as { __install: { promptCalls: number } }).__install.promptCalls,
+    )
+
+  test('Install asks the browser, with an event captured before the popup appears', async ({
+    browser,
+  }) => {
+    const { context, page } = await withBrowserInstallEvent(browser)
+    await page.goto('/')
+
+    const popup = offer(page)
+    await expect(popup).toBeVisible({ timeout: APPEARS_WITHIN_MS })
+    await popup.getByRole('button', { name: 'Install RecoverEase' }).click()
+
+    // The browser's own installation ran, and no instructions were shown in
+    // its place.
+    await expect.poll(() => promptCalls(page)).toBe(1)
+    await expect(offer(page)).toBeHidden()
+    await context.close()
+  })
+
+  test('Install asks the browser, with an event captured after the popup appears', async ({
+    browser,
+  }) => {
+    // Chromium can offer the event well after the page has settled - after
+    // this popup is already on screen.
+    const { context, page } = await withBrowserInstallEvent(browser, { delayMs: 2500 })
+    await page.goto('/')
+
+    const popup = offer(page)
+    await expect(popup).toBeVisible({ timeout: APPEARS_WITHIN_MS })
+    await page.waitForTimeout(3000)
+    await popup.getByRole('button', { name: 'Install RecoverEase' }).click()
+
+    await expect.poll(() => promptCalls(page)).toBe(1)
+    await expect(offer(page)).toBeHidden()
+    await context.close()
+  })
+
+  test('never tells an installable browser that it cannot install', async ({ page }) => {
     await page.goto('/')
     const popup = offer(page)
     await expect(popup).toBeVisible({ timeout: APPEARS_WITHIN_MS })
 
+    // No event at all in this context. Chromium can still install from its
+    // own menu, so that is what it must be told - after waiting for an event
+    // that never comes.
     await popup.getByRole('button', { name: 'Install RecoverEase' }).click()
 
-    await expect(popup.getByText('This browser cannot install RecoverEase.')).toBeVisible()
-    await expect(popup.getByRole('listitem')).toHaveCount(0)
+    await expect(
+      popup.getByText(/Your browser has not offered to install RecoverEase/),
+    ).toBeVisible()
+    await expect(popup.getByRole('listitem')).toHaveCount(3)
+    await expect(popup.getByText('This browser cannot install RecoverEase.')).toHaveCount(0)
   })
 
   test('closes on Escape, like any other dialog', async ({ page }) => {

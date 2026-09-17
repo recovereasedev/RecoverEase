@@ -9,6 +9,8 @@ import {
   RELATED_WEB_APP_MANIFEST_URL,
   isIosSafari,
   rememberInstallPromptDismissed,
+  supportsInstallPromptEvent,
+  waitForInstallPrompt,
   wasInstallPromptDismissed,
   type InstallPromptEvent,
 } from '@/lib/pwa-install'
@@ -142,6 +144,60 @@ describe('knowing what the device can install with', () => {
   it('tells Safari on iOS from the other browsers there', () => {
     expect(isIosSafari(navigatorFor(IPHONE))).toBe(true)
     expect(isIosSafari(navigatorFor(IPHONE_CHROME))).toBe(false)
+  })
+})
+
+describe('knowing whether the browser has an install event at all', () => {
+  it('has one where the window defines it, fired or not', () => {
+    const chromium = { onbeforeinstallprompt: null } as unknown as Window
+
+    expect(supportsInstallPromptEvent(chromium)).toBe(true)
+  })
+
+  it('has none where the window does not define it', () => {
+    expect(supportsInstallPromptEvent({} as unknown as Window)).toBe(false)
+  })
+})
+
+describe('waiting for the browser to hand its install event over', () => {
+  it('answers at once with an event already held', async () => {
+    const target = new EventTarget()
+    const store = createInstallPromptStore(target)
+    store.start()
+    const event = installEvent(target)
+
+    await expect(waitForInstallPrompt(store, 0)).resolves.toBe(event)
+  })
+
+  it('answers with an event that arrives while waiting', async () => {
+    const target = new EventTarget()
+    const store = createInstallPromptStore(target)
+    store.start()
+
+    const waiting = waitForInstallPrompt(store, 1000)
+    const event = installEvent(target)
+
+    await expect(waiting).resolves.toBe(event)
+  })
+
+  it('gives up after the time allowed, rather than waiting for ever', async () => {
+    const store = createInstallPromptStore(new EventTarget())
+    store.start()
+
+    await expect(waitForInstallPrompt(store, 10)).resolves.toBeNull()
+  })
+
+  it('stops listening once it has answered', async () => {
+    const target = new EventTarget()
+    const store = createInstallPromptStore(target)
+    store.start()
+
+    await expect(waitForInstallPrompt(store, 10)).resolves.toBeNull()
+
+    // An event arriving afterwards must not resolve anything a second time,
+    // and must still be held for the next press of Install.
+    const event = installEvent(target)
+    expect(store.get()).toBe(event)
   })
 })
 

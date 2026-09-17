@@ -125,6 +125,20 @@ export async function isAppInstalledElsewhere(
   }
 }
 
+/**
+ * Whether this browser has an install event of its own at all.
+ *
+ * `beforeinstallprompt` is defined on the window object in every browser that
+ * implements it, whether or not one has fired yet. The difference matters to
+ * what the popup says: a Chromium browser that has simply not offered the
+ * event on this page can still install RecoverEase from its own menu, and
+ * telling that person the browser "cannot install RecoverEase" would be
+ * false.
+ */
+export function supportsInstallPromptEvent(win: Window = window): boolean {
+  return 'onbeforeinstallprompt' in win
+}
+
 /** An iPhone or iPad, where installing means "Add to Home Screen". */
 export function isIosDevice(nav: Navigator = navigator): boolean {
   if (/iPad|iPhone|iPod/.test(nav.userAgent)) return true
@@ -253,6 +267,50 @@ export function createInstallPromptStore(
       }
     },
   }
+}
+
+/**
+ * How long to give the browser to hand over its install event after someone
+ * has asked to install.
+ *
+ * Chromium decides for itself when to offer `beforeinstallprompt`, and it can
+ * arrive after the page has settled — or after the person has already pressed
+ * Install. Treating "not here yet" as "this browser cannot install" is what
+ * put an installable Chrome in front of instructions it did not need.
+ */
+export const INSTALL_PROMPT_GRACE_MS = 2000
+
+/**
+ * The held event, or the next one to arrive within `timeoutMs`, or `null`.
+ *
+ * It waits on the store's own notifications rather than asking again and
+ * again: nothing here polls, and the wait ends as soon as an event lands.
+ */
+export function waitForInstallPrompt(
+  store: InstallPromptStore,
+  timeoutMs: number = INSTALL_PROMPT_GRACE_MS,
+): Promise<InstallPromptEvent | null> {
+  const held = store.get()
+  if (held) return Promise.resolve(held)
+
+  return new Promise((resolve) => {
+    let settled = false
+
+    const finish = (event: InstallPromptEvent | null) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      unsubscribe()
+      resolve(event)
+    }
+
+    const unsubscribe = store.subscribe(() => {
+      const arrived = store.get()
+      if (arrived) finish(arrived)
+    })
+
+    const timer = setTimeout(() => finish(null), timeoutMs)
+  })
 }
 
 /**
