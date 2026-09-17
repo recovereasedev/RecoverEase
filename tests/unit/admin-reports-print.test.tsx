@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 /**
@@ -93,14 +93,25 @@ describe('printing the system-wide report', () => {
     fireEvent.click(printButton())
     expect(window.print).toHaveBeenCalledTimes(1)
 
+    const fetchesBefore = api.fetchReports.mock.calls.length
     fireEvent.click(generateButton())
-    await vi.waitFor(() =>
+    await waitFor(() =>
       expect(api.recordGeneratedReport).toHaveBeenCalledWith({
         userId: 'u-admin',
         type: 'system_wide',
         patientId: null,
       }),
     )
+
+    // Recording a report refreshes the list, and React Query tells the page
+    // with setTimeout(0). Wait for the refresh, then let those updates land
+    // inside act rather than after the test has finished.
+    await waitFor(() =>
+      expect(api.fetchReports.mock.calls.length).toBeGreaterThan(fetchesBefore),
+    )
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
   })
 
   it('keeps both controls off the paper', async () => {

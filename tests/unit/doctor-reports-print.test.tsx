@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 /**
@@ -113,16 +113,30 @@ describe('printing the list of generated reports', () => {
     fireEvent.click(printListButton())
     expect(window.print).toHaveBeenCalledTimes(1)
 
-    fireEvent.focus(screen.getByRole('combobox'))
+    // Opening the picker measures the room below it on the next animation
+    // frame. That frame runs inside act, as it would before a person's next
+    // click, rather than landing after the test has finished.
+    await act(async () => {
+      fireEvent.focus(screen.getByRole('combobox'))
+      await new Promise((resolve) => requestAnimationFrame(() => resolve(undefined)))
+    })
     fireEvent.mouseDown(screen.getByRole('option', { name: /Alice Santos/ }))
     fireEvent.click(generateButton())
-    await vi.waitFor(() =>
-      expect(fixture.record).toHaveBeenCalledWith({
-        userId: 'u-doctor',
-        type: 'patient_recovery',
-        patientId: 'p-1',
-      }),
-    )
+
+    // Waiting for what the page says once the report is recorded, not only
+    // for the call, keeps the mutation's own updates inside the test.
+    expect(await screen.findByRole('status')).toHaveTextContent(/report recorded/i)
+    expect(fixture.record).toHaveBeenCalledWith({
+      userId: 'u-doctor',
+      type: 'patient_recovery',
+      patientId: 'p-1',
+    })
+
+    // Recording a report refreshes the list, and React Query tells the page
+    // with setTimeout(0). Let those updates land inside act too.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
   })
 
   it('keeps the page header, the Generate form and Print list off the paper', async () => {
