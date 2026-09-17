@@ -13,6 +13,7 @@ import { Dialog } from '@/components/ui/dialog'
 import {
   installPromptStore,
   isAppInstalled,
+  isAppInstalledElsewhere,
   isIosDevice,
   isIosSafari,
   rememberInstallPromptDismissed,
@@ -31,7 +32,10 @@ import {
  *
  * When it appears:
  *
- * - Not when this window *is* the installed app.
+ * - Not when this window *is* the installed app, and not when the browser can
+ *   tell us RecoverEase is already installed on the device from some other
+ *   window. Only Chromium can answer the second question; where it cannot,
+ *   the first one stands on its own, exactly as before.
  * - Not twice in one visit. Closing it - by any route - is an answer, and it
  *   is remembered for the rest of the visit only, so the offer comes back on
  *   the next one. See `wasInstallPromptDismissed`.
@@ -75,14 +79,23 @@ export function InstallAppPrompt({
     if (isAppInstalled() || wasInstallPromptDismissed()) return
 
     let timer: ReturnType<typeof setTimeout> | undefined
+    let abandoned = false
 
     const offer = () => {
       timer = setTimeout(() => {
         // Checked again here: the app can be installed, or the offer answered,
         // while this timer is running.
         if (isAppInstalled() || wasInstallPromptDismissed()) return
-        hasAppeared.current = true
-        setOpen(true)
+
+        // The browser's own answer to the wider question, where it has one.
+        // It resolves `false` rather than failing when it has none, so the
+        // offer is only ever held back by a real installation.
+        void isAppInstalledElsewhere().then((installedElsewhere) => {
+          if (abandoned || installedElsewhere) return
+          if (isAppInstalled() || wasInstallPromptDismissed()) return
+          hasAppeared.current = true
+          setOpen(true)
+        })
       }, appearsAfterMs)
     }
 
@@ -90,6 +103,7 @@ export function InstallAppPrompt({
     else window.addEventListener('load', offer, { once: true })
 
     return () => {
+      abandoned = true
       clearTimeout(timer)
       window.removeEventListener('load', offer)
     }

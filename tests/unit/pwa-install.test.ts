@@ -4,7 +4,9 @@ import {
   createInstallPromptStore,
   INSTALL_PROMPT_DISMISSED_KEY,
   isAppInstalled,
+  isAppInstalledElsewhere,
   isIosDevice,
+  RELATED_WEB_APP_MANIFEST_URL,
   isIosSafari,
   rememberInstallPromptDismissed,
   wasInstallPromptDismissed,
@@ -36,6 +38,23 @@ function browserWindow({
       ({ matches: displayMode !== undefined && query.includes(displayMode) }) as MediaQueryList,
     navigator: { standalone: iosStandalone } as unknown as Navigator,
   } as unknown as Window
+}
+
+/** A window whose browser answers `getInstalledRelatedApps` as given. */
+function windowAnswering(
+  getInstalledRelatedApps: unknown,
+  href = 'https://recoverease-web.vercel.app/sign-in',
+): Window {
+  return {
+    navigator: { getInstalledRelatedApps } as unknown as Navigator,
+    location: { href, origin: new URL(href).origin } as Location,
+  } as unknown as Window
+}
+
+/** The one RecoverEase declares a relationship with. */
+const RECOVEREASE_WEB_APP = {
+  platform: 'webapp',
+  url: RELATED_WEB_APP_MANIFEST_URL,
 }
 
 function navigatorFor(
@@ -123,6 +142,72 @@ describe('knowing what the device can install with', () => {
   it('tells Safari on iOS from the other browsers there', () => {
     expect(isIosSafari(navigatorFor(IPHONE))).toBe(true)
     expect(isIosSafari(navigatorFor(IPHONE_CHROME))).toBe(false)
+  })
+})
+
+describe('asking the browser whether RecoverEase is installed elsewhere', () => {
+  it('is installed when the browser reports the app RecoverEase declares', async () => {
+    const window = windowAnswering(async () => [RECOVEREASE_WEB_APP])
+
+    await expect(isAppInstalledElsewhere(window)).resolves.toBe(true)
+  })
+
+  it('is installed when the report names this deployment’s own manifest', async () => {
+    // A preview deployment is the same app under another host.
+    const window = windowAnswering(
+      async () => [
+        { platform: 'webapp', url: 'https://preview.example.test/manifest.webmanifest' },
+      ],
+      'https://preview.example.test/',
+    )
+
+    await expect(isAppInstalledElsewhere(window)).resolves.toBe(true)
+  })
+
+  it('is not installed when the report is about some other app', async () => {
+    const others = [
+      { platform: 'play', id: 'com.example.other' },
+      { platform: 'webapp', url: 'https://example.test/manifest.webmanifest' },
+      { platform: 'webapp', url: 'https://recoverease-web.vercel.app/other.json' },
+      { platform: 'webapp' },
+    ]
+
+    for (const app of others) {
+      const window = windowAnswering(async () => [app])
+      await expect(isAppInstalledElsewhere(window), JSON.stringify(app)).resolves.toBe(
+        false,
+      )
+    }
+  })
+
+  it('is not installed when the browser reports nothing', async () => {
+    await expect(isAppInstalledElsewhere(windowAnswering(async () => []))).resolves.toBe(
+      false,
+    )
+  })
+
+  it('leaves the existing behaviour alone where the browser has no such method', async () => {
+    await expect(isAppInstalledElsewhere(windowAnswering(undefined))).resolves.toBe(false)
+  })
+
+  it('answers false rather than failing when the browser refuses', async () => {
+    const refused = windowAnswering(async () => {
+      throw new Error('not supported on this platform')
+    })
+    const threw = windowAnswering(() => {
+      throw new Error('not supported on this platform')
+    })
+
+    await expect(isAppInstalledElsewhere(refused)).resolves.toBe(false)
+    await expect(isAppInstalledElsewhere(threw)).resolves.toBe(false)
+  })
+
+  it('answers false rather than failing on an answer it does not recognise', async () => {
+    const notAList = windowAnswering(async () => 'installed')
+    const holes = windowAnswering(async () => [null, undefined])
+
+    await expect(isAppInstalledElsewhere(notAList)).resolves.toBe(false)
+    await expect(isAppInstalledElsewhere(holes)).resolves.toBe(false)
   })
 })
 

@@ -47,6 +47,84 @@ export function isAppInstalled(win: Window = window): boolean {
   return asApp || iosAsApp
 }
 
+/**
+ * `navigator.getInstalledRelatedApps()`, which the DOM type definitions do not
+ * carry: it is Chromium-only, and not on a standards track everywhere.
+ */
+type RelatedApplication = {
+  platform?: string
+  url?: string
+  id?: string
+  version?: string
+}
+
+type NavigatorWithRelatedApps = Navigator & {
+  getInstalledRelatedApps?: () => Promise<RelatedApplication[]>
+}
+
+/** The manifest path this app is served from, on any of its hosts. */
+const MANIFEST_PATH = '/manifest.webmanifest'
+
+/**
+ * The web-app relationship declared in `public/manifest.webmanifest`. A
+ * browser only reports an installed related app that the manifest claims a
+ * relationship with, so the two have to say the same thing.
+ */
+export const RELATED_WEB_APP_MANIFEST_URL =
+  'https://recoverease-web.vercel.app/manifest.webmanifest'
+
+/** Whether a reported related app is RecoverEase itself. */
+function isRecoverEase(app: RelatedApplication, win: Window): boolean {
+  if (app.platform !== 'webapp' || !app.url) return false
+
+  try {
+    const manifest = new URL(app.url, win.location.href)
+    if (manifest.pathname !== MANIFEST_PATH) return false
+
+    // The relationship the manifest declares, or this deployment's own
+    // manifest — a preview build is the same app under another host.
+    return (
+      manifest.href === RELATED_WEB_APP_MANIFEST_URL ||
+      manifest.origin === win.location.origin
+    )
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Whether RecoverEase is already installed on this device, asked of the
+ * browser rather than of this window.
+ *
+ * `isAppInstalled` can only answer for the window it is running in, so a
+ * person who installed RecoverEase and later opened the website in an
+ * ordinary tab would be offered the installation again. Chromium can answer
+ * the wider question; everything else cannot, and says so by not having the
+ * method at all.
+ *
+ * Every failure — no method, a rejected promise, a browser that throws, an
+ * answer in an unexpected shape — is answered `false`, which leaves the
+ * existing behaviour exactly as it was. Nothing here may keep the popup from
+ * working, let alone the site.
+ */
+export async function isAppInstalledElsewhere(
+  win: Window = window,
+): Promise<boolean> {
+  const query = (win.navigator as NavigatorWithRelatedApps)
+    .getInstalledRelatedApps
+
+  if (typeof query !== 'function') return false
+
+  try {
+    const installed = await query.call(win.navigator)
+    if (!Array.isArray(installed)) return false
+
+    return installed.some((app) => Boolean(app) && isRecoverEase(app, win))
+  } catch {
+    return false
+  }
+}
+
 /** An iPhone or iPad, where installing means "Add to Home Screen". */
 export function isIosDevice(nav: Navigator = navigator): boolean {
   if (/iPad|iPhone|iPod/.test(nav.userAgent)) return true

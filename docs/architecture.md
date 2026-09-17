@@ -145,8 +145,13 @@ site, not an offline copy of it.
 - **Manifest.** `public/manifest.webmanifest` names the app "RecoverEase",
   with `start_url` and `scope` of `/`, `display: standalone`, theme colour
   `#004269`, background `#f9f9ff`, and 192 px, 512 px and 512 px maskable
-  icons in `public/icons/`. `index.html` links it, along with the theme colour
-  and an Apple touch icon.
+  icons in `public/icons/`. It also declares a `related_applications` entry
+  for itself — `platform: webapp`, pointing at the production manifest — which
+  is the only thing a browser will match when asked whether RecoverEase is
+  installed. `prefer_related_applications` is deliberately absent: it would
+  tell the browser to offer that application instead of installing this one.
+  `index.html` links the manifest, along with the theme colour and an Apple
+  touch icon.
 - **Service worker.** `public/sw.js`, registered by
   `src/lib/register-service-worker.ts` in production builds only, after the
   page has loaded, with `updateViaCache: 'none'` so the browser checks for a
@@ -168,7 +173,13 @@ site, not an offline copy of it.
   with the detection in `src/lib/pwa-install.ts`). The popup appears a moment
   after the page has loaded, on the way in only — the landing page and the
   auth pages, where the `PublicEntry` layout route mounts it — and never over
-  a clinical screen or in a window that already is the installed app. Pressing
+  a clinical screen or in a window that already is the installed app. Before
+  it appears it also asks `navigator.getInstalledRelatedApps()`, which is what
+  catches the person who installed RecoverEase and later opened the website in
+  an ordinary tab: a window cannot see its own installation from the outside,
+  but Chromium can. Every other browser has no such method, and every failure
+  — a refusal, a rejected promise, an answer in an unexpected shape — is read
+  as "not installed", so the offer behaves exactly as it did before. Pressing
   Install triggers the browser's installation and nothing else: it uses the
   `beforeinstallprompt` event the browser handed over, held from before the
   first render because Chrome offers it once and early. Where there is no

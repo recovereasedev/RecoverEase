@@ -16,6 +16,7 @@ const manifestText = read('public/manifest.webmanifest').toString('utf8')
 const manifest = JSON.parse(manifestText) as {
   [key: string]: unknown
   icons: { src: string; sizes: string; type: string; purpose: string }[]
+  related_applications: { platform: string; url: string }[]
 }
 
 /** Width and height from a PNG's header, after checking it is one. */
@@ -37,6 +38,7 @@ const KNOWN_MEMBERS = [
   'background_color',
   'theme_color',
   'icons',
+  'related_applications',
 ]
 
 describe('the web app manifest', () => {
@@ -70,6 +72,27 @@ describe('the web app manifest', () => {
       const occurrences = manifestText.split(`"${key}":`).length - 1
       expect(occurrences, key).toBe(1)
     }
+  })
+
+  it('declares itself as its own web app, so a browser can say it is installed', () => {
+    // What `navigator.getInstalledRelatedApps()` matches against: without the
+    // relationship, a browser will not report RecoverEase as installed and the
+    // install popup has only this window to go on. See
+    // `src/lib/pwa-install.ts`, which must name the same URL.
+    expect(manifest.related_applications).toEqual([
+      {
+        platform: 'webapp',
+        url: 'https://recoverease-web.vercel.app/manifest.webmanifest',
+      },
+    ])
+  })
+
+  it('still asks to be installed as a web app, not as something else', () => {
+    // `prefer_related_applications: true` would tell the browser to offer the
+    // related application instead of installing this one. There is no other
+    // application; there must be no such member.
+    expect(manifest['prefer_related_applications']).toBeUndefined()
+    expect(manifestText).not.toContain('prefer_related_applications')
   })
 
   it('has the icons browsers need to install it, at the sizes it claims', () => {

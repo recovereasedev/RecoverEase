@@ -17,7 +17,8 @@ import {
  * pretends an installation is under way.
  *
  * It is offered on a visit, once, and not at all to a window that already is
- * the installed app. "Maybe Later" answers it for this visit only.
+ * the installed app - nor where the browser can say RecoverEase is installed
+ * on the device already. "Maybe Later" answers it for this visit only.
  */
 
 const IPHONE =
@@ -72,6 +73,7 @@ function browserPrompt(outcome: 'accepted' | 'dismissed') {
 /** Properties jsdom's navigator has on its prototype, overridden per test. */
 const overridden: string[] = []
 
+
 function pretendDevice(
   properties: Partial<{
     userAgent: string
@@ -86,6 +88,22 @@ function pretendDevice(
   }
 }
 
+/** Makes the browser answer `getInstalledRelatedApps` as given, or not at all. */
+function pretendBrowserReports(
+  getInstalledRelatedApps: (() => Promise<unknown>) | undefined,
+) {
+  Object.defineProperty(window.navigator, 'getInstalledRelatedApps', {
+    value: getInstalledRelatedApps,
+    configurable: true,
+  })
+  overridden.push('getInstalledRelatedApps')
+}
+
+const RECOVEREASE_WEB_APP = {
+  platform: 'webapp',
+  url: 'https://recoverease-web.vercel.app/manifest.webmanifest',
+}
+
 /** Makes `window.matchMedia` answer true for one display mode. */
 function pretendRunningAs(displayMode: string) {
   vi.spyOn(window, 'matchMedia').mockImplementation(
@@ -93,10 +111,14 @@ function pretendRunningAs(displayMode: string) {
   )
 }
 
-/** Let the page finish loading and the appearance delay run out. */
+/**
+ * Let the page finish loading, the appearance delay run out, and the
+ * browser's answer about installed apps come back.
+ */
 async function waitForTheOffer() {
   await act(async () => {
     window.dispatchEvent(new Event('load'))
+    await new Promise((resolve) => setTimeout(resolve, 0))
     await new Promise((resolve) => setTimeout(resolve, 0))
   })
 }
@@ -154,6 +176,46 @@ describe('offering to install RecoverEase', () => {
     await waitForTheOffer()
 
     expect(popup()).not.toBeInTheDocument()
+  })
+})
+
+describe('when the browser can say the app is already installed', () => {
+  it('says nothing where the browser reports RecoverEase installed', async () => {
+    pretendBrowserReports(async () => [RECOVEREASE_WEB_APP])
+
+    render(<InstallAppPrompt store={storeHolding(null)} appearsAfterMs={0} />)
+    await waitForTheOffer()
+
+    expect(popup()).not.toBeInTheDocument()
+  })
+
+  it('offers where the browser reports some other app installed', async () => {
+    pretendBrowserReports(async () => [{ platform: 'play', id: 'com.example.other' }])
+
+    render(<InstallAppPrompt store={storeHolding(null)} appearsAfterMs={0} />)
+    await waitForTheOffer()
+
+    expect(popup()).toBeInTheDocument()
+  })
+
+  it('offers as before where the browser has no such method', async () => {
+    pretendBrowserReports(undefined)
+
+    render(<InstallAppPrompt store={storeHolding(null)} appearsAfterMs={0} />)
+    await waitForTheOffer()
+
+    expect(popup()).toBeInTheDocument()
+  })
+
+  it('offers as before where the browser refuses to answer', async () => {
+    pretendBrowserReports(async () => {
+      throw new Error('not supported on this platform')
+    })
+
+    render(<InstallAppPrompt store={storeHolding(null)} appearsAfterMs={0} />)
+    await waitForTheOffer()
+
+    expect(popup()).toBeInTheDocument()
   })
 })
 

@@ -115,6 +115,53 @@ test.describe('offering to install RecoverEase', () => {
     await context.close()
   })
 
+  test('says nothing when the browser reports RecoverEase already installed', async ({
+    browser,
+  }) => {
+    const context = await browser.newContext()
+    // Chromium only reports an app that is genuinely installed, which a test
+    // cannot arrange. The browser is made to answer the way it would once
+    // RecoverEase had been installed from another window.
+    await context.addInitScript(() => {
+      Object.defineProperty(navigator, 'getInstalledRelatedApps', {
+        configurable: true,
+        value: async () => [
+          {
+            platform: 'webapp',
+            url: 'https://recoverease-web.vercel.app/manifest.webmanifest',
+          },
+        ],
+      })
+    })
+
+    const page = await context.newPage()
+    await page.goto('/')
+    await page.waitForTimeout(APPEARS_WITHIN_MS)
+
+    await expect(offer(page)).toHaveCount(0)
+    await context.close()
+  })
+
+  test('still offers when the browser cannot answer that question', async ({ browser }) => {
+    const context = await browser.newContext()
+    await context.addInitScript(() => {
+      Object.defineProperty(navigator, 'getInstalledRelatedApps', {
+        configurable: true,
+        value: async () => {
+          throw new Error('not supported on this platform')
+        },
+      })
+    })
+
+    const page = await context.newPage()
+    await page.goto('/')
+
+    await expect(
+      offer(page).getByRole('heading', { name: 'Install RecoverEase' }),
+    ).toBeVisible({ timeout: APPEARS_WITHIN_MS })
+    await context.close()
+  })
+
   test('shows an iPhone how to add it by hand, and installs nothing itself', async ({
     browser,
   }) => {

@@ -37,7 +37,15 @@ test.describe('RecoverEase as an installable app', () => {
       start_url: '/',
       scope: '/',
       display: 'standalone',
+      // What lets a browser report RecoverEase as already installed.
+      related_applications: [
+        {
+          platform: 'webapp',
+          url: 'https://recoverease-web.vercel.app/manifest.webmanifest',
+        },
+      ],
     })
+    expect(manifest.prefer_related_applications).toBeUndefined()
 
     for (const icon of manifest.icons as { src: string }[]) {
       const image = await page.request.get(icon.src)
