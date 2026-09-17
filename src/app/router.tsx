@@ -1,5 +1,5 @@
 import { Suspense, type ReactNode } from 'react'
-import { createBrowserRouter, Navigate, type RouteObject } from 'react-router-dom'
+import { createBrowserRouter, Navigate, Outlet, type RouteObject } from 'react-router-dom'
 
 import {
   NotFoundScreen,
@@ -11,6 +11,7 @@ import * as Page from '@/app/routes/lazy-pages'
 import { RouteErrorBoundary } from '@/components/feedback/route-error-boundary'
 import { LoadingState } from '@/components/feedback/state-view'
 import { AppShell } from '@/components/layout/app-shell'
+import { InstallAppPrompt } from '@/components/layout/install-app-prompt'
 import { ConsentGate } from '@/features/auth/components/consent-gate'
 import { PasswordSetupGate } from '@/features/auth/components/password-setup-gate'
 
@@ -19,6 +20,25 @@ function LazyBoundary({ children }: { children: ReactNode }) {
     <Suspense fallback={<LoadingState label="Loading page…" />}>
       {children}
     </Suspense>
+  )
+}
+
+/**
+ * The pages someone reaches before they are anywhere: the landing page and
+ * the three auth pages.
+ *
+ * RecoverEase's offer to install itself as an app belongs here and nowhere
+ * else. A modal popup over a dose checklist, a treatment plan or a patient's
+ * record interrupts care to ask a question about the browser; on the way in
+ * it interrupts nothing. Being a layout route, it also survives navigation
+ * between these pages, so the offer is made once rather than on each of them.
+ */
+function PublicEntry() {
+  return (
+    <>
+      <Outlet />
+      <InstallAppPrompt />
+    </>
   )
 }
 
@@ -67,47 +87,54 @@ function protectedSection(
 
 export const router = createBrowserRouter([
   {
-    path: '/',
+    // Pathless: it adds no segment to any URL, it only wraps the pages below.
+    element: <PublicEntry />,
     errorElement: <RouteErrorBoundary />,
-    element: (
-      <RedirectIfSignedIn>
-        <LazyBoundary>
-          <Page.LandingPage />
-        </LazyBoundary>
-      </RedirectIfSignedIn>
-    ),
-  },
-  {
-    path: '/sign-in',
-    errorElement: <RouteErrorBoundary />,
-    element: (
-      <RedirectIfSignedIn>
-        <LazyBoundary>
-          <Page.SignInPage />
-        </LazyBoundary>
-      </RedirectIfSignedIn>
-    ),
-  },
-  {
-    path: '/forgot-password',
-    errorElement: <RouteErrorBoundary />,
-    element: (
-      <LazyBoundary>
-        <Page.ForgotPasswordPage />
-      </LazyBoundary>
-    ),
-  },
-  {
-    // Not wrapped in RedirectIfSignedIn: arriving here always carries a
-    // recovery session, so redirecting "signed-in" users away would make the
-    // reset link impossible to use.
-    path: '/reset-password',
-    errorElement: <RouteErrorBoundary />,
-    element: (
-      <LazyBoundary>
-        <Page.ResetPasswordPage />
-      </LazyBoundary>
-    ),
+    children: [
+      {
+        path: '/',
+        errorElement: <RouteErrorBoundary />,
+        element: (
+          <RedirectIfSignedIn>
+            <LazyBoundary>
+              <Page.LandingPage />
+            </LazyBoundary>
+          </RedirectIfSignedIn>
+        ),
+      },
+      {
+        path: '/sign-in',
+        errorElement: <RouteErrorBoundary />,
+        element: (
+          <RedirectIfSignedIn>
+            <LazyBoundary>
+              <Page.SignInPage />
+            </LazyBoundary>
+          </RedirectIfSignedIn>
+        ),
+      },
+      {
+        path: '/forgot-password',
+        errorElement: <RouteErrorBoundary />,
+        element: (
+          <LazyBoundary>
+            <Page.ForgotPasswordPage />
+          </LazyBoundary>
+        ),
+      },
+      {
+        // Not wrapped in RedirectIfSignedIn: arriving here always carries a
+        // recovery session, so redirecting "signed-in" users away would make
+        // the reset link impossible to use.
+        path: '/reset-password',
+        errorElement: <RouteErrorBoundary />,
+        element: (
+          <LazyBoundary>
+            <Page.ResetPasswordPage />
+          </LazyBoundary>
+        ),
+      },
+    ],
   },
 
   protectedSection('patient', [

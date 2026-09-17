@@ -163,6 +163,21 @@ site, not an offline copy of it.
 - **Standalone installation.** With the manifest and worker in place, Chrome
   offers to install the site, which then opens in its own window without the
   browser's address bar. This was confirmed on a real installation in Chrome.
+- **Offering it.** RecoverEase asks in its own popup rather than leaving the
+  offer to the browser's own bar (`src/components/layout/install-app-prompt.tsx`,
+  with the detection in `src/lib/pwa-install.ts`). The popup appears a moment
+  after the page has loaded, on the way in only — the landing page and the
+  auth pages, where the `PublicEntry` layout route mounts it — and never over
+  a clinical screen or in a window that already is the installed app. Pressing
+  Install triggers the browser's installation and nothing else: it uses the
+  `beforeinstallprompt` event the browser handed over, held from before the
+  first render because Chrome offers it once and early. Where there is no
+  such event the popup says how to add the app by hand — Share, then Add to
+  Home Screen, on iPhone and iPad — or that this browser cannot install it,
+  and never imitates an installation that is not happening. "Maybe Later" is
+  remembered in `sessionStorage`, so the offer is answered for the visit and
+  comes back on the next one; nothing about it is stored where it would
+  outlive the visit.
 - **Updates.** A changed `sw.js` (its `VERSION`) installs a new worker, which
   takes over immediately and deletes the previous worker's stored offline
   page. Because pages are never cached, a deployment is visible on the next
@@ -170,7 +185,10 @@ site, not an offline copy of it.
 
 Covered by `tests/unit/pwa-manifest.test.ts`,
 `tests/unit/service-worker.test.ts`,
-`tests/unit/register-service-worker.test.ts` and `e2e/pwa.spec.ts`.
+`tests/unit/register-service-worker.test.ts`,
+`tests/unit/pwa-install.test.ts`,
+`tests/unit/install-app-prompt.test.tsx`, `e2e/pwa.spec.ts` and
+`e2e/install-prompt.spec.ts`.
 
 ## Where the module list is implemented
 

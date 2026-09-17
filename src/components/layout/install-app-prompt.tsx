@@ -1,0 +1,256 @@
+import { Download, Share, Smartphone } from 'lucide-react'
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from 'react'
+
+import { Button } from '@/components/ui/button'
+import { Dialog } from '@/components/ui/dialog'
+import {
+  installPromptStore,
+  isAppInstalled,
+  isIosDevice,
+  isIosSafari,
+  rememberInstallPromptDismissed,
+  wasInstallPromptDismissed,
+  type InstallPromptStore,
+} from '@/lib/pwa-install'
+
+/**
+ * RecoverEase's own offer to install itself as an app.
+ *
+ * It is a RecoverEase popup, not the browser's. The browser's install prompt
+ * is shown only when the browser has offered its `beforeinstallprompt` event
+ * and the person presses Install; where there is no such event the popup says
+ * what to do instead, and never imitates an installation that is not
+ * happening.
+ *
+ * When it appears:
+ *
+ * - Not when this window *is* the installed app.
+ * - Not twice in one visit. Closing it - by any route - is an answer, and it
+ *   is remembered for the rest of the visit only, so the offer comes back on
+ *   the next one. See `wasInstallPromptDismissed`.
+ * - After the page has loaded, and a moment after that, so it never competes
+ *   with the first screen. One timer, once; never a reminder that reopens
+ *   itself while someone is reading the page.
+ */
+
+/** How long after the page has loaded the offer appears. */
+const APPEARS_AFTER_MS = 1500
+
+/**
+ * `offer` is the popup as specified. The other two are what Install does when
+ * the browser has given nothing to install with.
+ */
+type Step = 'offer' | 'ios' | 'unsupported'
+
+export function InstallAppPrompt({
+  store = installPromptStore,
+  appearsAfterMs = APPEARS_AFTER_MS,
+}: {
+  /** Injectable so a test can supply the browser's event itself. */
+  store?: InstallPromptStore
+  appearsAfterMs?: number
+} = {}) {
+  const [isOpen, setOpen] = useState(false)
+  const [step, setStep] = useState<Step>('offer')
+  const [isAsking, setAsking] = useState(false)
+  const hasAppeared = useRef(false)
+
+  const deferred = useSyncExternalStore(store.subscribe, store.get, () => null)
+
+  // Harmless where `main.tsx` has already started it, and what makes the
+  // component work on its own.
+  useEffect(() => {
+    store.start()
+  }, [store])
+
+  useEffect(() => {
+    if (hasAppeared.current) return
+    if (isAppInstalled() || wasInstallPromptDismissed()) return
+
+    let timer: ReturnType<typeof setTimeout> | undefined
+
+    const offer = () => {
+      timer = setTimeout(() => {
+        // Checked again here: the app can be installed, or the offer answered,
+        // while this timer is running.
+        if (isAppInstalled() || wasInstallPromptDismissed()) return
+        hasAppeared.current = true
+        setOpen(true)
+      }, appearsAfterMs)
+    }
+
+    if (document.readyState === 'complete') offer()
+    else window.addEventListener('load', offer, { once: true })
+
+    return () => {
+      clearTimeout(timer)
+      window.removeEventListener('load', offer)
+    }
+  }, [appearsAfterMs])
+
+  const close = useCallback(() => {
+    rememberInstallPromptDismissed()
+    setOpen(false)
+  }, [])
+
+  // Installation can also finish in the browser's own window, with the popup
+  // still open behind it. Once it has, there is nothing left to offer.
+  useEffect(() => {
+    window.addEventListener('appinstalled', close)
+    return () => window.removeEventListener('appinstalled', close)
+  }, [close])
+
+  const install = async () => {
+    if (!deferred) {
+      // No event, so there is no installation to trigger. Say how instead.
+      setStep(isIosDevice() ? 'ios' : 'unsupported')
+      return
+    }
+
+    setAsking(true)
+    try {
+      await deferred.prompt()
+      await deferred.userChoice
+      // Spent either way: the browser allows one use of the event, and the
+      // person has now answered it, so the popup has nothing left to ask.
+      store.clear()
+      setAsking(false)
+      close()
+    } catch {
+      // The browser refused to show its prompt - an event already used, most
+      // often. Fall back to guidance rather than leaving a dead button.
+      store.clear()
+      setAsking(false)
+      setStep(isIosDevice() ? 'ios' : 'unsupported')
+    }
+  }
+
+  if (!isOpen) return null
+
+  return (
+    <Dialog
+      isOpen
+      onClose={close}
+      title={step === 'offer' ? 'Install RecoverEase' : 'How to install RecoverEase'}
+      footer={
+        <>
+          <Button variant="ghost" size="lg" onClick={close}>
+            Maybe Later
+          </Button>
+          {step === 'offer' ? (
+            <Button
+              size="lg"
+              isLoading={isAsking}
+              loadingLabel="Waiting for your browser…"
+              onClick={install}
+            >
+              <Download aria-hidden="true" />
+              Install RecoverEase
+            </Button>
+          ) : null}
+        </>
+      }
+    >
+      {step === 'offer' ? <Offer /> : null}
+      {step === 'ios' ? <AddToHomeScreenSteps /> : null}
+      {step === 'unsupported' ? <NotAvailableHere /> : null}
+    </Dialog>
+  )
+}
+
+function Offer() {
+  return (
+    <div className="flex items-start gap-4">
+      <span
+        aria-hidden="true"
+        className="flex size-12 shrink-0 items-center justify-center rounded-[var(--radius-lg)] bg-brand-50 text-brand-800"
+      >
+        <Smartphone className="size-6" />
+      </span>
+      <p className="text-base leading-relaxed text-body sm:text-lg">
+        Install RecoverEase on your device for easier access and a more
+        convenient experience.
+      </p>
+    </div>
+  )
+}
+
+/** iPhone and iPad, where only the person can add the app, from Safari. */
+function AddToHomeScreenSteps() {
+  const steps: ReactNode[] = [
+    <>
+      Tap the <strong className="font-semibold text-heading">Share</strong>{' '}
+      button
+      <Share aria-hidden="true" className="mx-1 inline size-5 align-text-bottom" />
+      at the bottom of the screen.
+    </>,
+    <>
+      Tap <strong className="font-semibold text-heading">Add to Home Screen</strong>.
+    </>,
+    <>
+      Tap <strong className="font-semibold text-heading">Add</strong>.
+    </>,
+  ]
+
+  return (
+    <div className="space-y-4">
+      <p className="text-base leading-relaxed text-body sm:text-lg">
+        On iPhone and iPad you add RecoverEase yourself, in three steps:
+      </p>
+
+      <ol className="space-y-3">
+        {steps.map((content, index) => (
+          <li key={index} className="flex items-start gap-3">
+            <span
+              aria-hidden="true"
+              className="flex size-8 shrink-0 items-center justify-center rounded-full bg-brand-800 text-base font-semibold text-white"
+            >
+              {index + 1}
+            </span>
+            <span className="pt-0.5 text-base leading-relaxed text-body sm:text-lg">
+              {content}
+            </span>
+          </li>
+        ))}
+      </ol>
+
+      {isIosSafari() ? null : (
+        <p className="text-base leading-relaxed text-body">
+          These steps work in Safari. If you are using another browser, open
+          RecoverEase in Safari first.
+        </p>
+      )}
+
+      <p className="text-sm text-muted">
+        RecoverEase then opens from your home screen, like any other app.
+      </p>
+    </div>
+  )
+}
+
+/** Everything else: no install event, and nothing the person can do by hand. */
+function NotAvailableHere() {
+  return (
+    <div className="space-y-4">
+      <p className="text-base leading-relaxed text-body sm:text-lg">
+        This browser cannot install RecoverEase. Everything still works here,
+        exactly as it does now.
+      </p>
+      <p className="text-base leading-relaxed text-body sm:text-lg">
+        To install it, open RecoverEase in Chrome or Microsoft Edge on a
+        computer, or in Chrome on an Android phone.
+      </p>
+      <p className="text-sm text-muted">
+        Already installed RecoverEase? Open it from your home screen or your
+        list of apps.
+      </p>
+    </div>
+  )
+}

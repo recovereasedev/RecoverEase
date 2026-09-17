@@ -332,6 +332,15 @@ export function datasetFor(role: 'patient' | 'doctor' | 'admin'): TableRows {
 }
 
 type Fixtures = {
+  /**
+   * Whether RecoverEase's own offer to install itself as an app may appear
+   * (src/components/layout/install-app-prompt.tsx). It is a modal popup, shown
+   * on a visit to the landing page or an auth page, so a spec that starts on
+   * one of those would have it in front of the screen under test. Every spec
+   * but its own therefore starts as a visitor who has already answered it.
+   * `e2e/install-prompt.spec.ts` turns it back on with `test.use`.
+   */
+  installPrompt: 'block' | 'allow'
   stub: SupabaseStub
   signInAs: (
     role: 'patient' | 'doctor' | 'admin',
@@ -341,6 +350,25 @@ type Fixtures = {
 }
 
 export const test = base.extend<Fixtures>({
+  installPrompt: ['block', { option: true }],
+
+  page: async ({ page, installPrompt }, use) => {
+    if (installPrompt === 'block') {
+      // The same key the app writes when someone answers the offer, so the
+      // popup is answered rather than disabled: nothing test-only exists in
+      // the application for this.
+      await page.addInitScript((key) => {
+        try {
+          window.sessionStorage.setItem(key, '1')
+        } catch {
+          // about:blank has no storage to write to; the real page does.
+        }
+      }, 'recoverease.install-prompt.dismissed')
+    }
+
+    await use(page)
+  },
+
   // eslint-disable-next-line no-empty-pattern
   stub: async ({}, use) => {
     await use(new SupabaseStub({}))
