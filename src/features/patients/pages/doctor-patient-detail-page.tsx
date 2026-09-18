@@ -37,6 +37,7 @@ import { MedicationForm } from '@/features/medications/components/medication-for
 import { PrescriptionPrintHeader } from '@/features/medications/components/prescription-print-header'
 import { summariseAdherence } from '@/features/medications/api'
 import { useDoses, useMedicationSchedules } from '@/features/medications/hooks'
+import { NotifyPatient } from '@/features/notifications/components/notify-patient'
 import { ConsultationFlow } from '@/features/patients/components/consultation-flow'
 import { ResetCredentialDialog } from '@/features/patients/components/reset-credential-dialog'
 import { usePatient } from '@/features/patients/hooks'
@@ -326,7 +327,10 @@ export function DoctorPatientDetailPage() {
                     </CardBody>
                   </Card>
 
-                  <div className="space-y-5">
+                  {/* Both rows of the right-hand column, so the notification
+                      card below sits directly under the patient's details
+                      rather than under whichever column is taller. */}
+                  <div className="space-y-5 lg:row-span-2">
                     <Card>
                       <CardHeader
                         icon={Pill}
@@ -352,6 +356,17 @@ export function DoctorPatientDetailPage() {
                         <MoodTrend logs={logsQuery.data ?? []} />
                       </CardBody>
                     </Card>
+                  </div>
+
+                  {/* --- Notify — module 7.1 ----------------------------- */}
+                  <div className="lg:col-span-2">
+                    <NotifyPatient
+                      patientUserId={patient.user_id}
+                      patientName={fullName(
+                        patient.pat_first_name,
+                        patient.pat_last_name,
+                      )}
+                    />
                   </div>
                 </div>
               ) : null}
