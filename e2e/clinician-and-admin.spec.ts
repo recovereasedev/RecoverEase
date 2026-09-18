@@ -236,6 +236,40 @@ test.describe('doctor workspace', () => {
     ).toBeVisible()
   })
 
+  test('notifies a patient from their record (module 7.1)', async ({
+    page,
+    signInAs,
+  }) => {
+    const stub = await signInAs('doctor')
+    await page.goto(`/doctor/patients/${IDS.alicePat}`)
+
+    // The overview tab, beside the patient's details: written *to* the
+    // patient, unlike the clinical notes written about them.
+    await expect(
+      page.getByText(/reads this in their notifications/i),
+    ).toBeVisible()
+
+    await page
+      .getByLabel('Message', { exact: true })
+      .fill('Bring your medication list to Thursday’s appointment.')
+    await page.getByRole('button', { name: /send notification/i }).click()
+
+    await expect(page.getByRole('status')).toHaveText(/sent to alice santos/i)
+
+    // The message reached the database, addressed to the patient, as an
+    // ordinary notice rather than one of the kinds the system raises itself.
+    const sent = stub.rowsIn('notification').filter(
+      (row) => row['notification_message'] ===
+        'Bring your medication list to Thursday’s appointment.',
+    )
+    expect(sent).toHaveLength(1)
+    expect(sent[0]?.['user_id']).toBe(IDS.aliceUser)
+    expect(sent[0]?.['notification_type']).toBe('general')
+
+    // And the box is ready for the next one.
+    await expect(page.getByLabel('Message', { exact: true })).toHaveValue('')
+  })
+
   test('offers registration, since patients cannot register themselves', async ({
     page,
     signInAs,

@@ -7,6 +7,7 @@ import {
   fetchUnreadCount,
   markAllNotificationsRead,
   markNotificationRead,
+  sendNotificationToPatient,
 } from './api'
 
 export function useNotifications() {
@@ -53,4 +54,15 @@ export function useMarkAllNotificationsRead() {
       })
     },
   })
+}
+
+/**
+ * Module 7.1: a doctor notifies one of their own patients.
+ *
+ * Nothing of the sender's is invalidated afterwards, because nothing of the
+ * sender's changed: the notification is addressed to the patient, and the
+ * doctor's own list and unread count are untouched by it.
+ */
+export function useSendNotificationToPatient() {
+  return useMutation({ mutationFn: sendNotificationToPatient })
 }
