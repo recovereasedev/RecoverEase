@@ -127,16 +127,6 @@ export function InstallAppPrompt({
     setOpen(false)
   }, [])
 
-  // An event can arrive after the popup has already fallen back to saying how
-  // to install by hand - Chromium decides when to offer one. When it does,
-  // the offer comes back: the browser can install after all, and instructions
-  // are the wrong thing to be reading. iOS keeps its steps, which are the
-  // only way in there.
-  useEffect(() => {
-    if (!deferred) return
-    setStep((current) => (current === 'ios' ? current : 'offer'))
-  }, [deferred])
-
   // Installation can also finish in the browser's own window, with the popup
   // still open behind it. Once it has, there is nothing left to offer.
   useEffect(() => {
@@ -204,19 +194,27 @@ export function InstallAppPrompt({
     }
   }
 
+  // An event can arrive after the popup has already fallen back to saying how
+  // to install by hand - Chromium decides when to offer one. When it does,
+  // the offer comes back: the browser can install after all, and instructions
+  // are the wrong thing to be reading. Derived rather than stored, so a late
+  // event does not have to travel through another render to be acted on. iOS
+  // keeps its steps, which are the only way in there.
+  const shown: Step = deferred && step !== 'ios' ? 'offer' : step
+
   if (!isOpen) return null
 
   return (
     <Dialog
       isOpen
       onClose={close}
-      title={step === 'offer' ? 'Install RecoverEase' : 'How to install RecoverEase'}
+      title={shown === 'offer' ? 'Install RecoverEase' : 'How to install RecoverEase'}
       footer={
         <>
           <Button variant="ghost" size="lg" onClick={close}>
             Maybe Later
           </Button>
-          {step === 'offer' ? (
+          {shown === 'offer' ? (
             <Button
               size="lg"
               isLoading={isAsking}
@@ -230,10 +228,10 @@ export function InstallAppPrompt({
         </>
       }
     >
-      {step === 'offer' ? <Offer /> : null}
-      {step === 'ios' ? <AddToHomeScreenSteps /> : null}
-      {step === 'browserMenu' ? <InstallFromTheBrowserMenu /> : null}
-      {step === 'unsupported' ? <NotAvailableHere /> : null}
+      {shown === 'offer' ? <Offer /> : null}
+      {shown === 'ios' ? <AddToHomeScreenSteps /> : null}
+      {shown === 'browserMenu' ? <InstallFromTheBrowserMenu /> : null}
+      {shown === 'unsupported' ? <NotAvailableHere /> : null}
     </Dialog>
   )
 }
