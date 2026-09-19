@@ -27,6 +27,12 @@ import { BrandMark } from '@/components/layout/brand'
  *    fold pushes the password field under the keyboard. What is left is a
  *    compact mark-and-name lockup: enough presence to say whose product this
  *    is, not enough to compete with the form.
+ *
+ * RecoverEase 2.0: the panel is narrower than the form column and no longer
+ * half a screen of gradient around one sentence. The statement is set large,
+ * and a real RecoverEase screen - the patient's day, on a phone - rises from
+ * its bottom edge, so the one expressive surface on the way in shows the
+ * product rather than an empty colour field.
  */
 export function AuthLayout({
   title,
@@ -40,9 +46,9 @@ export function AuthLayout({
   footer?: ReactNode
 }) {
   return (
-    <div className="min-h-dvh bg-canvas lg:grid lg:grid-cols-[1fr_1.1fr]">
+    <div className="min-h-dvh bg-canvas lg:grid lg:grid-cols-[5fr_7fr]">
       {/* --- Brand panel (desktop only) --------------------------------- */}
-      <aside className="brand-gradient relative hidden flex-col justify-between p-12 text-white lg:flex">
+      <aside className="brand-gradient relative hidden flex-col overflow-hidden p-12 text-white lg:flex">
         <Link
           to="/"
           className="inline-flex w-fit items-center gap-3 rounded-[var(--radius-md)]"
@@ -53,21 +59,21 @@ export function AuthLayout({
           </span>
         </Link>
 
-        <div className="max-w-md">
-          <p className="text-headline-lg font-semibold leading-snug">
+        <div className="mt-20 max-w-md">
+          <p className="text-headline-xl text-white">
             Recovery is easier to follow when everything is in one place.
           </p>
           {/* Hierarchy here comes from size and weight, never from opacity.
               White at 80% over the teal end of the gradient drops under AA,
               and a translucent scale is the usual way that happens without
               anyone noticing. */}
-          <p className="mt-4 text-white">
+          <p className="mt-4 text-body-lg text-white">
             Treatment plans, medication schedules, appointments and daily
             progress — shared between you and your care team.
           </p>
         </div>
 
-        <ul className="space-y-3 text-sm text-white">
+        <ul className="relative z-10 mt-8 max-w-md space-y-3 text-sm text-white">
           <li className="flex items-center gap-3">
             <ShieldCheck className="size-5 shrink-0" aria-hidden="true" />
             Your records are visible only to you and your assigned clinician.
@@ -77,6 +83,20 @@ export function AuthLayout({
             Access is enforced by the database, not just the interface.
           </li>
         </ul>
+
+        {/* A real screen, partly below the panel's edge: the product, not a
+            picture of healthcare. Decorative here - the page is a form, and
+            the screen is a fictional patient's - so it is hidden from
+            assistive technology. */}
+        <img
+          src="/landing/hero-patient.webp"
+          alt=""
+          aria-hidden="true"
+          width={520}
+          height={1040}
+          decoding="async"
+          className="pointer-events-none absolute -bottom-48 right-10 w-52 rounded-[1.5rem] border-4 border-white/25 shadow-[0_32px_64px_-16px_rgb(0_20_40/0.55)] xl:right-16 xl:w-60"
+        />
       </aside>
 
       {/* --- Form column -------------------------------------------------- */}
@@ -96,18 +116,15 @@ export function AuthLayout({
               <Link to="/" className="rounded-[var(--radius-md)]">
                 <BrandMark className="size-12" />
               </Link>
-              <span className="flex items-center gap-2">
-                <span className="text-lg font-semibold tracking-tight text-heading">
-                  RecoverEase
-                </span>
-                <span className="rounded-full bg-surface-raised px-2.5 py-0.5 text-label-sm font-semibold text-brand-800">
-                  Clinical portal
-                </span>
+              <span className="text-lg font-semibold tracking-tight text-heading">
+                RecoverEase
               </span>
             </div>
 
             <div className="text-center lg:text-left">
-              <h1 className="text-headline-lg text-brand-800">{title}</h1>
+              <h1 className="text-headline-lg text-heading sm:text-title">
+                {title}
+              </h1>
               {description ? (
                 <p className="mx-auto mt-2 max-w-sm text-body-md text-muted lg:mx-0">
                   {description}

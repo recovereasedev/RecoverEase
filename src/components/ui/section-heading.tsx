@@ -82,28 +82,3 @@ export function PageSection({
     </section>
   )
 }
-
-/**
- * The small all-caps label that sits above a page or section title.
- *
- * Used sparingly and never for prose: capitals destroy word shape and slow
- * reading, which is the opposite of what a label is for.
- */
-export function Eyebrow({
-  children,
-  className,
-}: {
-  children: ReactNode
-  className?: string
-}) {
-  return (
-    <span
-      className={cn(
-        'text-label-sm font-semibold uppercase tracking-wider text-accent-700',
-        className,
-      )}
-    >
-      {children}
-    </span>
-  )
-}
