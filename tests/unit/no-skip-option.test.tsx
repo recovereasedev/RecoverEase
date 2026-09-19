@@ -104,13 +104,13 @@ afterEach(() => {
 })
 
 describe('the medication page', () => {
-  it('offers Taken on a Due or Overdue dose, and no Skip anywhere', () => {
+  it('offers Mark taken on a Due or Overdue dose, and no Skip anywhere', () => {
     render(<PatientMedicationsPage />)
 
     expect(row('Morning tablet').getByText('Overdue')).toBeInTheDocument()
-    expect(row('Morning tablet').getByRole('button', { name: 'Taken' })).toBeInTheDocument()
+    expect(row('Morning tablet').getByRole('button', { name: /^Mark taken/ })).toBeInTheDocument()
     expect(row('Evening tablet').getByText('Due')).toBeInTheDocument()
-    expect(row('Evening tablet').getByRole('button', { name: 'Taken' })).toBeInTheDocument()
+    expect(row('Evening tablet').getByRole('button', { name: /^Mark taken/ })).toBeInTheDocument()
 
     expect(screen.queryByRole('button', { name: /skip/i })).not.toBeInTheDocument()
   })
@@ -118,7 +118,7 @@ describe('the medication page', () => {
   it('records a dose as taken', () => {
     render(<PatientMedicationsPage />)
 
-    fireEvent.click(row('Morning tablet').getByRole('button', { name: 'Taken' }))
+    fireEvent.click(row('Morning tablet').getByRole('button', { name: /^Mark taken/ }))
 
     expect(state.mutate).toHaveBeenCalledTimes(1)
     expect(state.mutate).toHaveBeenCalledWith({ doseId: 'd3', status: 'taken' })
@@ -131,7 +131,7 @@ describe('the medication page', () => {
     const controls = within(doses).getAllByRole('button')
     for (const control of controls) fireEvent.click(control)
 
-    // Taken on the two pending doses, Undo on the three recorded ones.
+    // Mark taken on the two pending doses, Undo on the three recorded ones.
     expect(state.mutate).toHaveBeenCalledTimes(controls.length)
     expect(controls).toHaveLength(5)
     for (const [input] of state.mutate.mock.calls) {
@@ -144,7 +144,7 @@ describe('the medication page', () => {
 
     const skipped = row('Lunch tablet')
     expect(skipped.getByText('Skipped')).toBeInTheDocument()
-    expect(skipped.queryByRole('button', { name: 'Taken' })).not.toBeInTheDocument()
+    expect(skipped.queryByRole('button', { name: /^Mark taken/ })).not.toBeInTheDocument()
 
     fireEvent.click(skipped.getByRole('button', { name: 'Undo' }))
 

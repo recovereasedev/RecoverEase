@@ -234,12 +234,12 @@ export function PatientChatPage() {
                             <p className="sr-only">
                               {isPatient ? 'You said:' : 'Assistant said:'}
                             </p>
-                            <p className="whitespace-pre-wrap text-sm leading-relaxed">
+                            <p className="whitespace-pre-wrap text-base leading-relaxed">
                               {message.chat_message_content}
                             </p>
                             <p
                               className={cn(
-                                'mt-1 text-[11px]',
+                                'mt-1 text-xs',
                                 isPatient ? 'text-white/70' : 'text-muted',
                               )}
                             >

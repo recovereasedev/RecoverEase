@@ -151,7 +151,7 @@ export function PatientChatTranscript({
                             </p>
                             <p
                               className={cn(
-                                'mt-1 text-[11px]',
+                                'mt-1 text-xs',
                                 isPatient ? 'text-white/70' : 'text-muted',
                               )}
                             >

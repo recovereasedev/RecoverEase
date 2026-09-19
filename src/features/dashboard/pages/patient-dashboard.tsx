@@ -1,22 +1,25 @@
+import { endOfToday, format, startOfToday } from 'date-fns'
 import {
+  AlarmClock,
   ArrowRight,
   CalendarDays,
+  CheckCircle2,
   Flame,
   NotebookPen,
   Pill,
   Target,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { endOfToday, startOfToday } from 'date-fns'
 
 import { FormError } from '@/components/feedback/form-error'
-import { StateView } from '@/components/feedback/state-view'
+import { InlineEmpty, StateView } from '@/components/feedback/state-view'
 import { PageHeader } from '@/components/layout/page-header'
-import { StatusBadge } from '@/components/ui/badge'
+import { Badge, StatusBadge } from '@/components/ui/badge'
 import { Button, buttonVariants } from '@/components/ui/button'
-import { Card, CardBody, CardHeader } from '@/components/ui/card'
+import { Card, CardBody } from '@/components/ui/card'
 import { ListRow, ListRows } from '@/components/ui/list-row'
 import { ProgressBar } from '@/components/ui/progress'
+import { PageSection } from '@/components/ui/section-heading'
 import { useAppointments, useSetAppointmentStatus } from '@/features/appointments/hooks'
 import { useCurrentUser } from '@/features/auth/auth-context'
 import { patientDoseState } from '@/features/medications/dose-status'
@@ -27,8 +30,9 @@ import { summariseGoals } from '@/features/treatment-plans/api'
 import { useTreatmentPlans } from '@/features/treatment-plans/hooks'
 import { useDocumentTitle } from '@/hooks/use-document-title'
 import { useNow } from '@/hooks/use-now'
-import { formatDateTime, formatTime, toDateKey } from '@/lib/format'
+import { formatDate, formatDateTime, formatTime, toDateKey } from '@/lib/format'
 import { appointmentStatus, patientDoseStatus } from '@/lib/status'
+import { cn } from '@/lib/utils'
 
 function greeting(now = new Date()): string {
   const hour = now.getHours()
@@ -40,17 +44,21 @@ function greeting(now = new Date()): string {
 /**
  * Module 5.6 "View Personal Recovery Dashboard".
  *
- * Ordered by what the patient has to DO today, not by what is easiest to
- * display. Doses due, then today's log, then the next appointment. Progress
- * and streaks sit to the side: they are encouragement, not instructions.
+ * RecoverEase 2.0 answers one question first: "what do I need to do today?"
  *
- * That ordering is also the mobile ordering, and it is the reason the
- * encouragement column is second in the document rather than first. On a
- * phone the columns become one, and whatever is first is what a patient sees
- * when they open the app one-handed — which should be the dose that is due,
- * not a streak counter.
+ * - **Today** is the one raised surface on the screen. It holds every action a
+ *   patient owes today - each dose, then today's recovery entry - in one list,
+ *   so the answer is a single place to look rather than three cards of equal
+ *   weight. An overdue dose is tinted, told in words ("Overdue", with its
+ *   icon), and given the solid button: it is the most urgent thing a patient
+ *   can do here, so it is the easiest thing to see and to press.
+ * - **Your recovery** is encouragement, not instruction: the streak, and how
+ *   far through the treatment goals they are, with the next goal named.
+ * - **Upcoming care** is the next appointment, with the one action it can take.
  *
- * There are no summary tiles showing numbers the patient cannot act on.
+ * On a phone the three stack in that order, so the first thing on screen is
+ * the dose that is due, not a streak counter. There are no summary tiles
+ * showing numbers the patient cannot act on.
  */
 export function PatientDashboard() {
   useDocumentTitle('Dashboard')
@@ -69,8 +77,8 @@ export function PatientDashboard() {
   const logsQuery = useRecoveryLogs(patientId)
   const appointmentsQuery = useAppointments(patientId)
   const plansQuery = useTreatmentPlans(patientId)
-
   const setDoseStatus = useSetDoseStatus(patientId)
+  // Re-evaluated every minute, so a dose turns Overdue while the page is open.
   const now = useNow()
   const setAppointmentStatus = useSetAppointmentStatus()
 
@@ -98,181 +106,298 @@ export function PatientDashboard() {
   const goalProgress = activePlan
     ? summariseGoals(activePlan.treatment_goal)
     : null
+  // The goal to work on next: the earliest target not yet achieved.
+  const nextGoal = activePlan?.treatment_goal
+    .filter((goal) => goal.treatment_goal_status !== 'achieved')
+    .sort((a, b) =>
+      (a.treatment_goal_target_date ?? '9999').localeCompare(
+        b.treatment_goal_target_date ?? '9999',
+      ),
+    )[0]
+
+  const doses = dosesQuery.data ?? []
+  const takenCount = doses.filter(
+    (dose) => dose.medication_log_status === 'taken',
+  ).length
+  const overdueCount = doses.filter(
+    (dose) => patientDoseState(dose, now) === 'overdue',
+  ).length
 
   return (
     <>
       <PageHeader
         title={`${greeting()}, ${firstName}`}
-        description="Here is what your recovery asks of you today."
+        description={format(new Date(now), 'EEEE d MMMM')}
       />
 
-      <div className="grid gap-5 lg:grid-cols-3">
-        {/* --- Main column ---------------------------------------------- */}
-        <div className="space-y-5 lg:col-span-2">
-          {/* Today's medication */}
-          <Card>
-            <CardHeader
-              title="Today’s medication"
-              description="Mark each dose once you have taken it."
-              action={
-                <Link
-                  to="/patient/medications"
-                  className={buttonVariants({ variant: 'ghost', size: 'sm' })}
-                >
-                  All medication
-                  <ArrowRight aria-hidden="true" />
-                </Link>
+      <div className="grid gap-section lg:grid-cols-3 lg:gap-8">
+        {/* --- Today ------------------------------------------------------- */}
+        <PageSection
+          className="lg:col-span-2"
+          title="Today"
+          description={
+            doses.length > 0 ? (
+              <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-1">
+                <span data-numeric>
+                  {takenCount} of {doses.length}{' '}
+                  {doses.length === 1 ? 'dose' : 'doses'} taken
+                </span>
+                {overdueCount > 0 ? (
+                  <span className="inline-flex items-center gap-1 font-medium text-warning-800">
+                    <AlarmClock className="size-4" aria-hidden="true" />
+                    {overdueCount} overdue
+                  </span>
+                ) : null}
+              </span>
+            ) : undefined
+          }
+          action={
+            <Link
+              to="/patient/medications"
+              className={buttonVariants({ variant: 'ghost', size: 'sm' })}
+            >
+              All medication
+              <ArrowRight aria-hidden="true" />
+            </Link>
+          }
+        >
+          <Card variant="elevated" className="overflow-hidden">
+            <StateView
+              isPending={dosesQuery.isPending}
+              error={dosesQuery.error}
+              data={dosesQuery.data}
+              onRetry={() => void dosesQuery.refetch()}
+              loadingLabel="Loading today’s doses…"
+              empty={
+                <InlineEmpty icon={Pill}>
+                  No doses scheduled today. When your doctor sets a medication
+                  schedule, the doses will appear here.
+                </InlineEmpty>
               }
-            />
-            <CardBody className="p-0">
-              <StateView
-                isPending={dosesQuery.isPending}
-                error={dosesQuery.error}
-                data={dosesQuery.data}
-                onRetry={() => void dosesQuery.refetch()}
-                loadingLabel="Loading today’s doses…"
-                empty={
-                  <div className="px-4 py-10 text-center sm:px-5">
-                    <Pill
-                      className="mx-auto size-6 text-neutral-400"
-                      aria-hidden="true"
-                    />
-                    <p className="mt-2 font-medium text-heading">
-                      No doses scheduled today
-                    </p>
-                    <p className="mt-1 text-sm text-muted">
-                      When your doctor sets a medication schedule, the doses
-                      will appear here.
-                    </p>
-                  </div>
-                }
-              >
-                {(doses) => (
-                  <ListRows>
-                    {doses.map((dose) => {
-                      const status =
-                        patientDoseStatus[patientDoseState(dose, now)]
-                      const isDone = dose.medication_log_status === 'taken'
-                      const name =
-                        dose.medication_schedule?.medication_schedule_name ??
-                        'Medication'
-                      const time = formatTime(dose.medication_log_scheduled_at)
-
-                      return (
-                        <ListRow
-                          key={dose.medication_log_id}
-                          title={name}
-                          description={
-                            <>
-                              {
-                                dose.medication_schedule
-                                  ?.medication_schedule_dosage
-                              }{' '}
-                              · due <span data-numeric>{time}</span>
-                            </>
-                          }
-                          status={<StatusBadge status={status} />}
-                          actions={
-                            !isDone ? (
-                              <Button
-                                size="sm"
-                                variant="secondary"
-                                isLoading={
-                                  setDoseStatus.isPending &&
-                                  setDoseStatus.variables?.doseId ===
-                                    dose.medication_log_id
-                                }
-                                onClick={() =>
-                                  setDoseStatus.mutate({
-                                    doseId: dose.medication_log_id,
-                                    status: 'taken',
-                                  })
-                                }
-                              >
-                                Mark taken
-                                <span className="sr-only">
-                                  : {name} at {time}
-                                </span>
-                              </Button>
-                            ) : null
-                          }
-                        />
-                      )
-                    })}
-                  </ListRows>
-                )}
-              </StateView>
-            </CardBody>
-          </Card>
-
-          {/* Today's recovery log */}
-          <Card>
-            <CardHeader
-              title="Today’s recovery entry"
-              description="A short note each day is what your doctor reviews before your next appointment."
-            />
-            <CardBody>
-              <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
-                <p className="text-body">
-                  {loggedToday
-                    ? 'You have recorded today’s entry. Thank you.'
-                    : 'You have not logged today yet.'}
-                </p>
-                <Link
-                  to="/patient/recovery"
-                  className={buttonVariants({
-                    variant: loggedToday ? 'secondary' : 'primary',
-                    size: 'sm',
-                    className: 'max-sm:w-full',
-                  })}
-                >
-                  {loggedToday ? null : <NotebookPen aria-hidden="true" />}
-                  {loggedToday ? 'Edit today’s entry' : 'Log today'}
-                </Link>
-              </div>
-            </CardBody>
-          </Card>
-
-          {/* Next appointment */}
-          <Card>
-            <CardHeader
-              title="Next appointment"
-              action={
-                <Link
-                  to="/patient/appointments"
-                  className={buttonVariants({ variant: 'ghost', size: 'sm' })}
-                >
-                  All appointments
-                  <ArrowRight aria-hidden="true" />
-                </Link>
-              }
-            />
-            <CardBody>
-              {appointmentsQuery.isPending ? (
-                <p className="text-muted">Loading…</p>
-              ) : nextAppointment ? (
-                <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
-                  <div className="min-w-0">
-                    <p className="flex items-start gap-2 font-medium text-heading">
-                      <CalendarDays
-                        className="mt-0.5 size-4 shrink-0 text-brand-700"
-                        aria-hidden="true"
-                      />
-                      {formatDateTime(nextAppointment.appointment_date)}
-                    </p>
-                    <div className="mt-2">
-                      <StatusBadge
+            >
+              {(todayDoses) => (
+                <ListRows>
+                  {todayDoses.map((dose) => {
+                    const state = patientDoseState(dose, now)
+                    const status = patientDoseStatus[state]
+                    const isDone = dose.medication_log_status === 'taken'
+                    const isOverdue = state === 'overdue'
+                    const name =
+                      dose.medication_schedule?.medication_schedule_name ??
+                      'Medication'
+                    const time = formatTime(dose.medication_log_scheduled_at)
+                    return (
+                      <ListRow
+                        key={dose.medication_log_id}
+                        // The tint is a second cue; the word Overdue and its
+                        // icon carry the state on their own.
+                        className={cn(isOverdue && 'bg-warning-50')}
+                        title={name}
+                        description={
+                          <>
+                            {
+                              dose.medication_schedule
+                                ?.medication_schedule_dosage
+                            }{' '}
+                            · due <span data-numeric>{time}</span>
+                          </>
+                        }
                         status={
-                          appointmentStatus[nextAppointment.appointment_status]
+                          <StatusBadge status={status} />
+                        }
+                        actions={
+                          !isDone ? (
+                            <Button
+                              size="sm"
+                              variant={isOverdue ? 'primary' : 'secondary'}
+                              isLoading={
+                                setDoseStatus.isPending &&
+                                setDoseStatus.variables?.doseId ===
+                                  dose.medication_log_id
+                              }
+                              onClick={() =>
+                                setDoseStatus.mutate({
+                                  doseId: dose.medication_log_id,
+                                  status: 'taken',
+                                })
+                              }
+                            >
+                              Mark taken
+                              <span className="sr-only">
+                                : {name} at {time}
+                              </span>
+                            </Button>
+                          ) : null
                         }
                       />
-                    </div>
-                  </div>
+                    )
+                  })}
+                </ListRows>
+              )}
+            </StateView>
 
+            {/* Today's recovery entry - the other thing a patient owes
+                today, in the same list of things to do. */}
+            <ListRows className="border-t border-[var(--color-border)]">
+              <ListRow
+                title="Today’s recovery entry"
+                description={
+                  loggedToday
+                    ? 'Recorded. Thank you.'
+                    : 'A short note each day is what your doctor reviews before your next appointment.'
+                }
+                status={
+                  loggedToday ? (
+                    <Badge tone="success">
+                      <CheckCircle2 className="size-3.5" aria-hidden="true" />
+                      Recorded
+                    </Badge>
+                  ) : null
+                }
+                actions={
+                  <Link
+                    to="/patient/recovery"
+                    className={buttonVariants({
+                      variant: loggedToday ? 'ghost' : 'primary',
+                      size: 'sm',
+                    })}
+                  >
+                    {loggedToday ? null : <NotebookPen aria-hidden="true" />}
+                    {loggedToday ? 'Edit today’s entry' : 'Log today'}
+                  </Link>
+                }
+              />
+            </ListRows>
+          </Card>
+        </PageSection>
+
+        <div className="space-y-section">
+          {/* --- Your recovery ----------------------------------------------
+              Module 5.12 (streak) and 5.8 (goals). */}
+          <PageSection title="Your recovery">
+            <Card>
+              <CardBody className="space-y-4">
+                <div className="flex items-center gap-3">
+                  <Flame
+                    className="size-6 shrink-0 text-warning-700"
+                    aria-hidden="true"
+                  />
+                  <p className="text-body">
+                    <span
+                      className="text-headline-md text-heading"
+                      data-numeric
+                    >
+                      {streak}
+                    </span>{' '}
+                    {streak === 1 ? 'day logged in a row' : 'days logged in a row'}
+                  </p>
+                </div>
+                {streak === 0 ? (
+                  <p className="text-sm text-muted">
+                    Log today to start a streak.
+                  </p>
+                ) : null}
+
+                <div className="border-t border-[var(--color-border)] pt-4">
+                  <div className="flex items-baseline justify-between gap-3">
+                    <h3 className="text-base font-semibold text-heading">
+                      Treatment goals
+                    </h3>
+                    <Link
+                      to="/patient/treatment"
+                      className="inline-flex min-h-11 items-center text-sm font-semibold text-role hover:underline sm:min-h-0"
+                    >
+                      View plan
+                    </Link>
+                  </div>
+                  {plansQuery.isPending ? (
+                    <p className="mt-2 text-sm text-muted">Loading…</p>
+                  ) : goalProgress && goalProgress.total > 0 ? (
+                    <>
+                      <p className="mt-1 text-sm text-muted">
+                        <span className="font-medium text-heading" data-numeric>
+                          {goalProgress.achieved} of {goalProgress.total}
+                        </span>{' '}
+                        achieved
+                      </p>
+                      {/* The bar repeats the sentence above rather than
+                          replacing it, so the information does not depend
+                          on seeing it. */}
+                      <ProgressBar
+                        className="mt-2"
+                        value={goalProgress.percentage ?? 0}
+                        tone="accent"
+                        label="Treatment goals achieved"
+                        valueText={`${goalProgress.achieved} of ${goalProgress.total} goals achieved`}
+                      />
+                      {nextGoal ? (
+                        <p className="mt-3 flex items-start gap-2 text-sm text-body">
+                          <Target
+                            className="mt-0.5 size-4 shrink-0 text-muted"
+                            aria-hidden="true"
+                          />
+                          <span>
+                            <span className="text-muted">Next: </span>
+                            {nextGoal.treatment_goal_description}
+                            {nextGoal.treatment_goal_target_date ? (
+                              <span className="text-muted">
+                                {' '}
+                                · by{' '}
+                                {formatDate(nextGoal.treatment_goal_target_date)}
+                              </span>
+                            ) : null}
+                          </span>
+                        </p>
+                      ) : null}
+                    </>
+                  ) : (
+                    <p className="mt-1 text-sm text-muted">
+                      Your doctor has not set any goals yet.
+                    </p>
+                  )}
+                </div>
+              </CardBody>
+            </Card>
+          </PageSection>
+
+          {/* --- Upcoming care --------------------------------------------- */}
+          <PageSection
+            title="Upcoming care"
+            action={
+              <Link
+                to="/patient/appointments"
+                className={buttonVariants({ variant: 'ghost', size: 'sm' })}
+              >
+                All appointments
+                <ArrowRight aria-hidden="true" />
+              </Link>
+            }
+          >
+            <Card>
+              {appointmentsQuery.isPending ? (
+                <CardBody>
+                  <p className="text-muted">Loading…</p>
+                </CardBody>
+              ) : nextAppointment ? (
+                <CardBody className="space-y-3">
+                  <div>
+                    <p className="text-sm text-muted">Next appointment</p>
+                    <p className="mt-0.5 flex items-start gap-2 text-body-lg font-semibold text-heading">
+                      <CalendarDays
+                        className="mt-1 size-5 shrink-0 text-role"
+                        aria-hidden="true"
+                      />
+                      <span data-numeric>
+                        {formatDateTime(nextAppointment.appointment_date)}
+                      </span>
+                    </p>
+                  </div>
+                  <StatusBadge
+                    status={appointmentStatus[nextAppointment.appointment_status]}
+                  />
                   {nextAppointment.appointment_status === 'scheduled' ? (
                     <Button
-                      size="sm"
-                      className="max-sm:w-full"
+                      block
                       isLoading={setAppointmentStatus.isPending}
                       onClick={() =>
                         setAppointmentStatus.mutate({
@@ -284,107 +409,36 @@ export function PatientDashboard() {
                       Confirm attendance
                     </Button>
                   ) : null}
-
                   {/* A confirmation the server refused says so (NA-02). */}
                   {setAppointmentStatus.isError &&
                   setAppointmentStatus.variables?.appointmentId ===
                     nextAppointment.appointment_id ? (
-                    <div className="w-full">
-                      <FormError
-                        error={setAppointmentStatus.error}
-                        title="Your attendance was not confirmed"
-                      />
-                    </div>
+                    <FormError
+                      error={setAppointmentStatus.error}
+                      title="Your attendance was not confirmed"
+                    />
                   ) : null}
-                </div>
+                </CardBody>
               ) : (
-                <p className="text-muted">
-                  You have no upcoming appointments.{' '}
-                  <Link
-                    to="/patient/appointments"
-                    className="font-medium text-brand-700 hover:underline"
-                  >
-                    Book a follow-up
-                  </Link>
-                  .
-                </p>
-              )}
-            </CardBody>
-          </Card>
-        </div>
-
-        {/* --- Side column ------------------------------------------------ */}
-        <div className="space-y-5">
-          {/* Streak — module 5.12 */}
-          <Card>
-            <CardBody className="flex items-center gap-4 sm:flex-col sm:text-center">
-              <span className="flex size-12 shrink-0 items-center justify-center rounded-full bg-warning-50">
-                <Flame className="size-6 text-warning-700" aria-hidden="true" />
-              </span>
-              <div className="min-w-0">
-                <p
-                  className="text-headline-lg font-bold text-heading"
-                  data-numeric
+                <InlineEmpty
+                  icon={CalendarDays}
+                  action={
+                    <Link
+                      to="/patient/appointments"
+                      className={buttonVariants({
+                        variant: 'secondary',
+                        size: 'sm',
+                      })}
+                    >
+                      Book a follow-up
+                    </Link>
+                  }
                 >
-                  {streak}
-                </p>
-                <p className="text-sm text-muted">
-                  {streak === 1
-                    ? 'day logged in a row'
-                    : 'days logged in a row'}
-                </p>
-                {streak === 0 ? (
-                  <p className="mt-1 text-sm text-muted">
-                    Log today to start a streak.
-                  </p>
-                ) : null}
-              </div>
-            </CardBody>
-          </Card>
-
-          {/* Goals — module 5.8 */}
-          <Card>
-            <CardHeader
-              title="Treatment goals"
-              as="h2"
-              action={
-                <Link
-                  to="/patient/treatment"
-                  className={buttonVariants({ variant: 'ghost', size: 'sm' })}
-                >
-                  View plan
-                </Link>
-              }
-            />
-            <CardBody>
-              {plansQuery.isPending ? (
-                <p className="text-muted">Loading…</p>
-              ) : goalProgress && goalProgress.total > 0 ? (
-                <>
-                  <p className="text-sm text-muted">
-                    <span className="font-medium text-heading" data-numeric>
-                      {goalProgress.achieved} of {goalProgress.total}
-                    </span>{' '}
-                    achieved
-                  </p>
-                  {/* The bar repeats the sentence above rather than replacing
-                      it, so the information does not depend on seeing it. */}
-                  <ProgressBar
-                    className="mt-2"
-                    value={goalProgress.percentage ?? 0}
-                    tone="accent"
-                    label="Treatment goals achieved"
-                    valueText={`${goalProgress.achieved} of ${goalProgress.total} goals achieved`}
-                  />
-                </>
-              ) : (
-                <p className="flex items-start gap-2 text-sm text-muted">
-                  <Target className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-                  Your doctor has not set any goals yet.
-                </p>
+                  You have no upcoming appointments.
+                </InlineEmpty>
               )}
-            </CardBody>
-          </Card>
+            </Card>
+          </PageSection>
         </div>
       </div>
     </>

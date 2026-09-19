@@ -31,7 +31,13 @@ export function MoodTrend({ logs }: { logs: RecoveryLog[] }) {
 
   return (
     <figure>
-      <div className="flex h-24 items-end gap-1" aria-hidden="true">
+      {/* The columns stretch to the row's full 96px (`items-stretch`, the
+          flex default). With `items-end` they shrank to their content - an
+          empty bar - so each bar's percentage height resolved against a
+          zero-height column and every bar rendered at 0px: the chart showed
+          nothing at all. Layout only; the ratings and their heights are
+          unchanged. */}
+      <div className="flex h-24 items-stretch gap-1" aria-hidden="true">
         {recent.map((log) => {
           const rating = log.recovery_log_mood_rating ?? 0
           return (
