@@ -9,6 +9,7 @@ import {
   Pill,
   Target,
 } from 'lucide-react'
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import { FormError } from '@/components/feedback/form-error'
@@ -81,6 +82,9 @@ export function PatientDashboard() {
   // Re-evaluated every minute, so a dose turns Overdue while the page is open.
   const now = useNow()
   const setAppointmentStatus = useSetAppointmentStatus()
+  // The dose the patient has just marked, so only its badge animates in -
+  // never every badge on the page when it loads.
+  const [confirmedId, setConfirmedId] = useState<string | null>(null)
 
   const todayKey = toDateKey()
   const loggedToday = logsQuery.data?.some(
@@ -203,7 +207,15 @@ export function PatientDashboard() {
                           </>
                         }
                         status={
-                          <StatusBadge status={status} />
+                          <StatusBadge
+                            key={state}
+                            status={status}
+                            className={cn(
+                              isDone &&
+                                confirmedId === dose.medication_log_id &&
+                                'motion-confirm',
+                            )}
+                          />
                         }
                         actions={
                           !isDone ? (
@@ -215,12 +227,13 @@ export function PatientDashboard() {
                                 setDoseStatus.variables?.doseId ===
                                   dose.medication_log_id
                               }
-                              onClick={() =>
+                              onClick={() => {
+                                setConfirmedId(dose.medication_log_id)
                                 setDoseStatus.mutate({
                                   doseId: dose.medication_log_id,
                                   status: 'taken',
                                 })
-                              }
+                              }}
                             >
                               Mark taken
                               <span className="sr-only">

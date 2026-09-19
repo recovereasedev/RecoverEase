@@ -1,5 +1,6 @@
 import { addDays, endOfToday, startOfToday, subDays } from 'date-fns'
 import { AlarmClock, Pill, Printer } from 'lucide-react'
+import { useState } from 'react'
 
 import { InlineEmpty, StateView } from '@/components/feedback/state-view'
 import { PageHeader } from '@/components/layout/page-header'
@@ -75,6 +76,8 @@ export function PatientMedicationsPage() {
   const setDoseStatus = useSetDoseStatus(patientId)
   // Re-evaluated every minute, so a dose turns Overdue while the page is open.
   const now = useNow()
+  // The dose just marked taken: only its badge animates in.
+  const [confirmedId, setConfirmedId] = useState<string | null>(null)
 
   const adherence = weekDoses.data
     ? summariseAdherence(weekDoses.data)
@@ -207,7 +210,15 @@ export function PatientMedicationsPage() {
                             </>
                           }
                           status={
-                            <StatusBadge status={patientDoseStatus[state]} />
+                            <StatusBadge
+                              key={state}
+                              status={patientDoseStatus[state]}
+                              className={cn(
+                                state === 'taken' &&
+                                  confirmedId === dose.medication_log_id &&
+                                  'motion-confirm',
+                              )}
+                            />
                           }
                           actions={
                             isPending ? (
@@ -215,12 +226,13 @@ export function PatientMedicationsPage() {
                                 size="sm"
                                 variant={isOverdue ? 'primary' : 'secondary'}
                                 isLoading={isMutating}
-                                onClick={() =>
+                                onClick={() => {
+                                  setConfirmedId(dose.medication_log_id)
                                   setDoseStatus.mutate({
                                     doseId: dose.medication_log_id,
                                     status: 'taken',
                                   })
-                                }
+                                }}
                               >
                                 Mark taken
                                 <span className="sr-only">

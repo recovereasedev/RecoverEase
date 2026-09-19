@@ -63,7 +63,9 @@ export function MoodScale({
                 aria-hidden="true"
                 className={cn(
                   'text-lg font-semibold',
-                  isSelected ? 'text-brand-700' : 'text-neutral-500',
+                  // 18px semibold is not "large text", so it needs 4.5:1:
+                  // the outline grey measured 4.47, muted is 5.78.
+                  isSelected ? 'text-brand-700' : 'text-muted',
                 )}
               >
                 {option.value}

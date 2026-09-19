@@ -48,7 +48,14 @@ export function ListRow({
   className,
 }: ListRowProps) {
   return (
-    <li className={cn('px-4 py-4 sm:px-5', className)}>
+    <li
+      className={cn(
+        // A row whose state changes - an overdue dose once it is taken -
+        // eases its tint out instead of snapping.
+        'px-4 py-4 transition-colors duration-[var(--duration-base)] sm:px-5',
+        className,
+      )}
+    >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
         <div className="flex min-w-0 gap-3 sm:flex-1 sm:gap-4">
           {leading !== undefined ? (

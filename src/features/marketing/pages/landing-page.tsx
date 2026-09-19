@@ -321,7 +321,7 @@ export function LandingPage() {
             phone. */}
         <section className="overflow-hidden border-b border-[var(--color-border)] bg-surface">
           <div className="mx-auto grid max-w-[var(--container-content)] gap-12 px-5 pb-20 pt-14 sm:px-8 lg:grid-cols-[1fr_1.15fr] lg:items-center lg:gap-16 lg:pb-24 lg:pt-20">
-            <div>
+            <div className="landing-rise">
               <h1 className="max-w-[16ch] text-headline-xl text-brand-800 sm:text-display-sm xl:text-display">
                 Recovery, followed properly — start to finish
               </h1>
@@ -363,7 +363,7 @@ export function LandingPage() {
               </p>
             </div>
 
-            <figure className="m-0">
+            <figure className="landing-rise landing-rise-late m-0">
               {/* The phone sits over the doctor screen's navigation column,
                   so it hides nothing of the record itself. */}
               <div className="relative pb-16 pl-8 sm:pb-20 sm:pl-12">

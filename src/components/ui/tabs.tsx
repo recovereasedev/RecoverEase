@@ -1,5 +1,12 @@
 import { ChevronRight } from 'lucide-react'
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
+import {
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react'
 
 import { cn } from '@/lib/utils'
 
@@ -26,6 +33,12 @@ export type TabDefinition<T extends string> = {
  * - Otherwise the row scrolls, and says so: a fade and a chevron sit on
  *   whichever edge has more tabs behind it, and the selected tab is kept in
  *   view as it changes.
+ *
+ * The selected tab's underline slides to its new tab (120ms, transform
+ * only), so the eye follows the change instead of losing it. It is written to
+ * the DOM rather than kept in state, and until it has been measured each tab
+ * keeps its own underline - so without script layout, or where measuring
+ * fails, the selection is still marked.
  */
 export function Tabs<T extends string>({
   tabs,
@@ -40,6 +53,7 @@ export function Tabs<T extends string>({
 }) {
   const baseId = useId()
   const listRef = useRef<HTMLDivElement>(null)
+  const indicatorRef = useRef<HTMLSpanElement>(null)
   const [overflow, setOverflow] = useState({ start: false, end: false })
   const isGridOnPhone = tabs.length > 4
 
@@ -70,6 +84,32 @@ export function Tabs<T extends string>({
       window.removeEventListener('resize', measure)
     }
   }, [])
+
+  // Slide the underline to the selected tab. The first placement is not
+  // animated - it would sweep in from the left edge on every page load.
+  useLayoutEffect(() => {
+    const list = listRef.current
+    const bar = indicatorRef.current
+    if (!list || !bar) return
+    const place = () => {
+      const selected = list.querySelector<HTMLElement>('[aria-selected="true"]')
+      if (!selected || selected.offsetWidth === 0) {
+        list.dataset['indicator'] = 'off'
+        return
+      }
+      bar.style.transform = `translateX(${selected.offsetLeft}px) scaleX(${selected.offsetWidth / 100})`
+      list.dataset['indicator'] = 'on'
+    }
+    place()
+    const frame = requestAnimationFrame(() => {
+      bar.dataset['ready'] = 'true'
+    })
+    window.addEventListener('resize', place)
+    return () => {
+      cancelAnimationFrame(frame)
+      window.removeEventListener('resize', place)
+    }
+  }, [value])
 
   // Keep the selected tab inside the visible part of a scrolling row. Written
   // against scrollLeft rather than scrollIntoView, which would also scroll
@@ -107,6 +147,10 @@ export function Tabs<T extends string>({
     event.preventDefault()
     const nextTab = tabs[nextIndex]
     if (!nextTab) return
+    // A keyboard change moves the underline instantly: motion on a
+    // keystroke only slows down someone moving at the speed of their keys.
+    // The next frame re-enables the slide for pointer changes.
+    delete indicatorRef.current?.dataset['ready']
     onChange(nextTab.id)
     listRef.current
       ?.querySelector<HTMLButtonElement>(`#${CSS.escape(`${baseId}-tab-${nextTab.id}`)}`)
@@ -122,8 +166,9 @@ export function Tabs<T extends string>({
           onKeyDown={onKeyDown}
           // Controls, so never on paper: a printout is the panel's content
           // alone.
+          data-indicator="off"
           className={cn(
-            'flex gap-1 overflow-x-auto border-b border-[var(--color-border)] [scrollbar-width:none]',
+            'group/tabs relative flex gap-1 overflow-x-auto border-b border-[var(--color-border)] [scrollbar-width:none]',
             isGridOnPhone
               ? 'max-sm:grid max-sm:grid-cols-3 max-sm:overflow-visible max-sm:rounded-[var(--radius-lg)] max-sm:border-b-0 max-sm:bg-surface-sunken max-sm:p-1'
               : '-mx-4 px-4 sm:mx-0 sm:px-0',
@@ -144,7 +189,9 @@ export function Tabs<T extends string>({
                 className={cn(
                   'shrink-0 whitespace-nowrap border-b-2 px-3 py-3 text-sm font-medium transition-colors duration-[var(--duration-fast)] sm:py-2.5',
                   isSelected
-                    ? 'border-[var(--color-role)] font-semibold text-role-strong'
+                    ? // Its own underline, until the sliding one has been
+                      // placed.
+                      'border-[var(--color-role)] font-semibold text-role-strong group-data-[indicator=on]/tabs:border-transparent'
                     : 'border-transparent text-muted hover:text-heading',
                   isGridOnPhone &&
                     cn(
@@ -166,6 +213,16 @@ export function Tabs<T extends string>({
               </button>
             )
           })}
+          {/* 100px wide, scaled to the tab's width: transform only. */}
+          <span
+            ref={indicatorRef}
+            aria-hidden="true"
+            className={cn(
+              'pointer-events-none absolute bottom-0 left-0 h-0.5 w-[100px] origin-left bg-[var(--color-role)] opacity-0 group-data-[indicator=on]/tabs:opacity-100',
+              'data-[ready=true]:transition-transform data-[ready=true]:duration-[var(--duration-fast)] data-[ready=true]:ease-[var(--ease-in-out)]',
+              isGridOnPhone && 'max-sm:hidden',
+            )}
+          />
         </div>
 
         {/* The overflow cue. Decorative: every tab is still in the tab

@@ -196,14 +196,15 @@ function MobileDrawer({
         type="button"
         aria-label="Close menu"
         onClick={onClose}
-        className="absolute inset-0 bg-neutral-950/40"
+        className="drawer-scrim absolute inset-0 bg-neutral-950/40"
       />
       <div
         ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className="absolute inset-y-0 left-0 flex w-[min(20rem,85vw)] flex-col bg-surface shadow-[var(--shadow-lg)]"
+        // Slides in from the edge it lives on (index.css).
+        className="drawer-panel absolute inset-y-0 left-0 flex w-[min(20rem,85vw)] flex-col bg-surface shadow-[var(--shadow-lg)]"
       >
         <div className="flex items-center justify-between border-b border-[var(--color-border)] px-4 py-3">
           <span id={titleId}>

@@ -273,6 +273,9 @@
   /* ---- Motion -----------------------------------------------------------
      Short and functional. Motion signals a state change; it never decorates. */
   --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+  /* Something moving from one place on screen to another - the tab
+     indicator - rather than arriving or leaving. */
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
   --duration-fast: 120ms;
   --duration-base: 180ms;
 }
@@ -432,6 +435,115 @@
   html,
   body {
     background: #ffffff;
+  }
+}
+
+/* ===========================================================================
+   Motion (RecoverEase 2.0)
+   ---------------------------------------------------------------------------
+   Four motions, each with a job, all on transform and opacity:
+
+   - A dialog scales up from 0.97 as its backdrop fades in, and leaves the
+     same way: it arrives over the page, it does not appear from nowhere.
+   - The phone's menu drawer slides in from the edge it lives on.
+   - A dose marked taken: its "Taken" badge settles in, so the change the
+     patient just made is seen to happen (applied only to that dose).
+   - The landing page's first screen rises into place once, on arrival.
+
+   `prefers-reduced-motion: reduce` collapses all of it (see the base layer):
+   every state is complete without the motion.
+   =========================================================================== */
+
+@layer components {
+  /* Native <dialog>: `display` and `overlay` transition discretely, so the
+     element stays rendered, and in the top layer, until the fade finishes. */
+  .app-dialog {
+    opacity: 0;
+    transform: scale(0.97);
+    transition:
+      opacity var(--duration-base) var(--ease-out-soft),
+      transform var(--duration-base) var(--ease-out-soft),
+      overlay var(--duration-base) allow-discrete,
+      display var(--duration-base) allow-discrete;
+  }
+
+  .app-dialog[open] {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  @starting-style {
+    .app-dialog[open] {
+      opacity: 0;
+      transform: scale(0.97);
+    }
+  }
+
+  .app-dialog::backdrop {
+    background-color: rgb(38 49 67 / 0);
+    transition:
+      background-color var(--duration-base) var(--ease-out-soft),
+      overlay var(--duration-base) allow-discrete,
+      display var(--duration-base) allow-discrete;
+  }
+
+  .app-dialog[open]::backdrop {
+    background-color: rgb(38 49 67 / 0.4);
+  }
+
+  @starting-style {
+    .app-dialog[open]::backdrop {
+      background-color: rgb(38 49 67 / 0);
+    }
+  }
+
+  .drawer-panel {
+    transition: transform var(--duration-base) var(--ease-out-soft);
+  }
+
+  @starting-style {
+    .drawer-panel {
+      transform: translateX(-100%);
+    }
+  }
+
+  .drawer-scrim {
+    transition: opacity var(--duration-base) var(--ease-out-soft);
+  }
+
+  @starting-style {
+    .drawer-scrim {
+      opacity: 0;
+    }
+  }
+
+  .motion-confirm {
+    transition:
+      opacity var(--duration-base) var(--ease-out-soft),
+      transform var(--duration-base) var(--ease-out-soft);
+  }
+
+  @starting-style {
+    .motion-confirm {
+      opacity: 0;
+      transform: scale(0.95);
+    }
+  }
+
+  /* Once, on arrival - marketing, so it may take longer than UI motion. */
+  .landing-rise {
+    animation: landing-rise 480ms var(--ease-out-soft) both;
+  }
+
+  .landing-rise-late {
+    animation-delay: 80ms;
+  }
+
+  @keyframes landing-rise {
+    from {
+      opacity: 0;
+      transform: translateY(12px);
+    }
   }
 }
 
