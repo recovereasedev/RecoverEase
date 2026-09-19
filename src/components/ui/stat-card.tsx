@@ -16,18 +16,16 @@ export type StatTrend = {
   intent?: 'positive' | 'negative' | 'neutral'
 }
 
-export type StatCardProps = {
-  /** The all-caps label above the number. */
+export type StatItem = {
+  /** What the number counts, in sentence case: "Upcoming appointments". */
   label: string
   /** The number itself. Kept as a node so a unit can be styled down. */
   value: ReactNode
   /** Sits beside the value at body size: "of 28 doses", "patients". */
   unit?: string
-  icon?: LucideIcon
   trend?: StatTrend
-  /** A sentence along the bottom edge, on its own tonal strip. */
-  footer?: ReactNode
-  className?: string
+  /** One short line under the number: "21 active". */
+  detail?: ReactNode
 }
 
 const trendIcon: Record<StatTrend['direction'], LucideIcon> = {
@@ -36,93 +34,99 @@ const trendIcon: Record<StatTrend['direction'], LucideIcon> = {
   flat: Minus,
 }
 
-const trendClasses: Record<
-  NonNullable<StatTrend['intent']>,
-  string
-> = {
+const trendClasses: Record<NonNullable<StatTrend['intent']>, string> = {
   positive: 'text-success-700',
   negative: 'text-danger-700',
   neutral: 'text-muted',
 }
 
+// Static class names, so Tailwind can see them. Two up on a phone; the whole
+// row on one line once there is room for it.
+const columns: Record<number, string> = {
+  1: 'grid-cols-1',
+  2: 'grid-cols-2',
+  3: 'grid-cols-2 sm:grid-cols-3',
+  4: 'grid-cols-2 lg:grid-cols-4',
+}
+
 /**
- * A single measurement, presented as one card in a bento row.
+ * A row of measurements, as one band.
  *
- * Deliberately narrow in what it will show. A stat card answers "what is this
- * number, and is it moving the right way" - it is not a place to put an
- * action, a chart or a paragraph, because a row of four cards that each do
- * something different stops being scannable, which was the only reason to use
- * cards instead of a list.
+ * RecoverEase 2.0 replaces the four separate stat cards - each with its own
+ * border, icon tile, all-caps label and tinted footer strip - with a single
+ * container divided by hairlines. Four cards read as four things competing for
+ * attention; one band reads as one summary, which is what a row of related
+ * counts is. The numbers carry the weight, the labels are plain sentence-case
+ * text, and there is no decoration left to compete with either.
+ *
+ * Deliberately narrow in what it will show: a number, what it counts, and at
+ * most one line of context. Not an action, a chart or a paragraph.
  */
-export function StatCard({
+export function StatBand({
+  items,
   label,
-  value,
-  unit,
-  icon: Icon,
-  trend,
-  footer,
   className,
-}: StatCardProps) {
-  const TrendIcon = trend ? trendIcon[trend.direction] : null
+}: {
+  items: StatItem[]
+  /** Names the group for assistive technology: "System totals". */
+  label?: string
+  className?: string
+}) {
+  const isOddOnPhone = items.length % 2 === 1 && items.length > 1
 
   return (
-    <div
+    <dl
+      aria-label={label}
       className={cn(
-        'flex flex-col overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-surface',
+        // The hairlines are the band's own background showing through a
+        // one-pixel gap, so they stay continuous however the grid wraps.
+        'grid gap-px overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-border)]',
+        columns[Math.min(items.length, 4)] ?? columns[4],
         className,
       )}
     >
-      <div className="flex flex-1 items-start justify-between gap-3 p-4 sm:p-5">
-        <div className="min-w-0">
-          {/* Tighter tracking on a phone, and `break-words` as a last
-              resort. In a two-up grid at 375px the card is about 172px wide,
-              and a single long word - "APPOINTMENTS" - has nowhere to wrap. */}
-          <p className="text-label-sm font-semibold uppercase tracking-wide text-muted break-words sm:tracking-wider">
-            {label}
-          </p>
-          <p className="mt-2 flex flex-wrap items-baseline gap-1.5">
-            <span
-              className="text-headline-lg font-bold text-heading"
-              data-numeric
-            >
-              {value}
-            </span>
-            {unit ? (
-              <span className="text-sm font-medium text-muted">{unit}</span>
-            ) : null}
-          </p>
-          {trend && TrendIcon ? (
-            <p
-              className={cn(
-                'mt-1 flex items-center gap-1 text-sm font-medium',
-                trendClasses[trend.intent ?? 'neutral'],
-              )}
-            >
-              <TrendIcon className="size-4 shrink-0" aria-hidden="true" />
-              {trend.label}
-            </p>
-          ) : null}
-        </div>
-
-        {Icon ? (
-          // Hidden on the narrowest screens. The tile is decoration - it is
-          // already `aria-hidden` - and beside a 172px card it was taking 52px
-          // from the label, which is what forced "APPOINTMENTS" to break
-          // mid-word. Decoration yields to legibility.
-          <span
-            aria-hidden="true"
-            className="hidden size-10 shrink-0 items-center justify-center rounded-[var(--radius-md)] bg-surface-raised text-brand-700 sm:flex"
+      {items.map((item, index) => {
+        const TrendIcon = item.trend ? trendIcon[item.trend.direction] : null
+        const isLast = index === items.length - 1
+        return (
+          <div
+            key={item.label}
+            className={cn(
+              'flex min-w-0 flex-col bg-surface px-4 py-3.5 sm:px-5 sm:py-4',
+              // An odd count on a phone would leave a hole showing the
+              // hairline colour; the last item takes the full row instead.
+              isOddOnPhone && isLast && 'max-sm:col-span-2',
+            )}
           >
-            <Icon className="size-5" />
-          </span>
-        ) : null}
-      </div>
-
-      {footer ? (
-        <div className="border-t border-[var(--color-border)] bg-surface-sunken px-4 py-3 text-sm text-muted sm:px-5">
-          {footer}
-        </div>
-      ) : null}
-    </div>
+            <dt className="text-sm text-muted">{item.label}</dt>
+            <dd className="mt-1 flex flex-wrap items-baseline gap-x-1.5">
+              <span
+                className="text-headline-lg font-semibold text-heading"
+                data-numeric
+              >
+                {item.value}
+              </span>
+              {item.unit ? (
+                <span className="text-sm text-muted">{item.unit}</span>
+              ) : null}
+            </dd>
+            {item.trend && TrendIcon ? (
+              <dd
+                className={cn(
+                  'mt-0.5 flex items-center gap-1 text-sm font-medium',
+                  trendClasses[item.trend.intent ?? 'neutral'],
+                )}
+              >
+                <TrendIcon className="size-4 shrink-0" aria-hidden="true" />
+                {item.trend.label}
+              </dd>
+            ) : null}
+            {item.detail ? (
+              <dd className="mt-0.5 text-sm text-muted">{item.detail}</dd>
+            ) : null}
+          </div>
+        )
+      })}
+    </dl>
   )
 }
