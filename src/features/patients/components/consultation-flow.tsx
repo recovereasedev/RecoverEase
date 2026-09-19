@@ -1,4 +1,4 @@
-import { ArrowRight, Check, ClipboardList, Pencil, Pill, Target } from 'lucide-react'
+import { ArrowRight, Check, Pencil, Pill } from 'lucide-react'
 import { useState } from 'react'
 
 import { Button } from '@/components/ui/button'
@@ -74,7 +74,6 @@ export function ConsultationFlow({
     <div className="space-y-5">
       <Card>
         <CardHeader
-          icon={ClipboardList}
           title={`Consultation with ${patientName}`}
           description="Each step is saved as you go. You can leave at any point and carry on later from this record."
           action={
@@ -138,7 +137,6 @@ export function ConsultationFlow({
       {step === 'plan' || (step === 'goals' && isEditingPlan) ? (
         <Card>
           <CardHeader
-            icon={ClipboardList}
             title={
               plan && isEditingPlan ? 'Edit treatment plan' : 'Treatment plan'
             }
@@ -169,7 +167,6 @@ export function ConsultationFlow({
       {step === 'goals' && plan && !isEditingPlan ? (
         <Card>
           <CardHeader
-            icon={Target}
             title="Goals"
             description={`Added to “${plan.treatment_plan_title}”. Add as many as the plan needs.`}
             action={
@@ -228,7 +225,6 @@ export function ConsultationFlow({
       {step === 'medication' ? (
         <Card>
           <CardHeader
-            icon={Pill}
             title="Medication"
             description="Issue the prescription and set when each dose is taken."
           />
@@ -294,7 +290,6 @@ export function ConsultationFlow({
       {step === 'review' ? (
         <Card>
           <CardHeader
-            icon={ClipboardList}
             title="Review"
             description="Everything below is already saved to the patient's record."
           />

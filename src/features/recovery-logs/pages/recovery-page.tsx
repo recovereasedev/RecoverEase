@@ -1,4 +1,4 @@
-import { Flame, LineChart, NotebookPen, ScrollText } from 'lucide-react'
+import { Flame } from 'lucide-react'
 
 import { LoadingState, StateView } from '@/components/feedback/state-view'
 import { PageHeader } from '@/components/layout/page-header'
@@ -42,7 +42,6 @@ export function RecoveryPage() {
   return (
     <>
       <PageHeader
-        eyebrow="Your journal"
         title="My recovery"
         description="Record how each day goes. Your doctor sees these entries."
       />
@@ -52,7 +51,6 @@ export function RecoveryPage() {
           {/* --- Today's entry ------------------------------------------ */}
           <Card>
             <CardHeader
-              icon={NotebookPen}
               title={todaysLog ? 'Edit today’s entry' : 'Log today'}
               description={formatDateRelative(new Date())}
             />
@@ -82,7 +80,6 @@ export function RecoveryPage() {
           {/* --- Journal ------------------------------------------------- */}
           <Card>
             <CardHeader
-              icon={ScrollText}
               title="Your journal"
               description="Everything you have recorded, most recent first."
             />
@@ -163,7 +160,7 @@ export function RecoveryPage() {
           </Card>
 
           <Card>
-            <CardHeader icon={LineChart} title="How you have felt" as="h2" />
+            <CardHeader title="How you have felt" as="h2" />
             <CardBody>
               <MoodTrend logs={logsQuery.data ?? []} />
             </CardBody>

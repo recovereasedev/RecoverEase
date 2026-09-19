@@ -3,7 +3,6 @@ import {
   ArrowRight,
   CalendarDays,
   MessageCircle,
-  Settings,
   ShieldCheck,
   Stethoscope,
   Users,
@@ -47,7 +46,6 @@ export function AdminDashboard() {
   return (
     <>
       <PageHeader
-        eyebrow="Administration"
         title="System overview"
         description="Accounts, activity and configuration."
       />
@@ -98,7 +96,6 @@ export function AdminDashboard() {
             {/* --- Chatbot usage — module 8.6 --------------------------- */}
             <Card>
               <CardHeader
-                icon={MessageCircle}
                 title="Guidance chatbot"
                 description="Usage over the last 30 days."
               />
@@ -154,7 +151,7 @@ export function AdminDashboard() {
 
             {/* --- Shortcuts ---------------------------------------------- */}
             <Card>
-              <CardHeader icon={Settings} title="Administration" />
+              <CardHeader title="Administration" />
               <CardBody className="space-y-2">
                 {[
                   { to: '/admin/doctors', label: 'Manage doctor accounts' },

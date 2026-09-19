@@ -88,7 +88,6 @@ export function AuditLogPage() {
   return (
     <>
       <PageHeader
-        eyebrow="Security"
         title="Audit log"
         description="A record of security-sensitive changes across the system."
       />

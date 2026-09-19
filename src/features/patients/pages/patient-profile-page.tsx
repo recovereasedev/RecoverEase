@@ -1,4 +1,4 @@
-import { BellRing, IdCard, Stethoscope } from 'lucide-react'
+import { BellRing } from 'lucide-react'
 import { useState } from 'react'
 
 import { FormError } from '@/components/feedback/form-error'
@@ -74,7 +74,6 @@ export function PatientProfilePage() {
   return (
     <>
       <PageHeader
-        eyebrow="Your account"
         title="My profile"
         description="Your details and how you would like to be reminded."
       />
@@ -83,7 +82,6 @@ export function PatientProfilePage() {
         <div className="lg:col-span-2">
           <Card>
             <CardHeader
-              icon={IdCard}
               title="Contact details"
               description="Keep these current so your clinic can reach you."
             />
@@ -189,7 +187,7 @@ export function PatientProfilePage() {
         {/* --- Read-only record ------------------------------------------- */}
         <div className="space-y-5">
           <Card>
-            <CardHeader icon={IdCard} title="Your record" as="h2" />
+            <CardHeader title="Your record" as="h2" />
             <CardBody>
               <dl className="space-y-3 text-sm">
                 <div>
@@ -229,7 +227,7 @@ export function PatientProfilePage() {
           </Card>
 
           <Card>
-            <CardHeader icon={Stethoscope} title="Your doctor" as="h2" />
+            <CardHeader title="Your doctor" as="h2" />
             <CardBody>
               {doctorQuery.isPending ? (
                 <p className="text-sm text-muted">Loading…</p>

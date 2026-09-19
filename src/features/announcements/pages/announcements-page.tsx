@@ -26,7 +26,6 @@ export function AnnouncementsPage() {
   return (
     <>
       <PageHeader
-        eyebrow="From your clinic"
         title="Announcements"
         description="Notices from your clinic."
       />

@@ -102,7 +102,6 @@ export function PatientDashboard() {
   return (
     <>
       <PageHeader
-        eyebrow="Today"
         title={`${greeting()}, ${firstName}`}
         description="Here is what your recovery asks of you today."
       />
@@ -113,7 +112,6 @@ export function PatientDashboard() {
           {/* Today's medication */}
           <Card>
             <CardHeader
-              icon={Pill}
               title="Today’s medication"
               description="Mark each dose once you have taken it."
               action={
@@ -210,7 +208,6 @@ export function PatientDashboard() {
           {/* Today's recovery log */}
           <Card>
             <CardHeader
-              icon={NotebookPen}
               title="Today’s recovery entry"
               description="A short note each day is what your doctor reviews before your next appointment."
             />
@@ -239,7 +236,6 @@ export function PatientDashboard() {
           {/* Next appointment */}
           <Card>
             <CardHeader
-              icon={CalendarDays}
               title="Next appointment"
               action={
                 <Link

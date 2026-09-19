@@ -81,6 +81,45 @@ export function EmptyState({
 }
 
 /**
+ * The compact empty state (RecoverEase 2.0): one quiet line inside the
+ * section it belongs to, instead of a 200px panel with a glyph in a circle
+ * announcing that a list is empty. Use `EmptyState` only where the empty
+ * screen is the whole page, and the next step needs explaining.
+ */
+export function InlineEmpty({
+  icon: Icon,
+  children,
+  action,
+  className,
+}: {
+  icon?: LucideIcon
+  children: ReactNode
+  /** A link or button that fills the empty list: "Book a follow-up". */
+  action?: ReactNode
+  className?: string
+}) {
+  return (
+    <div
+      className={cn(
+        'flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-4 text-sm text-muted sm:px-5',
+        className,
+      )}
+    >
+      <p className="flex min-w-0 flex-1 items-start gap-2">
+        {Icon ? (
+          <Icon
+            className="mt-0.5 size-4 shrink-0 text-neutral-500"
+            aria-hidden="true"
+          />
+        ) : null}
+        <span>{children}</span>
+      </p>
+      {action ? <div className="shrink-0">{action}</div> : null}
+    </div>
+  )
+}
+
+/**
  * Turns an unknown thrown value into something a person can act on.
  *
  * Raw Postgres and PostgREST messages are not user-facing copy: "new row

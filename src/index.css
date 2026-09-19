@@ -2,8 +2,14 @@
    data-heavy clinical screens. It is bundled rather than pulled from a font
    CDN: a patient portal should not send every visitor's IP and referrer to a
    third party on page load, and a bundled font has no external failure mode.
-   Subsets are unicode-range gated, so an English session fetches one file. */
-@import '@fontsource-variable/inter/wght.css';
+   Subsets are unicode-range gated, so an English session fetches one file.
+
+   The optical-size build (RecoverEase 2.0). Same family, same name, with
+   Inter 4's `opsz` axis: body sizes keep the open text cut, and titles move
+   to the tighter display cut on their own as they grow, through
+   `font-optical-sizing: auto`. That is the difference between a heading set
+   in a text face and a heading set in a heading face, for 25KB. */
+@import '@fontsource-variable/inter/opsz.css';
 @import 'tailwindcss';
 
 /* ===========================================================================
@@ -41,6 +47,33 @@
     ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas,
     'Liberation Mono', monospace;
 
+  /* RecoverEase 2.0 roles. One size per job, named by the job:
+
+       display     56/60  landing hero only
+       display-sm  48/52  landing hero on a phone, landing section leads
+       title       30/36  the page title, one per screen
+       headline-md 20/28  a section of a page
+       body-md     16/24  body, the floor for anything a patient reads
+       body-sm     14/20  dense metadata and tables
+       label-sm    12/16  the smallest text anywhere
+
+     Hierarchy comes from these steps plus weight, not from colour or boxes,
+     which is what lets sections drop their containers. */
+  --text-display: 3.5rem; /* 56px */
+  --text-display--line-height: 3.75rem;
+  --text-display--letter-spacing: -0.03em;
+  --text-display--font-weight: 700;
+
+  --text-display-sm: 3rem; /* 48px */
+  --text-display-sm--line-height: 3.25rem;
+  --text-display-sm--letter-spacing: -0.025em;
+  --text-display-sm--font-weight: 700;
+
+  --text-title: 1.875rem; /* 30px */
+  --text-title--line-height: 2.25rem;
+  --text-title--letter-spacing: -0.02em;
+  --text-title--font-weight: 600;
+
   /* The design system's scale, verbatim. A "strong" hierarchy - large
      contrast between headings and body - is what lets a clinician scan a
      record instead of reading it. */
@@ -56,6 +89,7 @@
 
   --text-headline-md: 1.25rem; /* 20px */
   --text-headline-md--line-height: 1.75rem;
+  --text-headline-md--letter-spacing: -0.01em;
   --text-headline-md--font-weight: 600;
 
   --text-body-lg: 1.125rem; /* 18px */
@@ -188,6 +222,28 @@
   --color-inverse-surface: #263143;
   --color-inverse-on-surface: #ecf1ff; /* 11.60:1 on inverse-surface */
 
+  /* ---- Role accent (RecoverEase 2.0) -----------------------------------
+     One accent per portal, set by `data-role` on the app shell (see the base
+     layer below): teal for the patient, brand blue for the clinician, slate
+     for administration. It marks where you are - the active navigation item,
+     the selected tab, the shell's context line - and nothing else. Surfaces
+     never take it, so it cannot compete with the status colours. These
+     defaults are the clinician's, which is also right for public pages.
+
+     Contrast, measured: every `role` text step on white and on its own
+     `role-soft` background clears 6:1 (accent-700 6.43/6.0, brand-700
+     9.39/8.4, neutral-800 11.7/11.0). */
+  --color-role: var(--color-brand-700);
+  --color-role-strong: var(--color-brand-800);
+  --color-role-soft: var(--color-brand-50);
+
+  /* ---- Section rhythm (RecoverEase 2.0) --------------------------------
+     The gap between sections of a page: 24px on a phone, 40px on a desktop.
+     Twice or more the gap inside a group, so space alone can say where one
+     group ends - which is what lets a section drop its card. */
+  --spacing-section: 1.5rem;
+  --spacing-section-lg: 2.5rem;
+
   /* ---- Radius -----------------------------------------------------------
      8px base: "softens the institutional feel of healthcare software while
      staying professional". Cards step up to 16px so a container boundary
@@ -243,7 +299,29 @@
     font-family: var(--font-sans);
     font-size: 1rem; /* 16px floor for body text */
     line-height: 1.5;
+    /* The browser default, stated: large text picks up Inter's display cut. */
+    font-optical-sizing: auto;
     -webkit-font-smoothing: antialiased;
+  }
+
+  /* The role accent, per portal. Declared on the shell so every descendant
+     resolves `var(--color-role)` to its own portal's hue. */
+  [data-role='patient'] {
+    --color-role: var(--color-accent-700);
+    --color-role-strong: var(--color-accent-800);
+    --color-role-soft: var(--color-accent-50);
+  }
+
+  [data-role='doctor'] {
+    --color-role: var(--color-brand-700);
+    --color-role-strong: var(--color-brand-800);
+    --color-role-soft: var(--color-brand-50);
+  }
+
+  [data-role='admin'] {
+    --color-role: var(--color-neutral-800);
+    --color-role-strong: var(--color-neutral-900);
+    --color-role-soft: var(--color-neutral-100);
   }
 
   h1,

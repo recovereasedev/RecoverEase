@@ -1,4 +1,5 @@
-import { useId, useRef, type ReactNode } from 'react'
+import { ChevronRight } from 'lucide-react'
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 
 import { cn } from '@/lib/utils'
 
@@ -14,6 +15,17 @@ export type TabDefinition<T extends string> = {
  * Only the selected tab is a tab stop, and arrow keys move between them.
  * Making every tab tabbable is the common shortcut and it forces a keyboard
  * user to walk through every tab to reach the panel below.
+ *
+ * RecoverEase 2.0 - nothing hides past an edge:
+ *
+ * - More than four tabs on a phone become a three-column segmented grid. At
+ *   390px a scrolling row showed four of the patient record's six tabs and
+ *   gave no sign the other two existed; Notes and Chat - where a flagged
+ *   conversation is read - were reachable only by guessing to swipe. Two rows
+ *   of three put every destination on screen, each a 44px target.
+ * - Otherwise the row scrolls, and says so: a fade and a chevron sit on
+ *   whichever edge has more tabs behind it, and the selected tab is kept in
+ *   view as it changes.
  */
 export function Tabs<T extends string>({
   tabs,
@@ -28,6 +40,53 @@ export function Tabs<T extends string>({
 }) {
   const baseId = useId()
   const listRef = useRef<HTMLDivElement>(null)
+  const [overflow, setOverflow] = useState({ start: false, end: false })
+  const isGridOnPhone = tabs.length > 4
+
+  // Which edges have tabs hidden behind them. Measured from the observer's
+  // callback - which runs once on observe and again on every resize - and on
+  // scroll, so the cue always describes what is actually off screen.
+  useEffect(() => {
+    const list = listRef.current
+    if (!list) return
+    const measure = () => {
+      const hidden = list.scrollWidth - list.clientWidth
+      setOverflow({
+        start: list.scrollLeft > 1,
+        end: hidden > 1 && list.scrollLeft < hidden - 1,
+      })
+    }
+    // Where ResizeObserver is missing (older browsers, and jsdom) the cue
+    // falls back to scroll and window resizes: an enhancement, never a
+    // requirement for reaching a tab.
+    const observer =
+      typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure)
+    observer?.observe(list)
+    list.addEventListener('scroll', measure, { passive: true })
+    window.addEventListener('resize', measure)
+    return () => {
+      observer?.disconnect()
+      list.removeEventListener('scroll', measure)
+      window.removeEventListener('resize', measure)
+    }
+  }, [])
+
+  // Keep the selected tab inside the visible part of a scrolling row. Written
+  // against scrollLeft rather than scrollIntoView, which would also scroll
+  // the page vertically.
+  useEffect(() => {
+    const list = listRef.current
+    const selected = list?.querySelector<HTMLElement>('[aria-selected="true"]')
+    if (!list || !selected || list.scrollWidth <= list.clientWidth) return
+    const listBox = list.getBoundingClientRect()
+    const tabBox = selected.getBoundingClientRect()
+    const margin = 32
+    if (tabBox.right > listBox.right - margin) {
+      list.scrollLeft += tabBox.right - listBox.right + margin
+    } else if (tabBox.left < listBox.left + margin) {
+      list.scrollLeft -= listBox.left + margin - tabBox.left
+    }
+  }, [value])
 
   const onKeyDown = (event: React.KeyboardEvent) => {
     const currentIndex = tabs.findIndex((tab) => tab.id === value)
@@ -45,11 +104,9 @@ export function Tabs<T extends string>({
     }
 
     if (nextIndex === null) return
-
     event.preventDefault()
     const nextTab = tabs[nextIndex]
     if (!nextTab) return
-
     onChange(nextTab.id)
     listRef.current
       ?.querySelector<HTMLButtonElement>(`#${CSS.escape(`${baseId}-tab-${nextTab.id}`)}`)
@@ -58,46 +115,81 @@ export function Tabs<T extends string>({
 
   return (
     <div>
-      <div
-        ref={listRef}
-        role="tablist"
-        onKeyDown={onKeyDown}
-        // Scrollable rather than wrapping, so a long tab list on a phone stays
-        // one row instead of pushing the panel off screen. Controls, so never
-        // on paper: a printout is the panel's content alone.
-        className="-mx-4 flex gap-1 overflow-x-auto border-b border-[var(--color-border)] px-4 sm:mx-0 sm:px-0 print:hidden"
-      >
-        {tabs.map((tab) => {
-          const isSelected = tab.id === value
-          return (
-            <button
-              key={tab.id}
-              id={`${baseId}-tab-${tab.id}`}
-              role="tab"
-              type="button"
-              aria-selected={isSelected}
-              aria-controls={`${baseId}-panel-${tab.id}`}
-              tabIndex={isSelected ? 0 : -1}
-              onClick={() => onChange(tab.id)}
-              className={cn(
-                'shrink-0 whitespace-nowrap border-b-2 px-3 py-3 text-sm font-medium transition-colors sm:py-2.5',
-                isSelected
-                  ? 'border-brand-600 text-brand-700'
-                  : 'border-transparent text-muted hover:text-heading',
-              )}
-            >
-              {tab.label}
-              {typeof tab.count === 'number' ? (
-                <span
-                  className="ml-1.5 rounded-full bg-neutral-100 px-1.5 py-0.5 text-xs text-neutral-600"
-                  data-numeric
-                >
-                  {tab.count}
-                </span>
-              ) : null}
-            </button>
-          )
-        })}
+      <div className="relative print:hidden">
+        <div
+          ref={listRef}
+          role="tablist"
+          onKeyDown={onKeyDown}
+          // Controls, so never on paper: a printout is the panel's content
+          // alone.
+          className={cn(
+            'flex gap-1 overflow-x-auto border-b border-[var(--color-border)] [scrollbar-width:none]',
+            isGridOnPhone
+              ? 'max-sm:grid max-sm:grid-cols-3 max-sm:overflow-visible max-sm:rounded-[var(--radius-lg)] max-sm:border-b-0 max-sm:bg-surface-sunken max-sm:p-1'
+              : '-mx-4 px-4 sm:mx-0 sm:px-0',
+          )}
+        >
+          {tabs.map((tab) => {
+            const isSelected = tab.id === value
+            return (
+              <button
+                key={tab.id}
+                id={`${baseId}-tab-${tab.id}`}
+                role="tab"
+                type="button"
+                aria-selected={isSelected}
+                aria-controls={`${baseId}-panel-${tab.id}`}
+                tabIndex={isSelected ? 0 : -1}
+                onClick={() => onChange(tab.id)}
+                className={cn(
+                  'shrink-0 whitespace-nowrap border-b-2 px-3 py-3 text-sm font-medium transition-colors duration-[var(--duration-fast)] sm:py-2.5',
+                  isSelected
+                    ? 'border-[var(--color-role)] font-semibold text-role-strong'
+                    : 'border-transparent text-muted hover:text-heading',
+                  isGridOnPhone &&
+                    cn(
+                      'max-sm:min-h-11 max-sm:rounded-[var(--radius-md)] max-sm:border-b-0 max-sm:px-2 max-sm:py-2',
+                      isSelected &&
+                        'max-sm:bg-surface max-sm:shadow-[var(--shadow-sm)]',
+                    ),
+                )}
+              >
+                {tab.label}
+                {typeof tab.count === 'number' ? (
+                  <span
+                    className="ml-1.5 rounded-full bg-neutral-100 px-1.5 py-0.5 text-xs text-neutral-600"
+                    data-numeric
+                  >
+                    {tab.count}
+                  </span>
+                ) : null}
+              </button>
+            )
+          })}
+        </div>
+
+        {/* The overflow cue. Decorative: every tab is still in the tab
+            order and announced, so this only helps the eye find them. */}
+        {overflow.start ? (
+          <span
+            aria-hidden="true"
+            className={cn(
+              'pointer-events-none absolute inset-y-0 left-0 w-10 bg-gradient-to-r from-canvas to-transparent',
+              isGridOnPhone ? 'max-sm:hidden' : '-left-4 sm:left-0',
+            )}
+          />
+        ) : null}
+        {overflow.end ? (
+          <span
+            aria-hidden="true"
+            className={cn(
+              'pointer-events-none absolute inset-y-0 right-0 flex w-12 items-center justify-end bg-gradient-to-l from-canvas from-40% to-transparent',
+              isGridOnPhone ? 'max-sm:hidden' : '-right-4 pr-2 sm:right-0 sm:pr-0',
+            )}
+          >
+            <ChevronRight className="size-4 text-muted" />
+          </span>
+        ) : null}
       </div>
 
       <div

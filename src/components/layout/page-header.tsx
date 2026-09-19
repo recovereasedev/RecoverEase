@@ -2,7 +2,6 @@ import { ChevronRight } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 
-import { Eyebrow } from '@/components/ui/section-heading'
 import { cn } from '@/lib/utils'
 
 export type Breadcrumb = {
@@ -13,10 +12,8 @@ export type Breadcrumb = {
 export type PageHeaderProps = {
   title: string
   description?: string
-  /** The small all-caps label above the title. */
-  eyebrow?: string
   /**
-   * Sits beside the eyebrow: a status badge, a count, a date range. Facts
+   * Sits above the title: a status badge, a count, a date range. Facts
    * about what you are looking at, not controls.
    */
   meta?: ReactNode
@@ -38,15 +35,18 @@ export type PageHeaderProps = {
  * the heading hierarchy predictable for screen reader users navigating by
  * headings — and stops each page inventing its own title styling.
  *
- * The title is set in brand blue rather than the standard heading colour.
- * That is the design system's device for separating "the name of this page"
- * from "the name of a section within it", and it is why section headings can
- * stay at a smaller size without the page losing its structure.
+ * RecoverEase 2.0: the title is set by size and weight alone - `title`
+ * (30/36 semibold, Inter's display cut) against the 20px section heading - in
+ * the heading colour. Brand blue is kept for what can be acted on, so a page
+ * no longer opens with a blue word competing with its own primary button.
+ *
+ * There is no eyebrow. The small all-caps line above every title restated the
+ * title ("YOUR MEDICATION" over "Medication") and pushed each page's content
+ * down by a row; breadcrumbs and the navigation already say where you are.
  */
 export function PageHeader({
   title,
   description,
-  eyebrow,
   meta,
   breadcrumbs,
   actions,
@@ -94,19 +94,18 @@ export function PageHeader({
 
       <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-4">
         <div className="min-w-0 flex-1">
-          {eyebrow || meta ? (
-            <div className="mb-1.5 flex flex-wrap items-center gap-x-3 gap-y-1.5">
-              {eyebrow ? <Eyebrow>{eyebrow}</Eyebrow> : null}
+          {meta ? (
+            <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
               {meta}
             </div>
           ) : null}
 
-          <h1 className="text-headline-lg text-brand-800 sm:text-headline-xl">
+          <h1 className="text-headline-lg text-heading sm:text-title">
             {title}
           </h1>
 
           {description ? (
-            <p className="mt-2 max-w-2xl text-body-md text-muted">
+            <p className="mt-1.5 max-w-2xl text-body-md text-muted">
               {description}
             </p>
           ) : null}

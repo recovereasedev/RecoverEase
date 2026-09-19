@@ -1,4 +1,4 @@
-import { CalendarClock, CalendarPlus, CalendarX, History, Inbox } from 'lucide-react'
+import { CalendarPlus, CalendarX } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 
@@ -88,7 +88,6 @@ export function DoctorAppointmentsPage() {
   return (
     <>
       <PageHeader
-        eyebrow="Your clinic"
         title="Appointments"
         description="Your clinic schedule and reschedule requests."
         actions={
@@ -152,7 +151,6 @@ export function DoctorAppointmentsPage() {
         {/* --- Pending requests ------------------------------------------ */}
         <Card>
           <CardHeader
-            icon={Inbox}
             title="Reschedule requests"
             description="Approving moves the appointment automatically."
           />
@@ -219,7 +217,7 @@ export function DoctorAppointmentsPage() {
 
         {/* --- Upcoming --------------------------------------------------- */}
         <Card>
-          <CardHeader icon={CalendarClock} title="Upcoming appointments" />
+          <CardHeader title="Upcoming appointments" />
           <CardBody className="p-0">
             <StateView
               isPending={appointmentsQuery.isPending}
@@ -306,7 +304,7 @@ export function DoctorAppointmentsPage() {
 
         {/* --- History ----------------------------------------------------- */}
         <Card>
-          <CardHeader icon={History} title="Past appointments" />
+          <CardHeader title="Past appointments" />
           <CardBody className="p-0">
             {past.length === 0 ? (
               <p className="px-4 py-8 text-center text-sm text-muted sm:px-5">

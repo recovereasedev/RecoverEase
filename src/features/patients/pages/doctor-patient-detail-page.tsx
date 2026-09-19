@@ -1,17 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { subDays, startOfToday, endOfToday } from 'date-fns'
 import {
-  Activity,
-  ClipboardList,
   ClipboardPlus,
-  IdCard,
   KeyRound,
-  LineChart,
   NotebookPen,
   Pencil,
   Pill,
   Printer,
-  ScrollText,
   Send,
   Stethoscope,
   Target,
@@ -278,7 +273,7 @@ export function DoctorPatientDetailPage() {
               {tab === 'overview' ? (
                 <div className="grid gap-5 lg:grid-cols-3">
                   <Card className="lg:col-span-2">
-                    <CardHeader icon={IdCard} title="Patient details" />
+                    <CardHeader title="Patient details" />
                     <CardBody>
                       <dl className="grid gap-4 sm:grid-cols-2">
                         <div>
@@ -333,7 +328,6 @@ export function DoctorPatientDetailPage() {
                   <div className="space-y-5 lg:row-span-2">
                     <Card>
                       <CardHeader
-                        icon={Pill}
                         title="Adherence, last 7 days"
                         as="h2"
                       />
@@ -348,7 +342,6 @@ export function DoctorPatientDetailPage() {
 
                     <Card>
                       <CardHeader
-                        icon={LineChart}
                         title="Recovery trend"
                         as="h2"
                       />
@@ -375,7 +368,6 @@ export function DoctorPatientDetailPage() {
               {tab === 'recovery' ? (
                 <Card>
                   <CardHeader
-                    icon={Activity}
                     title="Recovery log"
                     description="Entries the patient has recorded."
                   />
@@ -457,7 +449,6 @@ export function DoctorPatientDetailPage() {
                   empty={
                     <Card>
                       <CardHeader
-                        icon={ClipboardList}
                         title="Treatment plan"
                         description="Nothing has been planned for this patient yet."
                       />
@@ -495,7 +486,6 @@ export function DoctorPatientDetailPage() {
                         return (
                           <Card key={plan.treatment_plan_id}>
                             <CardHeader
-                              icon={ClipboardList}
                               title={plan.treatment_plan_title}
                               description={`${formatDate(plan.treatment_plan_start_date)}${
                                 plan.treatment_plan_end_date
@@ -679,7 +669,6 @@ export function DoctorPatientDetailPage() {
               {tab === 'medication' ? (
                 <Card>
                   <CardHeader
-                    icon={Pill}
                     title="Prescriptions and schedules"
                     description="What this patient has been prescribed."
                     action={
@@ -798,7 +787,6 @@ export function DoctorPatientDetailPage() {
                 <div className="space-y-5">
                   <Card>
                     <CardHeader
-                      icon={NotebookPen}
                       title="Add a note"
                       description="Clinical notes are visible to clinicians only. Patients cannot read them."
                     />
@@ -848,7 +836,7 @@ export function DoctorPatientDetailPage() {
                   </Card>
 
                   <Card>
-                    <CardHeader icon={ScrollText} title="Note history" />
+                    <CardHeader title="Note history" />
                     <CardBody className="p-0">
                       <StateView
                         isPending={notesQuery.isPending}

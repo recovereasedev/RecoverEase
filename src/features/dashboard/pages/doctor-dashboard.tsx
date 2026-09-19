@@ -1,11 +1,5 @@
 import { endOfToday, startOfToday } from 'date-fns'
-import {
-  ArrowRight,
-  CalendarCheck,
-  CalendarClock,
-  Inbox,
-  Users,
-} from 'lucide-react'
+import { ArrowRight, CalendarCheck, Inbox } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
 import { StateView } from '@/components/feedback/state-view'
@@ -77,7 +71,6 @@ export function DoctorDashboard() {
   return (
     <>
       <PageHeader
-        eyebrow="Today"
         title={`Good day, ${doctor?.doc_first_name ?? ''}`}
         description="What needs your attention today."
       />
@@ -87,7 +80,6 @@ export function DoctorDashboard() {
           {/* --- Pending decisions — modules 6.3, 6.4 -------------------- */}
           <Card>
             <CardHeader
-              icon={Inbox}
               title="Reschedule requests"
               description="Patients waiting on your decision."
             />
@@ -168,7 +160,6 @@ export function DoctorDashboard() {
           {/* --- Today's clinic --------------------------------------------- */}
           <Card>
             <CardHeader
-              icon={CalendarClock}
               title="Today’s appointments"
               action={
                 <Link
@@ -249,7 +240,6 @@ export function DoctorDashboard() {
         <div className="space-y-5">
           <Card>
             <CardHeader
-              icon={Users}
               title="Your patients"
               as="h2"
               action={

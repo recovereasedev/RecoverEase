@@ -23,7 +23,7 @@ import { cn } from '@/lib/utils'
 const buttonVariants = cva(
   [
     'inline-flex items-center justify-center gap-2 whitespace-nowrap',
-    'rounded-[var(--radius-md)] font-medium',
+    'rounded-[var(--radius-md)] font-semibold',
     'transition-colors duration-[var(--duration-fast)]',
     'disabled:pointer-events-none disabled:opacity-50',
     '[&_svg]:shrink-0',

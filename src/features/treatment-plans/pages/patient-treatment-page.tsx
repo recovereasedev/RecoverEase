@@ -33,7 +33,6 @@ export function PatientTreatmentPage() {
   return (
     <>
       <PageHeader
-        eyebrow="Your programme"
         title="Treatment plan"
         description="The programme your doctor has set, and the goals along the way."
         actions={
@@ -89,7 +88,6 @@ export function PatientTreatmentPage() {
                         ? ` — ${formatDate(plan.treatment_plan_end_date)}`
                         : ' onwards'
                     }`}
-                    icon={ClipboardList}
                     action={
                       <StatusBadge
                         status={

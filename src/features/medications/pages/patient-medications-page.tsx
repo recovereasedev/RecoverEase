@@ -1,5 +1,5 @@
 import { addDays, endOfToday, startOfToday, subDays } from 'date-fns'
-import { CalendarClock, ClipboardList, Pill, Printer } from 'lucide-react'
+import { Pill, Printer } from 'lucide-react'
 
 import { StateView } from '@/components/feedback/state-view'
 import { PageHeader } from '@/components/layout/page-header'
@@ -87,7 +87,6 @@ export function PatientMedicationsPage() {
 
       <PageHeader
         className="print:hidden"
-        eyebrow="Your medication"
         title="Medication"
         description="What is due, what you have taken, and what your doctor has prescribed."
         actions={
@@ -107,7 +106,6 @@ export function PatientMedicationsPage() {
           {/* --- Today --------------------------------------------------- */}
           <Card className="print:hidden">
             <CardHeader
-              icon={Pill}
               title="Due today"
               description="Mark each dose once you have taken it."
             />
@@ -215,7 +213,6 @@ export function PatientMedicationsPage() {
           {/* --- Coming up ------------------------------------------------ */}
           <Card className="print:hidden">
             <CardHeader
-              icon={CalendarClock}
               title="Coming up"
               description="The next few days, so nothing is a surprise."
             />
@@ -263,7 +260,6 @@ export function PatientMedicationsPage() {
           {/* --- Prescriptions -------------------------------------------- */}
           <Card>
             <CardHeader
-              icon={ClipboardList}
               title="Your prescriptions"
               description="Everything your doctor has prescribed."
             />

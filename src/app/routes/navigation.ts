@@ -51,7 +51,14 @@ const PATIENT_NAV: NavSection[] = [
   {
     items: [
       { label: 'Dashboard', to: '/patient', icon: LayoutDashboard },
-      { label: 'My recovery', to: '/patient/recovery', icon: Activity },
+      {
+        label: 'My recovery',
+        // 12px is the floor for any text (RecoverEase 2.0), and at 12px
+        // "My recovery" no longer fits a fifth of a 375px bar.
+        shortLabel: 'Recovery',
+        to: '/patient/recovery',
+        icon: Activity,
+      },
       {
         label: 'Treatment plan',
         shortLabel: 'Treatment',
@@ -59,9 +66,19 @@ const PATIENT_NAV: NavSection[] = [
         icon: ClipboardList,
         matchPrefix: true,
       },
-      { label: 'Medications', to: '/patient/medications', icon: Pill },
+      // Short labels for the phone's bar, measured: at the 12px floor,
+      // "Appointments" is 81px and "Medications" 70px, and a fifth of a
+      // 390px bar is 78px - 64px on a 320px phone. Both spilled past the
+      // screen edge.
+      {
+        label: 'Medications',
+        shortLabel: 'Medicine',
+        to: '/patient/medications',
+        icon: Pill,
+      },
       {
         label: 'Appointments',
+        shortLabel: 'Visits',
         to: '/patient/appointments',
         icon: CalendarDays,
       },
@@ -94,6 +111,9 @@ const DOCTOR_NAV: NavSection[] = [
       },
       {
         label: 'Appointments',
+        // Measured at 12px, "Appointments" is wider than a quarter of a
+        // 320px bar; to a clinician this page is their schedule.
+        shortLabel: 'Schedule',
         to: '/doctor/appointments',
         icon: CalendarDays,
       },
@@ -120,7 +140,13 @@ const ADMIN_NAV: NavSection[] = [
         icon: Stethoscope,
         matchPrefix: true,
       },
-      { label: 'Announcements', to: '/admin/announcements', icon: Megaphone },
+      {
+        label: 'Announcements',
+        // "Announcements" at 12px overruns a quarter of a 320px bar.
+        shortLabel: 'Notices',
+        to: '/admin/announcements',
+        icon: Megaphone,
+      },
       { label: 'Reports', to: '/admin/reports', icon: FileBarChart },
     ],
   },

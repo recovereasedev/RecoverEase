@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { AlertTriangle, History, MessagesSquare } from 'lucide-react'
+import { AlertTriangle, MessagesSquare } from 'lucide-react'
 import { useState } from 'react'
 
 import { StateView } from '@/components/feedback/state-view'
@@ -84,7 +84,6 @@ export function PatientChatTranscript({
         <div className="grid gap-5 lg:grid-cols-3">
           <Card className="min-w-0 lg:col-span-2">
             <CardHeader
-              icon={MessagesSquare}
               title="Guidance chat"
               description={
                 activeSession
@@ -171,7 +170,7 @@ export function PatientChatTranscript({
           </Card>
 
           <Card className="h-fit">
-            <CardHeader icon={History} title="Conversations" as="h2" />
+            <CardHeader title="Conversations" as="h2" />
             <CardBody className="p-0">
               <ul
                 className="divide-y divide-[var(--color-border)]"

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { FileBarChart, ListChecks, Printer } from 'lucide-react'
+import { FileBarChart, Printer } from 'lucide-react'
 
 import { FormError } from '@/components/feedback/form-error'
 import { ErrorState, StateView } from '@/components/feedback/state-view'
@@ -58,7 +58,6 @@ export function AdminReportsPage() {
   return (
     <>
       <PageHeader
-        eyebrow="Records"
         title="Reports"
         description="System-wide reporting."
         actions={
@@ -97,7 +96,6 @@ export function AdminReportsPage() {
         {/* --- Current figures ------------------------------------------- */}
         <Card>
           <CardHeader
-            icon={FileBarChart}
             title="System summary"
             description={
               stats
@@ -171,7 +169,7 @@ export function AdminReportsPage() {
 
         {/* --- Recently generated — module 9.5 ---------------------------- */}
         <Card>
-          <CardHeader icon={ListChecks} title="Recently generated reports" />
+          <CardHeader title="Recently generated reports" />
           <CardBody className="p-0">
             <StateView
               isPending={reportsQuery.isPending}

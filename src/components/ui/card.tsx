@@ -1,6 +1,5 @@
 import { cva, type VariantProps } from 'class-variance-authority'
 import type { HTMLAttributes, ReactNode } from 'react'
-import type { LucideIcon } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
 
@@ -43,12 +42,6 @@ export function Card({ className, variant, ...props }: CardProps) {
 export type CardHeaderProps = {
   title: ReactNode
   description?: ReactNode
-  /**
-   * A small tonal tile carrying the section's icon. The design system uses it
-   * to anchor a group visually; it is decorative, so it is hidden from
-   * assistive technology and the heading carries the meaning.
-   */
-  icon?: LucideIcon
   /** Rendered on the trailing edge: a button, a link, a filter. */
   action?: ReactNode
   /** Heading level, so a card nested in a section keeps document order sane. */
@@ -56,10 +49,15 @@ export type CardHeaderProps = {
   className?: string
 }
 
+/**
+ * RecoverEase 2.0: a card's title is text, not an icon tile plus text. The
+ * 36px tinted tile sat on every card on every screen - forty-four of them -
+ * so it marked nothing, and gave a one-line card a 70px header. Icons stay
+ * where they carry meaning: statuses, navigation, and actions.
+ */
 export function CardHeader({
   title,
   description,
-  icon: Icon,
   action,
   as: Heading = 'h2',
   className,
@@ -71,23 +69,13 @@ export function CardHeader({
         className,
       )}
     >
-      <div className="flex min-w-0 items-start gap-3">
-        {Icon ? (
-          <span
-            aria-hidden="true"
-            className="flex size-9 shrink-0 items-center justify-center rounded-[var(--radius-md)] bg-surface-raised text-brand-700"
-          >
-            <Icon className="size-5" />
-          </span>
+      <div className="min-w-0">
+        <Heading className="text-base font-semibold text-heading">
+          {title}
+        </Heading>
+        {description ? (
+          <p className="mt-0.5 text-sm text-muted">{description}</p>
         ) : null}
-        <div className="min-w-0">
-          <Heading className="text-base font-semibold text-heading">
-            {title}
-          </Heading>
-          {description ? (
-            <p className="mt-0.5 text-sm text-muted">{description}</p>
-          ) : null}
-        </div>
       </div>
       {action ? <div className="ms-auto shrink-0">{action}</div> : null}
     </div>

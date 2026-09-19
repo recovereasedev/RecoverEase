@@ -13,29 +13,29 @@ export type NoticeTone = 'info' | 'success' | 'warning' | 'danger'
 
 const toneStyles: Record<
   NoticeTone,
-  { container: string; tile: string; title: string; icon: LucideIcon }
+  { container: string; glyph: string; title: string; icon: LucideIcon }
 > = {
   info: {
     container: 'border-info-200 bg-info-50',
-    tile: 'bg-info-100 text-info-800',
+    glyph: 'text-info-700',
     title: 'text-info-800',
     icon: Info,
   },
   success: {
     container: 'border-success-200 bg-success-50',
-    tile: 'bg-success-100 text-success-800',
+    glyph: 'text-success-700',
     title: 'text-success-800',
     icon: CheckCircle2,
   },
   warning: {
     container: 'border-warning-200 bg-warning-50',
-    tile: 'bg-warning-100 text-warning-800',
+    glyph: 'text-warning-700',
     title: 'text-warning-800',
     icon: AlertTriangle,
   },
   danger: {
     container: 'border-danger-200 bg-danger-50',
-    tile: 'bg-danger-100 text-danger-800',
+    glyph: 'text-danger-700',
     title: 'text-danger-800',
     icon: ShieldAlert,
   },
@@ -94,20 +94,18 @@ export function Notice({
       // way to get a message announced twice.
       role={live === 'assertive' ? 'alert' : live === 'polite' ? 'status' : undefined}
       className={cn(
-        'flex flex-wrap items-start gap-3 rounded-[var(--radius-lg)] border p-3 sm:gap-4 sm:p-4',
+        'flex flex-wrap items-start gap-3 rounded-[var(--radius-lg)] border px-4 py-3 sm:py-3.5',
         styles.container,
         className,
       )}
     >
-      <span
+      {/* A glyph in the tone's colour, not a tinted tile inside a tinted
+          box: the container already carries the tone, and a second layer of
+          it only made the notice heavier. */}
+      <Icon
         aria-hidden="true"
-        className={cn(
-          'flex size-8 shrink-0 items-center justify-center rounded-[var(--radius-md)] sm:size-9',
-          styles.tile,
-        )}
-      >
-        <Icon className="size-4 sm:size-5" />
-      </span>
+        className={cn('mt-0.5 size-5 shrink-0', styles.glyph)}
+      />
 
       <div className="min-w-0 flex-1">
         {title ? (

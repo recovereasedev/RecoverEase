@@ -85,7 +85,6 @@ export function AdminAnnouncementsPage() {
   return (
     <>
       <PageHeader
-        eyebrow="Communication"
         title="Announcements"
         description="Notices shown to everyone using RecoverEase."
         actions={
@@ -131,7 +130,6 @@ export function AdminAnnouncementsPage() {
               return (
                 <Card key={announcement.announcement_id}>
                   <CardHeader
-                    icon={Megaphone}
                     title={announcement.announcement_title}
                     description={
                       isPublished

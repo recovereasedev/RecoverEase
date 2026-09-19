@@ -133,7 +133,7 @@ export function PatientChatPage() {
       {/* No subtitle. "Ask about your recovery between appointments" is
           said better, and at more length, by the notice directly below it -
           and on a phone those two lines came out of the conversation. */}
-      <PageHeader eyebrow="Recovery guidance" title="Guidance chat" />
+      <PageHeader title="Guidance chat" />
 
       {/* Stated before the conversation, not buried under it. Standing
           guidance, so it is not announced: it was on the page all along. */}
