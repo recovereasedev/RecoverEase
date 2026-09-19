@@ -953,6 +953,12 @@ export function DoctorPatientDetailPage() {
  * every tab. Every value is one the application already holds; nothing here
  * is derived beyond a count or the most recent date. A flagged conversation
  * is tinted, says so in words, and opens the Chat tab where it is read.
+ *
+ * Laid out by the room each fact needs, measured: a label wants about 160px
+ * and a date about 230px. On a phone the facts are a list, one full-width row
+ * each, with a value's detail beside it - two to a row left 112px at 320px,
+ * and every label wrapped. Three across from `sm`, including a 1024px desktop,
+ * where the sidebar leaves 670px; five across only from `xl`.
  */
 function RecordSummary({
   adherence,
@@ -1000,7 +1006,7 @@ function RecordSummary({
   return (
     <dl
       aria-label="Patient summary"
-      className="mb-6 grid grid-cols-2 gap-px overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-border)] sm:grid-cols-3 lg:mb-8 lg:grid-cols-5 print:hidden"
+      className="mb-6 grid gap-px overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-border)] sm:grid-cols-3 lg:mb-8 xl:grid-cols-5 print:hidden"
     >
       <SummaryItem
         label="Adherence, 7 days"
@@ -1056,8 +1062,10 @@ function RecordSummary({
       />
       <div
         className={cn(
-          // Last on a phone and a tablet, where it takes the full row.
-          'col-span-2 flex min-w-0 flex-col px-4 py-3 sm:col-span-2 lg:col-span-1',
+          // A column at every width, so "Read in Chat" keeps a line - and on
+          // a phone a 44px target - of its own. Takes the rest of the second
+          // row where there are three columns.
+          'flex min-w-0 flex-col px-4 py-3 sm:col-span-2 xl:col-span-1',
           flagged > 0 ? 'bg-warning-50' : 'bg-surface',
         )}
       >
@@ -1110,8 +1118,11 @@ function SummaryItem({
   detail?: string | undefined
 }) {
   return (
-    <div className="flex min-w-0 flex-col bg-surface px-4 py-3">
-      <dt className="text-sm text-muted">{label}</dt>
+    // On a phone, a full-width row: the label on its own line, then the
+    // value with its detail beside it. From `sm`, label, value and detail
+    // each take a line.
+    <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 bg-surface px-4 py-3 sm:flex-col sm:flex-nowrap sm:items-stretch">
+      <dt className="basis-full text-sm text-muted sm:basis-auto">{label}</dt>
       <dd className="mt-0.5 font-semibold text-heading" data-numeric>
         {value}
       </dd>
