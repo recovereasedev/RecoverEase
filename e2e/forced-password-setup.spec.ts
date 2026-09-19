@@ -168,7 +168,7 @@ test.describe('completing the password change', () => {
     await page.getByRole('button', { name: /save and continue/i }).click()
 
     // The doctor's own dashboard, not the gate.
-    await expect(page.getByRole('heading', { name: /good day/i })).toBeVisible()
+    await expect(page.getByRole('heading', { level: 1, name: /^today$/i })).toBeVisible()
     await expect(page.getByRole('heading', { name: GATE_HEADING })).toHaveCount(0)
     expect(callCount()).toBe(1)
 
@@ -178,7 +178,7 @@ test.describe('completing the password change', () => {
     // pre-change state that Auth no longer holds.
     await stub.signInAs(page, { ...DOCTOR_ACCOUNT, mustChangePassword: false })
     await page.reload()
-    await expect(page.getByRole('heading', { name: /good day/i })).toBeVisible()
+    await expect(page.getByRole('heading', { level: 1, name: /^today$/i })).toBeVisible()
     await expect(page.getByRole('heading', { name: GATE_HEADING })).toHaveCount(0)
   })
 
@@ -249,7 +249,7 @@ test.describe('completing the password change', () => {
     await signInAs('doctor')
     await page.goto('/doctor')
 
-    await expect(page.getByRole('heading', { name: /good day/i })).toBeVisible()
+    await expect(page.getByRole('heading', { level: 1, name: /^today$/i })).toBeVisible()
     await expect(page.getByRole('heading', { name: GATE_HEADING })).toHaveCount(0)
   })
 })

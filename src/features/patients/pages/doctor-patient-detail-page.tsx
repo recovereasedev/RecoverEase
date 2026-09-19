@@ -1,6 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { subDays, startOfToday, endOfToday } from 'date-fns'
 import {
+  AlertTriangle,
+  CheckCircle2,
   ClipboardPlus,
   KeyRound,
   NotebookPen,
@@ -18,6 +20,9 @@ import { FormError } from '@/components/feedback/form-error'
 import { StateView } from '@/components/feedback/state-view'
 import { PageHeader } from '@/components/layout/page-header'
 import { StatusBadge } from '@/components/ui/badge'
+import type { Appointment } from '@/features/appointments/api'
+import { useAppointments } from '@/features/appointments/hooks'
+import { fetchChatSessions, type ChatSession } from '@/features/chat/api'
 import { Button } from '@/components/ui/button'
 import { Card, CardBody, CardHeader } from '@/components/ui/card'
 import { Field, Select, Textarea } from '@/components/ui/field'
@@ -30,7 +35,7 @@ import { AdherenceSummary } from '@/features/medications/components/adherence-su
 import { EndMedicationAction } from '@/features/medications/components/end-medication'
 import { MedicationForm } from '@/features/medications/components/medication-form'
 import { PrescriptionPrintHeader } from '@/features/medications/components/prescription-print-header'
-import { summariseAdherence } from '@/features/medications/api'
+import { summariseAdherence, type Adherence } from '@/features/medications/api'
 import { useDoses, useMedicationSchedules } from '@/features/medications/hooks'
 import { NotifyPatient } from '@/features/notifications/components/notify-patient'
 import { ConsultationFlow } from '@/features/patients/components/consultation-flow'
@@ -46,14 +51,17 @@ import {
 } from '@/features/treatment-plans/hooks'
 import {
   summariseGoals,
+  type PlanWithGoals,
   type TreatmentGoalStatus,
 } from '@/features/treatment-plans/api'
+import type { RecoveryLog } from '@/features/recovery-logs/api'
 import { useDocumentTitle } from '@/hooks/use-document-title'
 import { useNow } from '@/hooks/use-now'
 import {
   calculateAge,
   formatDate,
   formatDateRelative,
+  formatDateTime,
   formatScheduleTime,
 } from '@/lib/format'
 import { queryKeys } from '@/lib/query-keys'
@@ -62,7 +70,16 @@ import {
   treatmentGoalStatus,
   treatmentPlanStatus,
 } from '@/lib/status'
-import { fullName } from '@/lib/utils'
+import { cn, fullName } from '@/lib/utils'
+
+// The goal-state icon's colour on the treatment tab: the tone of the goal's
+// own status descriptor, as text colour.
+const GOAL_ICON_TONE: Record<TreatmentGoalStatus, string> = {
+  pending: 'text-neutral-500',
+  in_progress: 'text-info-700',
+  achieved: 'text-success-700',
+  missed: 'text-warning-700',
+}
 
 type TabId =
   | 'overview'
@@ -173,6 +190,17 @@ export function DoctorPatientDetailPage() {
 
   const adherence = weekDoses.data ? summariseAdherence(weekDoses.data) : null
 
+  // The record's summary strip (RecoverEase 2.0). Both are queries the app
+  // already makes: the patient's appointments, and the chat sessions the
+  // Chat tab lists - same function, same cache key, so opening the tab
+  // afterwards costs nothing extra.
+  const appointmentsQuery = useAppointments(patientId)
+  const chatSessionsQuery = useQuery({
+    queryKey: queryKeys.chat.sessionsFor(patientId),
+    queryFn: () => fetchChatSessions(patientId),
+    enabled: Boolean(patientId),
+  })
+
   return (
     <StateView
       isPending={patientQuery.isPending}
@@ -268,69 +296,48 @@ export function DoctorPatientDetailPage() {
               />
             ) : null}
 
+            {/* Clinical status first: the five things a clinician checks
+                before anything else, above every tab. */}
+            <RecordSummary
+              adherence={adherence}
+              logs={logsQuery.data}
+              appointments={appointmentsQuery.data}
+              plans={plansQuery.data}
+              sessions={chatSessionsQuery.data}
+              onOpenChat={() => {
+                setTab('chat')
+                setSearchParams({ tab: 'chat' })
+              }}
+            />
+
             <Tabs tabs={TABS} value={tab} onChange={setTab}>
               {/* --- Overview ------------------------------------------- */}
               {tab === 'overview' ? (
-                <div className="grid gap-5 lg:grid-cols-3">
-                  <Card className="lg:col-span-2">
-                    <CardHeader title="Patient details" />
-                    <CardBody>
-                      <dl className="grid gap-4 sm:grid-cols-2">
-                        <div>
-                          <dt className="text-sm text-muted">Date of birth</dt>
-                          <dd className="font-medium text-heading">
-                            {patient.pat_birth_date
-                              ? formatDate(patient.pat_birth_date)
-                              : 'Not recorded'}
-                          </dd>
-                        </div>
-                        <div>
-                          <dt className="text-sm text-muted">Gender</dt>
-                          <dd className="font-medium text-heading">
-                            {patient.pat_gender ?? 'Not recorded'}
-                          </dd>
-                        </div>
-                        <div>
-                          <dt className="text-sm text-muted">Contact</dt>
-                          <dd className="font-medium text-heading">
-                            {patient.pat_contact_no ?? 'Not recorded'}
-                          </dd>
-                        </div>
-                        <div>
-                          <dt className="text-sm text-muted">Address</dt>
-                          <dd className="font-medium text-heading">
-                            {patient.pat_address ?? 'Not recorded'}
-                          </dd>
-                        </div>
-                        <div>
-                          <dt className="text-sm text-muted">Registered</dt>
-                          <dd className="font-medium text-heading">
-                            {formatDate(patient.pat_created_at)}
-                          </dd>
-                        </div>
-                        <div>
-                          <dt className="text-sm text-muted">
-                            Privacy consent
-                          </dt>
-                          <dd className="font-medium text-heading">
-                            {patient.pat_consent_at
-                              ? formatDate(patient.pat_consent_at)
-                              : 'Not yet given'}
-                          </dd>
-                        </div>
-                      </dl>
-                    </CardBody>
-                  </Card>
-
-                  {/* Both rows of the right-hand column, so the notification
-                      card below sits directly under the patient's details
-                      rather than under whichever column is taller. */}
-                  <div className="space-y-5 lg:row-span-2">
+                <div className="grid gap-section lg:grid-cols-3 lg:gap-8">
+                  <div className="space-y-section lg:col-span-2">
                     <Card>
                       <CardHeader
-                        title="Adherence, last 7 days"
-                        as="h2"
+                        title="Recovery trend"
+                        description="How the patient rated each day."
                       />
+                      <CardBody>
+                        <MoodTrend logs={logsQuery.data ?? []} />
+                      </CardBody>
+                    </Card>
+
+                    {/* --- Notify — module 7.1 --------------------------- */}
+                    <NotifyPatient
+                      patientUserId={patient.user_id}
+                      patientName={fullName(
+                        patient.pat_first_name,
+                        patient.pat_last_name,
+                      )}
+                    />
+                  </div>
+
+                  <div className="space-y-section">
+                    <Card>
+                      <CardHeader title="Adherence, last 7 days" as="h2" />
                       <CardBody>
                         {adherence ? (
                           <AdherenceSummary adherence={adherence} />
@@ -340,26 +347,48 @@ export function DoctorPatientDetailPage() {
                       </CardBody>
                     </Card>
 
+                    {/* Demographics are reference, not status: a compact
+                        panel beside the clinical picture, every field kept. */}
                     <Card>
-                      <CardHeader
-                        title="Recovery trend"
-                        as="h2"
-                      />
+                      <CardHeader title="Patient details" as="h2" />
                       <CardBody>
-                        <MoodTrend logs={logsQuery.data ?? []} />
+                        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2.5 text-sm">
+                          {(
+                            [
+                              [
+                                'Date of birth',
+                                patient.pat_birth_date
+                                  ? formatDate(patient.pat_birth_date)
+                                  : 'Not recorded',
+                              ],
+                              ['Gender', patient.pat_gender ?? 'Not recorded'],
+                              [
+                                'Contact',
+                                patient.pat_contact_no ?? 'Not recorded',
+                              ],
+                              [
+                                'Address',
+                                patient.pat_address ?? 'Not recorded',
+                              ],
+                              ['Registered', formatDate(patient.pat_created_at)],
+                              [
+                                'Privacy consent',
+                                patient.pat_consent_at
+                                  ? formatDate(patient.pat_consent_at)
+                                  : 'Not yet given',
+                              ],
+                            ] as const
+                          ).map(([label, value]) => (
+                            <div key={label} className="contents">
+                              <dt className="text-muted">{label}</dt>
+                              <dd className="min-w-0 font-medium text-heading [overflow-wrap:anywhere]">
+                                {value}
+                              </dd>
+                            </div>
+                          ))}
+                        </dl>
                       </CardBody>
                     </Card>
-                  </div>
-
-                  {/* --- Notify — module 7.1 ----------------------------- */}
-                  <div className="lg:col-span-2">
-                    <NotifyPatient
-                      patientUserId={patient.user_id}
-                      patientName={fullName(
-                        patient.pat_first_name,
-                        patient.pat_last_name,
-                      )}
-                    />
                   </div>
                 </div>
               ) : null}
@@ -559,13 +588,33 @@ export function DoctorPatientDetailPage() {
                                       valueText={`${progress.achieved} of ${progress.total} goals achieved`}
                                     />
                                   </div>
-                                  <ul className="space-y-2">
-                                  {plan.treatment_goal.map((goal) => (
+                                  {/* One divided list, not a bordered box
+                                      per goal inside the card: the rows are
+                                      already grouped by the plan. */}
+                                  <ul className="divide-y divide-[var(--color-border)] border-y border-[var(--color-border)]">
+                                  {plan.treatment_goal.map((goal) => {
+                                    const goalState =
+                                      treatmentGoalStatus[
+                                        goal.treatment_goal_status
+                                      ]
+                                    const GoalIcon = goalState.icon
+                                    return (
                                     <li
                                       key={goal.treatment_goal_id}
-                                      className="flex flex-col gap-2.5 rounded-[var(--radius-md)] border border-[var(--color-border)] px-4 py-3 sm:flex-row sm:items-start sm:justify-between sm:gap-3"
+                                      className="flex flex-col gap-2.5 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
                                     >
-                                      <div className="min-w-0 sm:flex-1">
+                                      <div className="flex min-w-0 gap-3 sm:flex-1">
+                                        {/* The state as an icon; the select
+                                            beside it says it in words, and is
+                                            where it is changed. */}
+                                        <GoalIcon
+                                          className={cn(
+                                            'mt-0.5 size-5 shrink-0',
+                                            GOAL_ICON_TONE[goal.treatment_goal_status],
+                                          )}
+                                          aria-hidden="true"
+                                        />
+                                        <div className="min-w-0">
                                         <p className="text-body">
                                           {goal.treatment_goal_description}
                                         </p>
@@ -577,15 +626,9 @@ export function DoctorPatientDetailPage() {
                                             )}
                                           </p>
                                         ) : null}
+                                        </div>
                                       </div>
                                       <div className="flex items-center gap-2 sm:shrink-0">
-                                        <StatusBadge
-                                          status={
-                                            treatmentGoalStatus[
-                                              goal.treatment_goal_status
-                                            ]
-                                          }
-                                        />
                                         {/* Module 3.3's other half: the
                                             clinician records progress
                                             against the goal they set. */}
@@ -594,7 +637,9 @@ export function DoctorPatientDetailPage() {
                                           className="[&>label]:sr-only"
                                         >
                                           <Select
-                                            className="h-9 w-auto text-sm"
+                                            // 44px on a phone, where it is
+                                            // the only way to record progress.
+                                            className="h-11 w-auto text-sm sm:h-9"
                                             value={goal.treatment_goal_status}
                                             disabled={goalStatus.isPending}
                                             onChange={(event) =>
@@ -621,7 +666,8 @@ export function DoctorPatientDetailPage() {
                                         </Field>
                                       </div>
                                     </li>
-                                  ))}
+                                    )
+                                  })}
                                   </ul>
                                 </>
                               )}
@@ -894,5 +940,186 @@ export function DoctorPatientDetailPage() {
         )
       }}
     </StateView>
+  )
+}
+
+/**
+ * The patient record's summary strip (RecoverEase 2.0).
+ *
+ * The five facts a clinician checks before anything else - how adherence has
+ * been, when the patient last wrote, when they are next seen, how far through
+ * the plan they are, and whether anything has been flagged - in one band at
+ * the top of the record, above the tabs, so they are the first thing read on
+ * every tab. Every value is one the application already holds; nothing here
+ * is derived beyond a count or the most recent date. A flagged conversation
+ * is tinted, says so in words, and opens the Chat tab where it is read.
+ */
+function RecordSummary({
+  adherence,
+  logs,
+  appointments,
+  plans,
+  sessions,
+  onOpenChat,
+}: {
+  adherence: Adherence | null
+  logs: RecoveryLog[] | undefined
+  appointments: Appointment[] | undefined
+  plans: PlanWithGoals[] | undefined
+  sessions: ChatSession[] | undefined
+  onOpenChat: () => void
+}) {
+  const lastLog = logs?.reduce<RecoveryLog | undefined>(
+    (latest, log) =>
+      !latest || log.recovery_log_date > latest.recovery_log_date
+        ? log
+        : latest,
+    undefined,
+  )
+  const nextAppointment = appointments
+    ?.filter(
+      (appointment) =>
+        new Date(appointment.appointment_date) >= new Date() &&
+        appointment.appointment_status !== 'cancelled',
+    )
+    .sort(
+      (a, b) =>
+        new Date(a.appointment_date).getTime() -
+        new Date(b.appointment_date).getTime(),
+    )[0]
+  const activePlan = plans?.find(
+    (plan) => plan.treatment_plan_status === 'active',
+  )
+  const goals = activePlan ? summariseGoals(activePlan.treatment_goal) : null
+  const flagged =
+    sessions?.filter((session) => session.chat_session_has_critical_flag)
+      .length ?? 0
+
+  const loading = <span className="text-muted">Loading…</span>
+
+  return (
+    <dl
+      aria-label="Patient summary"
+      className="mb-6 grid grid-cols-2 gap-px overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-border)] sm:grid-cols-3 lg:mb-8 lg:grid-cols-5 print:hidden"
+    >
+      <SummaryItem
+        label="Adherence, 7 days"
+        value={
+          !adherence
+            ? loading
+            : adherence.rate === null
+              ? 'No doses due'
+              : `${adherence.rate}%`
+        }
+        detail={
+          adherence && adherence.rate !== null
+            ? `${adherence.taken} of ${adherence.resolved} doses taken`
+            : undefined
+        }
+      />
+      <SummaryItem
+        label="Last recovery entry"
+        value={
+          logs === undefined
+            ? loading
+            : lastLog
+              ? formatDateRelative(lastLog.recovery_log_date)
+              : 'None yet'
+        }
+        detail={
+          lastLog?.recovery_log_mood_rating
+            ? `Rated ${lastLog.recovery_log_mood_rating} of 5`
+            : undefined
+        }
+      />
+      <SummaryItem
+        label="Next appointment"
+        value={
+          appointments === undefined
+            ? loading
+            : nextAppointment
+              ? formatDateTime(nextAppointment.appointment_date)
+              : 'None booked'
+        }
+      />
+      <SummaryItem
+        label="Treatment plan"
+        value={
+          plans === undefined
+            ? loading
+            : goals && goals.total > 0
+              ? `${goals.achieved} of ${goals.total} goals`
+              : activePlan
+                ? 'No goals yet'
+                : 'No active plan'
+        }
+      />
+      <div
+        className={cn(
+          // Last on a phone and a tablet, where it takes the full row.
+          'col-span-2 flex min-w-0 flex-col px-4 py-3 sm:col-span-2 lg:col-span-1',
+          flagged > 0 ? 'bg-warning-50' : 'bg-surface',
+        )}
+      >
+        <dt className="text-sm text-muted">Flags</dt>
+        <dd className="mt-0.5 flex items-center gap-1.5 font-semibold text-heading">
+          {sessions === undefined ? (
+            loading
+          ) : flagged > 0 ? (
+            <>
+              <AlertTriangle
+                className="size-4 shrink-0 text-warning-700"
+                aria-hidden="true"
+              />
+              {flagged} flagged{' '}
+              {flagged === 1 ? 'conversation' : 'conversations'}
+            </>
+          ) : (
+            <>
+              <CheckCircle2
+                className="size-4 shrink-0 text-success-700"
+                aria-hidden="true"
+              />
+              None
+            </>
+          )}
+        </dd>
+        {flagged > 0 ? (
+          <dd>
+            <button
+              type="button"
+              onClick={onOpenChat}
+              className="mt-0.5 inline-flex min-h-11 items-center text-sm font-semibold text-role underline-offset-4 hover:underline sm:min-h-0"
+            >
+              Read in Chat
+            </button>
+          </dd>
+        ) : null}
+      </div>
+    </dl>
+  )
+}
+
+function SummaryItem({
+  label,
+  value,
+  detail,
+}: {
+  label: string
+  value: React.ReactNode
+  detail?: string | undefined
+}) {
+  return (
+    <div className="flex min-w-0 flex-col bg-surface px-4 py-3">
+      <dt className="text-sm text-muted">{label}</dt>
+      <dd className="mt-0.5 font-semibold text-heading" data-numeric>
+        {value}
+      </dd>
+      {detail ? (
+        <dd className="text-sm text-muted">
+          {detail}
+        </dd>
+      ) : null}
+    </div>
   )
 }
