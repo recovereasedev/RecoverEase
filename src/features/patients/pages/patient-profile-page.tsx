@@ -1,4 +1,3 @@
-import { BellRing } from 'lucide-react'
 import { useState } from 'react'
 
 import { FormError } from '@/components/feedback/form-error'
@@ -6,8 +5,9 @@ import { FormError } from '@/components/feedback/form-error'
 import { PageHeader } from '@/components/layout/page-header'
 import { StatusBadge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardBody, CardHeader } from '@/components/ui/card'
+import { Card, CardBody } from '@/components/ui/card'
 import { Field, Input } from '@/components/ui/field'
+import { PageSection } from '@/components/ui/section-heading'
 import { useAuth, useCurrentUser } from '@/features/auth/auth-context'
 import { useMyDoctor, useUpdatePatient } from '@/features/patients/hooks'
 import { useDocumentTitle } from '@/hooks/use-document-title'
@@ -49,6 +49,29 @@ export function PatientProfilePage() {
 
   if (!patient) return null
 
+  // What is stored, against what is on screen: the form offers a way back
+  // only once there is something to go back from.
+  const stored = {
+    contactNo: patient.pat_contact_no ?? '',
+    address: patient.pat_address ?? '',
+    reminderTime: patient.pat_reminder_preferred_time?.slice(0, 5) ?? '',
+    remindersEnabled: patient.pat_reminder_is_enabled ?? true,
+  }
+  const isEdited =
+    contactNo !== stored.contactNo ||
+    address !== stored.address ||
+    reminderTime !== stored.reminderTime ||
+    remindersEnabled !== stored.remindersEnabled
+
+  const discard = () => {
+    setContactNo(stored.contactNo)
+    setAddress(stored.address)
+    setReminderTime(stored.reminderTime)
+    setRemindersEnabled(stored.remindersEnabled)
+    setSavedMessage(null)
+    updatePatient.reset()
+  }
+
   const onSubmit = (event: React.FormEvent) => {
     event.preventDefault()
     setSavedMessage(null)
@@ -78,15 +101,17 @@ export function PatientProfilePage() {
         description="Your details and how you would like to be reminded."
       />
 
-      <div className="grid gap-5 lg:grid-cols-3">
+      <div className="grid gap-section lg:grid-cols-3 lg:gap-8">
         <div className="lg:col-span-2">
+          <PageSection
+            title="Contact details"
+            description="Keep these current so your clinic can reach you."
+          >
           <Card>
-            <CardHeader
-              title="Contact details"
-              description="Keep these current so your clinic can reach you."
-            />
             <CardBody>
-              <form onSubmit={onSubmit} className="space-y-5">
+              {/* Fields sit 20px apart, the two groups 32px: the gap between
+                  groups is what says where one ends. */}
+              <form onSubmit={onSubmit} className="space-y-5 [&>fieldset]:mt-8">
                 <Field
                   label="Contact number"
                   description="A mobile number your clinic can reach you on."
@@ -108,15 +133,14 @@ export function PatientProfilePage() {
                   />
                 </Field>
 
-                <fieldset className="space-y-4 border-t border-[var(--color-border)] pt-5">
-                  <legend className="sr-only">Medication reminders</legend>
-                  <h3 className="flex items-center gap-2 font-semibold text-heading">
-                    <BellRing
-                      className="size-4 text-accent-700"
-                      aria-hidden="true"
-                    />
+                {/* The second group of the same form. Named by its own
+                    legend - the element that says "these fields belong
+                    together" to a screen reader - and separated by space
+                    rather than by a rule across the card. */}
+                <fieldset className="space-y-4 pt-3">
+                  <legend className="mb-1 font-semibold text-heading">
                     Medication reminders
-                  </h3>
+                  </legend>
 
                   {/* The checkbox itself is 16px, which is not a tap target.
                       The whole tinted row is the label, so the hit area is the
@@ -170,41 +194,60 @@ export function PatientProfilePage() {
                   >
                     Save changes
                   </Button>
-                  {savedMessage ? (
-                    <p
-                      role="status"
-                      className="text-sm font-medium text-success-700"
+                  {/* A way back, offered only once there is something to go
+                      back from. It restores what is stored; it writes
+                      nothing. */}
+                  {isEdited ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="max-sm:w-full"
+                      onClick={discard}
                     >
-                      {savedMessage}
-                    </p>
+                      Discard changes
+                    </Button>
                   ) : null}
+                  {/* Always rendered, so the confirmation is announced when
+                      it arrives. A status region that mounts with its own
+                      text is read inconsistently, and saving twice would be
+                      silent the second time. */}
+                  <p
+                    role="status"
+                    className="text-sm font-medium text-success-700 empty:hidden"
+                  >
+                    {savedMessage}
+                  </p>
                 </div>
               </form>
             </CardBody>
           </Card>
+          </PageSection>
         </div>
 
-        {/* --- Read-only record ------------------------------------------- */}
-        <div className="space-y-5">
-          <Card>
-            <CardHeader title="Your record" as="h2" />
-            <CardBody>
-              <dl className="space-y-3 text-sm">
+        {/* --- Read-only record -------------------------------------------
+            Facts, not a form: they need a heading and space, not a card
+            each. The one card on this page is the thing you can edit. */}
+        <div className="space-y-section">
+          <PageSection title="Your record" as="h2">
+            <div>
+              {/* The label is metadata at 14px; the value is the patient's
+                  own record, read at the 16px body size. */}
+              <dl className="space-y-3">
                 <div>
-                  <dt className="text-muted">Name</dt>
+                  <dt className="text-sm text-muted">Name</dt>
                   <dd className="font-medium text-heading">
                     {fullName(patient.pat_first_name, patient.pat_last_name)}
                   </dd>
                 </div>
                 <div>
-                  <dt className="text-muted">Email</dt>
+                  <dt className="text-sm text-muted">Email</dt>
                   <dd className="break-words font-medium text-heading">
                     {user.email}
                   </dd>
                 </div>
                 {patient.pat_birth_date ? (
                   <div>
-                    <dt className="text-muted">Date of birth</dt>
+                    <dt className="text-sm text-muted">Date of birth</dt>
                     <dd className="font-medium text-heading">
                       {formatDate(patient.pat_birth_date)}
                       {age !== null ? ` (${age})` : ''}
@@ -212,23 +255,25 @@ export function PatientProfilePage() {
                   </div>
                 ) : null}
                 <div>
-                  <dt className="text-muted">Status</dt>
+                  <dt className="text-sm text-muted">Status</dt>
                   <dd className="mt-1">
                     <StatusBadge status={patientStatus[patient.pat_status]} />
                   </dd>
                 </div>
               </dl>
 
-              <p className="mt-4 border-t border-[var(--color-border)] pt-4 text-sm text-muted">
+              {/* Space, not a rule: the caveat belongs to the list above it,
+                  and a line drawn across a column that has no card around it
+                  only adds an edge. */}
+              <p className="mt-5 text-sm text-muted">
                 Your name, date of birth and status are maintained by your care
                 team. Ask them if anything here is wrong.
               </p>
-            </CardBody>
-          </Card>
+            </div>
+          </PageSection>
 
-          <Card>
-            <CardHeader title="Your doctor" as="h2" />
-            <CardBody>
+          <PageSection title="Your doctor" as="h2">
+            <div>
               {doctorQuery.isPending ? (
                 <p className="text-sm text-muted">Loading…</p>
               ) : doctorQuery.data ? (
@@ -245,8 +290,10 @@ export function PatientProfilePage() {
                       {doctorQuery.data.doc_specialization}
                     </p>
                   ) : null}
+                  {/* A number somebody may have to read out or dial: body
+                      size, not metadata size. */}
                   {doctorQuery.data.doc_contact_no ? (
-                    <p className="mt-2 text-sm text-body" data-numeric>
+                    <p className="mt-2 text-body" data-numeric>
                       {doctorQuery.data.doc_contact_no}
                     </p>
                   ) : null}
@@ -256,8 +303,8 @@ export function PatientProfilePage() {
                   Your assigned doctor could not be loaded.
                 </p>
               )}
-            </CardBody>
-          </Card>
+            </div>
+          </PageSection>
         </div>
       </div>
     </>
