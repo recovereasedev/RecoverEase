@@ -441,10 +441,12 @@
 /* ===========================================================================
    Motion (RecoverEase 2.0)
    ---------------------------------------------------------------------------
-   Four motions, each with a job, all on transform and opacity:
+   Five motions, each with a job, all on transform and opacity:
 
    - A dialog scales up from 0.97 as its backdrop fades in, and leaves the
      same way: it arrives over the page, it does not appear from nowhere.
+   - The install offer opens a slot at the top of the page and drops into
+     it: the page moves down to make room rather than being covered.
    - The phone's menu drawer slides in from the edge it lives on.
    - A dose marked taken: its "Taken" badge settles in, so the change the
      patient just made is seen to happen (applied only to that dose).
@@ -504,6 +506,46 @@
   @starting-style {
     .drawer-panel {
       transform: translateX(-100%);
+    }
+  }
+
+  /* The install offer's slot, at the top of the page's content. It opens to
+     the card's own height - the page below moves down with it rather than
+     being covered - and closes over the space again once it is answered.
+     The card's height is written to `height` at that point; until then the
+     row is what carries the change. */
+  .install-slot {
+    display: grid;
+    grid-template-rows: 1fr;
+    /* Set from the page the slot was inserted into, so the space it takes
+       belongs to that page rather than drawing a band across it. */
+    background-color: var(--install-slot-surface, transparent);
+    transition: grid-template-rows var(--duration-base) var(--ease-out-soft);
+  }
+
+  @starting-style {
+    .install-slot {
+      grid-template-rows: 0fr;
+    }
+  }
+
+  .install-slot-space {
+    overflow: hidden;
+    transition: height var(--duration-base) var(--ease-out-soft);
+  }
+
+  /* 8px and a fade, at the page's own arrival speed. It is an offer, not an
+     announcement: any further and the eye leaves what it was reading. */
+  .install-popup {
+    transition:
+      opacity var(--duration-base) var(--ease-out-soft),
+      transform var(--duration-base) var(--ease-out-soft);
+  }
+
+  @starting-style {
+    .install-popup {
+      opacity: 0;
+      transform: translateY(-0.5rem);
     }
   }
 
