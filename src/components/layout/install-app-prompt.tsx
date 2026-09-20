@@ -1,15 +1,17 @@
-import { Download, Share, Smartphone } from 'lucide-react'
+import { Download, Share, Smartphone, X } from 'lucide-react'
 import {
   useCallback,
   useEffect,
+  useId,
   useRef,
   useState,
   useSyncExternalStore,
   type ReactNode,
+  type RefObject,
 } from 'react'
+import { createPortal } from 'react-dom'
 
 import { Button } from '@/components/ui/button'
-import { Dialog } from '@/components/ui/dialog'
 import {
   installPromptStore,
   isAppInstalled,
@@ -52,6 +54,12 @@ import {
 const APPEARS_AFTER_MS = 1500
 
 /**
+ * How long the slot takes to close over the space the answered offer left.
+ * Matches `--duration-base`, the transition in `index.css`.
+ */
+const CLOSES_AFTER_MS = 180
+
+/**
  * `offer` is the popup as specified. The rest are what Install falls back to
  * when no install event is coming, and they are three different situations:
  *
@@ -75,9 +83,11 @@ export function InstallAppPrompt({
   graceMs?: number
 } = {}) {
   const [isOpen, setOpen] = useState(false)
+  const [isClosing, setClosing] = useState(false)
   const [step, setStep] = useState<Step>('offer')
   const [isAsking, setAsking] = useState(false)
   const hasAppeared = useRef(false)
+  const slotRef = useRef<HTMLDivElement>(null)
 
   const deferred = useSyncExternalStore(store.subscribe, store.get, () => null)
 
@@ -122,10 +132,49 @@ export function InstallAppPrompt({
     }
   }, [appearsAfterMs])
 
+  /**
+   * Answering takes the card away at once - there is no ghost of an offer
+   * that has already been answered, and nothing stays on screen after it has
+   * left the accessibility tree. What is animated is the space it was given:
+   * the slot holds its height for a moment and closes, so the page settles
+   * back rather than jumping up under the pointer that just answered.
+   */
   const close = useCallback(() => {
     rememberInstallPromptDismissed()
-    setOpen(false)
+    const slot = slotRef.current
+    if (slot) slot.style.height = `${slot.offsetHeight}px`
+    setClosing(true)
   }, [])
+
+  useEffect(() => {
+    if (!isClosing) return
+    const wantsLessMotion =
+      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
+    let frame: number | undefined
+    if (!wantsLessMotion) {
+      // The height was frozen in `close`, on the render that still had the
+      // card in it. Reading it back here forces that value to be computed
+      // before the next one is written, which is what gives the transition
+      // two ends to run between.
+      frame = requestAnimationFrame(() => {
+        const slot = slotRef.current
+        if (!slot) return
+        void slot.offsetHeight
+        slot.style.height = '0px'
+      })
+    }
+    const timer = setTimeout(
+      () => {
+        setOpen(false)
+        setClosing(false)
+      },
+      wantsLessMotion ? 0 : CLOSES_AFTER_MS,
+    )
+    return () => {
+      if (frame !== undefined) cancelAnimationFrame(frame)
+      clearTimeout(timer)
+    }
+  }, [isClosing])
 
   // Installation can also finish in the browser's own window, with the popup
   // still open behind it. Once it has, there is nothing left to offer.
@@ -205,18 +254,18 @@ export function InstallAppPrompt({
   if (!isOpen) return null
 
   return (
-    <Dialog
-      isOpen
+    <InstallPopup
       onClose={close}
+      isClosing={isClosing}
+      slotRef={slotRef}
       title={shown === 'offer' ? 'Install RecoverEase' : 'How to install RecoverEase'}
-      footer={
+      actions={
         <>
-          <Button variant="ghost" size="lg" onClick={close}>
+          <Button variant="ghost" onClick={close}>
             Maybe Later
           </Button>
           {shown === 'offer' ? (
             <Button
-              size="lg"
               isLoading={isAsking}
               loadingLabel="Waiting for your browser…"
               onClick={install}
@@ -232,20 +281,173 @@ export function InstallAppPrompt({
       {shown === 'ios' ? <AddToHomeScreenSteps /> : null}
       {shown === 'browserMenu' ? <InstallFromTheBrowserMenu /> : null}
       {shown === 'unsupported' ? <NotAvailableHere /> : null}
-    </Dialog>
+    </InstallPopup>
+  )
+}
+
+/**
+ * Where the offer goes: a slot opened at the top of the page's own content,
+ * rather than a card laid over it.
+ *
+ * Every overlay version of this had the same fault, wherever it was put. A
+ * modal in the middle covered the hero; moved to the top it still sat on the
+ * headline, and on a phone - where the headline starts directly under the
+ * header - it covered it completely. There is no free space at the top of a
+ * page that is already using it.
+ *
+ * So the offer takes space instead of borrowing it: it is inserted as the
+ * first thing inside `<main>`, below the page's own header, and the content
+ * starts below it. Nothing is covered at any width, on any route, at any
+ * scroll position - and because it is part of the page rather than fixed to
+ * the window, scrolling leaves it behind like any other block.
+ */
+function useInstallSlot(): HTMLElement {
+  // Made once, on the first render, and filled by the portal below. The
+  // effect only decides where in the page it belongs; until it runs the node
+  // is not in the document, so nothing is shown in the wrong place.
+  const [node] = useState(() => document.createElement('div'))
+
+  useEffect(() => {
+    const attach = () => {
+      // The page's own content column. Where a page has no `main` - only the
+      // routes with one offer it - the end of the document will do.
+      const main = document.querySelector('main')
+      if (main) main.prepend(node)
+      else document.body.append(node)
+
+      // The slot takes the background of whatever it sits on top of. The
+      // landing page's hero is a white section on a tinted canvas, and an
+      // unpainted slot drew a band across the page between the two. Where
+      // the neighbour has no background of its own - the sign-in column -
+      // nothing is set, because the page's own background is already right.
+      const under = node.nextElementSibling
+      const background = under ? getComputedStyle(under).backgroundColor : ''
+      const isTransparent =
+        !background || background === 'transparent' || /,\s*0\)$/.test(background)
+      document.documentElement.style.setProperty(
+        '--install-slot-surface',
+        isTransparent ? 'transparent' : background,
+      )
+    }
+    attach()
+
+    // Moving between the public pages replaces `main`, and the slot goes with
+    // it. Put it back, rather than losing an offer nobody has answered.
+    const observer = new MutationObserver(() => {
+      if (!node.isConnected) attach()
+    })
+    observer.observe(document.body, { childList: true, subtree: true })
+
+    return () => {
+      observer.disconnect()
+      node.remove()
+      document.documentElement.style.removeProperty('--install-slot-surface')
+    }
+  }, [node])
+
+  return node
+}
+
+/**
+ * The offer itself: a compact card at the top of the page, centred in the
+ * content it introduces.
+ *
+ * What it keeps from the modal it replaces: a labelled `dialog` role, Escape,
+ * a close button, 44px targets and readable text. What it drops: the
+ * backdrop, the focus trap and the page being unusable until the browser
+ * question is answered. It does not take focus - nobody asked for it - and
+ * sitting first inside `main` puts it early in the tab order anyway, right
+ * after the page's own navigation.
+ */
+function InstallPopup({
+  title,
+  actions,
+  onClose,
+  isClosing,
+  slotRef,
+  children,
+}: {
+  title: string
+  actions: ReactNode
+  onClose: () => void
+  /** Answered: the card is gone, and its space is closing. */
+  isClosing: boolean
+  slotRef: RefObject<HTMLDivElement | null>
+  children: ReactNode
+}) {
+  const titleId = useId()
+  const bodyId = useId()
+  const host = useInstallSlot()
+
+  // Escape answers it, as it would a dialog. Bound to the window rather than
+  // to the card, because focus is left where the reader had it.
+  useEffect(() => {
+    if (isClosing) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [onClose, isClosing])
+
+  return createPortal(
+    // The slot: opens to the card's height on arrival, closes over the space
+    // once it is answered (see `index.css`).
+    <div className="install-slot">
+      <div ref={slotRef} className="install-slot-space">
+        <div className="px-4 pb-2 pt-5 sm:pt-6">
+          {isClosing ? null : (
+            <div
+              role="dialog"
+              aria-labelledby={titleId}
+              aria-describedby={bodyId}
+              // 420px: compact enough to read as an offer rather than a page
+              // of its own, wide enough that the sentence holds two lines.
+              className="install-popup mx-auto w-full max-w-[26.25rem] rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-surface shadow-[var(--shadow-md)]"
+            >
+              <div className="flex items-start justify-between gap-3 px-4 pt-3 sm:px-5">
+                <h2 id={titleId} className="pt-2 text-headline-md text-heading">
+                  {title}
+                </h2>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={onClose}
+                  aria-label="Close"
+                >
+                  <X aria-hidden="true" />
+                </Button>
+              </div>
+
+              <div id={bodyId} className="px-4 pb-4 pt-2 sm:px-5 sm:pb-5">
+                {children}
+
+                {/* The primary action last in reading order, and first on a
+                    phone, where the pair stacks rather than crowding a 256px
+                    line. */}
+                <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end sm:gap-3 [&>*]:w-full sm:[&>*]:w-auto">
+                  {actions}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>,
+    host,
   )
 }
 
 function Offer() {
   return (
-    <div className="flex items-start gap-4">
-      <span
+    <div className="flex items-start gap-3">
+      {/* The glyph says which kind of offer this is; it does not need a tile
+          of its own to do that. */}
+      <Smartphone
+        className="mt-0.5 size-5 shrink-0 text-role"
         aria-hidden="true"
-        className="flex size-12 shrink-0 items-center justify-center rounded-[var(--radius-lg)] bg-brand-50 text-brand-800"
-      >
-        <Smartphone className="size-6" />
-      </span>
-      <p className="text-base leading-relaxed text-body sm:text-lg">
+      />
+      <p className="text-base leading-relaxed text-body">
         Install RecoverEase on your device for easier access and a more
         convenient experience.
       </p>
@@ -265,7 +467,7 @@ function NumberedSteps({ steps }: { steps: ReactNode[] }) {
           >
             {index + 1}
           </span>
-          <span className="pt-0.5 text-base leading-relaxed text-body sm:text-lg">
+          <span className="pt-0.5 text-base leading-relaxed text-body">
             {content}
           </span>
         </li>
@@ -278,7 +480,7 @@ function NumberedSteps({ steps }: { steps: ReactNode[] }) {
 function AddToHomeScreenSteps() {
   return (
     <div className="space-y-4">
-      <p className="text-base leading-relaxed text-body sm:text-lg">
+      <p className="text-base leading-relaxed text-body">
         On iPhone and iPad you add RecoverEase yourself, in three steps:
       </p>
 
@@ -331,7 +533,7 @@ function AddToHomeScreenSteps() {
 function InstallFromTheBrowserMenu() {
   return (
     <div className="space-y-4">
-      <p className="text-base leading-relaxed text-body sm:text-lg">
+      <p className="text-base leading-relaxed text-body">
         Your browser has not offered to install RecoverEase on this page. You
         can still install it from the browser's own menu:
       </p>
@@ -367,11 +569,11 @@ function InstallFromTheBrowserMenu() {
 function NotAvailableHere() {
   return (
     <div className="space-y-4">
-      <p className="text-base leading-relaxed text-body sm:text-lg">
+      <p className="text-base leading-relaxed text-body">
         This browser cannot install RecoverEase. Everything still works here,
         exactly as it does now.
       </p>
-      <p className="text-base leading-relaxed text-body sm:text-lg">
+      <p className="text-base leading-relaxed text-body">
         To install it, open RecoverEase in Chrome or Microsoft Edge on a
         computer, or in Chrome on an Android phone.
       </p>
