@@ -11,17 +11,12 @@ import { Notice } from '@/components/ui/notice'
 import {
   distinctEntities,
   fetchAuditLog,
+  toneForAuditAction,
   type AuditLogEntry,
 } from '@/features/audit-logs/api'
 import { useDocumentTitle } from '@/hooks/use-document-title'
 import { formatDateTime } from '@/lib/format'
 import { queryKeys } from '@/lib/query-keys'
-
-const ACTION_TONE = {
-  insert: 'success',
-  update: 'info',
-  delete: 'danger',
-} as const
 
 function changedColumns(entry: AuditLogEntry): string[] {
   const details = entry.audit_log_details
@@ -88,7 +83,6 @@ export function AuditLogPage() {
   return (
     <>
       <PageHeader
-        eyebrow="Security"
         title="Audit log"
         description="A record of security-sensitive changes across the system."
       />
@@ -209,10 +203,7 @@ export function AuditLogPage() {
                   >
                     {entries.map((entry) => {
                       const columns = changedColumns(entry)
-                      const tone =
-                        ACTION_TONE[
-                          entry.audit_log_action as keyof typeof ACTION_TONE
-                        ] ?? 'neutral'
+                      const tone = toneForAuditAction(entry.audit_log_action)
 
                       return (
                         <tr

@@ -1,4 +1,4 @@
-import { BellRing, Send } from 'lucide-react'
+import { Send } from 'lucide-react'
 import { useState } from 'react'
 
 import { FormError } from '@/components/feedback/form-error'
@@ -43,7 +43,6 @@ export function NotifyPatient({
   return (
     <Card>
       <CardHeader
-        icon={BellRing}
         title="Send a notification"
         description={`${patientName} reads this in their notifications. It is not a clinical note.`}
       />

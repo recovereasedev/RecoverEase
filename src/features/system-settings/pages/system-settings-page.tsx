@@ -71,7 +71,6 @@ export function SystemSettingsPage() {
   return (
     <>
       <PageHeader
-        eyebrow="Configuration"
         title="System settings"
         description="Configuration that affects how RecoverEase behaves for everyone."
       />

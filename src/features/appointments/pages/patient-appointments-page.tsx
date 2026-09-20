@@ -1,4 +1,4 @@
-import { CalendarClock, CalendarPlus, CalendarX, History } from 'lucide-react'
+import { CalendarPlus, CalendarX } from 'lucide-react'
 import { useRef, useState } from 'react'
 
 import { FormError } from '@/components/feedback/form-error'
@@ -201,7 +201,6 @@ export function PatientAppointmentsPage() {
   return (
     <>
       <PageHeader
-        eyebrow="Your schedule"
         title="Appointments"
         description="Your upcoming visits and your appointment history."
         actions={
@@ -215,7 +214,6 @@ export function PatientAppointmentsPage() {
       <div className="space-y-5">
         <Card>
           <CardHeader
-            icon={CalendarClock}
             title="Upcoming"
             description="Confirm that you will attend, or ask for a different time."
           />
@@ -382,7 +380,7 @@ export function PatientAppointmentsPage() {
 
         {/* --- History — module 6.7 -------------------------------------- */}
         <Card>
-          <CardHeader icon={History} title="History" />
+          <CardHeader title="History" />
           <CardBody className="p-0">
             {past.length === 0 ? (
               <p className="px-4 py-8 text-center text-sm text-muted sm:px-5">

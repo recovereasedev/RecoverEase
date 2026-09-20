@@ -1,12 +1,14 @@
 import { addDays, endOfToday, startOfToday, subDays } from 'date-fns'
-import { CalendarClock, ClipboardList, Pill, Printer } from 'lucide-react'
+import { AlarmClock, Pill, Printer } from 'lucide-react'
+import { useState } from 'react'
 
-import { StateView } from '@/components/feedback/state-view'
+import { InlineEmpty, StateView } from '@/components/feedback/state-view'
 import { PageHeader } from '@/components/layout/page-header'
 import { StatusBadge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardBody, CardHeader } from '@/components/ui/card'
+import { Card, CardBody } from '@/components/ui/card'
 import { ListRow, ListRows } from '@/components/ui/list-row'
+import { PageSection } from '@/components/ui/section-heading'
 import { useCurrentUser } from '@/features/auth/auth-context'
 import { summariseAdherence } from '@/features/medications/api'
 import { AdherenceSummary } from '@/features/medications/components/adherence-summary'
@@ -27,16 +29,25 @@ import {
   formatTime,
 } from '@/lib/format'
 import { patientDoseStatus } from '@/lib/status'
+import { cn } from '@/lib/utils'
 
 /**
  * Modules 4.5 "View Medication Schedule", 4.6 "Mark Medication as Taken",
  * 4.8 "View Weekly Adherence Tracking" and 4.10 "Download Prescription".
  *
  * The page opens on what is due today, because that is the question a patient
- * has when they open it. The prescription list and the week's adherence sit
- * below — and on a phone, below means below: the adherence column is the last
- * thing in the document, not something competing with today's doses for the
- * first screen.
+ * has when they open it. RecoverEase 2.0 sets today's doses as a timeline: the
+ * time leads each row, in a column of its own, and a time shared by two
+ * medicines is written once, so the day reads as "08:00, 12:00, 16:00" before
+ * it reads as a list of drug names. An overdue dose is tinted and gets the
+ * solid "Mark taken"; the action is always "Mark taken" - the same words as
+ * the dashboard - and never "Taken", which is the status a dose moves to.
+ *
+ * With nothing scheduled, Coming up is one line under its heading instead of
+ * an empty card. The prescription list
+ * is reference, so it sits below; and on a phone the week's adherence is the
+ * last thing in the document, not something competing with today's doses for
+ * the first screen.
  */
 export function PatientMedicationsPage() {
   useDocumentTitle('Medications')
@@ -44,7 +55,6 @@ export function PatientMedicationsPage() {
   const patient =
     user.profile.kind === 'patient' ? user.profile.patient : null
   const patientId = patient?.pat_id ?? ''
-  // The printed prescription names the patient's doctor (QA 9/13).
   const doctorQuery = useMyDoctor(patient?.doc_id)
 
   const todayDoses = useDoses(
@@ -52,28 +62,39 @@ export function PatientMedicationsPage() {
     startOfToday().toISOString(),
     endOfToday().toISOString(),
   )
-
-  // The adherence window is the last seven days, matching module 4.8. It
-  // stops at the end of today so future doses are never counted as failures.
   const weekDoses = useDoses(
     patientId,
     subDays(startOfToday(), 6).toISOString(),
     endOfToday().toISOString(),
   )
-
   const upcoming = useDoses(
     patientId,
     endOfToday().toISOString(),
     addDays(endOfToday(), 3).toISOString(),
   )
-
   const schedulesQuery = useMedicationSchedules(patientId)
   const setDoseStatus = useSetDoseStatus(patientId)
+  // Re-evaluated every minute, so a dose turns Overdue while the page is open.
   const now = useNow()
+  // The dose just marked taken: only its badge animates in.
+  const [confirmedId, setConfirmedId] = useState<string | null>(null)
 
   const adherence = weekDoses.data
     ? summariseAdherence(weekDoses.data)
     : null
+
+  const doses = todayDoses.data ?? []
+  const takenCount = doses.filter(
+    (dose) => dose.medication_log_status === 'taken',
+  ).length
+  const overdueCount = doses.filter(
+    (dose) => patientDoseState(dose, now) === 'overdue',
+  ).length
+
+  // With nothing scheduled, Coming up is one quiet line under its heading
+  // rather than an empty card.
+  const nothingComingUp =
+    !upcoming.isPending && !upcoming.error && upcoming.data?.length === 0
 
   return (
     <>
@@ -87,7 +108,6 @@ export function PatientMedicationsPage() {
 
       <PageHeader
         className="print:hidden"
-        eyebrow="Your medication"
         title="Medication"
         description="What is due, what you have taken, and what your doctor has prescribed."
         actions={
@@ -102,90 +122,122 @@ export function PatientMedicationsPage() {
         }
       />
 
-      <div className="grid gap-5 lg:grid-cols-3">
-        <div className="space-y-5 lg:col-span-2">
+      <div className="grid gap-section lg:grid-cols-3 lg:gap-8">
+        <div className="space-y-section lg:col-span-2">
           {/* --- Today --------------------------------------------------- */}
-          <Card className="print:hidden">
-            <CardHeader
-              icon={Pill}
-              title="Due today"
-              description="Mark each dose once you have taken it."
-            />
-            <CardBody className="p-0">
+          <PageSection
+            className="print:hidden"
+            title="Due today"
+            description={
+              doses.length > 0 ? (
+                <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <span data-numeric>
+                    {takenCount} of {doses.length}{' '}
+                    {doses.length === 1 ? 'dose' : 'doses'} taken
+                  </span>
+                  {overdueCount > 0 ? (
+                    <span className="inline-flex items-center gap-1 font-medium text-warning-800">
+                      <AlarmClock className="size-4" aria-hidden="true" />
+                      {overdueCount} overdue
+                    </span>
+                  ) : null}
+                </span>
+              ) : (
+                'Mark each dose once you have taken it.'
+              )
+            }
+          >
+            <Card variant="elevated" className="overflow-hidden">
               <StateView
                 isPending={todayDoses.isPending}
                 error={todayDoses.error}
                 data={todayDoses.data}
                 onRetry={() => void todayDoses.refetch()}
                 empty={
-                  <div className="px-4 py-10 text-center sm:px-5">
-                    <Pill
-                      className="mx-auto size-6 text-neutral-400"
-                      aria-hidden="true"
-                    />
-                    <p className="mt-2 font-medium text-heading">
-                      Nothing due today
-                    </p>
-                  </div>
+                  <InlineEmpty icon={Pill}>Nothing due today.</InlineEmpty>
                 }
               >
-                {(doses) => (
+                {(todays) => (
                   <ListRows>
-                    {doses.map((dose) => {
+                    {todays.map((dose, index) => {
                       const isPending =
                         dose.medication_log_status === 'pending'
+                      const state = patientDoseState(dose, now)
+                      const isOverdue = state === 'overdue'
                       const isMutating =
                         setDoseStatus.isPending &&
                         setDoseStatus.variables?.doseId ===
                           dose.medication_log_id
-                      // The button label stays bare ("Taken") so it reads
-                      // cleanly in a row and so the accessible name is exactly
-                      // the word. In a list of identical controls a screen
-                      // reader announces the row's own text alongside the
-                      // button, which is what disambiguates them.
-                      //
-                      // There is no Skip (QA 9/13): a patient records a dose
-                      // as taken or leaves it to become Missed. A dose already
-                      // recorded as Skipped still reads Skipped, and Undo
-                      // returns it to Due like any other recorded dose.
                       const name =
                         dose.medication_schedule?.medication_schedule_name ??
                         'Medication'
                       const time = formatTime(dose.medication_log_scheduled_at)
+                      // The time is written once per group of doses due
+                      // together; the rows after it continue the group.
+                      const previous = todays[index - 1]
+                      const startsGroup =
+                        !previous ||
+                        formatTime(previous.medication_log_scheduled_at) !==
+                          time
 
                       return (
                         <ListRow
                           key={dose.medication_log_id}
+                          className={cn(isOverdue && 'bg-warning-50')}
+                          leading={
+                            startsGroup ? (
+                              <span
+                                className="block pt-px text-base font-semibold text-heading"
+                                data-numeric
+                              >
+                                {time}
+                              </span>
+                            ) : null
+                          }
                           title={name}
                           description={
                             <>
                               {
                                 dose.medication_schedule
                                   ?.medication_schedule_dosage
-                              }{' '}
-                              · due <span data-numeric>{time}</span>
+                              }
+                              {/* The time column is visual; the row says it
+                                  too, for anyone not seeing the column. */}
+                              <span className="sr-only">
+                                {' '}
+                                · due <span data-numeric>{time}</span>
+                              </span>
                             </>
                           }
                           status={
                             <StatusBadge
-                              status={
-                                patientDoseStatus[patientDoseState(dose, now)]
-                              }
+                              key={state}
+                              status={patientDoseStatus[state]}
+                              className={cn(
+                                state === 'taken' &&
+                                  confirmedId === dose.medication_log_id &&
+                                  'motion-confirm',
+                              )}
                             />
                           }
                           actions={
                             isPending ? (
                               <Button
                                 size="sm"
+                                variant={isOverdue ? 'primary' : 'secondary'}
                                 isLoading={isMutating}
-                                onClick={() =>
+                                onClick={() => {
+                                  setConfirmedId(dose.medication_log_id)
                                   setDoseStatus.mutate({
                                     doseId: dose.medication_log_id,
                                     status: 'taken',
                                   })
-                                }
+                                }}
                               >
-                                Taken
+                                Mark taken
+                                <span className="sr-only">
+                                  : {name} at {time}
+                                </span>
                               </Button>
                             ) : (
                               <Button
@@ -209,74 +261,70 @@ export function PatientMedicationsPage() {
                   </ListRows>
                 )}
               </StateView>
-            </CardBody>
-          </Card>
+            </Card>
+          </PageSection>
 
           {/* --- Coming up ------------------------------------------------ */}
-          <Card className="print:hidden">
-            <CardHeader
-              icon={CalendarClock}
-              title="Coming up"
-              description="The next few days, so nothing is a surprise."
-            />
-            <CardBody className="p-0">
-              <StateView
-                isPending={upcoming.isPending}
-                error={upcoming.error}
-                data={upcoming.data}
-                empty={
-                  <p className="px-4 py-8 text-center text-sm text-muted sm:px-5">
-                    No doses scheduled in the next few days.
-                  </p>
-                }
-              >
-                {(doses) => (
-                  <ListRows>
-                    {doses.slice(0, 12).map((dose) => (
-                      <ListRow
-                        key={dose.medication_log_id}
-                        className="py-3"
-                        title={
-                          <span className="text-sm font-medium">
-                            {
-                              dose.medication_schedule
-                                ?.medication_schedule_name
-                            }
-                          </span>
-                        }
-                        status={
-                          <span className="text-sm text-muted" data-numeric>
-                            {formatDateRelative(
-                              dose.medication_log_scheduled_at,
-                            )}{' '}
-                            {formatTime(dose.medication_log_scheduled_at)}
-                          </span>
-                        }
-                      />
-                    ))}
-                  </ListRows>
-                )}
-              </StateView>
-            </CardBody>
-          </Card>
+          <PageSection
+            className="print:hidden"
+            title="Coming up"
+            description={
+              nothingComingUp
+                ? 'Nothing is scheduled in the next three days.'
+                : 'The next three days, so nothing is a surprise.'
+            }
+          >
+            {nothingComingUp ? null : (
+              <Card className="overflow-hidden">
+                <StateView
+                  isPending={upcoming.isPending}
+                  error={upcoming.error}
+                  data={upcoming.data}
+                >
+                  {(next) => (
+                    <ListRows>
+                      {next.slice(0, 12).map((dose) => (
+                        <ListRow
+                          key={dose.medication_log_id}
+                          className="py-3"
+                          title={
+                            <span className="text-sm font-medium">
+                              {
+                                dose.medication_schedule
+                                  ?.medication_schedule_name
+                              }
+                            </span>
+                          }
+                          status={
+                            <span className="text-sm text-muted" data-numeric>
+                              {formatDateRelative(
+                                dose.medication_log_scheduled_at,
+                              )}{' '}
+                              {formatTime(dose.medication_log_scheduled_at)}
+                            </span>
+                          }
+                        />
+                      ))}
+                    </ListRows>
+                  )}
+                </StateView>
+              </Card>
+            )}
+          </PageSection>
 
           {/* --- Prescriptions -------------------------------------------- */}
-          <Card>
-            <CardHeader
-              icon={ClipboardList}
-              title="Your prescriptions"
-              description="Everything your doctor has prescribed."
-            />
-            <CardBody className="p-0">
+          <PageSection
+            title="Your prescriptions"
+            description="Everything your doctor has prescribed."
+          >
+            <Card className="overflow-hidden">
               <StateView
                 isPending={schedulesQuery.isPending}
                 error={schedulesQuery.error}
                 data={schedulesQuery.data}
                 onRetry={() => void schedulesQuery.refetch()}
                 empty={
-                  <p className="px-4 py-8 text-center text-sm text-muted sm:px-5">
-                    You have no prescriptions on record.
-                  </p>
+                  <InlineEmpty>You have no prescriptions on record.</InlineEmpty>
                 }
               >
                 {(schedules) => (
@@ -322,14 +370,13 @@ export function PatientMedicationsPage() {
                   </ListRows>
                 )}
               </StateView>
-            </CardBody>
-          </Card>
+            </Card>
+          </PageSection>
         </div>
 
         {/* --- Adherence --------------------------------------------------- */}
-        <div className="space-y-5 print:hidden">
+        <PageSection className="print:hidden" title="This week">
           <Card>
-            <CardHeader title="This week" as="h2" />
             <CardBody>
               {adherence ? (
                 <AdherenceSummary adherence={adherence} />
@@ -338,7 +385,7 @@ export function PatientMedicationsPage() {
               )}
             </CardBody>
           </Card>
-        </div>
+        </PageSection>
       </div>
     </>
   )

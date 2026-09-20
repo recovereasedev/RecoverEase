@@ -87,7 +87,7 @@ export function BrandLockup({
         <span className="block truncate text-lg font-semibold tracking-tight text-heading">
           RecoverEase
         </span>
-        <span className="block truncate text-label-sm font-semibold text-accent-700">
+        <span className="block truncate text-label-sm font-semibold text-role">
           {subtitle}
         </span>
       </span>

@@ -40,10 +40,12 @@ function navLinkClasses(isActive: boolean): string {
     'flex items-center gap-3 rounded-[var(--radius-md)] border-l-[3px] px-3 py-2.5 text-sm',
     'transition-colors duration-[var(--duration-fast)]',
     isActive
-      ? // The teal left accent is the design system's active marker. It is
-        // paired with a tonal fill and a weight change, so the state is not
-        // carried by a 3px stripe of colour alone.
-        'border-accent-600 bg-surface-raised font-semibold text-brand-800'
+      ? // The left accent is the design system's active marker, in the
+        // portal's own accent (RecoverEase 2.0): teal for a patient, blue
+        // for a clinician, slate for administration. It is paired with a
+        // tonal fill and a weight change, so the state is not carried by a
+        // 3px stripe of colour alone.
+        'border-[var(--color-role)] bg-role-soft font-semibold text-role-strong'
       : 'border-transparent font-medium text-body hover:bg-neutral-100 hover:text-heading',
   )
 }
@@ -75,7 +77,7 @@ function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
                       <item.icon
                         className={cn(
                           'size-5 shrink-0',
-                          isActive ? 'text-accent-700' : 'text-neutral-500',
+                          isActive ? 'text-role' : 'text-neutral-500',
                         )}
                         aria-hidden="true"
                       />
@@ -104,7 +106,8 @@ function NotificationBell({ to }: { to: string }) {
       {unread > 0 ? (
         <span
           aria-hidden="true"
-          className="absolute right-1.5 top-1.5 flex min-w-4 items-center justify-center rounded-full bg-danger-600 px-1 text-[10px] font-semibold leading-4 text-white"
+          // 12px, the smallest text anywhere in the application.
+          className="absolute right-0.5 top-0.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-danger-600 px-1 text-xs font-semibold leading-5 text-white"
         >
           {unread > 9 ? '9+' : unread}
         </span>
@@ -193,14 +196,15 @@ function MobileDrawer({
         type="button"
         aria-label="Close menu"
         onClick={onClose}
-        className="absolute inset-0 bg-neutral-950/40"
+        className="drawer-scrim absolute inset-0 bg-neutral-950/40"
       />
       <div
         ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className="absolute inset-y-0 left-0 flex w-[min(20rem,85vw)] flex-col bg-surface shadow-[var(--shadow-lg)]"
+        // Slides in from the edge it lives on (index.css).
+        className="drawer-panel absolute inset-y-0 left-0 flex w-[min(20rem,85vw)] flex-col bg-surface shadow-[var(--shadow-lg)]"
       >
         <div className="flex items-center justify-between border-b border-[var(--color-border)] px-4 py-3">
           <span id={titleId}>
@@ -249,8 +253,10 @@ function BottomNav({ items }: { items: NavItem[] }) {
               end={!item.matchPrefix}
               className={({ isActive }) =>
                 cn(
-                  'flex h-16 flex-col items-center justify-center gap-1 px-1 text-[11px] font-medium',
-                  isActive ? 'text-brand-800' : 'text-muted',
+                  // 12px labels: 11px was below the application's floor for
+                  // any text, on the one control a patient uses every visit.
+                  'flex h-16 flex-col items-center justify-center gap-1 px-1 text-xs font-medium',
+                  isActive ? 'font-semibold text-role-strong' : 'text-muted',
                 )
               }
             >
@@ -259,13 +265,13 @@ function BottomNav({ items }: { items: NavItem[] }) {
                   <span
                     className={cn(
                       'flex h-7 w-12 items-center justify-center rounded-full transition-colors',
-                      isActive ? 'bg-surface-raised' : 'bg-transparent',
+                      isActive ? 'bg-role-soft' : 'bg-transparent',
                     )}
                   >
                     <item.icon
                       className={cn(
                         'size-5',
-                        isActive ? 'text-brand-800' : 'text-neutral-500',
+                        isActive ? 'text-role' : 'text-neutral-500',
                       )}
                       aria-hidden="true"
                     />
@@ -308,7 +314,12 @@ export function AppShell() {
     // In print only the page content goes to paper: the sidebar, header,
     // drawer and bottom bar are navigation for a screen, and printed they
     // turn every report and plan into a screenshot of the app.
-    <div className="min-h-dvh bg-canvas print:min-h-0 print:bg-white">
+    // `data-role` sets the portal's accent for everything inside the shell
+    // (see the role accent tokens in index.css).
+    <div
+      data-role={user.role}
+      className="min-h-dvh bg-canvas print:min-h-0 print:bg-white"
+    >
       <a
         href="#main-content"
         className="sr-only-focusable absolute left-4 top-4 z-[60] rounded-[var(--radius-md)] bg-brand-800 px-4 py-2 text-sm font-medium text-white print:hidden!"
@@ -375,15 +386,9 @@ export function AppShell() {
             <BrandWordmark />
           </Link>
 
-          {/* Context strip. Hidden on small screens, where the wordmark and
-              the bottom bar already say where you are. */}
-          <p className="hidden items-center gap-2 rounded-full bg-surface-sunken px-3 py-1.5 text-label-sm font-medium text-muted lg:inline-flex">
-            <span
-              aria-hidden="true"
-              className="size-2 rounded-full bg-accent-600"
-            />
-            {ROLE_CONTEXT[user.role]}
-          </p>
+          {/* No context pill here (RecoverEase 2.0). It repeated, word for
+              word, the portal name directly beside it under the sidebar's
+              wordmark; the portal is named once, in the portal's accent. */}
 
           <div className="ml-auto flex items-center gap-1 sm:gap-3">
             <NotificationBell to={notificationsHref} />

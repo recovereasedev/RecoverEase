@@ -105,7 +105,7 @@ afterEach(() => {
 })
 
 describe.each([
-  ['medication page', () => <PatientMedicationsPage />, 'Taken'],
+  ['medication page', () => <PatientMedicationsPage />, /^Mark taken/],
   [
     'dashboard',
     () => (

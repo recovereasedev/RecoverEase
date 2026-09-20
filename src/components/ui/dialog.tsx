@@ -59,7 +59,9 @@ export function Dialog({
       aria-describedby={description ? descriptionId : undefined}
       // The backdrop is styled through the pseudo-element so clicks outside
       // land on the dialog element itself, which the handler below detects.
-      className="m-auto w-[min(32rem,calc(100vw-2rem))] rounded-[var(--radius-xl)] border border-[var(--color-border)] bg-surface p-0 shadow-[var(--shadow-lg)] backdrop:bg-neutral-900/40"
+      // `app-dialog` carries the open and close motion and the backdrop
+      // (index.css).
+      className="app-dialog m-auto w-[min(32rem,calc(100vw-2rem))] rounded-[var(--radius-xl)] border border-[var(--color-border)] bg-surface p-0 shadow-[var(--shadow-lg)]"
       onClick={(event) => {
         // A click on the dialog element but outside its content box is a
         // click on the backdrop.

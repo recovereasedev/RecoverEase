@@ -58,7 +58,6 @@ export function DoctorPatientsPage() {
   return (
     <>
       <PageHeader
-        eyebrow="Your caseload"
         title="Patients"
         description="Everyone assigned to your care."
         actions={

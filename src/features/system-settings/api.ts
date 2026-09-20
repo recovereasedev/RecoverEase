@@ -46,7 +46,7 @@ export const SETTING_DEFINITIONS = [
     key: 'chatbot.system_prompt',
     label: 'Chatbot guidance',
     description:
-      'Module 8.7. Instructions given to the guidance chatbot before each conversation. Keep it explicit that it must not diagnose or change a prescription.',
+      'Instructions given to the guidance chatbot before each conversation. Keep it explicit that it must not diagnose or change a prescription.',
     placeholder:
       'You support patients recovering after treatment. Do not diagnose…',
     multiline: true,

@@ -56,3 +56,20 @@ export async function fetchAuditLog(
 export function distinctEntities(entries: AuditLogEntry[]): string[] {
   return [...new Set(entries.map((entry) => entry.audit_log_entity))].sort()
 }
+
+/**
+ * The badge tone for each audit action, shared by the audit log and the
+ * administrator's overview so an insert, update or delete reads the same in
+ * both. The badge carries the action as a word; the tone only repeats it.
+ */
+export const auditActionTone = {
+  insert: 'success',
+  update: 'info',
+  delete: 'danger',
+} as const
+
+export function toneForAuditAction(
+  action: string,
+): (typeof auditActionTone)[keyof typeof auditActionTone] | 'neutral' {
+  return auditActionTone[action as keyof typeof auditActionTone] ?? 'neutral'
+}

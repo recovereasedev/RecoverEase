@@ -1,8 +1,9 @@
-import { Flame, LineChart, NotebookPen, ScrollText } from 'lucide-react'
+import { Flame } from 'lucide-react'
 
 import { LoadingState, StateView } from '@/components/feedback/state-view'
 import { PageHeader } from '@/components/layout/page-header'
-import { Card, CardBody, CardHeader } from '@/components/ui/card'
+import { Card, CardBody } from '@/components/ui/card'
+import { PageSection } from '@/components/ui/section-heading'
 import { useCurrentUser } from '@/features/auth/auth-context'
 import { calculateStreak } from '@/features/recovery-logs/api'
 import { DailyEntryForm } from '@/features/recovery-logs/components/daily-entry-form'
@@ -42,62 +43,58 @@ export function RecoveryPage() {
   return (
     <>
       <PageHeader
-        eyebrow="Your journal"
         title="My recovery"
         description="Record how each day goes. Your doctor sees these entries."
       />
 
-      <div className="grid gap-5 lg:grid-cols-3">
-        <div className="space-y-5 lg:col-span-2">
+      <div className="grid gap-section lg:grid-cols-3 lg:gap-8">
+        <div className="space-y-section lg:col-span-2">
           {/* --- Today's entry ------------------------------------------ */}
-          <Card>
-            <CardHeader
-              icon={NotebookPen}
-              title={todaysLog ? 'Edit today’s entry' : 'Log today'}
-              description={formatDateRelative(new Date())}
-            />
-            <CardBody>
-              {logsQuery.isPending ? (
-                <LoadingState label="Loading today's entry…" />
-              ) : (
-                /* Keyed on the entry being edited. A new key remounts the
-                   form with the saved values as its initial state, instead of
-                   copying them in with an effect after the first render. */
-                <DailyEntryForm
-                  key={todaysLog?.recovery_log_id ?? 'new-entry'}
-                  initialMood={todaysLog?.recovery_log_mood_rating ?? null}
-                  initialNotes={todaysLog?.recovery_log_notes ?? ''}
-                  isEditing={Boolean(todaysLog)}
-                  isSaving={saveLog.isPending}
-                  wasJustSaved={saveLog.isSuccess}
-                  error={saveLog.error}
-                  onSave={(values) =>
-                    saveLog.mutate({ date: todayKey, ...values })
-                  }
-                />
-              )}
-            </CardBody>
-          </Card>
+          <PageSection
+            title={todaysLog ? 'Edit today’s entry' : 'Log today'}
+            description={formatDateRelative(new Date())}
+          >
+            <Card variant="elevated">
+              <CardBody>
+                {logsQuery.isPending ? (
+                  <LoadingState label="Loading today's entry…" />
+                ) : (
+                  /* Keyed on the entry being edited. A new key remounts the
+                     form with the saved values as its initial state, instead
+                     of copying them in with an effect after the first
+                     render. */
+                  <DailyEntryForm
+                    key={todaysLog?.recovery_log_id ?? 'new-entry'}
+                    initialMood={todaysLog?.recovery_log_mood_rating ?? null}
+                    initialNotes={todaysLog?.recovery_log_notes ?? ''}
+                    isEditing={Boolean(todaysLog)}
+                    isSaving={saveLog.isPending}
+                    wasJustSaved={saveLog.isSuccess}
+                    error={saveLog.error}
+                    onSave={(values) =>
+                      saveLog.mutate({ date: todayKey, ...values })
+                    }
+                  />
+                )}
+              </CardBody>
+            </Card>
+          </PageSection>
 
           {/* --- Journal ------------------------------------------------- */}
-          <Card>
-            <CardHeader
-              icon={ScrollText}
-              title="Your journal"
-              description="Everything you have recorded, most recent first."
-            />
-            <CardBody className="p-0">
+          <PageSection
+            title="Your journal"
+            description="Everything you have recorded, most recent first."
+          >
+            <Card className="overflow-hidden">
               <StateView
                 isPending={logsQuery.isPending}
                 error={logsQuery.error}
                 data={logsQuery.data}
                 onRetry={() => void logsQuery.refetch()}
                 empty={
-                  <div className="px-4 py-10 text-center text-muted sm:px-5">
-                    <p className="font-medium text-heading">
-                      No entries yet
-                    </p>
-                    <p className="mt-1 text-sm">
+                  <div className="px-4 py-6 sm:px-5">
+                    <p className="font-medium text-heading">No entries yet</p>
+                    <p className="mt-1 text-sm text-muted">
                       Your first entry will appear here once you save it.
                     </p>
                   </div>
@@ -111,7 +108,7 @@ export function RecoveryPage() {
                         className="px-4 py-4 sm:px-5"
                       >
                         <div className="flex flex-wrap items-baseline justify-between gap-2">
-                          <p className="font-medium text-heading">
+                          <p className="font-semibold text-heading">
                             {formatDateRelative(log.recovery_log_date)}
                           </p>
                           {log.recovery_log_mood_rating ? (
@@ -123,12 +120,13 @@ export function RecoveryPage() {
                             </p>
                           ) : null}
                         </div>
+                        {/* The patient's own words, at reading size. */}
                         {log.recovery_log_notes ? (
-                          <p className="mt-1.5 whitespace-pre-wrap text-sm leading-relaxed text-body">
+                          <p className="mt-1 whitespace-pre-wrap leading-relaxed text-body">
                             {log.recovery_log_notes}
                           </p>
                         ) : (
-                          <p className="mt-1.5 text-sm italic text-muted">
+                          <p className="mt-1 text-sm text-muted">
                             No notes recorded for this day.
                           </p>
                         )}
@@ -137,38 +135,38 @@ export function RecoveryPage() {
                   </ul>
                 )}
               </StateView>
-            </CardBody>
-          </Card>
+            </Card>
+          </PageSection>
         </div>
 
-        {/* --- Side column ------------------------------------------------ */}
-        <div className="space-y-5">
+        {/* --- Progress: module 5.12 (streak) and 5.11 (trend) --------------
+            One panel, not two cards: both answer "how is it going". */}
+        <PageSection title="Your progress">
           <Card>
-            <CardBody className="flex items-center gap-4 sm:flex-col sm:text-center">
-              <span className="flex size-12 shrink-0 items-center justify-center rounded-full bg-warning-50">
-                <Flame className="size-6 text-warning-700" aria-hidden="true" />
-              </span>
-              <div className="min-w-0">
-                <p
-                  className="text-headline-lg font-bold text-heading"
-                  data-numeric
-                >
-                  {streak}
-                </p>
-                <p className="text-sm text-muted">
+            <CardBody className="space-y-5">
+              <div className="flex items-center gap-3">
+                <Flame
+                  className="size-6 shrink-0 text-warning-700"
+                  aria-hidden="true"
+                />
+                <p className="text-body">
+                  <span className="text-headline-md text-heading" data-numeric>
+                    {streak}
+                  </span>{' '}
                   {streak === 1 ? 'day in a row' : 'days in a row'}
                 </p>
               </div>
+              <div className="border-t border-[var(--color-border)] pt-4">
+                <h3 className="text-base font-semibold text-heading">
+                  How you have felt
+                </h3>
+                <div className="mt-3">
+                  <MoodTrend logs={logsQuery.data ?? []} />
+                </div>
+              </div>
             </CardBody>
           </Card>
-
-          <Card>
-            <CardHeader icon={LineChart} title="How you have felt" as="h2" />
-            <CardBody>
-              <MoodTrend logs={logsQuery.data ?? []} />
-            </CardBody>
-          </Card>
-        </div>
+        </PageSection>
       </div>
     </>
   )

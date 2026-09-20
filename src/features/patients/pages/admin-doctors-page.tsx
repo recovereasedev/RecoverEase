@@ -44,7 +44,6 @@ export function AdminDoctorsPage() {
   return (
     <>
       <PageHeader
-        eyebrow="Accounts"
         title="Doctor accounts"
         description="Clinician accounts and their access to the system."
         actions={

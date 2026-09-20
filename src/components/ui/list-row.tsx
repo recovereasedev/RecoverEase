@@ -3,6 +3,12 @@ import type { ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 
 export type ListRowProps = {
+  /**
+   * A fixed-width column before the text - the time in a dose timeline.
+   * Visual only: keep what it says in the row's text too, for assistive
+   * technology, since a column of times reads as a list of bare numbers.
+   */
+  leading?: ReactNode
   /** The thing this row is about. Usually the strongest text in the row. */
   title: ReactNode
   /** Time, dosage, relative date — the detail under the title. */
@@ -33,6 +39,7 @@ export type ListRowProps = {
  * needs less.
  */
 export function ListRow({
+  leading,
   title,
   description,
   status,
@@ -41,13 +48,27 @@ export function ListRow({
   className,
 }: ListRowProps) {
   return (
-    <li className={cn('px-4 py-4 sm:px-5', className)}>
+    <li
+      className={cn(
+        // A row whose state changes - an overdue dose once it is taken -
+        // eases its tint out instead of snapping.
+        'px-4 py-4 transition-colors duration-[var(--duration-base)] sm:px-5',
+        className,
+      )}
+    >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-        <div className="min-w-0 sm:flex-1">
-          <div className="font-medium text-heading">{title}</div>
-          {description ? (
-            <div className="mt-0.5 text-sm text-muted">{description}</div>
+        <div className="flex min-w-0 gap-3 sm:flex-1 sm:gap-4">
+          {leading !== undefined ? (
+            <div aria-hidden="true" className="w-12 shrink-0 sm:w-14">
+              {leading}
+            </div>
           ) : null}
+          <div className="min-w-0 flex-1">
+            <div className="font-medium text-heading">{title}</div>
+            {description ? (
+              <div className="mt-0.5 text-sm text-muted">{description}</div>
+            ) : null}
+          </div>
         </div>
 
         {status || actions ? (

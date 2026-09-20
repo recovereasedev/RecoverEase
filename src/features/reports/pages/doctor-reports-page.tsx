@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { FileBarChart, ListChecks, Printer } from 'lucide-react'
+import { FileBarChart, Printer } from 'lucide-react'
 import { useState } from 'react'
 import { flushSync } from 'react-dom'
 
@@ -82,7 +82,6 @@ export function DoctorReportsPage() {
         {/* The header and the form are the screen's, as is "Print list": the
             printout of this page is the list of generated reports. */}
         <PageHeader
-          eyebrow="Records"
           title="Reports"
           description="Recovery reports you have generated."
           className="print:hidden"
@@ -91,7 +90,6 @@ export function DoctorReportsPage() {
         <div className="grid gap-5 lg:grid-cols-3">
           <Card className="lg:col-span-1 h-fit print:hidden">
             <CardHeader
-              icon={FileBarChart}
               title="Generate a recovery report"
               as="h2"
             />
@@ -164,7 +162,6 @@ export function DoctorReportsPage() {
 
           <Card className="lg:col-span-2">
             <CardHeader
-              icon={ListChecks}
               title="Generated reports"
               as="h2"
               action={

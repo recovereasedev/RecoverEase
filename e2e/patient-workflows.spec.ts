@@ -65,7 +65,7 @@ test.describe('medication (modules 4.5, 4.6)', () => {
     ).toBeVisible()
     await expect(page.getByText('Paracetamol').first()).toBeVisible()
 
-    await page.getByRole('button', { name: 'Taken', exact: true }).first().click()
+    await page.getByRole('button', { name: /^Mark taken/ }).first().click()
 
     // The status badge carries a word, not only a colour.
     await expect(page.getByText('Taken').first()).toBeVisible()
@@ -79,7 +79,7 @@ test.describe('medication (modules 4.5, 4.6)', () => {
     await page.goto('/patient/medications')
 
     await expect(
-      page.getByRole('button', { name: 'Taken', exact: true }).first(),
+      page.getByRole('button', { name: /^Mark taken/ }).first(),
     ).toBeVisible()
     await expect(page.getByRole('button', { name: /skip/i })).toHaveCount(0)
 

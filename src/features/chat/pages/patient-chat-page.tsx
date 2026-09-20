@@ -133,7 +133,7 @@ export function PatientChatPage() {
       {/* No subtitle. "Ask about your recovery between appointments" is
           said better, and at more length, by the notice directly below it -
           and on a phone those two lines came out of the conversation. */}
-      <PageHeader eyebrow="Recovery guidance" title="Guidance chat" />
+      <PageHeader title="Guidance chat" />
 
       {/* Stated before the conversation, not buried under it. Standing
           guidance, so it is not announced: it was on the page all along. */}
@@ -234,12 +234,12 @@ export function PatientChatPage() {
                             <p className="sr-only">
                               {isPatient ? 'You said:' : 'Assistant said:'}
                             </p>
-                            <p className="whitespace-pre-wrap text-sm leading-relaxed">
+                            <p className="whitespace-pre-wrap text-base leading-relaxed">
                               {message.chat_message_content}
                             </p>
                             <p
                               className={cn(
-                                'mt-1 text-[11px]',
+                                'mt-1 text-xs',
                                 isPatient ? 'text-white/70' : 'text-muted',
                               )}
                             >
