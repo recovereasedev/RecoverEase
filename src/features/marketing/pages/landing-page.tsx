@@ -646,8 +646,8 @@ export function LandingPage() {
             <figure className="m-0">
               <Screen
                 src="/landing/install.webp"
-                width={800}
-                height={406}
+                width={900}
+                height={572}
                 alt="RecoverEase’s install offer, with Maybe Later and Install buttons."
                 className="mx-auto max-w-md"
               />
