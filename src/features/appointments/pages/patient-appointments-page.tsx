@@ -6,10 +6,12 @@ import { StateView } from '@/components/feedback/state-view'
 import { PageHeader } from '@/components/layout/page-header'
 import { StatusBadge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardBody, CardHeader } from '@/components/ui/card'
+import { Card, CardBody } from '@/components/ui/card'
 import { Dialog } from '@/components/ui/dialog'
 import { Field, Input, Textarea } from '@/components/ui/field'
 import { ListRow, ListRows } from '@/components/ui/list-row'
+import { PageSection } from '@/components/ui/section-heading'
+import type { Appointment } from '@/features/appointments/api'
 import {
   appointmentTimeError,
   closedAppointmentPhrase,
@@ -23,9 +25,10 @@ import {
 } from '@/features/appointments/hooks'
 import { useCurrentUser } from '@/features/auth/auth-context'
 import { useDocumentTitle } from '@/hooks/use-document-title'
-import { formatDateTime } from '@/lib/format'
+import { formatDateTime, formatRelative } from '@/lib/format'
 import { appointmentStatus, rescheduleRequestStatus } from '@/lib/status'
 import { supabase } from '@/lib/supabase/client'
+import { cn } from '@/lib/utils'
 import { useQuery } from '@tanstack/react-query'
 import { queryKeys } from '@/lib/query-keys'
 
@@ -198,6 +201,133 @@ export function PatientAppointmentsPage() {
     )
   }
 
+  /**
+   * Everything a patient can do to an appointment that is still going to
+   * happen, and the notes that belong with it. Written once and used by both
+   * the appointment that is next and the ones behind it, so the two cannot
+   * drift apart.
+   */
+  const actionsFor = (appointment: Appointment, isLead: boolean) => {
+    const pending = pendingRequestFor(appointment.appointment_id)
+    // Only an appointment that is still going to happen can be moved or
+    // called off. 'cancelled', 'completed' and 'no_show' are settled, and
+    // offering "Cancel" beside a cancelled appointment invited a second
+    // cancellation of something already cancelled - while "Request new time"
+    // there was worse than pointless, because approving that request used to
+    // put the appointment back to 'scheduled'. The database refuses that now;
+    // this keeps the action from being offered in the first place.
+    const isOpen = isActiveAppointment(appointment.appointment_status)
+    if (!isOpen && appointment.appointment_status !== 'scheduled') return null
+
+    return (
+      <div
+        className={cn(
+          'grid grid-cols-2 gap-2',
+          isLead
+            ? 'sm:flex sm:flex-wrap'
+            : 'sm:flex sm:flex-wrap sm:justify-end',
+        )}
+      >
+        {appointment.appointment_status === 'scheduled' ? (
+          <Button
+            size={isLead ? 'md' : 'sm'}
+            isLoading={
+              setStatus.isPending &&
+              setStatus.variables?.appointmentId === appointment.appointment_id
+            }
+            onClick={() =>
+              setStatus.mutate({
+                appointmentId: appointment.appointment_id,
+                status: 'confirmed',
+              })
+            }
+          >
+            Confirm
+          </Button>
+        ) : null}
+
+        {isOpen && !pending ? (
+          <Button
+            size={isLead ? 'md' : 'sm'}
+            variant="secondary"
+            onClick={() => openReschedule(appointment.appointment_id)}
+          >
+            Request new time
+          </Button>
+        ) : null}
+
+        {isOpen ? (
+          <Button
+            size={isLead ? 'md' : 'sm'}
+            variant="ghost"
+            onClick={() =>
+              setCancelling({
+                id: appointment.appointment_id,
+                when: formatDateTime(appointment.appointment_date),
+              })
+            }
+          >
+            Cancel
+          </Button>
+        ) : null}
+      </div>
+    )
+  }
+
+  /** What the doctor has been asked, and what went wrong, if anything. */
+  const notesFor = (appointment: Appointment) => {
+    const pending = pendingRequestFor(appointment.appointment_id)
+    // A request can outlive its appointment (NA-03): it is not awaiting the
+    // doctor once the appointment is closed.
+    const closedPhrase = closedAppointmentPhrase(appointment.appointment_status)
+
+    return (
+      <>
+        {pending ? (
+          <p className="mt-3 rounded-[var(--radius-md)] bg-surface-sunken px-3 py-2 text-sm leading-relaxed text-body">
+            {closedPhrase ? (
+              <>
+                This appointment {closedPhrase}, so your request to move it to{' '}
+                {formatDateTime(pending.reschedule_request_date)} will not be
+                acted on.
+              </>
+            ) : (
+              <>
+                You asked to move this to{' '}
+                {formatDateTime(pending.reschedule_request_date)}. Your doctor
+                has not responded yet.
+              </>
+            )}
+          </p>
+        ) : null}
+
+        {failedStatusFor(appointment.appointment_id) === 'confirmed' ? (
+          <div className="mt-3">
+            <FormError
+              error={setStatus.error}
+              title="Your attendance was not confirmed"
+            />
+          </div>
+        ) : null}
+      </>
+    )
+  }
+
+  const statusesFor = (appointment: Appointment) => {
+    const pending = pendingRequestFor(appointment.appointment_id)
+    const isOpen = isActiveAppointment(appointment.appointment_status)
+    return (
+      <>
+        <StatusBadge
+          status={appointmentStatus[appointment.appointment_status]}
+        />
+        {pending && isOpen ? (
+          <StatusBadge status={rescheduleRequestStatus.pending} />
+        ) : null}
+      </>
+    )
+  }
+
   return (
     <>
       <PageHeader
@@ -211,19 +341,18 @@ export function PatientAppointmentsPage() {
         }
       />
 
-      <div className="space-y-5">
-        <Card>
-          <CardHeader
-            title="Upcoming"
-            description="Confirm that you will attend, or ask for a different time."
-          />
-          <CardBody className="p-0">
-            <StateView
-              isPending={appointmentsQuery.isPending}
-              error={appointmentsQuery.error}
-              data={upcoming}
-              onRetry={() => void appointmentsQuery.refetch()}
-              empty={
+      <div className="space-y-section">
+        <StateView
+          isPending={appointmentsQuery.isPending}
+          error={appointmentsQuery.error}
+          data={upcoming}
+          onRetry={() => void appointmentsQuery.refetch()}
+          empty={
+            <PageSection
+              title="Upcoming"
+              description="Confirm that you will attend, or ask for a different time."
+            >
+              <Card>
                 <div className="px-4 py-10 text-center sm:px-5">
                   <CalendarX
                     className="mx-auto size-6 text-neutral-400"
@@ -236,152 +365,87 @@ export function PatientAppointmentsPage() {
                     Book a follow-up when you need to see your doctor again.
                   </p>
                 </div>
-              }
-            >
-              {(items) => (
-                <ListRows>
-                  {items.map((appointment) => {
-                    const pending = pendingRequestFor(
-                      appointment.appointment_id,
-                    )
-                    // Only an appointment that is still going to happen can
-                    // be moved or called off. 'cancelled', 'completed' and
-                    // 'no_show' are settled, and offering "Cancel" beside a
-                    // cancelled appointment invited a second cancellation of
-                    // something already cancelled — while "Request new time"
-                    // there was worse than pointless, because approving that
-                    // request used to put the appointment back to
-                    // 'scheduled'. The database refuses that now; this keeps
-                    // the action from being offered in the first place.
-                    const isOpen = isActiveAppointment(
-                      appointment.appointment_status,
-                    )
-                    // A request can outlive its appointment (NA-03): it is
-                    // not awaiting the doctor once the appointment is closed.
-                    const closedPhrase = closedAppointmentPhrase(
-                      appointment.appointment_status,
-                    )
+              </Card>
+            </PageSection>
+          }
+        >
+          {(items) => {
+            // Sorted soonest first upstream, so the first is the one being
+            // asked about: it is lifted out of the list and given the size
+            // its answer deserves.
+            const [next, ...later] = items
+            if (!next) return null
 
-                    return (
-                      <ListRow
-                        key={appointment.appointment_id}
-                        title={formatDateTime(appointment.appointment_date)}
-                        status={
-                          <>
-                            <StatusBadge
-                              status={
-                                appointmentStatus[
-                                  appointment.appointment_status
-                                ]
-                              }
-                            />
-                            {pending && isOpen ? (
-                              <StatusBadge
-                                status={rescheduleRequestStatus.pending}
-                              />
-                            ) : null}
-                          </>
-                        }
-                      >
-                        {/* Actions live in the row's own block rather than
-                            beside the status, because three of them beside a
-                            date and two badges is more than a 375px line can
-                            carry. Here they get a full-width two-up grid on a
-                            phone and sit inline from `sm`. */}
-                        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:justify-end">
-                          {appointment.appointment_status === 'scheduled' ? (
-                            <Button
-                              size="sm"
-
-                              isLoading={
-                                setStatus.isPending &&
-                                setStatus.variables?.appointmentId ===
-                                  appointment.appointment_id
-                              }
-                              onClick={() =>
-                                setStatus.mutate({
-                                  appointmentId: appointment.appointment_id,
-                                  status: 'confirmed',
-                                })
-                              }
-                            >
-                              Confirm
-                            </Button>
-                          ) : null}
-
-                          {isOpen && !pending ? (
-                            <Button
-                              size="sm"
-                              variant="secondary"
-
-                              onClick={() =>
-                                openReschedule(appointment.appointment_id)
-                              }
-                            >
-                              Request new time
-                            </Button>
-                          ) : null}
-
-                          {isOpen ? (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-
-                              onClick={() =>
-                                setCancelling({
-                                  id: appointment.appointment_id,
-                                  when: formatDateTime(
-                                    appointment.appointment_date,
-                                  ),
-                                })
-                              }
-                            >
-                              Cancel
-                            </Button>
-                          ) : null}
-                        </div>
-
-                        {pending ? (
-                          <p className="mt-3 rounded-[var(--radius-md)] bg-surface-sunken px-3 py-2 text-sm leading-relaxed text-body">
-                            {closedPhrase ? (
-                              <>
-                                This appointment {closedPhrase}, so your
-                                request to move it to{' '}
-                                {formatDateTime(pending.reschedule_request_date)}{' '}
-                                will not be acted on.
-                              </>
-                            ) : (
-                              <>
-                                You asked to move this to{' '}
-                                {formatDateTime(pending.reschedule_request_date)}.
-                                Your doctor has not responded yet.
-                              </>
-                            )}
+            return (
+              <>
+                <PageSection
+                  title="Next appointment"
+                  description="Confirm that you will attend, or ask for a different time."
+                >
+                  <Card variant="elevated">
+                    <CardBody>
+                      <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
+                        <div className="min-w-0">
+                          <p
+                            className="text-balance text-headline-lg text-heading sm:text-title"
+                            data-numeric
+                          >
+                            {formatDateTime(next.appointment_date)}
                           </p>
-                        ) : null}
+                          {/* How far away it is, in words: the date answers
+                              "when", this answers "how soon". */}
+                          <p className="mt-1 text-body-md text-muted first-letter:uppercase">
+                            {formatRelative(next.appointment_date)}
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          {statusesFor(next)}
+                        </div>
+                      </div>
 
-                        {failedStatusFor(appointment.appointment_id) ===
-                        'confirmed' ? (
-                          <div className="mt-3">
-                            <FormError
-                              error={setStatus.error}
-                              title="Your attendance was not confirmed"
-                            />
-                          </div>
-                        ) : null}
-                      </ListRow>
-                    )
-                  })}
-                </ListRows>
-              )}
-            </StateView>
-          </CardBody>
-        </Card>
+                      {notesFor(next)}
+
+                      <div className="mt-5">{actionsFor(next, true)}</div>
+                    </CardBody>
+                  </Card>
+                </PageSection>
+
+                {later.length > 0 ? (
+                  <PageSection
+                    title="Later"
+                    description="The rest of your booked visits."
+                  >
+                    <Card className="overflow-hidden">
+                      <ListRows>
+                        {later.map((appointment) => (
+                          <ListRow
+                            key={appointment.appointment_id}
+                            title={formatDateTime(appointment.appointment_date)}
+                            description={formatRelative(
+                              appointment.appointment_date,
+                            )}
+                            status={statusesFor(appointment)}
+                          >
+                            {/* Actions live in the row's own block rather than
+                                beside the status, because three of them beside
+                                a date and two badges is more than a 375px line
+                                can carry. */}
+                            {actionsFor(appointment, false)}
+                            {notesFor(appointment)}
+                          </ListRow>
+                        ))}
+                      </ListRows>
+                    </Card>
+                  </PageSection>
+                ) : null}
+              </>
+            )
+          }}
+        </StateView>
 
         {/* --- History — module 6.7 -------------------------------------- */}
-        <Card>
-          <CardHeader title="History" />
-          <CardBody className="p-0">
+        <PageSection title="History" description="Visits already behind you.">
+          <Card className="overflow-hidden">
             {past.length === 0 ? (
               <p className="px-4 py-8 text-center text-sm text-muted sm:px-5">
                 You have no past appointments.
@@ -399,17 +463,15 @@ export function PatientAppointmentsPage() {
                     }
                     status={
                       <StatusBadge
-                        status={
-                          appointmentStatus[appointment.appointment_status]
-                        }
+                        status={appointmentStatus[appointment.appointment_status]}
                       />
                     }
                   />
                 ))}
               </ListRows>
             )}
-          </CardBody>
-        </Card>
+          </Card>
+        </PageSection>
       </div>
 
       {/* --- Cancel confirmation ----------------------------------------- */}

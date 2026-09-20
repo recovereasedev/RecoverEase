@@ -59,7 +59,7 @@ export function AuthLayout({
           </span>
         </Link>
 
-        <div className="mt-20 max-w-md">
+        <div className="mt-16 max-w-md xl:mt-20">
           <p className="text-headline-xl text-white">
             Recovery is easier to follow when everything is in one place.
           </p>
@@ -73,7 +73,7 @@ export function AuthLayout({
           </p>
         </div>
 
-        <ul className="relative z-10 mt-8 max-w-md space-y-3 text-sm text-white">
+        <ul className="mt-8 max-w-md space-y-3 text-sm text-white">
           <li className="flex items-center gap-3">
             <ShieldCheck className="size-5 shrink-0" aria-hidden="true" />
             Your records are visible only to you and your assigned clinician.
@@ -84,19 +84,29 @@ export function AuthLayout({
           </li>
         </ul>
 
-        {/* A real screen, partly below the panel's edge: the product, not a
-            picture of healthcare. Decorative here - the page is a form, and
-            the screen is a fictional patient's - so it is hidden from
-            assistive technology. */}
-        <img
-          src="/landing/hero-patient.webp"
-          alt=""
-          aria-hidden="true"
-          width={520}
-          height={1040}
-          decoding="async"
-          className="pointer-events-none absolute -bottom-48 right-10 w-52 rounded-[1.5rem] border-4 border-white/25 shadow-[0_32px_64px_-16px_rgb(0_20_40/0.55)] xl:right-16 xl:w-60"
-        />
+        {/* A real screen, rising from the foot of the panel: the product,
+            not a picture of healthcare. Decorative here - the page is a
+            form, and the screen is a fictional patient's - so it is hidden
+            from assistive technology.
+
+            It has a region of its own below the words, which is what it may
+            use and no more. On a short window that region shrinks and the
+            screen is masked away with it; it can no longer sit across the
+            two sentences about who can see a record, which is the last
+            thing on this page that should be half-covered. The fade is why
+            the bottom edge reads as framed rather than cut: there is no
+            hard line anywhere, at any height. */}
+        <div className="relative mt-10 min-h-0 flex-1 [mask-image:linear-gradient(to_bottom,black_55%,transparent)] [@media(max-height:680px)]:hidden">
+          <img
+            src="/landing/hero-patient.webp"
+            alt=""
+            aria-hidden="true"
+            width={520}
+            height={1040}
+            decoding="async"
+            className="pointer-events-none absolute right-6 top-0 w-52 rounded-t-[1.5rem] border-4 border-b-0 border-white/25 shadow-[0_32px_64px_-16px_rgb(0_20_40/0.55)] xl:right-12 xl:w-60"
+          />
+        </div>
       </aside>
 
       {/* --- Form column -------------------------------------------------- */}

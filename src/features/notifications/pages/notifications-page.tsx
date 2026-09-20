@@ -131,26 +131,31 @@ export function NotificationsPage() {
                       // 150px, which turns two lines of text into five.
                       className={cn(
                         'flex flex-col gap-2 px-4 py-4 sm:flex-row sm:items-start sm:gap-3 sm:px-5',
-                        isUnread && 'bg-brand-50/40',
+                        // Unread carries three cues, none of them colour on
+                        // its own: an accent down the leading edge, a tint,
+                        // and the weight of the message itself. The bar is
+                        // drawn inside the row's own box, so marking one read
+                        // moves nothing. A flagged conversation keeps the
+                        // warning tone it has everywhere else in the
+                        // application rather than the portal's accent.
+                        isUnread &&
+                          (isCritical
+                            ? 'bg-warning-50 shadow-[inset_3px_0_0_var(--color-warning-600)]'
+                            : 'bg-role-soft/40 shadow-[inset_3px_0_0_var(--color-role)]'),
                       )}
                     >
                       <div className="flex min-w-0 gap-3 sm:flex-1">
-                        <span
+                        {/* The glyph says what kind of update this is. It
+                            needs no tile of its own to do that - the tinted
+                            circle was the 2.0 pattern this application took
+                            off every other screen. */}
+                        <Icon
                           className={cn(
-                            'flex size-9 shrink-0 items-center justify-center rounded-full',
-                            isCritical ? 'bg-warning-100' : 'bg-neutral-100',
+                            'mt-0.5 size-5 shrink-0',
+                            isCritical ? 'text-warning-700' : 'text-neutral-500',
                           )}
-                        >
-                          <Icon
-                            className={cn(
-                              'size-4',
-                              isCritical
-                                ? 'text-warning-800'
-                                : 'text-neutral-600',
-                            )}
-                            aria-hidden="true"
-                          />
-                        </span>
+                          aria-hidden="true"
+                        />
 
                         <div className="min-w-0 flex-1">
                           <p
