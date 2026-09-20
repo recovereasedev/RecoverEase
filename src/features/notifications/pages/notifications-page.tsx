@@ -9,7 +9,7 @@ import {
 } from 'lucide-react'
 import { Link, useLocation } from 'react-router-dom'
 
-import { StateView } from '@/components/feedback/state-view'
+import { EmptyState, StateView } from '@/components/feedback/state-view'
 import { PageHeader } from '@/components/layout/page-header'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Card, CardBody } from '@/components/ui/card'
@@ -90,18 +90,11 @@ export function NotificationsPage() {
             data={notificationsQuery.data}
             onRetry={() => void notificationsQuery.refetch()}
             empty={
-              <div className="px-4 py-12 text-center sm:px-5">
-                <Bell
-                  className="mx-auto size-6 text-neutral-400"
-                  aria-hidden="true"
-                />
-                <p className="mt-2 font-medium text-heading">
-                  You are all caught up
-                </p>
-                <p className="mt-1 text-sm text-muted">
-                  Reminders about medication and appointments will appear here.
-                </p>
-              </div>
+              <EmptyState
+                icon={Bell}
+                title="You are all caught up"
+                description="Reminders about medication and appointments will appear here."
+              />
             }
           >
             {(notifications) => (
@@ -131,6 +124,10 @@ export function NotificationsPage() {
                       // 150px, which turns two lines of text into five.
                       className={cn(
                         'flex flex-col gap-2 px-4 py-4 sm:flex-row sm:items-start sm:gap-3 sm:px-5',
+                        // Marking one read is a state change the reader just
+                        // made: the tint and the bar ease out together rather
+                        // than the row blinking to plain under the pointer.
+                        'transition-[background-color,box-shadow] duration-[var(--duration-base)] ease-[var(--ease-out-soft)]',
                         // Unread carries three cues, none of them colour on
                         // its own: an accent down the leading edge, a tint,
                         // and the weight of the message itself. The bar is

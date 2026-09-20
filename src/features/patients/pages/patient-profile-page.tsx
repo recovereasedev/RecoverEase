@@ -1,6 +1,7 @@
 import { useState } from 'react'
 
 import { FormError } from '@/components/feedback/form-error'
+import { SavedNotice } from '@/components/feedback/state-view'
 
 import { PageHeader } from '@/components/layout/page-header'
 import { StatusBadge } from '@/components/ui/badge'
@@ -207,16 +208,9 @@ export function PatientProfilePage() {
                       Discard changes
                     </Button>
                   ) : null}
-                  {/* Always rendered, so the confirmation is announced when
-                      it arrives. A status region that mounts with its own
-                      text is read inconsistently, and saving twice would be
-                      silent the second time. */}
-                  <p
-                    role="status"
-                    className="text-sm font-medium text-success-700 empty:hidden"
-                  >
+                  <SavedNotice at={updatePatient.submittedAt}>
                     {savedMessage}
-                  </p>
+                  </SavedNotice>
                 </div>
               </form>
             </CardBody>

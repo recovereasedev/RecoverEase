@@ -1,7 +1,7 @@
 import { KeyRound, Stethoscope, UserPlus } from 'lucide-react'
 import { useState } from 'react'
 
-import { StateView } from '@/components/feedback/state-view'
+import { EmptyState, StateView } from '@/components/feedback/state-view'
 import { PageHeader } from '@/components/layout/page-header'
 import { StatusBadge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -87,18 +87,11 @@ export function AdminDoctorsPage() {
             onRetry={() => void doctorsQuery.refetch()}
             loadingLabel="Loading doctor accounts…"
             empty={
-              <div className="px-4 py-12 text-center sm:px-5">
-                <Stethoscope
-                  className="mx-auto size-6 text-neutral-400"
-                  aria-hidden="true"
-                />
-                <p className="mt-2 font-medium text-heading">
-                  No doctor accounts
-                </p>
-                <p className="mt-1 text-sm text-muted">
-                  Register a doctor to give them access to the system.
-                </p>
-              </div>
+              <EmptyState
+                icon={Stethoscope}
+                title="No doctor accounts"
+                description="Register a doctor to give them access to the system."
+              />
             }
           >
             {(doctors) => (

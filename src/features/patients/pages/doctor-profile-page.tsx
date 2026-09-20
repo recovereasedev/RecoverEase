@@ -1,6 +1,7 @@
 import { useState } from 'react'
 
 import { FormError } from '@/components/feedback/form-error'
+import { SavedNotice } from '@/components/feedback/state-view'
 
 import { PageHeader } from '@/components/layout/page-header'
 import { Button } from '@/components/ui/button'
@@ -122,14 +123,9 @@ export function DoctorProfilePage() {
                 >
                   Save changes
                 </Button>
-                {savedMessage ? (
-                  <p
-                    role="status"
-                    className="text-sm font-medium text-success-700"
-                  >
-                    {savedMessage}
-                  </p>
-                ) : null}
+                <SavedNotice at={updateDoctor.submittedAt}>
+                  {savedMessage}
+                </SavedNotice>
               </div>
             </form>
           </CardBody>

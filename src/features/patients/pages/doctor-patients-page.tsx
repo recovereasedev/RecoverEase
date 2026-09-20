@@ -2,7 +2,7 @@ import { Search, UserPlus, Users } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 
-import { StateView } from '@/components/feedback/state-view'
+import { EmptyState, StateView } from '@/components/feedback/state-view'
 import { PageHeader } from '@/components/layout/page-header'
 import { StatusBadge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -106,20 +106,15 @@ export function DoctorPatientsPage() {
             onRetry={() => void patientsQuery.refetch()}
             loadingLabel="Loading your patients…"
             empty={
-              <div className="px-4 py-12 text-center sm:px-5">
-                <Users
-                  className="mx-auto size-6 text-neutral-400"
-                  aria-hidden="true"
-                />
-                <p className="mt-2 font-medium text-heading">
-                  {search ? 'No matching patients' : 'No patients yet'}
-                </p>
-                <p className="mt-1 text-sm text-muted">
-                  {search
+              <EmptyState
+                icon={Users}
+                title={search ? 'No matching patients' : 'No patients yet'}
+                description={
+                  search
                     ? 'Try a different name.'
-                    : 'Register a patient to get started.'}
-                </p>
-              </div>
+                    : 'Register a patient to get started.'
+                }
+              />
             }
           >
             {(patients) => (

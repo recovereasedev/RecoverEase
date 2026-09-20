@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { FileBarChart, Printer } from 'lucide-react'
 
 import { FormError } from '@/components/feedback/form-error'
-import { ErrorState, StateView } from '@/components/feedback/state-view'
+import { ErrorState, EmptyState, StateView } from '@/components/feedback/state-view'
 import { PageHeader } from '@/components/layout/page-header'
 import { Button } from '@/components/ui/button'
 import { Card, CardBody, CardHeader } from '@/components/ui/card'
@@ -177,15 +177,10 @@ export function AdminReportsPage() {
               data={reportsQuery.data}
               onRetry={() => void reportsQuery.refetch()}
               empty={
-                <div className="px-4 py-12 text-center sm:px-5">
-                  <FileBarChart
-                    className="mx-auto size-6 text-neutral-400"
-                    aria-hidden="true"
-                  />
-                  <p className="mt-2 font-medium text-heading">
-                    No reports generated yet
-                  </p>
-                </div>
+                <EmptyState
+                  icon={FileBarChart}
+                  title="No reports generated yet"
+                />
               }
             >
               {(reports) => (

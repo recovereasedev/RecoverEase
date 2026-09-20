@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { ScrollText } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
-import { StateView } from '@/components/feedback/state-view'
+import { EmptyState, StateView } from '@/components/feedback/state-view'
 import { PageHeader } from '@/components/layout/page-header'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardBody } from '@/components/ui/card'
@@ -139,18 +139,11 @@ export function AuditLogPage() {
             onRetry={() => void auditQuery.refetch()}
             loadingLabel="Loading audit entries…"
             empty={
-              <div className="px-4 py-12 text-center sm:px-5">
-                <ScrollText
-                  className="mx-auto size-6 text-neutral-400"
-                  aria-hidden="true"
-                />
-                <p className="mt-2 font-medium text-heading">
-                  No matching entries
-                </p>
-                <p className="mt-1 text-sm text-muted">
-                  Try clearing the filters.
-                </p>
-              </div>
+              <EmptyState
+                icon={ScrollText}
+                title="No matching entries"
+                description="Try clearing the filters."
+              />
             }
           >
             {(entries) => (

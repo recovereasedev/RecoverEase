@@ -2,7 +2,7 @@ import { CalendarPlus, CalendarX } from 'lucide-react'
 import { useRef, useState } from 'react'
 
 import { FormError } from '@/components/feedback/form-error'
-import { StateView } from '@/components/feedback/state-view'
+import { EmptyState, StateView } from '@/components/feedback/state-view'
 import { PageHeader } from '@/components/layout/page-header'
 import { StatusBadge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -316,10 +316,18 @@ export function PatientAppointmentsPage() {
   const statusesFor = (appointment: Appointment) => {
     const pending = pendingRequestFor(appointment.appointment_id)
     const isOpen = isActiveAppointment(appointment.appointment_status)
+    // The appointment this patient has just confirmed, so only its badge
+    // settles in - never every badge on the page when it loads.
+    const justAnswered =
+      setStatus.isSuccess &&
+      setStatus.variables?.appointmentId === appointment.appointment_id
+
     return (
       <>
         <StatusBadge
+          key={appointment.appointment_status}
           status={appointmentStatus[appointment.appointment_status]}
+          className={cn(justAnswered && 'motion-confirm')}
         />
         {pending && isOpen ? (
           <StatusBadge status={rescheduleRequestStatus.pending} />
@@ -353,18 +361,11 @@ export function PatientAppointmentsPage() {
               description="Confirm that you will attend, or ask for a different time."
             >
               <Card>
-                <div className="px-4 py-10 text-center sm:px-5">
-                  <CalendarX
-                    className="mx-auto size-6 text-neutral-400"
-                    aria-hidden="true"
-                  />
-                  <p className="mt-2 font-medium text-heading">
-                    No upcoming appointments
-                  </p>
-                  <p className="mt-1 text-sm text-muted">
-                    Book a follow-up when you need to see your doctor again.
-                  </p>
-                </div>
+                <EmptyState
+                  icon={CalendarX}
+                  title="No upcoming appointments"
+                  description="Book a follow-up when you need to see your doctor again."
+                />
               </Card>
             </PageSection>
           }
