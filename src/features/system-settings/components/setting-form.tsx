@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { FormError } from '@/components/feedback/form-error'
 
 import { Button } from '@/components/ui/button'
+import { SavedNotice } from '@/components/feedback/state-view'
 import { Card, CardBody, CardFooter, CardHeader } from '@/components/ui/card'
 import { Field, Input, Textarea } from '@/components/ui/field'
 import type {
@@ -115,11 +116,9 @@ export function SettingForm({
             >
               Save
             </Button>
-            {wasJustSaved && !isDirty ? (
-              <p role="status" className="text-sm font-medium text-success-700">
-                Saved.
-              </p>
-            ) : null}
+            <SavedNotice>
+              {wasJustSaved && !isDirty ? 'Saved.' : null}
+            </SavedNotice>
           </div>
         </form>
       </CardBody>

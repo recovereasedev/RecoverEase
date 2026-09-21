@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { flushSync } from 'react-dom'
 
 import { FormError } from '@/components/feedback/form-error'
-import { StateView } from '@/components/feedback/state-view'
+import { EmptyState, StateView } from '@/components/feedback/state-view'
 import { PageHeader } from '@/components/layout/page-header'
 import { Button } from '@/components/ui/button'
 import { Card, CardBody, CardHeader } from '@/components/ui/card'
@@ -183,18 +183,11 @@ export function DoctorReportsPage() {
                 data={reportsQuery.data}
                 onRetry={() => void reportsQuery.refetch()}
                 empty={
-                  <div className="px-4 py-12 text-center sm:px-5">
-                    <FileBarChart
-                      className="mx-auto size-6 text-neutral-400"
-                      aria-hidden="true"
-                    />
-                    <p className="mt-2 font-medium text-heading">
-                      No reports yet
-                    </p>
-                    <p className="mt-1 text-sm text-muted">
-                      Reports you generate will be listed here.
-                    </p>
-                  </div>
+                  <EmptyState
+                    icon={FileBarChart}
+                    title="No reports yet"
+                    description="Reports you generate will be listed here."
+                  />
                 }
               >
                 {(reports) => (

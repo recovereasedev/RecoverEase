@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import { FormError } from '@/components/feedback/form-error'
-import { StateView } from '@/components/feedback/state-view'
+import { EmptyState, StateView } from '@/components/feedback/state-view'
 import { PageHeader } from '@/components/layout/page-header'
 import { StatusBadge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -225,15 +225,7 @@ export function DoctorAppointmentsPage() {
               data={upcoming}
               onRetry={() => void appointmentsQuery.refetch()}
               empty={
-                <div className="px-4 py-10 text-center sm:px-5">
-                  <CalendarX
-                    className="mx-auto size-6 text-neutral-400"
-                    aria-hidden="true"
-                  />
-                  <p className="mt-2 font-medium text-heading">
-                    No upcoming appointments
-                  </p>
-                </div>
+                <EmptyState icon={CalendarX} title="No upcoming appointments" />
               }
             >
               {(items) => (

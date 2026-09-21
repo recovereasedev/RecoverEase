@@ -46,6 +46,45 @@ export function LoadingState({ label = 'Loading…' }: { label?: string }) {
   )
 }
 
+/**
+ * The line that says a form's save went through.
+ *
+ * One component rather than one per form, because the detail that makes it
+ * work is easy to lose: the region is always in the document and only its
+ * text changes. A status region that mounts with its words already in it is
+ * announced inconsistently, and saving a second time was silent.
+ *
+ * `at` is the moment the save was sent - a mutation's `submittedAt` does
+ * nicely. It keys the text, so the same message saved twice is a new element
+ * both to React and to the reader: it settles in again rather than sitting
+ * there unchanged, which is the only signal that anything happened.
+ */
+export function SavedNotice({
+  at,
+  children,
+  className,
+}: {
+  at?: number
+  children?: ReactNode
+  className?: string
+}) {
+  return (
+    <p
+      role="status"
+      className={cn(
+        'text-sm font-medium text-success-700 empty:hidden',
+        className,
+      )}
+    >
+      {children ? (
+        <span key={at} className="motion-confirm inline-block">
+          {children}
+        </span>
+      ) : null}
+    </p>
+  )
+}
+
 export type EmptyStateProps = {
   icon?: LucideIcon
   title: string
@@ -68,9 +107,11 @@ export function EmptyState({
         className,
       )}
     >
-      <span className="mb-1 flex size-11 items-center justify-center rounded-full bg-neutral-100">
-        <Icon className="size-5 text-neutral-500" aria-hidden="true" />
-      </span>
+      {/* A glyph, not a glyph in a circle: the tinted tile was the pattern
+          RecoverEase 2.0 took off cards, sections, notices and
+          notifications, and an empty screen is the last place that needs
+          decoration. */}
+      <Icon className="mb-1 size-6 text-neutral-500" aria-hidden="true" />
       <h3 className="text-base font-semibold text-heading">{title}</h3>
       {description ? (
         <p className="max-w-sm text-sm text-muted">{description}</p>
