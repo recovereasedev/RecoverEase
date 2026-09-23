@@ -128,13 +128,18 @@ export function RequireAuth({ children }: { children: ReactNode }) {
   }
 
   if (status.state === 'error') {
+    // The whole page, not a panel inside one: nothing else renders when the
+    // session cannot be read. So it is the page's `<main>`, and the error's
+    // own title - "Something went wrong", "No connection" - is its `<h1>`,
+    // set exactly as before.
     return (
-      <div className="flex min-h-dvh items-center justify-center px-5">
+      <main className="flex min-h-dvh items-center justify-center px-5">
         <ErrorState
           error={status.error}
+          titleAs="h1"
           onRetry={() => window.location.reload()}
         />
-      </div>
+      </main>
     )
   }
 
