@@ -123,22 +123,33 @@ export function NotificationsPage() {
                       // the message for a 311px line leaves the message about
                       // 150px, which turns two lines of text into five.
                       className={cn(
-                        'flex flex-col gap-2 px-4 py-4 sm:flex-row sm:items-start sm:gap-3 sm:px-5',
+                        'relative flex flex-col gap-2 px-4 py-4 sm:flex-row sm:items-start sm:gap-3 sm:px-5',
+                        // Unread carries three cues, none of them colour on
+                        // its own: an accent down the leading edge, a tint,
+                        // and the weight of the message itself. A flagged
+                        // conversation keeps the warning tone it has
+                        // everywhere else in the application rather than the
+                        // portal's accent.
+                        //
+                        // The bar is its own layer, drawn inside the row's
+                        // box so marking one read moves nothing, and it
+                        // leaves by opacity alone: the compositor fades it,
+                        // where a box-shadow fade repainted the row's whole
+                        // shadow stack on every frame. Its colour is set in
+                        // both states, so it fades rather than vanishing.
+                        "before:pointer-events-none before:absolute before:inset-y-0 before:left-0 before:w-[3px] before:opacity-0 before:content-['']",
+                        isCritical
+                          ? 'before:bg-[var(--color-warning-600)]'
+                          : 'before:bg-[var(--color-role)]',
                         // Marking one read is a state change the reader just
                         // made: the tint and the bar ease out together rather
                         // than the row blinking to plain under the pointer.
-                        'transition-[background-color,box-shadow] duration-[var(--duration-base)] ease-[var(--ease-out-soft)]',
-                        // Unread carries three cues, none of them colour on
-                        // its own: an accent down the leading edge, a tint,
-                        // and the weight of the message itself. The bar is
-                        // drawn inside the row's own box, so marking one read
-                        // moves nothing. A flagged conversation keeps the
-                        // warning tone it has everywhere else in the
-                        // application rather than the portal's accent.
+                        'transition-colors duration-[var(--duration-base)] ease-[var(--ease-out-soft)]',
+                        'before:transition-opacity before:duration-[var(--duration-base)] before:ease-[var(--ease-out-soft)]',
                         isUnread &&
                           (isCritical
-                            ? 'bg-warning-50 shadow-[inset_3px_0_0_var(--color-warning-600)]'
-                            : 'bg-role-soft/40 shadow-[inset_3px_0_0_var(--color-role)]'),
+                            ? 'bg-warning-50 before:opacity-100'
+                            : 'bg-role-soft/40 before:opacity-100'),
                       )}
                     >
                       <div className="flex min-w-0 gap-3 sm:flex-1">
