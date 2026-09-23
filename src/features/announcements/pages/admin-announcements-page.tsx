@@ -3,11 +3,11 @@ import { Megaphone, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 
 import { FormError } from '@/components/feedback/form-error'
-import { StateView } from '@/components/feedback/state-view'
+import { EmptyState, StateView } from '@/components/feedback/state-view'
 import { PageHeader } from '@/components/layout/page-header'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardBody, CardHeader } from '@/components/ui/card'
+import { Card } from '@/components/ui/card'
 import { Dialog } from '@/components/ui/dialog'
 import { Field, Input, Textarea } from '@/components/ui/field'
 import {
@@ -105,90 +105,95 @@ export function AdminAnnouncementsPage() {
         onRetry={() => void announcementsQuery.refetch()}
         empty={
           <Card>
-            <CardBody>
-              <div className="py-10 text-center">
-                <Megaphone
-                  className="mx-auto size-6 text-neutral-400"
-                  aria-hidden="true"
-                />
-                <p className="mt-2 font-medium text-heading">
-                  No announcements yet
-                </p>
-                <p className="mt-1 text-sm text-muted">
-                  Create one to notify everyone using the system.
-                </p>
-              </div>
-            </CardBody>
+            <EmptyState
+              icon={Megaphone}
+              title="No announcements yet"
+              description="Create one to notify everyone using the system."
+            />
           </Card>
         }
       >
         {(announcements) => (
-          <div className="space-y-4">
-            {announcements.map((announcement) => {
-              const isPublished = Boolean(announcement.announcement_published_at)
+          /* One list, divided by hairlines, the way patients read these
+             same notices: a card per notice, each cut into three bands by
+             its header and its actions, turned a page of short notices into
+             a stack of separate boxes. The text keeps the patient page's
+             reading measure, so a notice is checked at the width it is read
+             at rather than across the whole page. */
+          <Card className="overflow-hidden">
+            <ul className="divide-y divide-[var(--color-border)]">
+              {announcements.map((announcement) => {
+                const isPublished = Boolean(announcement.announcement_published_at)
 
-              return (
-                <Card key={announcement.announcement_id}>
-                  <CardHeader
-                    title={announcement.announcement_title}
-                    description={
-                      isPublished
-                        ? `Published ${formatDateTime(announcement.announcement_published_at as string)}`
-                        : `Draft, created ${formatDateTime(announcement.announcement_created_at)}`
-                    }
-                    action={
-                      <Badge tone={isPublished ? 'success' : 'neutral'}>
-                        {isPublished ? 'Published' : 'Draft'}
-                      </Badge>
-                    }
-                  />
-                  <CardBody>
-                    <p className="whitespace-pre-wrap leading-relaxed text-body">
-                      {announcement.announcement_content}
-                    </p>
+                return (
+                  <li key={announcement.announcement_id}>
+                    <article className="px-4 py-5 sm:px-5">
+                      <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
+                        <div className="min-w-0">
+                          <h2 className="text-balance text-base font-semibold text-heading">
+                            {announcement.announcement_title}
+                          </h2>
+                          <p className="mt-0.5 text-sm text-muted">
+                            {isPublished
+                              ? `Published ${formatDateTime(announcement.announcement_published_at as string)}`
+                              : `Draft, created ${formatDateTime(announcement.announcement_created_at)}`}
+                          </p>
+                        </div>
+                        <Badge
+                          tone={isPublished ? 'success' : 'neutral'}
+                          className="ms-auto shrink-0"
+                        >
+                          {isPublished ? 'Published' : 'Draft'}
+                        </Badge>
+                      </div>
 
-                    {/* Publish and Delete are not alternatives to each
-                        other, so they are not given equal width: the
-                        destructive one stays a quiet ghost button beside the
-                        one an administrator actually came here to press. */}
-                    <div className="mt-4 flex flex-wrap gap-2 border-t border-[var(--color-border)] pt-4">
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        isLoading={
-                          togglePublished.isPending &&
-                          togglePublished.variables?.id ===
-                            announcement.announcement_id
-                        }
-                        onClick={() =>
-                          togglePublished.mutate({
-                            id: announcement.announcement_id,
-                            isPublished: !isPublished,
-                          })
-                        }
-                      >
-                        {isPublished ? 'Unpublish' : 'Publish now'}
-                      </Button>
+                      <p className="mt-3 max-w-prose whitespace-pre-wrap text-pretty leading-relaxed text-body">
+                        {announcement.announcement_content}
+                      </p>
 
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() =>
-                          setPendingDeleteId(announcement.announcement_id)
-                        }
-                      >
-                        <Trash2 aria-hidden="true" />
-                        Delete
-                        <span className="sr-only">
-                          : {announcement.announcement_title}
-                        </span>
-                      </Button>
-                    </div>
-                  </CardBody>
-                </Card>
-              )
-            })}
-          </div>
+                      {/* Publish and Delete are not alternatives to each
+                          other, so they are not given equal width: the
+                          destructive one stays a quiet ghost button beside the
+                          one an administrator actually came here to press. */}
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          isLoading={
+                            togglePublished.isPending &&
+                            togglePublished.variables?.id ===
+                              announcement.announcement_id
+                          }
+                          onClick={() =>
+                            togglePublished.mutate({
+                              id: announcement.announcement_id,
+                              isPublished: !isPublished,
+                            })
+                          }
+                        >
+                          {isPublished ? 'Unpublish' : 'Publish now'}
+                        </Button>
+
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() =>
+                            setPendingDeleteId(announcement.announcement_id)
+                          }
+                        >
+                          <Trash2 aria-hidden="true" />
+                          Delete
+                          <span className="sr-only">
+                            : {announcement.announcement_title}
+                          </span>
+                        </Button>
+                      </div>
+                    </article>
+                  </li>
+                )
+              })}
+            </ul>
+          </Card>
         )}
       </StateView>
 

@@ -5,7 +5,6 @@ import {
   CheckCircle2,
   ClipboardPlus,
   KeyRound,
-  NotebookPen,
   Pencil,
   Pill,
   Printer,
@@ -890,15 +889,12 @@ export function DoctorPatientDetailPage() {
                         data={notesQuery.data}
                         onRetry={() => void notesQuery.refetch()}
                         empty={
-                          <div className="px-4 py-10 text-center sm:px-5">
-                            <NotebookPen
-                              className="mx-auto size-6 text-neutral-400"
-                              aria-hidden="true"
-                            />
-                            <p className="mt-2 text-sm text-muted">
-                              No notes recorded for this patient yet.
-                            </p>
-                          </div>
+                          // One line, as the record's other empty lists
+                          // read: the card is titled and the form that fills
+                          // it sits directly above.
+                          <p className="px-4 py-10 text-center text-sm text-muted sm:px-5">
+                            No notes recorded for this patient yet.
+                          </p>
                         }
                       >
                         {(notes) => (
