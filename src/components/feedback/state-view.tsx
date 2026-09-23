@@ -76,8 +76,10 @@ export function SavedNotice({
         className,
       )}
     >
+      {/* Settles in from its leading edge: the line sits beside the Save
+          button, and scaling it from its centre made that edge drift. */}
       {children ? (
-        <span key={at} className="motion-confirm inline-block">
+        <span key={at} className="motion-confirm inline-block origin-left">
           {children}
         </span>
       ) : null}
