@@ -79,9 +79,13 @@ export function Dialog({
             </p>
           ) : null}
         </div>
+        {/* `shrink-0`: beside a long title the flex row squeezed it to as
+            little as 20px wide on a phone, the dialog's only visible way
+            out. */}
         <Button
           variant="ghost"
           size="icon"
+          className="shrink-0"
           onClick={onClose}
           aria-label="Close dialog"
         >

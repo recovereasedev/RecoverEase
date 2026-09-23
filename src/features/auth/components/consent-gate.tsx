@@ -56,7 +56,7 @@ export function ConsentGate({ children }: { children: ReactNode }) {
           <ShieldCheck className="size-5 text-accent-700" aria-hidden="true" />
         </span>
 
-        <h1 className="mt-5 text-headline-lg text-brand-800">
+        <h1 className="mt-5 text-headline-lg text-heading">
           Before you continue
         </h1>
         <p className="mt-2 text-body">
@@ -64,7 +64,10 @@ export function ConsentGate({ children }: { children: ReactNode }) {
           support your recovery. Please read this and confirm you agree.
         </p>
 
-        <div className="mt-6 space-y-4 rounded-[var(--radius-md)] bg-surface-sunken p-4 text-sm leading-relaxed text-body sm:p-5">
+        {/* At the 16px body size, not 14px: this is the one screen every
+            patient has to read before anything else, and it is what they
+            are agreeing to. */}
+        <div className="mt-6 space-y-4 rounded-[var(--radius-md)] bg-surface-sunken p-4 leading-relaxed text-body sm:p-5">
           <div>
             <h2 className="font-semibold text-heading">What we record</h2>
             <p className="mt-1">

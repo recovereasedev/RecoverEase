@@ -2,6 +2,7 @@ import { Send } from 'lucide-react'
 import { useState } from 'react'
 
 import { FormError } from '@/components/feedback/form-error'
+import { SavedNotice } from '@/components/feedback/state-view'
 import { Button } from '@/components/ui/button'
 import { Card, CardBody, CardHeader } from '@/components/ui/card'
 import { Field, Textarea } from '@/components/ui/field'
@@ -97,11 +98,9 @@ export function NotifyPatient({
               Send notification
             </Button>
 
-            {sentTo ? (
-              <p role="status" className="text-sm font-medium text-success-800">
-                Sent to {sentTo}.
-              </p>
-            ) : null}
+            <SavedNotice at={send.submittedAt}>
+              {sentTo ? `Sent to ${sentTo}.` : null}
+            </SavedNotice>
           </div>
         </form>
       </CardBody>

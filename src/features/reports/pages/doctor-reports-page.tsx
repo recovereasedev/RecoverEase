@@ -4,7 +4,11 @@ import { useState } from 'react'
 import { flushSync } from 'react-dom'
 
 import { FormError } from '@/components/feedback/form-error'
-import { EmptyState, StateView } from '@/components/feedback/state-view'
+import {
+  EmptyState,
+  SavedNotice,
+  StateView,
+} from '@/components/feedback/state-view'
 import { PageHeader } from '@/components/layout/page-header'
 import { Button } from '@/components/ui/button'
 import { Card, CardBody, CardHeader } from '@/components/ui/card'
@@ -136,15 +140,11 @@ export function DoctorReportsPage() {
                   />
                 ) : null}
 
-                {generate.isSuccess ? (
-                  <p
-                    role="status"
-                    className="text-sm font-medium text-success-700"
-                  >
-                    Report recorded. Its preview is below, ready to print or
-                    save as a PDF.
-                  </p>
-                ) : null}
+                <SavedNotice at={generate.submittedAt}>
+                  {generate.isSuccess
+                    ? 'Report recorded. Its preview is below, ready to print or save as a PDF.'
+                    : null}
+                </SavedNotice>
 
                 <Button
                   type="submit"

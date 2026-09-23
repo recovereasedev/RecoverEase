@@ -99,7 +99,9 @@ describe('notifying a patient', () => {
 
     fireEvent.change(messageBox(), { target: { value: 'One more thing' } })
 
-    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    // SavedNotice keeps the status region in the document and changes only
+    // its text: no confirmation is an empty region, not a missing one.
+    expect(screen.getByRole('status')).toBeEmptyDOMElement()
   })
 
   it('sends nothing at all when there is nothing to send', async () => {
@@ -122,7 +124,9 @@ describe('notifying a patient', () => {
       'The notification was not sent',
     )
     expect(messageBox()).toHaveValue('Bring your medication list on Thursday.')
-    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    // SavedNotice keeps the status region in the document and changes only
+    // its text: no confirmation is an empty region, not a missing one.
+    expect(screen.getByRole('status')).toBeEmptyDOMElement()
   })
 
   it('does not repeat the database at a clinician when the insert is refused', async () => {

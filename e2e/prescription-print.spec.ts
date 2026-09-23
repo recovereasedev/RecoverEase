@@ -33,7 +33,7 @@ test.describe('the printed prescription', () => {
     await page.goto('/patient/medications')
 
     await expect(page.getByText('Take with food.')).toBeVisible()
-    await expect(page.getByRole('heading', { level: 1, name: 'Medication' })).toBeVisible()
+    await expect(page.getByRole('heading', { level: 1, name: 'Medications' })).toBeVisible()
     await expect(page.getByRole('heading', { name: 'Due today' })).toBeVisible()
     await expect(page.getByRole('heading', { name: 'This week' })).toBeVisible()
     await expect(page.locator('[data-prescription-print-header]')).toBeHidden()
@@ -54,7 +54,7 @@ test.describe('the printed prescription', () => {
     // The application and the rest of the page stay on screen.
     await expect(page.getByRole('navigation', { name: 'Main' })).toBeHidden()
     await expect(page.getByRole('banner')).toBeHidden()
-    await expect(page.getByRole('heading', { level: 1, name: 'Medication' })).toBeHidden()
+    await expect(page.getByRole('heading', { level: 1, name: 'Medications' })).toBeHidden()
     await expect(page.getByRole('heading', { name: 'Due today' })).toBeHidden()
     await expect(page.getByRole('heading', { name: 'Coming up' })).toBeHidden()
     await expect(page.getByRole('heading', { name: 'This week' })).toBeHidden()

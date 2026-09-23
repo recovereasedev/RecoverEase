@@ -196,7 +196,7 @@ describe('printing prescriptions from the medication page', () => {
       expect(leftOffPaper(screen.getByRole('heading', { name })), name).toBe(true)
     }
     expect(
-      leftOffPaper(screen.getByRole('heading', { level: 1, name: 'Medication' })),
+      leftOffPaper(screen.getByRole('heading', { level: 1, name: 'Medications' })),
     ).toBe(true)
     expect(
       leftOffPaper(screen.getByRole('button', { name: /print prescriptions/i })),
