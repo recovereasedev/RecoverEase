@@ -2,6 +2,7 @@ import { NotebookPen } from 'lucide-react'
 import { useState } from 'react'
 
 import { FormError } from '@/components/feedback/form-error'
+import { SavedNotice } from '@/components/feedback/state-view'
 
 import { Button } from '@/components/ui/button'
 import { Field, Textarea } from '@/components/ui/field'
@@ -22,6 +23,7 @@ export function DailyEntryForm({
   isEditing,
   isSaving,
   wasJustSaved,
+  savedAt,
   error,
   onSave,
 }: {
@@ -37,6 +39,8 @@ export function DailyEntryForm({
    * could ever be seen. The confirmation has to live with the mutation.
    */
   wasJustSaved: boolean
+  /** When that save was sent - the mutation's `submittedAt`. */
+  savedAt: number
   error: unknown
   onSave: (values: { moodRating: number | null; notes: string | null }) => void
 }) {
@@ -82,11 +86,9 @@ export function DailyEntryForm({
           {isEditing ? 'Update entry' : 'Save entry'}
         </Button>
 
-        {wasJustSaved && !isSaving && !error ? (
-          <p role="status" className="text-sm font-medium text-success-700">
-            Saved.
-          </p>
-        ) : null}
+        <SavedNotice at={savedAt}>
+          {wasJustSaved && !isSaving && !error ? 'Saved.' : null}
+        </SavedNotice>
       </div>
     </form>
   )

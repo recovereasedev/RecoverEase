@@ -87,7 +87,7 @@ export function PasswordSetupGate({ children }: { children: ReactNode }) {
           <KeyRound className="size-5 text-brand-700" aria-hidden="true" />
         </span>
 
-        <h1 className="mt-5 text-headline-lg text-brand-800">
+        <h1 className="mt-5 text-headline-lg text-heading">
           Choose your password
         </h1>
         <p className="mt-2 text-body">

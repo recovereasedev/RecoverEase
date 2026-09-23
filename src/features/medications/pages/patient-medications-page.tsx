@@ -108,7 +108,7 @@ export function PatientMedicationsPage() {
 
       <PageHeader
         className="print:hidden"
-        title="Medication"
+        title="Medications"
         description="What is due, what you have taken, and what your doctor has prescribed."
         actions={
           <Button

@@ -73,7 +73,7 @@ function StatusScreen({
           <Icon className="size-7" />
         </span>
 
-        <h1 className="mt-5 text-headline-lg text-brand-800">{title}</h1>
+        <h1 className="mt-5 text-headline-lg text-heading">{title}</h1>
         <p className="mt-2 text-body-md leading-relaxed text-muted">
           {description}
         </p>

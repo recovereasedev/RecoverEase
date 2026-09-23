@@ -37,7 +37,9 @@ const ROLE_CONTEXT: Record<UserRole, string> = {
 
 function navLinkClasses(isActive: boolean): string {
   return cn(
-    'flex items-center gap-3 rounded-[var(--radius-md)] border-l-[3px] px-3 py-2.5 text-sm',
+    // 44px tall below `lg`, where these links sit in the phone's menu drawer
+    // and are tapped; the desktop sidebar keeps its 40px rows.
+    'flex min-h-11 items-center gap-3 rounded-[var(--radius-md)] border-l-[3px] px-3 py-2.5 text-sm lg:min-h-0',
     'transition-colors duration-[var(--duration-fast)]',
     isActive
       ? // The left accent is the design system's active marker, in the

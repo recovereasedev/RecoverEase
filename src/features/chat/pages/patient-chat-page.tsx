@@ -237,10 +237,13 @@ export function PatientChatPage() {
                             <p className="whitespace-pre-wrap text-base leading-relaxed">
                               {message.chat_message_content}
                             </p>
+                            {/* White at 80% on the patient's blue bubble:
+                                at 70% the time measured 4.49:1, just under
+                                the 4.5:1 its 12px size needs. */}
                             <p
                               className={cn(
                                 'mt-1 text-xs',
-                                isPatient ? 'text-white/70' : 'text-muted',
+                                isPatient ? 'text-white/80' : 'text-muted',
                               )}
                             >
                               {formatTime(message.chat_message_created_at)}

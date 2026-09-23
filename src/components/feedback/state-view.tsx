@@ -308,10 +308,13 @@ export function ErrorState({ error, onRetry, className }: ErrorStateProps) {
         className,
       )}
     >
-      <span className="mb-1 flex size-11 items-center justify-center rounded-full bg-danger-50">
-        <Icon className="size-5 text-danger-700" aria-hidden="true" />
-      </span>
-      <h3 className="text-base font-semibold text-heading">{title}</h3>
+      {/* The same shape as EmptyState: a glyph rather than a glyph in a
+          tinted circle, and the title as a message rather than a heading. As
+          an `<h3>` it sat straight under the page's `<h1>` wherever a list
+          failed to load, and left a gap in the heading outline. The alert
+          role is what announces it. */}
+      <Icon className="mb-1 size-6 text-danger-700" aria-hidden="true" />
+      <p className="text-base font-semibold text-heading">{title}</p>
       <p className="max-w-sm text-sm text-muted">{description}</p>
 
       {onRetry ? (
