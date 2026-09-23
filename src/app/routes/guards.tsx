@@ -33,10 +33,10 @@ export function roleHome(role: UserRole): string {
  * The frame for a screen that is the whole page rather than a panel inside
  * one: not found, blocked account, session failure.
  *
- * It is not `EmptyState`. That renders an `<h3>`, which is correct for a card
- * that sits under a page heading and wrong here, where this *is* the page and
- * the browser's heading outline would otherwise start at level three. Same
- * visual language, different document semantics.
+ * It is not `EmptyState`. That is a message inside a panel, with no heading of
+ * its own; here the screen *is* the page, and needs the `<h1>` the browser's
+ * heading outline starts from. Same visual language, different document
+ * semantics.
  */
 function StatusScreen({
   icon: Icon,
