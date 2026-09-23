@@ -112,7 +112,12 @@ export function EmptyState({
           notifications, and an empty screen is the last place that needs
           decoration. */}
       <Icon className="mb-1 size-6 text-neutral-500" aria-hidden="true" />
-      <h3 className="text-base font-semibold text-heading">{title}</h3>
+      {/* A message, not a heading. It is what an empty panel says, and it
+          introduces no section of its own; as an `<h3>` it sat directly under
+          a page's `<h1>` wherever the panel had no heading - notifications,
+          the patient and doctor lists, the audit log - and put a hole in the
+          outline that heading navigation reads. */}
+      <p className="text-base font-semibold text-heading">{title}</p>
       {description ? (
         <p className="max-w-sm text-sm text-muted">{description}</p>
       ) : null}
