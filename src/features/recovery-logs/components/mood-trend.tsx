@@ -29,8 +29,25 @@ export function MoodTrend({ logs }: { logs: RecoveryLog[] }) {
     )
   }
 
+  // `recent` is oldest first, so the last entry is the latest rated day.
+  const latest = recent[recent.length - 1]!
+  const latestRating = latest.recovery_log_mood_rating ?? 1
+
   return (
     <figure>
+      {/* The latest rating in words, on the page. Each column's value is
+          otherwise only in its hover title - which a touch screen never
+          shows - and in the table below, which only a screen reader reads.
+          The same word and date the table gives for that day; nothing is
+          worked out from it. */}
+      <p className="mb-3 text-body">
+        Most recent:{' '}
+        <span className="font-semibold text-heading">
+          {MOOD_WORDS[latestRating - 1]}
+        </span>{' '}
+        ({latestRating} of 5), {formatDate(latest.recovery_log_date)}
+      </p>
+
       {/* The columns stretch to the row's full 96px (`items-stretch`, the
           flex default). With `items-end` they shrank to their content - an
           empty bar - so each bar's percentage height resolved against a
@@ -66,8 +83,8 @@ export function MoodTrend({ logs }: { logs: RecoveryLog[] }) {
         Last {recent.length} rated {recent.length === 1 ? 'day' : 'days'}
       </figcaption>
 
-      {/* The same data, readable by assistive technology and by anyone who
-          cannot distinguish the bar colours. */}
+      {/* Every day's rating, for assistive technology: the columns are
+          hidden from it. */}
       <table className="sr-only">
         <caption>Recovery rating by day</caption>
         <thead>
