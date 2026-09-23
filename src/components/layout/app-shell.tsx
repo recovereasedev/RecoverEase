@@ -52,18 +52,32 @@ function navLinkClasses(isActive: boolean): string {
 
 function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
   const { user } = useAuth()
+  const labelId = useId()
   if (!user) return null
 
   return (
     <nav aria-label="Main" className="space-y-6">
       {navigationFor(user.role).map((section, index) => (
         <div key={section.heading ?? `section-${index}`}>
+          {/* A label for the group of links below it, not a heading: as an
+              `<h2>` it was the first heading on every page, ahead of the
+              page's own `<h1>`, and on the doctor's profile it put a second
+              "Account" in the outline. Naming the list keeps the grouping
+              for a screen reader - "Support, list, 3 items" - without it. */}
           {section.heading ? (
-            <h2 className="mb-2 px-3 text-label-sm font-semibold uppercase tracking-wider text-muted">
+            <p
+              id={`${labelId}-${index}`}
+              className="mb-2 px-3 text-label-sm font-semibold uppercase tracking-wider text-muted"
+            >
               {section.heading}
-            </h2>
+            </p>
           ) : null}
-          <ul className="space-y-1">
+          <ul
+            className="space-y-1"
+            aria-labelledby={
+              section.heading ? `${labelId}-${index}` : undefined
+            }
+          >
             {section.items.map((item) => (
               <li key={item.to}>
                 <NavLink

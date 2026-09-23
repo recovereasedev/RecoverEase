@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { AlertTriangle, MessagesSquare } from 'lucide-react'
 import { useState } from 'react'
 
-import { StateView } from '@/components/feedback/state-view'
+import { EmptyState, StateView } from '@/components/feedback/state-view'
 import { Card, CardBody, CardHeader } from '@/components/ui/card'
 import { Notice } from '@/components/ui/notice'
 import { fetchChatMessages, fetchChatSessions } from '@/features/chat/api'
@@ -67,16 +67,11 @@ export function PatientChatTranscript({
       loadingLabel="Loading conversations…"
       empty={
         <Card>
-          <CardBody className="py-10 text-center">
-            <MessagesSquare
-              className="mx-auto size-6 text-neutral-400"
-              aria-hidden="true"
-            />
-            <p className="mt-2 font-medium text-heading">No guidance chat yet</p>
-            <p className="mt-1 text-sm text-muted">
-              This patient has not used the guidance chat.
-            </p>
-          </CardBody>
+          <EmptyState
+            icon={MessagesSquare}
+            title="No guidance chat yet"
+            description="This patient has not used the guidance chat."
+          />
         </Card>
       }
     >

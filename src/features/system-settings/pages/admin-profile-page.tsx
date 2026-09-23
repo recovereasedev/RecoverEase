@@ -6,8 +6,9 @@ import { SavedNotice } from '@/components/feedback/state-view'
 
 import { PageHeader } from '@/components/layout/page-header'
 import { Button } from '@/components/ui/button'
-import { Card, CardBody, CardHeader } from '@/components/ui/card'
+import { Card, CardBody } from '@/components/ui/card'
 import { Field, Input } from '@/components/ui/field'
+import { PageSection } from '@/components/ui/section-heading'
 import { useAuth, useCurrentUser } from '@/features/auth/auth-context'
 import { useDocumentTitle } from '@/hooks/use-document-title'
 import { supabase } from '@/lib/supabase/client'
@@ -49,87 +50,90 @@ export function AdminProfilePage() {
     <>
       <PageHeader title="My profile" description="Your administrator account." />
 
-      <div className="grid gap-5 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
-          <CardHeader title="Profile details" />
-          <CardBody>
-            <form
-              onSubmit={(event) => {
-                event.preventDefault()
-                setSavedMessage(null)
-                update.mutate()
-              }}
-              className="space-y-5"
-            >
-              <div className="grid gap-5 sm:grid-cols-2">
-                <Field label="First name" required>
-                  <Input
-                    value={firstName}
-                    onChange={(event) => setFirstName(event.target.value)}
-                    autoComplete="given-name"
+      {/* The patient profile's structure: the form is the one card on the
+          page, and the account facts beside it sit under a heading with
+          space, not in a card of their own. */}
+      <div className="grid gap-section lg:grid-cols-3 lg:gap-8">
+        <PageSection title="Profile details" className="lg:col-span-2">
+          <Card>
+            <CardBody>
+              <form
+                onSubmit={(event) => {
+                  event.preventDefault()
+                  setSavedMessage(null)
+                  update.mutate()
+                }}
+                className="space-y-5"
+              >
+                <div className="grid gap-5 sm:grid-cols-2">
+                  <Field label="First name" required>
+                    <Input
+                      value={firstName}
+                      onChange={(event) => setFirstName(event.target.value)}
+                      autoComplete="given-name"
+                    />
+                  </Field>
+                  <Field label="Last name" required>
+                    <Input
+                      value={lastName}
+                      onChange={(event) => setLastName(event.target.value)}
+                      autoComplete="family-name"
+                    />
+                  </Field>
+                </div>
+
+                {update.isError ? (
+                  <FormError
+                    error={update.error}
+                    title="Your profile was not saved"
                   />
-                </Field>
-                <Field label="Last name" required>
-                  <Input
-                    value={lastName}
-                    onChange={(event) => setLastName(event.target.value)}
-                    autoComplete="family-name"
-                  />
-                </Field>
-              </div>
+                ) : null}
 
-              {update.isError ? (
-                <FormError
-                  error={update.error}
-                  title="Your profile was not saved"
-                />
-              ) : null}
+                <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+                  <Button
+                    className="max-sm:w-full"
+                    type="submit"
+                    isLoading={update.isPending}
+                    loadingLabel="Saving…"
+                  >
+                    Save changes
+                  </Button>
+                  <SavedNotice at={update.submittedAt}>
+                    {savedMessage}
+                  </SavedNotice>
+                </div>
+              </form>
+            </CardBody>
+          </Card>
+        </PageSection>
 
-              <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-                <Button
-                  className="max-sm:w-full"
-                  type="submit"
-                  isLoading={update.isPending}
-                  loadingLabel="Saving…"
-                >
-                  Save changes
-                </Button>
-                <SavedNotice at={update.submittedAt}>
-                  {savedMessage}
-                </SavedNotice>
-              </div>
-            </form>
-          </CardBody>
-        </Card>
+        <PageSection title="Account">
+          {/* The label is metadata at 14px; the value is read at the 16px
+              body size. */}
+          <dl className="space-y-3">
+            <div>
+              <dt className="text-sm text-muted">Name on record</dt>
+              <dd className="font-medium text-heading">
+                {fullName(admin.admin_first_name, admin.admin_last_name)}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-sm text-muted">Email</dt>
+              <dd className="break-words font-medium text-heading">
+                {user.email}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-sm text-muted">Role</dt>
+              <dd className="font-medium text-heading">Administrator</dd>
+            </div>
+          </dl>
 
-        <Card className="h-fit">
-          <CardHeader title="Account" as="h3" />
-          <CardBody>
-            <dl className="space-y-3 text-sm">
-              <div>
-                <dt className="text-muted">Name on record</dt>
-                <dd className="font-medium text-heading">
-                  {fullName(admin.admin_first_name, admin.admin_last_name)}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-muted">Email</dt>
-                <dd className="break-words font-medium text-heading">
-                  {user.email}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-muted">Role</dt>
-                <dd className="font-medium text-heading">Administrator</dd>
-              </div>
-            </dl>
-
-            <p className="mt-4 border-t border-[var(--color-border)] pt-4 text-sm text-muted">
-              Administrators manage accounts, announcements and system
-              configuration. This role has no access to patient health records.
-            </p>
-          </CardBody>
-        </Card>
+          <p className="mt-5 text-sm text-muted">
+            Administrators manage accounts, announcements and system
+            configuration. This role has no access to patient health records.
+          </p>
+        </PageSection>
       </div>
     </>
   )
