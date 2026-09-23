@@ -1,5 +1,5 @@
 import { NotebookPen } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { FormError } from '@/components/feedback/form-error'
 import { SavedNotice } from '@/components/feedback/state-view'
@@ -46,9 +46,27 @@ export function DailyEntryForm({
 }) {
   const [mood, setMood] = useState<number | null>(initialMood)
   const [notes, setNotes] = useState(initialNotes)
+  const formRef = useRef<HTMLFormElement>(null)
+
+  // Focus goes back to the button that was pressed once a save succeeds.
+  // Saving takes it away twice over: the button is disabled while the save
+  // is in flight, which drops focus to the page, and the first save of the
+  // day remounts this form under a new key, which removes the button
+  // outright. Either way a keyboard user was left at the top of the page.
+  // Only lost focus is restored - if they have already moved on, it stays
+  // where they put it. Runs on mount too, which is the remount case.
+  useEffect(() => {
+    if (!wasJustSaved) return
+    const active = document.activeElement
+    if (active && active !== document.body) return
+    formRef.current
+      ?.querySelector<HTMLButtonElement>('button[type="submit"]')
+      ?.focus()
+  }, [wasJustSaved])
 
   return (
     <form
+      ref={formRef}
       onSubmit={(event) => {
         event.preventDefault()
         onSave({

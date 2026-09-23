@@ -294,10 +294,22 @@ export function isPresentableMessage(raw: string): boolean {
 export type ErrorStateProps = {
   error: unknown
   onRetry?: () => void
+  /**
+   * The title's element. A message (`p`) wherever the error sits inside a
+   * page, which is nearly everywhere. `h1` only where the error is the whole
+   * page - the session failure screen - so its title is the page's title
+   * rather than a second heading added beside it.
+   */
+  titleAs?: 'p' | 'h1'
   className?: string
 }
 
-export function ErrorState({ error, onRetry, className }: ErrorStateProps) {
+export function ErrorState({
+  error,
+  onRetry,
+  titleAs: Title = 'p',
+  className,
+}: ErrorStateProps) {
   const { icon: Icon, title, description, detail } = describeError(error)
 
   return (
@@ -314,7 +326,12 @@ export function ErrorState({ error, onRetry, className }: ErrorStateProps) {
           failed to load, and left a gap in the heading outline. The alert
           role is what announces it. */}
       <Icon className="mb-1 size-6 text-danger-700" aria-hidden="true" />
-      <p className="text-base font-semibold text-heading">{title}</p>
+      {/* Tracked as the message it is in either element: as the page's
+          `<h1>` it would otherwise take the headings' tighter tracking and
+          no longer match EmptyState's title. */}
+      <Title className="text-base font-semibold tracking-normal text-heading">
+        {title}
+      </Title>
       <p className="max-w-sm text-sm text-muted">{description}</p>
 
       {onRetry ? (
