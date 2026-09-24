@@ -11,8 +11,9 @@ import {
 } from '@/components/feedback/state-view'
 import { PageHeader } from '@/components/layout/page-header'
 import { Button } from '@/components/ui/button'
-import { Card, CardBody, CardHeader } from '@/components/ui/card'
+import { Card, CardBody } from '@/components/ui/card'
 import { ListRow, ListRows } from '@/components/ui/list-row'
+import { PageSection } from '@/components/ui/section-heading'
 import { Combobox, Field } from '@/components/ui/field'
 import { useCurrentUser } from '@/features/auth/auth-context'
 import { useMyPatients } from '@/features/patients/hooks'
@@ -91,127 +92,129 @@ export function DoctorReportsPage() {
           className="print:hidden"
         />
 
-        <div className="grid gap-5 lg:grid-cols-3">
-          <Card className="lg:col-span-1 h-fit print:hidden">
-            <CardHeader
-              title="Generate a recovery report"
-              as="h2"
-            />
-            <CardBody>
-              <form
-                onSubmit={(event) => {
-                  event.preventDefault()
-                  if (selectedPatientId) generate.mutate(selectedPatientId)
-                }}
-                className="space-y-4"
-              >
-                <Field label="Patient" required>
-                  {/* Searchable rather than a native select, for the same
-                      reason as the scheduling dialog: a full caseload is a
-                      long list to scroll. It reads the same `useMyPatients()`
-                      list as before, so it still offers only this clinician's
-                      own patients, and still yields a patient id. */}
-                  <Combobox
-                    options={(patientsQuery.data ?? []).map((patient) => ({
-                      value: patient.pat_id,
-                      label: fullName(
-                        patient.pat_first_name,
-                        patient.pat_last_name,
-                      ),
-                    }))}
-                    value={selectedPatientId}
-                    onChange={(patientId) => {
-                      // Choosing someone else closes the preview, rather than
-                      // leaving one patient's record under another's name.
-                      if (patientId !== selectedPatientId && !generate.isPending) {
-                        generate.reset()
-                      }
-                      setSelectedPatientId(patientId)
-                    }}
-                    placeholder="Choose a patient…"
-                    emptyLabel="No patient of yours matches that name"
-                  />
-                </Field>
-
-                {generate.isError ? (
-                  <FormError
-                    error={generate.error}
-                    title="The report was not generated"
-                  />
-                ) : null}
-
-                <SavedNotice at={generate.submittedAt}>
-                  {generate.isSuccess
-                    ? 'Report recorded. Its preview is below, ready to print or save as a PDF.'
-                    : null}
-                </SavedNotice>
-
-                <Button
-                  type="submit"
-                  block
-                  disabled={!selectedPatientId}
-                  isLoading={generate.isPending}
-                  loadingLabel="Generating…"
+        <div className="grid gap-section lg:grid-cols-3 lg:gap-8">
+          <PageSection
+            title="Generate a recovery report"
+            className="h-fit print:hidden lg:col-span-1"
+          >
+            <Card>
+              <CardBody>
+                <form
+                  onSubmit={(event) => {
+                    event.preventDefault()
+                    if (selectedPatientId) generate.mutate(selectedPatientId)
+                  }}
+                  className="space-y-4"
                 >
-                  <FileBarChart aria-hidden="true" />
-                  Generate report
-                </Button>
-              </form>
-            </CardBody>
-          </Card>
-
-          <Card className="lg:col-span-2">
-            <CardHeader
-              title="Generated reports"
-              as="h2"
-              action={
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="print:hidden"
-                  onClick={() => printOnly('list')}
-                >
-                  <Printer aria-hidden="true" />
-                  Print list
-                </Button>
-              }
-            />
-            <CardBody className="p-0">
-              <StateView
-                isPending={reportsQuery.isPending}
-                error={reportsQuery.error}
-                data={reportsQuery.data}
-                onRetry={() => void reportsQuery.refetch()}
-                empty={
-                  <EmptyState
-                    icon={FileBarChart}
-                    title="No reports yet"
-                    description="Reports you generate will be listed here."
-                  />
-                }
-              >
-                {(reports) => (
-                  <ListRows>
-                    {reports.map((report) => (
-                      <ListRow
-                        key={report.report_id}
-                        className="py-3"
-                        title={
-                          report.patient
-                            ? fullName(
-                                report.patient.pat_first_name,
-                                report.patient.pat_last_name,
-                              )
-                            : 'System-wide report'
+                  <Field label="Patient" required>
+                    {/* Searchable rather than a native select, for the same
+                        reason as the scheduling dialog: a full caseload is a
+                        long list to scroll. It reads the same `useMyPatients()`
+                        list as before, so it still offers only this clinician's
+                        own patients, and still yields a patient id. */}
+                    <Combobox
+                      options={(patientsQuery.data ?? []).map((patient) => ({
+                        value: patient.pat_id,
+                        label: fullName(
+                          patient.pat_first_name,
+                          patient.pat_last_name,
+                        ),
+                      }))}
+                      value={selectedPatientId}
+                      onChange={(patientId) => {
+                        // Choosing someone else closes the preview, rather than
+                        // leaving one patient's record under another's name.
+                        if (patientId !== selectedPatientId && !generate.isPending) {
+                          generate.reset()
                         }
-                        description={formatDateTime(report.report_generated_at)}
-                      />
-                    ))}
-                  </ListRows>
-                )}
-              </StateView>
-            </CardBody>
-          </Card>
+                        setSelectedPatientId(patientId)
+                      }}
+                      placeholder="Choose a patient…"
+                      emptyLabel="No patient of yours matches that name"
+                    />
+                  </Field>
+
+                  {generate.isError ? (
+                    <FormError
+                      error={generate.error}
+                      title="The report was not generated"
+                    />
+                  ) : null}
+
+                  <SavedNotice at={generate.submittedAt}>
+                    {generate.isSuccess
+                      ? 'Report recorded. Its preview is below, ready to print or save as a PDF.'
+                      : null}
+                  </SavedNotice>
+
+                  <Button
+                    type="submit"
+                    block
+                    disabled={!selectedPatientId}
+                    isLoading={generate.isPending}
+                    loadingLabel="Generating…"
+                  >
+                    <FileBarChart aria-hidden="true" />
+                    Generate report
+                  </Button>
+                </form>
+              </CardBody>
+            </Card>
+          </PageSection>
+
+          <PageSection
+            title="Generated reports"
+            action={
+              <Button
+                variant="outline"
+                size="sm"
+                className="print:hidden"
+                onClick={() => printOnly('list')}
+              >
+                <Printer aria-hidden="true" />
+                Print list
+              </Button>
+            }
+            className="lg:col-span-2"
+          >
+            <Card>
+              <CardBody className="p-0">
+                <StateView
+                  isPending={reportsQuery.isPending}
+                  error={reportsQuery.error}
+                  data={reportsQuery.data}
+                  onRetry={() => void reportsQuery.refetch()}
+                  empty={
+                    <EmptyState
+                      icon={FileBarChart}
+                      title="No reports yet"
+                      description="Reports you generate will be listed here."
+                    />
+                  }
+                >
+                  {(reports) => (
+                    <ListRows>
+                      {reports.map((report) => (
+                        <ListRow
+                          key={report.report_id}
+                          className="py-3"
+                          title={
+                            report.patient
+                              ? fullName(
+                                  report.patient.pat_first_name,
+                                  report.patient.pat_last_name,
+                                )
+                              : 'System-wide report'
+                          }
+                          description={formatDateTime(report.report_generated_at)}
+                        />
+                      ))}
+                    </ListRows>
+                  )}
+                </StateView>
+              </CardBody>
+            </Card>
+          </PageSection>
         </div>
       </div>
 

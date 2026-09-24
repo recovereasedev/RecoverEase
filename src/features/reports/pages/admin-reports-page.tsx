@@ -5,8 +5,9 @@ import { FormError } from '@/components/feedback/form-error'
 import { ErrorState, EmptyState, StateView } from '@/components/feedback/state-view'
 import { PageHeader } from '@/components/layout/page-header'
 import { Button } from '@/components/ui/button'
-import { Card, CardBody, CardHeader } from '@/components/ui/card'
+import { Card, CardBody } from '@/components/ui/card'
 import { ListRow, ListRows } from '@/components/ui/list-row'
+import { PageSection } from '@/components/ui/section-heading'
 import { useCurrentUser } from '@/features/auth/auth-context'
 import {
   fetchAdminDashboardStats,
@@ -92,120 +93,122 @@ export function AdminReportsPage() {
         />
       ) : null}
 
-      <div className="space-y-5">
+      <div className="space-y-section">
         {/* --- Current figures ------------------------------------------- */}
-        <Card>
-          <CardHeader
-            title="System summary"
-            description={
-              stats
-                ? `As at ${formatDateTime(stats.generated_at)}`
-                : undefined
-            }
-          />
-          <CardBody>
-            {statsQuery.isPending ? (
-              <p className="text-sm text-muted">Loading…</p>
-            ) : statsQuery.isError ? (
-              <ErrorState
-                error={statsQuery.error}
-                onRetry={() => void statsQuery.refetch()}
-              />
-            ) : stats ? (
-              // Two up on a phone. These are four short counts; one column
-              // turns them into a page of scrolling.
-              <dl className="grid grid-cols-2 gap-5 lg:grid-cols-4">
-                <div>
-                  <dt className="text-sm text-muted">Patients on record</dt>
-                  <dd
-                    className="text-headline-lg font-bold text-heading"
-                    data-numeric
-                  >
-                    {stats.patients.total}
-                  </dd>
-                  <dd className="text-sm text-muted" data-numeric>
-                    {stats.patients.active} active
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-sm text-muted">Doctor accounts</dt>
-                  <dd
-                    className="text-headline-lg font-bold text-heading"
-                    data-numeric
-                  >
-                    {stats.doctors.total}
-                  </dd>
-                  <dd className="text-sm text-muted" data-numeric>
-                    {stats.doctors.active} active
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-sm text-muted">
-                    Upcoming appointments
-                  </dt>
-                  <dd
-                    className="text-headline-lg font-bold text-heading"
-                    data-numeric
-                  >
-                    {stats.appointments.upcoming}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-sm text-muted">Accounts by role</dt>
-                  <dd className="mt-1 space-y-0.5 text-sm text-body">
-                    {Object.entries(stats.accounts ?? {}).map(
-                      ([role, count]) => (
-                        <span key={role} className="block" data-numeric>
-                          {count} {role}
-                        </span>
-                      ),
-                    )}
-                  </dd>
-                </div>
-              </dl>
-            ) : null}
-          </CardBody>
-        </Card>
+        <PageSection
+          title="System summary"
+          description={
+            stats
+              ? `As at ${formatDateTime(stats.generated_at)}`
+              : undefined
+          }
+        >
+          <Card>
+            <CardBody>
+              {statsQuery.isPending ? (
+                <p className="text-sm text-muted">Loading…</p>
+              ) : statsQuery.isError ? (
+                <ErrorState
+                  error={statsQuery.error}
+                  onRetry={() => void statsQuery.refetch()}
+                />
+              ) : stats ? (
+                // Two up on a phone. These are four short counts; one column
+                // turns them into a page of scrolling.
+                <dl className="grid grid-cols-2 gap-5 lg:grid-cols-4">
+                  <div>
+                    <dt className="text-sm text-muted">Patients on record</dt>
+                    <dd
+                      className="text-headline-lg font-bold text-heading"
+                      data-numeric
+                    >
+                      {stats.patients.total}
+                    </dd>
+                    <dd className="text-sm text-muted" data-numeric>
+                      {stats.patients.active} active
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-sm text-muted">Doctor accounts</dt>
+                    <dd
+                      className="text-headline-lg font-bold text-heading"
+                      data-numeric
+                    >
+                      {stats.doctors.total}
+                    </dd>
+                    <dd className="text-sm text-muted" data-numeric>
+                      {stats.doctors.active} active
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-sm text-muted">
+                      Upcoming appointments
+                    </dt>
+                    <dd
+                      className="text-headline-lg font-bold text-heading"
+                      data-numeric
+                    >
+                      {stats.appointments.upcoming}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-sm text-muted">Accounts by role</dt>
+                    <dd className="mt-1 space-y-0.5 text-sm text-body">
+                      {Object.entries(stats.accounts ?? {}).map(
+                        ([role, count]) => (
+                          <span key={role} className="block" data-numeric>
+                            {count} {role}
+                          </span>
+                        ),
+                      )}
+                    </dd>
+                  </div>
+                </dl>
+              ) : null}
+            </CardBody>
+          </Card>
+        </PageSection>
 
         {/* --- Recently generated — module 9.5 ---------------------------- */}
-        <Card>
-          <CardHeader title="Recently generated reports" />
-          <CardBody className="p-0">
-            <StateView
-              isPending={reportsQuery.isPending}
-              error={reportsQuery.error}
-              data={reportsQuery.data}
-              onRetry={() => void reportsQuery.refetch()}
-              empty={
-                <EmptyState
-                  icon={FileBarChart}
-                  title="No reports generated yet"
-                />
-              }
-            >
-              {(reports) => (
-                <ListRows>
-                  {reports.map((report) => (
-                    <ListRow
-                      key={report.report_id}
-                      className="py-3"
-                      title={
-                        report.report_type === 'system_wide'
-                          ? 'System-wide report'
-                          : 'Patient recovery report'
-                      }
-                      status={
-                        <span className="text-sm text-muted">
-                          {formatDateTime(report.report_generated_at)}
-                        </span>
-                      }
-                    />
-                  ))}
-                </ListRows>
-              )}
-            </StateView>
-          </CardBody>
-        </Card>
+        <PageSection title="Recently generated reports">
+          <Card>
+            <CardBody className="p-0">
+              <StateView
+                isPending={reportsQuery.isPending}
+                error={reportsQuery.error}
+                data={reportsQuery.data}
+                onRetry={() => void reportsQuery.refetch()}
+                empty={
+                  <EmptyState
+                    icon={FileBarChart}
+                    title="No reports generated yet"
+                  />
+                }
+              >
+                {(reports) => (
+                  <ListRows>
+                    {reports.map((report) => (
+                      <ListRow
+                        key={report.report_id}
+                        className="py-3"
+                        title={
+                          report.report_type === 'system_wide'
+                            ? 'System-wide report'
+                            : 'Patient recovery report'
+                        }
+                        status={
+                          <span className="text-sm text-muted">
+                            {formatDateTime(report.report_generated_at)}
+                          </span>
+                        }
+                      />
+                    ))}
+                  </ListRows>
+                )}
+              </StateView>
+            </CardBody>
+          </Card>
+        </PageSection>
       </div>
     </>
   )
