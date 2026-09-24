@@ -43,6 +43,8 @@ export function PatientChatPage() {
   const [draft, setDraft] = useState('')
   const [unavailableReason, setUnavailableReason] = useState<string | null>(null)
   const transcriptEndRef = useRef<HTMLDivElement>(null)
+  const draftRef = useRef<HTMLTextAreaElement>(null)
+  const hasSentRef = useRef(false)
 
   const sessionsQuery = useQuery({
     queryKey: queryKeys.chat.sessionsFor(patientId),
@@ -79,7 +81,18 @@ export function PatientChatPage() {
   })
 
   useEffect(() => {
-    transcriptEndRef.current?.scrollIntoView({ block: 'end' })
+    // From `lg` the transcript is its own scrolling box, fitted to the
+    // viewport, and the newest message is brought into it. Below `lg` the
+    // conversation is part of the page, so scrolling to its end would move
+    // the whole page - past the safety notice the moment the chat opened.
+    // There, only once the patient has sent something is the composer
+    // brought back into view: the new messages land above it and push it
+    // down, behind the bottom bar, with the cursor still in it.
+    if (window.matchMedia('(min-width: 64rem)').matches) {
+      transcriptEndRef.current?.scrollIntoView({ block: 'end' })
+    } else if (hasSentRef.current) {
+      draftRef.current?.scrollIntoView({ block: 'nearest' })
+    }
   }, [messagesQuery.data])
 
   const sendMessage = useMutation({
@@ -120,6 +133,7 @@ export function PatientChatPage() {
     event.preventDefault()
     const content = draft.trim()
     if (!content) return
+    hasSentRef.current = true
     setDraft('')
     sendMessage.mutate(content)
   }
@@ -146,21 +160,18 @@ export function PatientChatPage() {
 
       <div className="grid gap-5 lg:h-[calc(100dvh-17rem)] lg:grid-cols-[1fr_18rem]">
         {/*
-          The conversation is sized from the viewport, not from its contents.
+          From `lg` the conversation is sized from the viewport, not from its
+          contents: the grid above takes the viewport's height, the transcript
+          is the only thing that scrolls, and the composer stays in view.
 
-          A cap alone is not enough: the card starts about 400px down the page
-          on a phone, under the page heading and the disclaimer, so capping it
-          at "a screen" still puts the composer a screen below the fold. The
-          subtracted height is everything else that is on screen at the same
-          time - the app header, this page's heading, the disclaimer, and the
-          bottom navigation bar. `min-h` keeps it usable if that estimate is
-          ever wrong on an unusually short viewport, at the cost of the page
-          scrolling, which is the safe direction to be wrong in.
-
-          The result is that the transcript is the only thing that scrolls and
-          the composer is always where the thumb already is.
+          Below `lg` it is not sized at all, and flows with the page. A phone
+          cannot spare the height: under the app header, the page heading and
+          the disclaimer, a card fitted to the rest of a 390x844 screen left
+          218px for the conversation - 110px at 320px wide, with the composer
+          behind the bottom bar - and that box scrolled inside a page that
+          scrolled too. The page is now the one thing that scrolls.
         */}
-        <Card className="flex h-[calc(100dvh-26rem)] min-h-[20rem] flex-col lg:h-auto lg:min-h-0">
+        <Card className="flex flex-col lg:min-h-0">
           <CardHeader
             title={
               activeSession
@@ -185,9 +196,10 @@ export function PatientChatPage() {
             `min-h-0` is load-bearing. A flex child defaults to `min-height:
             auto`, which refuses to shrink below its content, so without it
             `flex-1 overflow-y-auto` never scrolls - the card just grows and
-            takes the composer with it.
+            takes the composer with it. All three from `lg` only: below it
+            the transcript is part of the page and does not scroll by itself.
           */}
-          <CardBody className="min-h-0 flex-1 overflow-y-auto">
+          <CardBody className="lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
             {activeSession?.chat_session_has_critical_flag ? (
               <Notice tone="warning" className="mb-4">
                 Something you raised in this conversation was flagged for your
@@ -273,7 +285,11 @@ export function PatientChatPage() {
             <label htmlFor="chat-draft" className="sr-only">
               Your message
             </label>
+            {/* `scroll-mb-24` below `md` clears the bottom bar - the same
+                6rem the page keeps under its content - whenever the
+                composer is scrolled to, by focus or after sending. */}
             <textarea
+              ref={draftRef}
               id="chat-draft"
               rows={2}
               value={draft}
@@ -288,9 +304,9 @@ export function PatientChatPage() {
               }}
               placeholder="Is it normal for swelling to come back after exercise?"
               // 16px keeps iOS from zooming the viewport on focus, which
-              // on a fixed-height conversation would push the composer out of
-              // view the moment the keyboard opens.
-              className="min-w-0 flex-1 resize-none rounded-[var(--radius-md)] border border-[var(--color-border-strong)] px-3 py-2.5 text-base text-heading placeholder:text-neutral-400"
+              // would push the composer out of view the moment the keyboard
+              // opens.
+              className="min-w-0 flex-1 resize-none rounded-[var(--radius-md)] border border-[var(--color-border-strong)] px-3 py-2.5 text-base text-heading placeholder:text-neutral-400 max-md:scroll-mb-24"
             />
             <Button
               type="submit"
