@@ -165,10 +165,14 @@ export function DoctorReportsPage() {
           <PageSection
             title="Generated reports"
             action={
+              // Laid out no taller than the heading's line, so this heading
+              // starts level with "Generate a recovery report" beside it: a
+              // 40px button sharing the row pushed it, and the card under
+              // it, 12px lower. The button itself keeps its full size.
               <Button
                 variant="outline"
                 size="sm"
-                className="print:hidden"
+                className="print:hidden lg:-my-1.5"
                 onClick={() => printOnly('list')}
               >
                 <Printer aria-hidden="true" />
