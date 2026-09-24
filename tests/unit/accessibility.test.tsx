@@ -109,8 +109,60 @@ describe('Button', () => {
 
     const button = screen.getByRole('button')
     expect(button).toHaveAttribute('aria-busy', 'true')
-    expect(button).toBeDisabled()
+    // Unavailable while it works, said to assistive technology - but not
+    // natively disabled, which would take keyboard focus off it mid-save.
+    expect(button).toHaveAttribute('aria-disabled', 'true')
+    expect(button).not.toBeDisabled()
     expect(screen.getByText('Signing you in…')).toBeInTheDocument()
+  })
+
+  it('keeps keyboard focus while loading', () => {
+    const { rerender } = render(<Button>Save changes</Button>)
+    const button = screen.getByRole('button')
+    button.focus()
+
+    rerender(<Button isLoading>Save changes</Button>)
+
+    expect(button).toHaveFocus()
+  })
+
+  it('ignores a second press while loading', async () => {
+    const onClick = vi.fn()
+    render(
+      <Button isLoading onClick={onClick}>
+        Save changes
+      </Button>,
+    )
+
+    screen.getByRole('button').click()
+    await userEvent.keyboard('{Enter}')
+
+    expect(onClick).not.toHaveBeenCalled()
+  })
+
+  it('does not submit its form again while loading', () => {
+    const onSubmit = vi.fn((event: React.FormEvent) => event.preventDefault())
+    render(
+      <form onSubmit={onSubmit}>
+        <Button type="submit" isLoading>
+          Save changes
+        </Button>
+      </form>,
+    )
+
+    screen.getByRole('button').click()
+
+    expect(onSubmit).not.toHaveBeenCalled()
+  })
+
+  it('stays natively disabled when it is genuinely unavailable', () => {
+    render(
+      <Button disabled isLoading>
+        Save changes
+      </Button>,
+    )
+
+    expect(screen.getByRole('button')).toBeDisabled()
   })
 
   it('keeps its visible label while loading so it does not resize', () => {

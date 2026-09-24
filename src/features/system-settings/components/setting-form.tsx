@@ -10,6 +10,7 @@ import type {
   SettingParseResult,
   SystemSetting,
 } from '@/features/system-settings/api'
+import { useFocusRecovery } from '@/hooks/use-focus-recovery'
 import { formatDateTime } from '@/lib/format'
 
 export type SettingDefinition = {
@@ -54,6 +55,9 @@ export function SettingForm({
   const [invalid, setInvalid] = useState<string | undefined>(undefined)
 
   const isDirty = value !== savedValue
+  // Saved, nothing is left to save and Save is unavailable: keyboard focus
+  // goes back to the field rather than to the top of the page.
+  const focusRecovery = useFocusRecovery()
 
   return (
     <Card>
@@ -64,6 +68,7 @@ export function SettingForm({
       <CardHeader title={definition.label} description={definition.description} />
       <CardBody>
         <form
+          ref={focusRecovery}
           onSubmit={(event) => {
             event.preventDefault()
             if (!definition.parse) {

@@ -21,6 +21,7 @@ import {
   useNotifications,
 } from '@/features/notifications/hooks'
 import { useDocumentTitle } from '@/hooks/use-document-title'
+import { useFocusRecovery } from '@/hooks/use-focus-recovery'
 import { formatRelative } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
@@ -59,12 +60,17 @@ export function NotificationsPage() {
   const notificationsQuery = useNotifications()
   const markRead = useMarkNotificationRead()
   const markAllRead = useMarkAllNotificationsRead()
+  // "Mark read" leaves with its row's unread state, and "Mark all as read"
+  // with the last unread one: keyboard focus moves on to the next
+  // notification's control, or to the page, rather than to its top. A plain
+  // block around the header and the list, so both are inside it.
+  const focusRecovery = useFocusRecovery()
 
   const unreadCount =
     notificationsQuery.data?.filter((n) => !n.notification_is_read).length ?? 0
 
   return (
-    <>
+    <div ref={focusRecovery}>
       <PageHeader
         title="Notifications"
         description={DESCRIPTION[role]}
@@ -228,6 +234,6 @@ export function NotificationsPage() {
           </StateView>
         </CardBody>
       </Card>
-    </>
+    </div>
   )
 }

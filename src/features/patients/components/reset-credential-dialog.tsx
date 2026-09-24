@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { TriangleAlert } from 'lucide-react'
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 
 import { FormError } from '@/components/feedback/form-error'
 import { Button } from '@/components/ui/button'
@@ -39,6 +39,14 @@ export function ResetCredentialDialog({
 }) {
   const queryClient = useQueryClient()
   const [issued, setIssued] = useState<string | null>(null)
+
+  // Reset, the button just pressed is replaced by "Done", which would close
+  // the dialog and the new password with it. Focus goes to the password's
+  // Copy button instead of falling to the page. Stable, so it runs when the
+  // password appears and not again on every render after it.
+  const focusCredential = useCallback((element: HTMLDivElement | null) => {
+    element?.querySelector('button')?.focus()
+  }, [])
 
   const reset = useMutation({
     mutationFn: () =>
@@ -96,21 +104,23 @@ export function ResetCredentialDialog({
     >
       <div className="space-y-4">
         {issued ? (
-          <TemporaryCredential
-            // Not "New password issued" again — that is the dialog's own
-            // title, directly above this. The heading here is the one thing
-            // the title does not say, and the thing that decides whether the
-            // account holder is about to be locked out without warning.
-            title="Their previous password has stopped working"
-            handOver={
-              subject.kind === 'doctor'
-                ? 'Give this password to the doctor.'
-                : 'Give this password to the patient.'
-            }
-            name={subject.name}
-            password={issued}
-            lostHint="If it is lost again, reset the account once more to issue another."
-          />
+          <div ref={focusCredential} className="space-y-4">
+            <TemporaryCredential
+              // Not "New password issued" again — that is the dialog's own
+              // title, directly above this. The heading here is the one thing
+              // the title does not say, and the thing that decides whether the
+              // account holder is about to be locked out without warning.
+              title="Their previous password has stopped working"
+              handOver={
+                subject.kind === 'doctor'
+                  ? 'Give this password to the doctor.'
+                  : 'Give this password to the patient.'
+              }
+              name={subject.name}
+              password={issued}
+              lostHint="If it is lost again, reset the account once more to issue another."
+            />
+          </div>
         ) : (
           <>
             {/* Said before the action, not discovered after it. */}

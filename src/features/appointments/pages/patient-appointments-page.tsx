@@ -25,6 +25,7 @@ import {
 } from '@/features/appointments/hooks'
 import { useCurrentUser } from '@/features/auth/auth-context'
 import { useDocumentTitle } from '@/hooks/use-document-title'
+import { useFocusRecovery } from '@/hooks/use-focus-recovery'
 import { formatDateTime, formatRelative } from '@/lib/format'
 import { appointmentStatus, rescheduleRequestStatus } from '@/lib/status'
 import { supabase } from '@/lib/supabase/client'
@@ -51,6 +52,9 @@ function minimumBookingValue(): string {
  */
 export function PatientAppointmentsPage() {
   useDocumentTitle('Appointments')
+  // "Confirm" leaves once the appointment is confirmed: keyboard focus moves
+  // to the next action on it rather than to the top of the page.
+  const focusRecovery = useFocusRecovery()
   const user = useCurrentUser()
   const patient =
     user.profile.kind === 'patient' ? user.profile.patient : null
@@ -349,7 +353,7 @@ export function PatientAppointmentsPage() {
         }
       />
 
-      <div className="space-y-section">
+      <div ref={focusRecovery} className="space-y-section">
         <StateView
           isPending={appointmentsQuery.isPending}
           error={appointmentsQuery.error}
