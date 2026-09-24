@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardBody, CardHeader } from '@/components/ui/card'
 import { Field, Textarea } from '@/components/ui/field'
 import { useSendNotificationToPatient } from '@/features/notifications/hooks'
+import { useFocusRecovery } from '@/hooks/use-focus-recovery'
 
 /**
  * Module 7.1, "Send Notification to Patient".
@@ -38,6 +39,9 @@ export function NotifyPatient({
   const [message, setMessage] = useState('')
   const [sentTo, setSentTo] = useState<string | null>(null)
   const send = useSendNotificationToPatient()
+  // Sent, the box empties and "Send notification" is unavailable until the
+  // next message: keyboard focus goes back to the box rather than the page.
+  const focusRecovery = useFocusRecovery()
 
   const text = message.trim()
 
@@ -49,6 +53,7 @@ export function NotifyPatient({
       />
       <CardBody>
         <form
+          ref={focusRecovery}
           onSubmit={(event) => {
             event.preventDefault()
             if (!text) return

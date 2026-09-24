@@ -65,7 +65,10 @@ const buttonVariants = cva(
 
 export type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> &
   VariantProps<typeof buttonVariants> & {
-    /** Shows a spinner and blocks interaction. */
+    /**
+     * Shows a spinner and blocks interaction while an action is in flight.
+     * Not the same as `disabled`: the button stays focusable (see below).
+     */
     isLoading?: boolean
     /**
      * Announced to screen readers while loading. Without it, a spinner is a
@@ -86,14 +89,38 @@ export function Button({
   disabled,
   children,
   type = 'button',
+  onClick,
   ...props
 }: ButtonProps) {
+  // Saving is not the same as unavailable. A native `disabled` on the button
+  // someone just pressed takes keyboard focus away from it - the browser
+  // drops focus to the page - so a keyboard user was sent back to the top
+  // mid-save. While loading, the button stays focusable and says it is busy
+  // and unavailable; a second press is swallowed here instead, which also
+  // stops a form submitting again, since Enter in a field submits by
+  // clicking this button. `disabled` keeps its native meaning.
+  const isBusy = isLoading && !disabled
+
   return (
     <button
       type={type}
-      className={cn(buttonVariants({ variant, size, block }), className)}
-      disabled={disabled || isLoading}
+      className={cn(
+        buttonVariants({ variant, size, block }),
+        // The look `disabled` gave a loading button, except while it has
+        // keyboard focus: opacity would fade the focus ring with it.
+        isBusy && 'pointer-events-none opacity-50 focus-visible:opacity-100',
+        className,
+      )}
+      disabled={disabled}
+      aria-disabled={isBusy || undefined}
       aria-busy={isLoading || undefined}
+      onClick={(event) => {
+        if (isLoading) {
+          event.preventDefault()
+          return
+        }
+        onClick?.(event)
+      }}
       {...props}
     >
       {isLoading ? (

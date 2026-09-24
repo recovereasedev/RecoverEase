@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { ClipboardPlus, TriangleAlert } from 'lucide-react'
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
@@ -89,6 +89,16 @@ export function RegisterAccountDialog({
     // look broken when the first one had already been dealt with.
     create.reset()
   }
+
+  // Once the account exists the dialog shows its temporary password, and the
+  // button just pressed turns into another - here "Set up care plan", which
+  // closes the dialog. A second press would lose a password that is shown
+  // only once. Focus goes to the password's Copy button instead: the next
+  // thing to do, and one that closes nothing. Stable, so it runs when the
+  // password appears and not again on every render after it.
+  const focusCredential = useCallback((element: HTMLDivElement | null) => {
+    element?.querySelector('button')?.focus()
+  }, [])
 
   const create = useMutation({
     mutationFn: () =>
@@ -196,7 +206,7 @@ export function RegisterAccountDialog({
       }
     >
       {issued ? (
-        <div className="space-y-4">
+        <div ref={focusCredential} className="space-y-4">
           <TemporaryCredential
             title="Account created"
             handOver={copy.handOver}

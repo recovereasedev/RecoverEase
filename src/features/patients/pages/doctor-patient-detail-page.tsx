@@ -55,6 +55,7 @@ import {
 } from '@/features/treatment-plans/api'
 import type { RecoveryLog } from '@/features/recovery-logs/api'
 import { useDocumentTitle } from '@/hooks/use-document-title'
+import { useFocusRecovery } from '@/hooks/use-focus-recovery'
 import { useNow } from '@/hooks/use-now'
 import {
   calculateAge,
@@ -126,6 +127,9 @@ export function DoctorPatientDetailPage() {
       : 'overview',
   )
   const [noteDraft, setNoteDraft] = useState('')
+  // Saved, the draft clears and "Save note" is unavailable until the next
+  // one: keyboard focus goes back to the note box rather than the page.
+  const noteFocusRecovery = useFocusRecovery()
   // A patient's temporary password is shown once at registration, and no
   // email is sent, so their assigned clinician needs a way to reissue it.
   const [isResetOpen, setResetOpen] = useState(false)
@@ -837,6 +841,7 @@ export function DoctorPatientDetailPage() {
                     />
                     <CardBody>
                       <form
+                        ref={noteFocusRecovery}
                         onSubmit={(event) => {
                           event.preventDefault()
                           const text = noteDraft.trim()

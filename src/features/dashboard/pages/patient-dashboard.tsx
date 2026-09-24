@@ -30,6 +30,7 @@ import { useRecoveryLogs } from '@/features/recovery-logs/hooks'
 import { summariseGoals } from '@/features/treatment-plans/api'
 import { useTreatmentPlans } from '@/features/treatment-plans/hooks'
 import { useDocumentTitle } from '@/hooks/use-document-title'
+import { useFocusRecovery } from '@/hooks/use-focus-recovery'
 import { useNow } from '@/hooks/use-now'
 import { formatDate, formatDateTime, formatTime, toDateKey } from '@/lib/format'
 import { appointmentStatus, patientDoseStatus } from '@/lib/status'
@@ -63,6 +64,9 @@ function greeting(now = new Date()): string {
  */
 export function PatientDashboard() {
   useDocumentTitle('Dashboard')
+  // "Mark taken" and "Confirm attendance" leave once they have worked: keyboard
+  // focus moves on to the next thing on the page rather than to its top.
+  const focusRecovery = useFocusRecovery()
   const user = useCurrentUser()
   const patient =
     user.profile.kind === 'patient' ? user.profile.patient : null
@@ -134,7 +138,10 @@ export function PatientDashboard() {
         description={format(new Date(now), 'EEEE d MMMM')}
       />
 
-      <div className="grid gap-section lg:grid-cols-3 lg:gap-8">
+      <div
+        ref={focusRecovery}
+        className="grid gap-section lg:grid-cols-3 lg:gap-8"
+      >
         {/* --- Today ------------------------------------------------------- */}
         <PageSection
           className="lg:col-span-2"
