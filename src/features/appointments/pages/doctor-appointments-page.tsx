@@ -7,9 +7,10 @@ import { EmptyState, StateView } from '@/components/feedback/state-view'
 import { PageHeader } from '@/components/layout/page-header'
 import { StatusBadge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardBody, CardHeader } from '@/components/ui/card'
+import { Card, CardBody } from '@/components/ui/card'
 import { Dialog } from '@/components/ui/dialog'
 import { ListRow, ListRows } from '@/components/ui/list-row'
+import { PageSection } from '@/components/ui/section-heading'
 import { isActiveAppointment } from '@/features/appointments/appointment-rules'
 import { RescheduleRequestDecision } from '@/features/appointments/components/reschedule-request-decision'
 import { ScheduleAppointmentDialog } from '@/features/appointments/components/schedule-appointment-dialog'
@@ -147,115 +148,180 @@ export function DoctorAppointmentsPage() {
         onClose={() => setSchedulingOpen(false)}
       />
 
-      <div className="space-y-5">
+      <div className="space-y-section">
         {/* --- Pending requests ------------------------------------------ */}
-        <Card>
-          <CardHeader
-            title="Reschedule requests"
-            description="Approving moves the appointment automatically."
-          />
-          <CardBody className="p-0">
-            <StateView
-              isPending={requestsQuery.isPending}
-              error={requestsQuery.error}
-              data={pendingRequests}
-              onRetry={() => void requestsQuery.refetch()}
-              empty={
-                <p className="px-4 py-8 text-center text-sm text-muted sm:px-5">
-                  No requests are waiting for a decision.
-                </p>
-              }
-            >
-              {(requests) => (
-                <ListRows>
-                  {requests.map((request) => {
-                    const patient = request.appointment?.patient
-                    return (
-                      <ListRow
-                        key={request.reschedule_request_id}
-                        title={
-                          patient
-                            ? fullName(
-                                patient.pat_first_name,
-                                patient.pat_last_name,
-                              )
-                            : 'A patient'
-                        }
-                        description={
-                          <>
-                            {request.appointment
-                              ? formatDateTime(
-                                  request.appointment.appointment_date,
+        <PageSection
+          title="Reschedule requests"
+          description="Approving moves the appointment automatically."
+        >
+          <Card>
+            <CardBody className="p-0">
+              <StateView
+                isPending={requestsQuery.isPending}
+                error={requestsQuery.error}
+                data={pendingRequests}
+                onRetry={() => void requestsQuery.refetch()}
+                empty={
+                  <p className="px-4 py-8 text-center text-sm text-muted sm:px-5">
+                    No requests are waiting for a decision.
+                  </p>
+                }
+              >
+                {(requests) => (
+                  <ListRows>
+                    {requests.map((request) => {
+                      const patient = request.appointment?.patient
+                      return (
+                        <ListRow
+                          key={request.reschedule_request_id}
+                          title={
+                            patient
+                              ? fullName(
+                                  patient.pat_first_name,
+                                  patient.pat_last_name,
                                 )
-                              : 'Appointment'}{' '}
-                            <span aria-hidden="true">→</span>
-                            <span className="sr-only">moved to</span>{' '}
-                            <span className="font-medium text-heading">
-                              {formatDateTime(request.reschedule_request_date)}
-                            </span>
-                          </>
-                        }
-                      >
-                        {request.reschedule_request_reason ? (
-                          <p className="mb-3 rounded-[var(--radius-md)] bg-surface-sunken px-3 py-2 text-sm leading-relaxed text-body">
-                            “{request.reschedule_request_reason}”
-                          </p>
-                        ) : null}
+                              : 'A patient'
+                          }
+                          description={
+                            <>
+                              {request.appointment
+                                ? formatDateTime(
+                                    request.appointment.appointment_date,
+                                  )
+                                : 'Appointment'}{' '}
+                              <span aria-hidden="true">→</span>
+                              <span className="sr-only">moved to</span>{' '}
+                              <span className="font-medium text-heading">
+                                {formatDateTime(request.reschedule_request_date)}
+                              </span>
+                            </>
+                          }
+                        >
+                          {request.reschedule_request_reason ? (
+                            <p className="mb-3 rounded-[var(--radius-md)] bg-surface-sunken px-3 py-2 text-sm leading-relaxed text-body">
+                              “{request.reschedule_request_reason}”
+                            </p>
+                          ) : null}
 
-                        <RescheduleRequestDecision
-                          request={request}
-                          decide={decide}
-                        />
-                      </ListRow>
-                    )
-                  })}
-                </ListRows>
-              )}
-            </StateView>
-          </CardBody>
-        </Card>
+                          <RescheduleRequestDecision
+                            request={request}
+                            decide={decide}
+                          />
+                        </ListRow>
+                      )
+                    })}
+                  </ListRows>
+                )}
+              </StateView>
+            </CardBody>
+          </Card>
+        </PageSection>
 
         {/* --- Upcoming --------------------------------------------------- */}
-        <Card>
-          <CardHeader title="Upcoming appointments" />
-          <CardBody className="p-0">
-            <StateView
-              isPending={appointmentsQuery.isPending}
-              error={appointmentsQuery.error}
-              data={upcoming}
-              onRetry={() => void appointmentsQuery.refetch()}
-              empty={
-                <EmptyState icon={CalendarX} title="No upcoming appointments" />
-              }
-            >
-              {(items) => (
-                <ListRows>
-                  {items.map((appointment) => {
-                    const name = appointment.patient
-                      ? fullName(
-                          appointment.patient.pat_first_name,
-                          appointment.patient.pat_last_name,
-                        )
-                      : 'Patient'
+        <PageSection title="Upcoming appointments">
+          <Card>
+            <CardBody className="p-0">
+              <StateView
+                isPending={appointmentsQuery.isPending}
+                error={appointmentsQuery.error}
+                data={upcoming}
+                onRetry={() => void appointmentsQuery.refetch()}
+                empty={
+                  <EmptyState icon={CalendarX} title="No upcoming appointments" />
+                }
+              >
+                {(items) => (
+                  <ListRows>
+                    {items.map((appointment) => {
+                      const name = appointment.patient
+                        ? fullName(
+                            appointment.patient.pat_first_name,
+                            appointment.patient.pat_last_name,
+                          )
+                        : 'Patient'
 
+                      return (
+                        <ListRow
+                          key={appointment.appointment_id}
+                          title={
+                            appointment.patient ? (
+                              <Link
+                                to={`/doctor/patients/${appointment.pat_id}`}
+                                className="inline-flex min-h-11 items-center text-brand-700 hover:underline sm:min-h-0"
+                              >
+                                {name}
+                              </Link>
+                            ) : (
+                              name
+                            )
+                          }
+                          description={formatDateTime(
+                            appointment.appointment_date,
+                          )}
+                          status={
+                            <StatusBadge
+                              status={
+                                appointmentStatus[appointment.appointment_status]
+                              }
+                            />
+                          }
+                          actions={
+                            // Ahead of the visit the only thing to do is call
+                            // it off. Completed or no-show waits until it has
+                            // happened (NA-01).
+                            isActiveAppointment(appointment.appointment_status) ? (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() =>
+                                  setCancelling({
+                                    id: appointment.appointment_id,
+                                    name,
+                                    when: formatDateTime(
+                                      appointment.appointment_date,
+                                    ),
+                                  })
+                                }
+                              >
+                                Cancel
+                              </Button>
+                            ) : null
+                          }
+                        />
+                      )
+                    })}
+                  </ListRows>
+                )}
+              </StateView>
+            </CardBody>
+          </Card>
+        </PageSection>
+
+        {/* --- History ----------------------------------------------------- */}
+        <PageSection title="Past appointments">
+          <Card>
+            <CardBody className="p-0">
+              {past.length === 0 ? (
+                <p className="px-4 py-8 text-center text-sm text-muted sm:px-5">
+                  No past appointments.
+                </p>
+              ) : (
+                <ListRows>
+                  {past.slice(0, 30).map((appointment) => {
+                    const failed = failedStatusFor(appointment.appointment_id)
                     return (
                       <ListRow
                         key={appointment.appointment_id}
+                        className="py-3"
                         title={
-                          appointment.patient ? (
-                            <Link
-                              to={`/doctor/patients/${appointment.pat_id}`}
-                              className="inline-flex min-h-11 items-center text-brand-700 hover:underline sm:min-h-0"
-                            >
-                              {name}
-                            </Link>
-                          ) : (
-                            name
-                          )
+                          appointment.patient
+                            ? fullName(
+                                appointment.patient.pat_first_name,
+                                appointment.patient.pat_last_name,
+                              )
+                            : 'Patient'
                         }
-                        description={formatDateTime(
-                          appointment.appointment_date,
-                        )}
+                        description={formatDateTime(appointment.appointment_date)}
                         status={
                           <StatusBadge
                             status={
@@ -264,162 +330,101 @@ export function DoctorAppointmentsPage() {
                           />
                         }
                         actions={
-                          // Ahead of the visit the only thing to do is call
-                          // it off. Completed or no-show waits until it has
-                          // happened (NA-01).
+                          // A visit whose time has passed and that is still
+                          // open is waiting to be closed out (NA-01).
                           isActiveAppointment(appointment.appointment_status) ? (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() =>
-                                setCancelling({
-                                  id: appointment.appointment_id,
-                                  name,
-                                  when: formatDateTime(
-                                    appointment.appointment_date,
-                                  ),
-                                })
-                              }
-                            >
-                              Cancel
-                            </Button>
+                            <>
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                isLoading={isSettingStatus(
+                                  appointment.appointment_id,
+                                  'completed',
+                                )}
+                                onClick={() =>
+                                  setStatus.mutate({
+                                    appointmentId: appointment.appointment_id,
+                                    status: 'completed',
+                                  })
+                                }
+                              >
+                                Mark completed
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                isLoading={isSettingStatus(
+                                  appointment.appointment_id,
+                                  'no_show',
+                                )}
+                                onClick={() =>
+                                  setStatus.mutate({
+                                    appointmentId: appointment.appointment_id,
+                                    status: 'no_show',
+                                  })
+                                }
+                              >
+                                Mark no-show
+                              </Button>
+                            </>
                           ) : null
                         }
-                      />
+                      >
+                        {failed === 'completed' || failed === 'no_show' ? (
+                          <FormError
+                            error={setStatus.error}
+                            title={
+                              failed === 'completed'
+                                ? 'The visit was not marked completed'
+                                : 'The visit was not marked as a no-show'
+                            }
+                          />
+                        ) : null}
+                      </ListRow>
                     )
                   })}
                 </ListRows>
               )}
-            </StateView>
-          </CardBody>
-        </Card>
-
-        {/* --- History ----------------------------------------------------- */}
-        <Card>
-          <CardHeader title="Past appointments" />
-          <CardBody className="p-0">
-            {past.length === 0 ? (
-              <p className="px-4 py-8 text-center text-sm text-muted sm:px-5">
-                No past appointments.
-              </p>
-            ) : (
-              <ListRows>
-                {past.slice(0, 30).map((appointment) => {
-                  const failed = failedStatusFor(appointment.appointment_id)
-                  return (
-                    <ListRow
-                      key={appointment.appointment_id}
-                      className="py-3"
-                      title={
-                        appointment.patient
-                          ? fullName(
-                              appointment.patient.pat_first_name,
-                              appointment.patient.pat_last_name,
-                            )
-                          : 'Patient'
-                      }
-                      description={formatDateTime(appointment.appointment_date)}
-                      status={
-                        <StatusBadge
-                          status={
-                            appointmentStatus[appointment.appointment_status]
-                          }
-                        />
-                      }
-                      actions={
-                        // A visit whose time has passed and that is still
-                        // open is waiting to be closed out (NA-01).
-                        isActiveAppointment(appointment.appointment_status) ? (
-                          <>
-                            <Button
-                              size="sm"
-                              variant="secondary"
-                              isLoading={isSettingStatus(
-                                appointment.appointment_id,
-                                'completed',
-                              )}
-                              onClick={() =>
-                                setStatus.mutate({
-                                  appointmentId: appointment.appointment_id,
-                                  status: 'completed',
-                                })
-                              }
-                            >
-                              Mark completed
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              isLoading={isSettingStatus(
-                                appointment.appointment_id,
-                                'no_show',
-                              )}
-                              onClick={() =>
-                                setStatus.mutate({
-                                  appointmentId: appointment.appointment_id,
-                                  status: 'no_show',
-                                })
-                              }
-                            >
-                              Mark no-show
-                            </Button>
-                          </>
-                        ) : null
-                      }
-                    >
-                      {failed === 'completed' || failed === 'no_show' ? (
-                        <FormError
-                          error={setStatus.error}
-                          title={
-                            failed === 'completed'
-                              ? 'The visit was not marked completed'
-                              : 'The visit was not marked as a no-show'
-                          }
-                        />
-                      ) : null}
-                    </ListRow>
-                  )
-                })}
-              </ListRows>
-            )}
-          </CardBody>
-        </Card>
+            </CardBody>
+          </Card>
+        </PageSection>
 
         {/* --- Decided requests -------------------------------------------- */}
         {decidedRequests.length > 0 ? (
-          <Card>
-            <CardHeader title="Past reschedule decisions" />
-            <CardBody className="p-0">
-              <ListRows>
-                {decidedRequests.slice(0, 20).map((request) => (
-                  <ListRow
-                    key={request.reschedule_request_id}
-                    className="py-3"
-                    title={
-                      <span className="font-normal text-body">
-                        {request.appointment?.patient
-                          ? fullName(
-                              request.appointment.patient.pat_first_name,
-                              request.appointment.patient.pat_last_name,
-                            )
-                          : 'Patient'}
-                      </span>
-                    }
-                    description={`Requested ${formatDateTime(request.reschedule_request_date)}`}
-                    status={
-                      <StatusBadge
-                        status={
-                          rescheduleRequestStatus[
-                            request.reschedule_request_status
-                          ]
-                        }
-                      />
-                    }
-                  />
-                ))}
-              </ListRows>
-            </CardBody>
-          </Card>
+          <PageSection title="Past reschedule decisions">
+            <Card>
+              <CardBody className="p-0">
+                <ListRows>
+                  {decidedRequests.slice(0, 20).map((request) => (
+                    <ListRow
+                      key={request.reschedule_request_id}
+                      className="py-3"
+                      title={
+                        <span className="font-normal text-body">
+                          {request.appointment?.patient
+                            ? fullName(
+                                request.appointment.patient.pat_first_name,
+                                request.appointment.patient.pat_last_name,
+                              )
+                            : 'Patient'}
+                        </span>
+                      }
+                      description={`Requested ${formatDateTime(request.reschedule_request_date)}`}
+                      status={
+                        <StatusBadge
+                          status={
+                            rescheduleRequestStatus[
+                              request.reschedule_request_status
+                            ]
+                          }
+                        />
+                      }
+                    />
+                  ))}
+                </ListRows>
+              </CardBody>
+            </Card>
+          </PageSection>
         ) : null}
       </div>
     </>
