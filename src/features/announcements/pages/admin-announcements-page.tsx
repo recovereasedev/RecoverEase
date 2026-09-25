@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Megaphone, Trash2 } from 'lucide-react'
-import { useState } from 'react'
+import { useState, type MouseEvent } from 'react'
+import { flushSync } from 'react-dom'
 
 import { FormError } from '@/components/feedback/form-error'
 import { EmptyState, StateView } from '@/components/feedback/state-view'
@@ -19,6 +20,7 @@ import {
 import { useCurrentUser } from '@/features/auth/auth-context'
 import { useDocumentTitle } from '@/hooks/use-document-title'
 import { formatDateTime } from '@/lib/format'
+import { focusFirstInvalid } from '@/lib/form-focus'
 import { queryKeys } from '@/lib/query-keys'
 
 /**
@@ -40,6 +42,10 @@ export function AdminAnnouncementsPage() {
   const [isComposerOpen, setComposerOpen] = useState(false)
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
+  const [problems, setProblems] = useState<{
+    title?: string | undefined
+    content?: string | undefined
+  }>({})
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
 
   const announcementsQuery = useQuery({
@@ -80,7 +86,26 @@ export function AdminAnnouncementsPage() {
     },
   })
 
-  const canSubmit = title.trim().length > 0 && content.trim().length > 0
+  // Both buttons are always pressable. An announcement needs a title and a
+  // message - the same two the buttons used to wait for - and what is missing
+  // is said beside its field, with focus taken there, before anything is sent.
+  const submit = (publishNow: boolean, event: MouseEvent<HTMLButtonElement>) => {
+    const next = {
+      title: title.trim() ? undefined : 'Give the announcement a title.',
+      content: content.trim() ? undefined : 'Write the message.',
+    }
+    flushSync(() => setProblems(next))
+    if (next.title || next.content) {
+      focusFirstInvalid(event.currentTarget.closest('dialog'))
+      return
+    }
+    create.mutate(publishNow)
+  }
+
+  const openComposer = () => {
+    setProblems({})
+    setComposerOpen(true)
+  }
 
   return (
     <>
@@ -88,10 +113,7 @@ export function AdminAnnouncementsPage() {
         title="Announcements"
         description="Notices shown to everyone using RecoverEase."
         actions={
-          <Button
-            className="max-sm:w-full"
-            onClick={() => setComposerOpen(true)}
-          >
+          <Button className="max-sm:w-full" onClick={openComposer}>
             <Megaphone aria-hidden="true" />
             New announcement
           </Button>
@@ -210,16 +232,14 @@ export function AdminAnnouncementsPage() {
             </Button>
             <Button
               variant="secondary"
-              disabled={!canSubmit}
               isLoading={create.isPending && create.variables === false}
-              onClick={() => create.mutate(false)}
+              onClick={(event) => submit(false, event)}
             >
               Save as draft
             </Button>
             <Button
-              disabled={!canSubmit}
               isLoading={create.isPending && create.variables === true}
-              onClick={() => create.mutate(true)}
+              onClick={(event) => submit(true, event)}
             >
               Publish now
             </Button>
@@ -227,19 +247,25 @@ export function AdminAnnouncementsPage() {
         }
       >
         <div className="space-y-4">
-          <Field label="Title" required>
+          <Field label="Title" required error={problems.title}>
             <Input
               value={title}
-              onChange={(event) => setTitle(event.target.value)}
+              onChange={(event) => {
+                setTitle(event.target.value)
+                setProblems((current) => ({ ...current, title: undefined }))
+              }}
               placeholder="Clinic closed on public holidays"
             />
           </Field>
 
-          <Field label="Message" required>
+          <Field label="Message" required error={problems.content}>
             <Textarea
               rows={6}
               value={content}
-              onChange={(event) => setContent(event.target.value)}
+              onChange={(event) => {
+                setContent(event.target.value)
+                setProblems((current) => ({ ...current, content: undefined }))
+              }}
               placeholder="The clinic will be closed on…"
             />
           </Field>

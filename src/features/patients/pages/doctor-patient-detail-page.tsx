@@ -13,6 +13,7 @@ import {
   Target,
 } from 'lucide-react'
 import { useState } from 'react'
+import { flushSync } from 'react-dom'
 import { useParams, useSearchParams } from 'react-router-dom'
 
 import { FormError } from '@/components/feedback/form-error'
@@ -55,7 +56,6 @@ import {
 } from '@/features/treatment-plans/api'
 import type { RecoveryLog } from '@/features/recovery-logs/api'
 import { useDocumentTitle } from '@/hooks/use-document-title'
-import { useFocusRecovery } from '@/hooks/use-focus-recovery'
 import { useNow } from '@/hooks/use-now'
 import {
   calculateAge,
@@ -64,6 +64,7 @@ import {
   formatDateTime,
   formatScheduleTime,
 } from '@/lib/format'
+import { focusFirstInvalid, refocusAfterKeyboardSubmit } from '@/lib/form-focus'
 import { queryKeys } from '@/lib/query-keys'
 import {
   patientStatus,
@@ -127,9 +128,7 @@ export function DoctorPatientDetailPage() {
       : 'overview',
   )
   const [noteDraft, setNoteDraft] = useState('')
-  // Saved, the draft clears and "Save note" is unavailable until the next
-  // one: keyboard focus goes back to the note box rather than the page.
-  const noteFocusRecovery = useFocusRecovery()
+  const [noteProblem, setNoteProblem] = useState<string | undefined>(undefined)
   // A patient's temporary password is shown once at registration, and no
   // email is sent, so their assigned clinician needs a way to reissue it.
   const [isResetOpen, setResetOpen] = useState(false)
@@ -841,15 +840,31 @@ export function DoctorPatientDetailPage() {
                     />
                     <CardBody>
                       <form
-                        ref={noteFocusRecovery}
                         onSubmit={(event) => {
                           event.preventDefault()
+                          const form = event.currentTarget
                           const text = noteDraft.trim()
-                          if (text) addNote.mutate(text)
+                          // "Save note" is always pressable; with nothing
+                          // written, it says so beside the box and takes
+                          // focus there, saving nothing.
+                          if (!text) {
+                            flushSync(() => setNoteProblem('Write the note.'))
+                            focusFirstInvalid(form)
+                            return
+                          }
+                          addNote.mutate(text, {
+                            // Saved from the keyboard, focus goes back to the
+                            // emptied box for the next note.
+                            onSuccess: () =>
+                              refocusAfterKeyboardSubmit(
+                                form,
+                                form.querySelector('textarea'),
+                              ),
+                          })
                         }}
                         className="space-y-4"
                       >
-                        <Field label="Note">
+                        <Field label="Note" error={noteProblem}>
                           {/* Six rows rather than the four-row default: a
                               clinical note is a paragraph, and a box that
                               shows two lines of it makes reviewing what you
@@ -857,9 +872,10 @@ export function DoctorPatientDetailPage() {
                           <Textarea
                             rows={6}
                             value={noteDraft}
-                            onChange={(event) =>
+                            onChange={(event) => {
                               setNoteDraft(event.target.value)
-                            }
+                              setNoteProblem(undefined)
+                            }}
                             placeholder="Wound healing well. Continue physiotherapy twice weekly."
                           />
                         </Field>
@@ -874,7 +890,6 @@ export function DoctorPatientDetailPage() {
                         <Button
                           type="submit"
                           className="max-sm:w-full"
-                          disabled={!noteDraft.trim()}
                           isLoading={addNote.isPending}
                           loadingLabel="Saving note…"
                         >

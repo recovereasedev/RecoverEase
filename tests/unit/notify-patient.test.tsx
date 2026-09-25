@@ -104,14 +104,24 @@ describe('notifying a patient', () => {
     expect(screen.getByRole('status')).toBeEmptyDOMElement()
   })
 
-  it('sends nothing at all when there is nothing to send', async () => {
+  it('sends nothing at all when there is nothing to send, and says so', async () => {
     renderCard()
 
-    expect(sendButton()).toBeDisabled()
+    // Pressable, rather than disabled with no reason given (M7).
+    expect(sendButton()).toBeEnabled()
+    await send('')
     await send('   ')
 
-    expect(sendButton()).toBeDisabled()
     expect(api.sendNotificationToPatient).not.toHaveBeenCalled()
+    // Said beside the box, which is marked and takes focus.
+    expect(screen.getByRole('alert')).toHaveTextContent('Write the message.')
+    expect(messageBox()).toHaveAttribute('aria-invalid', 'true')
+    expect(messageBox()).toHaveFocus()
+
+    // Writing clears it.
+    fireEvent.change(messageBox(), { target: { value: 'Bring your list.' } })
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(messageBox()).not.toHaveAttribute('aria-invalid')
   })
 
   it('says so when it was not sent, and keeps what was written', async () => {

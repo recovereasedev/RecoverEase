@@ -1,5 +1,6 @@
 import { Send } from 'lucide-react'
 import { useState } from 'react'
+import { flushSync } from 'react-dom'
 
 import { FormError } from '@/components/feedback/form-error'
 import { SavedNotice } from '@/components/feedback/state-view'
@@ -7,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardBody, CardHeader } from '@/components/ui/card'
 import { Field, Textarea } from '@/components/ui/field'
 import { useSendNotificationToPatient } from '@/features/notifications/hooks'
-import { useFocusRecovery } from '@/hooks/use-focus-recovery'
+import { focusFirstInvalid, refocusAfterKeyboardSubmit } from '@/lib/form-focus'
 
 /**
  * Module 7.1, "Send Notification to Patient".
@@ -38,10 +39,8 @@ export function NotifyPatient({
 }) {
   const [message, setMessage] = useState('')
   const [sentTo, setSentTo] = useState<string | null>(null)
+  const [problem, setProblem] = useState<string | undefined>(undefined)
   const send = useSendNotificationToPatient()
-  // Sent, the box empties and "Send notification" is unavailable until the
-  // next message: keyboard focus goes back to the box rather than the page.
-  const focusRecovery = useFocusRecovery()
 
   const text = message.trim()
 
@@ -53,10 +52,17 @@ export function NotifyPatient({
       />
       <CardBody>
         <form
-          ref={focusRecovery}
           onSubmit={(event) => {
             event.preventDefault()
-            if (!text) return
+            const form = event.currentTarget
+            // "Send notification" is always pressable; with nothing written,
+            // it says so beside the box and takes focus there, sending
+            // nothing.
+            if (!text) {
+              flushSync(() => setProblem('Write the message.'))
+              focusFirstInvalid(form)
+              return
+            }
 
             send.mutate(
               { userId: patientUserId, type: 'general', message: text },
@@ -64,18 +70,22 @@ export function NotifyPatient({
                 onSuccess: () => {
                   setMessage('')
                   setSentTo(patientName)
+                  // Sent from the keyboard, focus goes back to the emptied box
+                  // for the next message.
+                  refocusAfterKeyboardSubmit(form, form.querySelector('textarea'))
                 },
               },
             )
           }}
           className="space-y-4"
         >
-          <Field label="Message">
+          <Field label="Message" error={problem}>
             <Textarea
               rows={4}
               value={message}
               onChange={(event) => {
                 setMessage(event.target.value)
+                setProblem(undefined)
                 // The confirmation belongs to the message that was sent, not
                 // to the one being written next.
                 if (sentTo) setSentTo(null)
@@ -95,7 +105,6 @@ export function NotifyPatient({
             <Button
               type="submit"
               className="max-sm:w-full"
-              disabled={!text}
               isLoading={send.isPending}
               loadingLabel="Sending…"
             >

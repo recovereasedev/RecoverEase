@@ -171,9 +171,27 @@ describe('the Reports patient picker', () => {
     expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
   })
 
-  it('keeps Generate disabled until a patient is chosen, as before', () => {
-    renderPage()
-    expect(screen.getByRole('button', { name: /generate report/i })).toBeDisabled()
+  it('records nothing until a patient is chosen, and says so when Generate is pressed', () => {
+    const { input } = renderPage()
+    const generate = screen.getByRole('button', { name: /generate report/i })
+
+    // Pressable, rather than disabled with no reason given (M7).
+    expect(generate).toBeEnabled()
+    fireEvent.click(generate)
+
+    expect(mockRecord).not.toHaveBeenCalled()
+    // Said beside the picker, which is marked and takes focus.
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Choose which patient this report is for.',
+    )
+    expect(input).toHaveAttribute('aria-invalid', 'true')
+    expect(input).toHaveFocus()
+
+    // Choosing someone clears it.
+    fireEvent.change(input, { target: { value: 'bob' } })
+    fireEvent.mouseDown(screen.getByRole('option', { name: /Bob Reyes/ }))
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(input).not.toHaveAttribute('aria-invalid')
   })
 
   it('hands the chosen patient id to the existing report flow', async () => {

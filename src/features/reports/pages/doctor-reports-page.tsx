@@ -24,6 +24,7 @@ import { reportDateTime } from '@/features/reports/report-format'
 import { useDocumentTitle } from '@/hooks/use-document-title'
 import { useNow } from '@/hooks/use-now'
 import { formatDateTime } from '@/lib/format'
+import { focusFirstInvalid } from '@/lib/form-focus'
 import { queryKeys } from '@/lib/query-keys'
 import { cn, fullName } from '@/lib/utils'
 
@@ -46,6 +47,9 @@ export function DoctorReportsPage() {
   const queryClient = useQueryClient()
   const patientsQuery = useMyPatients()
   const [selectedPatientId, setSelectedPatientId] = useState('')
+  const [patientProblem, setPatientProblem] = useState<string | undefined>(
+    undefined,
+  )
 
   const reportsQuery = useQuery({
     queryKey: queryKeys.reports.list(),
@@ -115,11 +119,23 @@ export function DoctorReportsPage() {
                 <form
                   onSubmit={(event) => {
                     event.preventDefault()
-                    if (selectedPatientId) generate.mutate(selectedPatientId)
+                    // "Generate report" is always pressable; with no patient
+                    // chosen, it says so beside the picker and takes focus
+                    // there, recording nothing.
+                    if (!selectedPatientId) {
+                      flushSync(() =>
+                        setPatientProblem(
+                          'Choose which patient this report is for.',
+                        ),
+                      )
+                      focusFirstInvalid(event.currentTarget)
+                      return
+                    }
+                    generate.mutate(selectedPatientId)
                   }}
                   className="space-y-4"
                 >
-                  <Field label="Patient" required>
+                  <Field label="Patient" required error={patientProblem}>
                     {/* Searchable rather than a native select, for the same
                         reason as the scheduling dialog: a full caseload is a
                         long list to scroll. It reads the same `useMyPatients()`
@@ -141,6 +157,7 @@ export function DoctorReportsPage() {
                           generate.reset()
                         }
                         setSelectedPatientId(patientId)
+                        setPatientProblem(undefined)
                       }}
                       placeholder="Choose a patient…"
                       emptyLabel="No patient of yours matches that name"
@@ -163,7 +180,6 @@ export function DoctorReportsPage() {
                   <Button
                     type="submit"
                     block
-                    disabled={!selectedPatientId}
                     isLoading={generate.isPending}
                     loadingLabel="Generating…"
                   >
