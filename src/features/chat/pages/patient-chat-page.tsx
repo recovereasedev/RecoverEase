@@ -18,6 +18,7 @@ import {
 } from '@/features/chat/api'
 import { useDocumentTitle } from '@/hooks/use-document-title'
 import { formatDateTime, formatTime } from '@/lib/format'
+import { refocusAfterKeyboardSubmit } from '@/lib/form-focus'
 import { queryKeys } from '@/lib/query-keys'
 import { cn } from '@/lib/utils'
 
@@ -139,6 +140,12 @@ export function PatientChatPage() {
     const content = draft.trim()
     if (!content) return
     hasSentRef.current = true
+    // Sent with Send from the keyboard: the button is disabled the moment the
+    // draft empties, which dropped focus to the page. Back into the composer,
+    // where the next message is written - before the draft clears. Enter in
+    // the composer is already there, and a click moves nothing.
+    const composer = draftRef.current
+    if (composer?.form) refocusAfterKeyboardSubmit(composer.form, composer)
     setDraft('')
     sendMessage.mutate(content)
   }
