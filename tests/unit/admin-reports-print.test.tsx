@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 /**
@@ -7,7 +7,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
  * served by the browser's print). "Print or save as PDF" and "Generate report"
  * are controls: they stay on screen, and work there, but stay off the paper.
  * The report itself — the system summary and the list of generated reports —
- * prints as it always has.
+ * prints under the recovery report's letterhead, which takes the place of the
+ * page header on paper.
  */
 
 const api = vi.hoisted(() => ({
@@ -22,7 +23,10 @@ vi.mock('@/features/auth/auth-context', () => ({
   useCurrentUser: () => ({
     userId: 'u-admin',
     role: 'admin',
-    profile: { kind: 'admin', admin: { admin_id: 'a-1' } },
+    profile: {
+      kind: 'admin',
+      admin: { admin_id: 'a-1', admin_first_name: 'Ada', admin_last_name: 'Reyes' },
+    },
   }),
 }))
 
@@ -64,6 +68,9 @@ const leftOffPaper = (element: HTMLElement) =>
 
 const printButton = () => screen.getByRole('button', { name: /print or save as pdf/i })
 const generateButton = () => screen.getByRole('button', { name: /generate report/i })
+
+/** The list has loaded: its one row is on the page. */
+const listLoaded = () => screen.findByRole('listitem')
 
 beforeEach(() => {
   api.fetchAdminDashboardStats.mockResolvedValue(STATS)
@@ -124,7 +131,8 @@ describe('printing the system-wide report', () => {
 
   it('keeps the report itself on the paper', async () => {
     renderPage()
-    await screen.findByText('System-wide report')
+    await screen.findByText('Patients on record')
+    await listLoaded()
 
     for (const text of [
       'System summary',
@@ -137,18 +145,48 @@ describe('printing the system-wide report', () => {
       'Accounts by role',
       '1 admin',
       'Recently generated reports',
-      'System-wide report',
     ]) {
       expect(leftOffPaper(screen.getByText(text)), text).toBe(false)
     }
+    // The generated report's own row.
+    expect(
+      leftOffPaper(within(screen.getByRole('listitem')).getByText('System-wide report')),
+    ).toBe(false)
+  })
+
+  it('prints the letterhead in place of the page header', async () => {
+    renderPage()
+    await screen.findByText('Patients on record')
+    await listLoaded()
+
+    const letterhead = screen.getByRole('heading', { level: 2, name: 'System-wide report' })
+    expect(leftOffPaper(letterhead)).toBe(false)
+    // Paper only: on screen the page header says what the page is.
+    expect(letterhead.closest('[class~="hidden"][class~="print:block"]')).not.toBeNull()
+    expect(leftOffPaper(screen.getByText('Printed'))).toBe(false)
+    expect(leftOffPaper(screen.getByText('Ada Reyes'))).toBe(false)
+
+    // The page header, with its title, stays on screen and off the paper.
     expect(
       leftOffPaper(screen.getByRole('heading', { level: 1, name: 'Reports' })),
-    ).toBe(false)
+    ).toBe(true)
+  })
+
+  it('prints on the report page', async () => {
+    renderPage()
+    await screen.findByText('Patients on record')
+
+    // `report-sheet` puts the printout on the A4 `report` page, with its
+    // margins, running footer and page numbers.
+    const sheet = screen.getByText('System summary').closest('.report-sheet')
+    expect(sheet).not.toBeNull()
+    expect(sheet).toContainElement(screen.getByRole('heading', { level: 2, name: 'System-wide report' }))
   })
 
   it('prints no control at all', async () => {
     renderPage()
-    await screen.findByText('System-wide report')
+    await screen.findByText('Patients on record')
+    await listLoaded()
 
     const onPaper = screen
       .getAllByRole('button')

@@ -4,8 +4,9 @@ import { expect, IDS, test, type Page } from './support/fixtures'
  * The administrator's system-wide report, printed in a real browser (modules
  * 9.3 and 9.4). "Print or save as PDF" and "Generate report" stay on screen;
  * printing sends the system summary and the list of generated reports without
- * them, or any other control, and fits the paper. Served by the browser-only
- * stub; nothing is written anywhere.
+ * them, or any other control, under the recovery report's letterhead, on A4,
+ * and fits the paper. Served by the browser-only stub; nothing is written
+ * anywhere.
  */
 
 const RECORD = {
@@ -62,9 +63,20 @@ async function printedPages(page: Page): Promise<number> {
   return (pdf.match(/\/Type\s*\/Page(?![s\w])/g) ?? []).length
 }
 
+/** The page sizes, in points, of what Chrome's "Save as PDF" would produce. */
+async function printedPaper(page: Page): Promise<string[]> {
+  const pdf = (await page.pdf({ preferCSSPageSize: true, printBackground: true })).toString('latin1')
+  const boxes = [...pdf.matchAll(/\/MediaBox\s*\[\s*[\d.]+\s+[\d.]+\s+([\d.]+)\s+([\d.]+)\s*\]/g)]
+  return [...new Set(boxes.map((box) => `${Math.round(Number(box[1]))}x${Math.round(Number(box[2]))}`))]
+}
+
+/** The generated report's row in the list, not the letterhead's title. */
+const reportRow = (page: Page) =>
+  page.getByRole('listitem').getByText('System-wide report', { exact: true })
+
 async function openReports(page: Page) {
   await page.goto('/admin/reports')
-  await expect(page.getByText('System-wide report', { exact: true })).toBeVisible()
+  await expect(reportRow(page)).toBeVisible()
   await expect(page.getByText('Patients on record')).toBeVisible()
 }
 
@@ -97,19 +109,27 @@ test.describe('printing the system-wide report', () => {
     await expect(page.getByRole('navigation', { name: 'Main' })).toBeHidden()
     await expect(page.getByRole('banner')).toBeHidden()
 
+    // The letterhead in place of the page header: what this is, when it was
+    // printed and by whom.
+    await expect(page.getByRole('heading', { level: 2, name: 'System-wide report' })).toBeVisible()
+    await expect(page.getByText('Printed', { exact: true })).toBeVisible()
+    await expect(page.getByText('Prepared by', { exact: true })).toBeVisible()
+    await expect(page.getByRole('heading', { level: 1, name: 'Reports' })).toBeHidden()
+
     // The report, as the page already showed it.
-    await expect(page.getByRole('heading', { level: 1, name: 'Reports' })).toBeVisible()
     await expect(page.getByText('System summary')).toBeVisible()
     await expect(page.getByText('Patients on record')).toBeVisible()
     await expect(page.getByText('6 active')).toBeVisible()
     await expect(page.getByText('Upcoming appointments')).toBeVisible()
     await expect(page.getByText('Recently generated reports')).toBeVisible()
-    await expect(page.getByText('System-wide report', { exact: true })).toBeVisible()
+    await expect(reportRow(page)).toBeVisible()
 
     // Nothing to press on paper.
     expect(await page.locator('main button:visible').count()).toBe(0)
 
     expect(await printedPages(page)).toBe(1)
+    // A4, the recovery report's paper, not the browser's default Letter.
+    expect(await printedPaper(page)).toEqual(['595x842'])
     expect(errors).toEqual([])
     expect(writes).toEqual([])
   })
