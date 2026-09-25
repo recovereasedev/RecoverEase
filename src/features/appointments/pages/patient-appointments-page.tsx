@@ -54,8 +54,9 @@ function minimumBookingValue(): string {
  */
 export function PatientAppointmentsPage() {
   useDocumentTitle('Appointments')
-  // "Confirm" leaves once the appointment is confirmed: keyboard focus moves
-  // to the next action on it rather than to the top of the page.
+  // "Confirm" leaves once the appointment is confirmed, as does "Cancel" once
+  // its dialog has handed focus back to it: keyboard focus moves to the next
+  // action rather than to the top of the page.
   const focusRecovery = useFocusRecovery()
   const user = useCurrentUser()
   const patient =
@@ -352,141 +353,146 @@ export function PatientAppointmentsPage() {
 
   return (
     <>
-      <PageHeader
-        title="Appointments"
-        description="Your upcoming visits and your appointment history."
-        actions={
-          <Button className="max-sm:w-full" onClick={openBooking}>
-            <CalendarPlus aria-hidden="true" />
-            Book a follow-up
-          </Button>
-        }
-      />
-
-      <div ref={focusRecovery} className="space-y-section">
-        <StateView
-          isPending={appointmentsQuery.isPending}
-          error={appointmentsQuery.error}
-          data={upcoming}
-          onRetry={() => void appointmentsQuery.refetch()}
-          empty={
-            <PageSection
-              title="Upcoming"
-              description="Confirm that you will attend, or ask for a different time."
-            >
-              <Card>
-                <EmptyState
-                  icon={CalendarX}
-                  title="No upcoming appointments"
-                  description="Book a follow-up when you need to see your doctor again."
-                />
-              </Card>
-            </PageSection>
+      {/* The header is inside too, so an action with nothing after it -
+          the last upcoming appointment, cancelled - hands focus back to
+          "Book a follow-up" rather than to the page. */}
+      <div ref={focusRecovery}>
+        <PageHeader
+          title="Appointments"
+          description="Your upcoming visits and your appointment history."
+          actions={
+            <Button className="max-sm:w-full" onClick={openBooking}>
+              <CalendarPlus aria-hidden="true" />
+              Book a follow-up
+            </Button>
           }
-        >
-          {(items) => {
-            // Sorted soonest first upstream, so the first is the one being
-            // asked about: it is lifted out of the list and given the size
-            // its answer deserves.
-            const [next, ...later] = items
-            if (!next) return null
+        />
 
-            return (
-              <>
-                <PageSection
-                  title="Next appointment"
-                  description="Confirm that you will attend, or ask for a different time."
-                >
-                  <Card variant="elevated">
-                    <CardBody>
-                      <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
-                        <div className="min-w-0">
-                          <p
-                            className="text-balance text-headline-lg text-heading sm:text-title"
-                            data-numeric
-                          >
-                            {formatDateTime(next.appointment_date)}
-                          </p>
-                          {/* How far away it is, in words: the date answers
-                              "when", this answers "how soon". */}
-                          <p className="mt-1 text-body-md text-muted first-letter:uppercase">
-                            {formatRelative(next.appointment_date)}
-                          </p>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          {statusesFor(next)}
-                        </div>
-                      </div>
+        <div className="space-y-section">
+          <StateView
+            isPending={appointmentsQuery.isPending}
+            error={appointmentsQuery.error}
+            data={upcoming}
+            onRetry={() => void appointmentsQuery.refetch()}
+            empty={
+              <PageSection
+                title="Upcoming"
+                description="Confirm that you will attend, or ask for a different time."
+              >
+                <Card>
+                  <EmptyState
+                    icon={CalendarX}
+                    title="No upcoming appointments"
+                    description="Book a follow-up when you need to see your doctor again."
+                  />
+                </Card>
+              </PageSection>
+            }
+          >
+            {(items) => {
+              // Sorted soonest first upstream, so the first is the one being
+              // asked about: it is lifted out of the list and given the size
+              // its answer deserves.
+              const [next, ...later] = items
+              if (!next) return null
 
-                      {notesFor(next)}
-
-                      <div className="mt-5">{actionsFor(next, true)}</div>
-                    </CardBody>
-                  </Card>
-                </PageSection>
-
-                {later.length > 0 ? (
+              return (
+                <>
                   <PageSection
-                    title="Later"
-                    description="The rest of your booked visits."
+                    title="Next appointment"
+                    description="Confirm that you will attend, or ask for a different time."
                   >
-                    <Card className="overflow-hidden">
-                      <ListRows>
-                        {later.map((appointment) => (
-                          <ListRow
-                            key={appointment.appointment_id}
-                            title={formatDateTime(appointment.appointment_date)}
-                            description={formatRelative(
-                              appointment.appointment_date,
-                            )}
-                            status={statusesFor(appointment)}
-                          >
-                            {/* Actions live in the row's own block rather than
-                                beside the status, because three of them beside
-                                a date and two badges is more than a 375px line
-                                can carry. */}
-                            {actionsFor(appointment, false)}
-                            {notesFor(appointment)}
-                          </ListRow>
-                        ))}
-                      </ListRows>
+                    <Card variant="elevated">
+                      <CardBody>
+                        <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
+                          <div className="min-w-0">
+                            <p
+                              className="text-balance text-headline-lg text-heading sm:text-title"
+                              data-numeric
+                            >
+                              {formatDateTime(next.appointment_date)}
+                            </p>
+                            {/* How far away it is, in words: the date answers
+                                "when", this answers "how soon". */}
+                            <p className="mt-1 text-body-md text-muted first-letter:uppercase">
+                              {formatRelative(next.appointment_date)}
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            {statusesFor(next)}
+                          </div>
+                        </div>
+
+                        {notesFor(next)}
+
+                        <div className="mt-5">{actionsFor(next, true)}</div>
+                      </CardBody>
                     </Card>
                   </PageSection>
-                ) : null}
-              </>
-            )
-          }}
-        </StateView>
 
-        {/* --- History — module 6.7 -------------------------------------- */}
-        <PageSection title="History" description="Visits already behind you.">
-          <Card className="overflow-hidden">
-            {past.length === 0 ? (
-              <p className="px-4 py-8 text-center text-sm text-muted sm:px-5">
-                You have no past appointments.
-              </p>
-            ) : (
-              <ListRows>
-                {past.map((appointment) => (
-                  <ListRow
-                    key={appointment.appointment_id}
-                    className="py-3"
-                    title={
-                      <span className="font-normal text-body">
-                        {formatDateTime(appointment.appointment_date)}
-                      </span>
-                    }
-                    status={
-                      <StatusBadge
-                        status={appointmentStatus[appointment.appointment_status]}
-                      />
-                    }
-                  />
-                ))}
-              </ListRows>
-            )}
-          </Card>
-        </PageSection>
+                  {later.length > 0 ? (
+                    <PageSection
+                      title="Later"
+                      description="The rest of your booked visits."
+                    >
+                      <Card className="overflow-hidden">
+                        <ListRows>
+                          {later.map((appointment) => (
+                            <ListRow
+                              key={appointment.appointment_id}
+                              title={formatDateTime(appointment.appointment_date)}
+                              description={formatRelative(
+                                appointment.appointment_date,
+                              )}
+                              status={statusesFor(appointment)}
+                            >
+                              {/* Actions live in the row's own block rather than
+                                  beside the status, because three of them beside
+                                  a date and two badges is more than a 375px line
+                                  can carry. */}
+                              {actionsFor(appointment, false)}
+                              {notesFor(appointment)}
+                            </ListRow>
+                          ))}
+                        </ListRows>
+                      </Card>
+                    </PageSection>
+                  ) : null}
+                </>
+              )
+            }}
+          </StateView>
+
+          {/* --- History — module 6.7 -------------------------------------- */}
+          <PageSection title="History" description="Visits already behind you.">
+            <Card className="overflow-hidden">
+              {past.length === 0 ? (
+                <p className="px-4 py-8 text-center text-sm text-muted sm:px-5">
+                  You have no past appointments.
+                </p>
+              ) : (
+                <ListRows>
+                  {past.map((appointment) => (
+                    <ListRow
+                      key={appointment.appointment_id}
+                      className="py-3"
+                      title={
+                        <span className="font-normal text-body">
+                          {formatDateTime(appointment.appointment_date)}
+                        </span>
+                      }
+                      status={
+                        <StatusBadge
+                          status={appointmentStatus[appointment.appointment_status]}
+                        />
+                      }
+                    />
+                  ))}
+                </ListRows>
+              )}
+            </Card>
+          </PageSection>
+        </div>
       </div>
 
       {/* --- Cancel confirmation ----------------------------------------- */}

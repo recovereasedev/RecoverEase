@@ -56,6 +56,7 @@ import {
 } from '@/features/treatment-plans/api'
 import type { RecoveryLog } from '@/features/recovery-logs/api'
 import { useDocumentTitle } from '@/hooks/use-document-title'
+import { useFocusRecovery } from '@/hooks/use-focus-recovery'
 import { useNow } from '@/hooks/use-now'
 import {
   calculateAge,
@@ -64,7 +65,11 @@ import {
   formatDateTime,
   formatScheduleTime,
 } from '@/lib/format'
-import { focusFirstInvalid, refocusAfterKeyboardSubmit } from '@/lib/form-focus'
+import {
+  closeFormToOpener,
+  focusFirstInvalid,
+  refocusAfterKeyboardSubmit,
+} from '@/lib/form-focus'
 import { queryKeys } from '@/lib/query-keys'
 import {
   patientStatus,
@@ -152,6 +157,10 @@ export function DoctorPatientDetailPage() {
   const [editingPlanId, setEditingPlanId] = useState<string | null>(null)
   const [goalPlanId, setGoalPlanId] = useState<string | null>(null)
   const [isPrescribing, setPrescribing] = useState(false)
+  // "End medication" leaves with the course it ended, once its dialog has
+  // handed focus back to it: keyboard focus moves on to the next course's
+  // control, or to "Add another medicine", rather than to the page.
+  const medicationFocusRecovery = useFocusRecovery()
 
   const patientQuery = usePatient(patientId)
   const logsQuery = useRecoveryLogs(patientId)
@@ -533,6 +542,7 @@ export function DoctorPatientDetailPage() {
                                     }
                                   />
                                   <Button
+                                    id={`edit-plan-${plan.treatment_plan_id}`}
                                     variant="ghost"
                                     size="sm"
                                     onClick={() =>
@@ -556,8 +566,26 @@ export function DoctorPatientDetailPage() {
                                     patientId={patientId}
                                     doctorId={doctorId}
                                     plan={plan}
-                                    onDone={() => setEditingPlanId(null)}
-                                    onCancel={() => setEditingPlanId(null)}
+                                    // Saved or cancelled, the form goes, and
+                                    // keyboard focus returns to "Edit plan".
+                                    onDone={() =>
+                                      closeFormToOpener(
+                                        () => setEditingPlanId(null),
+                                        () =>
+                                          document.getElementById(
+                                            `edit-plan-${plan.treatment_plan_id}`,
+                                          ),
+                                      )
+                                    }
+                                    onCancel={() =>
+                                      closeFormToOpener(
+                                        () => setEditingPlanId(null),
+                                        () =>
+                                          document.getElementById(
+                                            `edit-plan-${plan.treatment_plan_id}`,
+                                          ),
+                                      )
+                                    }
                                   />
                                 </div>
                               ) : null}
@@ -641,16 +669,33 @@ export function DoctorPatientDetailPage() {
                                           <Select
                                             // 44px on a phone, where it is
                                             // the only way to record progress.
-                                            className="h-11 w-auto text-sm sm:h-9"
+                                            className="h-11 w-auto text-sm sm:h-9 aria-disabled:cursor-not-allowed aria-disabled:bg-neutral-100 aria-disabled:text-muted"
                                             value={goal.treatment_goal_status}
-                                            disabled={goalStatus.isPending}
-                                            onChange={(event) =>
+                                            // Held while a change saves, as a
+                                            // saving Button is: unavailable
+                                            // but still focusable. `disabled`
+                                            // made the browser drop keyboard
+                                            // focus to the top of the page.
+                                            aria-disabled={
+                                              goalStatus.isPending || undefined
+                                            }
+                                            aria-busy={
+                                              (goalStatus.isPending &&
+                                                goalStatus.variables?.goalId ===
+                                                  goal.treatment_goal_id) ||
+                                              undefined
+                                            }
+                                            onChange={(event) => {
+                                              // A change made while another
+                                              // saves is not taken; the
+                                              // select keeps its value.
+                                              if (goalStatus.isPending) return
                                               goalStatus.mutate({
                                                 goalId: goal.treatment_goal_id,
                                                 status: event.target
                                                   .value as TreatmentGoalStatus,
                                               })
-                                            }
+                                            }}
                                           >
                                             <option value="pending">
                                               Not started
@@ -734,97 +779,112 @@ export function DoctorPatientDetailPage() {
                     }
                   />
                   <CardBody className="p-0">
-                    <StateView
-                      isPending={schedulesQuery.isPending}
-                      error={schedulesQuery.error}
-                      data={schedulesQuery.data}
-                      onRetry={() => void schedulesQuery.refetch()}
-                      empty={
-                        <p className="px-4 pb-2 pt-10 text-center text-sm text-muted sm:px-5">
-                          No prescriptions on record for this patient.
-                        </p>
-                      }
-                    >
-                      {(schedules) => (
-                        <ul className="divide-y divide-[var(--color-border)]">
-                          {schedules.map((schedule) => (
-                            <li
-                              key={schedule.medication_schedule_id}
-                              className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-start sm:justify-between sm:px-5"
-                            >
-                              <div className="min-w-0">
-                                <p className="font-medium text-heading">
-                                  {schedule.medication_schedule_name}
-                                </p>
-                                <p className="mt-0.5 text-sm text-body">
-                                  {schedule.medication_schedule_dosage} ·{' '}
-                                  {schedule.medication_schedule_frequency}×
-                                  daily at{' '}
-                                  <span data-numeric>
-                                    {schedule.medication_schedule_times
-                                      .map(formatScheduleTime)
-                                      .join(', ')}
-                                  </span>
-                                </p>
-                                <p className="mt-0.5 text-sm text-muted">
-                                  From{' '}
-                                  {formatDate(
-                                    schedule.medication_schedule_start_date,
-                                  )}
-                                  {schedule.medication_schedule_end_date
-                                    ? ` until ${formatDate(schedule.medication_schedule_end_date)}`
-                                    : ', ongoing'}
-                                </p>
-                                {/* The prescription's notes, which the
-                                    patient's own printed prescription also
-                                    carries. Paper only (QA 9/12). */}
-                                {schedule.prescription?.prescription_notes ? (
-                                  <p className="mt-1.5 hidden whitespace-pre-wrap text-sm leading-relaxed text-body print:block">
-                                    {schedule.prescription.prescription_notes}
+                    <div ref={medicationFocusRecovery}>
+                      <StateView
+                        isPending={schedulesQuery.isPending}
+                        error={schedulesQuery.error}
+                        data={schedulesQuery.data}
+                        onRetry={() => void schedulesQuery.refetch()}
+                        empty={
+                          <p className="px-4 pb-2 pt-10 text-center text-sm text-muted sm:px-5">
+                            No prescriptions on record for this patient.
+                          </p>
+                        }
+                      >
+                        {(schedules) => (
+                          <ul className="divide-y divide-[var(--color-border)]">
+                            {schedules.map((schedule) => (
+                              <li
+                                key={schedule.medication_schedule_id}
+                                className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-start sm:justify-between sm:px-5"
+                              >
+                                <div className="min-w-0">
+                                  <p className="font-medium text-heading">
+                                    {schedule.medication_schedule_name}
                                   </p>
-                                ) : null}
-                              </div>
+                                  <p className="mt-0.5 text-sm text-body">
+                                    {schedule.medication_schedule_dosage} ·{' '}
+                                    {schedule.medication_schedule_frequency}×
+                                    daily at{' '}
+                                    <span data-numeric>
+                                      {schedule.medication_schedule_times
+                                        .map(formatScheduleTime)
+                                        .join(', ')}
+                                    </span>
+                                  </p>
+                                  <p className="mt-0.5 text-sm text-muted">
+                                    From{' '}
+                                    {formatDate(
+                                      schedule.medication_schedule_start_date,
+                                    )}
+                                    {schedule.medication_schedule_end_date
+                                      ? ` until ${formatDate(schedule.medication_schedule_end_date)}`
+                                      : ', ongoing'}
+                                  </p>
+                                  {/* The prescription's notes, which the
+                                      patient's own printed prescription also
+                                      carries. Paper only (QA 9/12). */}
+                                  {schedule.prescription?.prescription_notes ? (
+                                    <p className="mt-1.5 hidden whitespace-pre-wrap text-sm leading-relaxed text-body print:block">
+                                      {schedule.prescription.prescription_notes}
+                                    </p>
+                                  ) : null}
+                                </div>
 
-                              {/* QA-01. Only on a course that is still
-                                  running; see canEndSchedule. `contents`
-                                  keeps the row's layout exactly as it was;
-                                  the control stays off the paper. */}
-                              <div className="contents print:hidden">
-                                <EndMedicationAction
-                                  patientId={patientId}
-                                  schedule={schedule}
-                                />
-                              </div>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </StateView>
+                                {/* QA-01. Only on a course that is still
+                                    running; see canEndSchedule. `contents`
+                                    keeps the row's layout exactly as it was;
+                                    the control stays off the paper. */}
+                                <div className="contents print:hidden">
+                                  <EndMedicationAction
+                                    patientId={patientId}
+                                    schedule={schedule}
+                                  />
+                                </div>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </StateView>
 
-                    {/* Modules 4.3 and 4.1, outside a guided consultation.
-                        One block whether or not anything is prescribed yet,
-                        so there is a single place to look for it. */}
-                    <div className="border-t border-[var(--color-border)] px-4 py-4 sm:px-5 print:hidden">
-                      {isPrescribing ? (
-                        <MedicationForm
-                          patientId={patientId}
-                          doctorId={doctorId}
-                          {...(prescriptionId ? { prescriptionId } : {})}
-                          onDone={() => setPrescribing(false)}
-                          onCancel={() => setPrescribing(false)}
-                        />
-                      ) : (
-                        <Button
-                          variant={hasPrescription ? 'secondary' : 'primary'}
-                          className="max-sm:w-full"
-                          onClick={() => setPrescribing(true)}
-                        >
-                          <Pill aria-hidden="true" />
-                          {hasPrescription
-                            ? 'Add another medicine'
-                            : 'Add prescription'}
-                        </Button>
-                      )}
+                      {/* Modules 4.3 and 4.1, outside a guided consultation.
+                          One block whether or not anything is prescribed yet,
+                          so there is a single place to look for it. */}
+                      <div className="border-t border-[var(--color-border)] px-4 py-4 sm:px-5 print:hidden">
+                        {isPrescribing ? (
+                          <MedicationForm
+                            patientId={patientId}
+                            doctorId={doctorId}
+                            {...(prescriptionId ? { prescriptionId } : {})}
+                            // Saved or cancelled, the form goes, and keyboard
+                            // focus goes to the button back in its place.
+                            onDone={() =>
+                              closeFormToOpener(
+                                () => setPrescribing(false),
+                                () => document.getElementById('add-medicine'),
+                              )
+                            }
+                            onCancel={() =>
+                              closeFormToOpener(
+                                () => setPrescribing(false),
+                                () => document.getElementById('add-medicine'),
+                              )
+                            }
+                          />
+                        ) : (
+                          <Button
+                            id="add-medicine"
+                            variant={hasPrescription ? 'secondary' : 'primary'}
+                            className="max-sm:w-full"
+                            onClick={() => setPrescribing(true)}
+                          >
+                            <Pill aria-hidden="true" />
+                            {hasPrescription
+                              ? 'Add another medicine'
+                              : 'Add prescription'}
+                          </Button>
+                        )}
+                      </div>
                     </div>
                   </CardBody>
                 </Card>

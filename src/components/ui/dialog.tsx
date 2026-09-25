@@ -1,5 +1,5 @@
 import { X } from 'lucide-react'
-import { useEffect, useId, useRef, type ReactNode } from 'react'
+import { useEffect, useId, useLayoutEffect, useRef, type ReactNode } from 'react'
 
 import { Button } from '@/components/ui/button'
 
@@ -41,13 +41,30 @@ export function Dialog({
     }
   }, [isOpen])
 
+  // A dialog its parent stops rendering while it is still open - after a
+  // confirmed action, or its own "Keep" button - is closed first, the way
+  // Escape closes it. The platform then hands focus back to the control that
+  // opened it; removed while open, the dialog left focus on the page instead.
+  // A layout effect, so this runs while the dialog is still in the document.
+  useLayoutEffect(() => {
+    const element = dialogRef.current
+    return () => {
+      if (element?.open) element.close()
+    }
+  }, [])
+
   useEffect(() => {
     const element = dialogRef.current
     if (!element) return
 
     // Fires for Escape as well as for close(), so the parent's state stays in
-    // step with the platform's own dismissal.
-    const handleClose = () => onClose()
+    // step with the platform's own dismissal. Not for the close above: that
+    // dialog is gone by the time this arrives, or already open again (React
+    // mounting it twice in development).
+    const handleClose = () => {
+      if (!element.isConnected || element.open) return
+      onClose()
+    }
     element.addEventListener('close', handleClose)
     return () => element.removeEventListener('close', handleClose)
   }, [onClose])

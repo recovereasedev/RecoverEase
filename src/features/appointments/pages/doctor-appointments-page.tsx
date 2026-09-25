@@ -21,6 +21,7 @@ import {
   useSetAppointmentStatus,
 } from '@/features/appointments/hooks'
 import { useDocumentTitle } from '@/hooks/use-document-title'
+import { useFocusRecovery } from '@/hooks/use-focus-recovery'
 import { formatDateTime } from '@/lib/format'
 import { appointmentStatus, rescheduleRequestStatus } from '@/lib/status'
 import { fullName } from '@/lib/utils'
@@ -45,6 +46,11 @@ export function DoctorAppointmentsPage() {
   const requestsQuery = useRescheduleRequests()
   const decide = useDecideRescheduleRequest()
   const setStatus = useSetAppointmentStatus()
+  // "Mark completed", "Mark no-show", "Approve and move" and "Decline" leave
+  // with the row they decide, as does a cancelled appointment's "Cancel" once
+  // its dialog has handed focus back to it: keyboard focus moves on to the
+  // next action rather than to the top of the page.
+  const focusRecovery = useFocusRecovery()
   const [isSchedulingOpen, setSchedulingOpen] = useState(false)
   // Cancelling is not undoable from this screen, so it is confirmed first.
   // Held as the appointment itself rather than a boolean, so the dialog can
@@ -148,7 +154,7 @@ export function DoctorAppointmentsPage() {
         onClose={() => setSchedulingOpen(false)}
       />
 
-      <div className="space-y-section">
+      <div ref={focusRecovery} className="space-y-section">
         {/* --- Pending requests ------------------------------------------ */}
         <PageSection
           title="Reschedule requests"
