@@ -194,6 +194,44 @@ describe('the Reports patient picker', () => {
     expect(input).not.toHaveAttribute('aria-invalid')
   })
 
+  it('leaves the list closed when Generate sends focus here, so the message stays readable', () => {
+    const { input } = renderPage()
+    fireEvent.click(screen.getByRole('button', { name: /generate report/i }))
+
+    // Focus arrives because the field is missing (M7) - not a request to
+    // browse the list, which would open over the message.
+    expect(input).toHaveFocus()
+    expect(input).toHaveAttribute('aria-invalid', 'true')
+    expect(input).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Choose which patient this report is for.',
+    )
+
+    // Still opened on purpose: by arrow key, by click, by typing.
+    fireEvent.keyDown(input, { key: 'ArrowDown' })
+    expect(screen.getByRole('listbox')).toBeInTheDocument()
+    fireEvent.keyDown(input, { key: 'Escape' })
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+
+    fireEvent.click(input)
+    expect(screen.getByRole('listbox')).toBeInTheDocument()
+    fireEvent.keyDown(input, { key: 'Escape' })
+
+    fireEvent.change(input, { target: { value: 'ali' } })
+    expect(
+      within(screen.getByRole('listbox')).getByRole('option', { name: /Alice Santos/ }),
+    ).toBeInTheDocument()
+  })
+
+  it('still opens on focus when nothing is wrong', () => {
+    const { input } = renderPage()
+    fireEvent.focus(input)
+
+    expect(input).not.toHaveAttribute('aria-invalid')
+    expect(screen.getByRole('listbox')).toBeInTheDocument()
+  })
+
   it('hands the chosen patient id to the existing report flow', async () => {
     // The load-bearing assertion: the label is what the doctor sees, the id
     // is what generation records.
