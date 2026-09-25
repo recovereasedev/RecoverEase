@@ -72,7 +72,13 @@ export function AdherenceSummary({ adherence }: { adherence: Adherence }) {
                 className="size-4 shrink-0 text-neutral-500"
                 aria-hidden="true"
               />
-              <span className="flex-1 text-body">{status.label}</span>
+              <span className="flex-1 text-body">
+                {/* `pending` counts every dose with no record yet - still to
+                    come, due now, or overdue - so "Due" read wrong beside a
+                    dose list that shows some of them as Overdue. The count
+                    is unchanged; only what it is called. */}
+                {row.key === 'pending' ? 'Not yet recorded' : status.label}
+              </span>
               <span className="font-medium text-heading" data-numeric>
                 {row.count}
               </span>
