@@ -605,17 +605,6 @@
     );
   }
 
-  .brand-gradient-text {
-    background-image: linear-gradient(
-      120deg,
-      var(--color-brand-800) 0%,
-      var(--color-accent-700) 100%
-    );
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
-  }
-
   /* Caps a content column at the specification's 1280px reading width. */
   .content-width {
     margin-inline: auto;
