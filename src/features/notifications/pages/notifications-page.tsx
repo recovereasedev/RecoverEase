@@ -7,6 +7,7 @@ import {
   Pill,
   type LucideIcon,
 } from 'lucide-react'
+import { useRef } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 
 import { EmptyState, StateView } from '@/components/feedback/state-view'
@@ -59,6 +60,20 @@ export function NotificationsPage() {
     portal === 'doctor' || portal === 'admin' ? portal : 'patient'
   const notificationsQuery = useNotifications()
   const markRead = useMarkNotificationRead()
+  // The notifications being marked read right now. "Mark read" shows no
+  // saving state, so a second press before its row updates sent the same
+  // request again; it is now ignored until the first has finished.
+  const markingRead = useRef(new Set<string>())
+  const markOneRead = (id: string) => {
+    if (markingRead.current.has(id)) return
+    markingRead.current.add(id)
+    // mutateAsync, so this runs for every press: mutate's own callbacks run
+    // only for the latest call, and a failure must be retryable.
+    void markRead
+      .mutateAsync(id)
+      .catch(() => undefined)
+      .finally(() => markingRead.current.delete(id))
+  }
   const markAllRead = useMarkAllNotificationsRead()
   // "Mark read" leaves with its row's unread state, and "Mark all as read"
   // with the last unread one: keyboard focus moves on to the next
@@ -215,7 +230,7 @@ export function NotificationsPage() {
                               size="sm"
                               variant="ghost"
                               onClick={() =>
-                                markRead.mutate(notification.notification_id)
+                                markOneRead(notification.notification_id)
                               }
                             >
                               Mark read
