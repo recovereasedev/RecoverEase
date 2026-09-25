@@ -23,7 +23,7 @@ The design system's roles, mapped onto the token layer:
 | `surface-container-lowest` — cards, content containers | `--color-surface` | `#ffffff` |
 | `background` — page floor | `--color-canvas` | `#f9f9ff` |
 | `surface-container-low` — wells, table headers | `--color-surface-sunken` | `#f0f3ff` |
-| `surface-container` — icon tiles, active nav, tonal chips | `--color-surface-raised` | `#e7eeff` |
+| `surface-container` — the blocked-screen icon tile, the printed report's tiles and table header | `--color-surface-raised` | `#e7eeff` |
 | `on-surface` — headings | `--color-heading` | `#111c2d` |
 | `on-surface-variant` — body copy | `--color-body` | `#41474f` |
 | `error` | `--color-danger-600` | `#ba1a1a` |
@@ -141,7 +141,12 @@ containers.
 All-caps is used only for short labels, never for prose: capitals destroy word
 shape and slow reading.
 
-- Body text has a **16px floor**. Nothing clinical is set smaller.
+- Body text has a **16px floor**: running text, form fields and each list
+  item's name. Metadata — a list item's detail line, table cells, most
+  notices — is 14px, and short labels — status badges, timestamps, table
+  headers, the phone's bottom bar — are 12px. Nothing on screen is smaller
+  than 12px, except inside the report preview, which reproduces the printed
+  A4 page at its own sizes.
 - Line height 1.5 for body, 1.25 for headings.
 - Headings use `text-wrap: balance`, body uses `text-wrap: pretty`, so titles
   do not leave a single orphaned word.
