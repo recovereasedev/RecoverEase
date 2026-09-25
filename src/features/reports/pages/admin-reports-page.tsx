@@ -14,9 +14,13 @@ import {
   fetchReports,
   recordGeneratedReport,
 } from '@/features/reports/api'
+import { ReportLetterhead } from '@/features/reports/components/report-document'
+import { reportDateTime } from '@/features/reports/report-format'
 import { useDocumentTitle } from '@/hooks/use-document-title'
+import { useNow } from '@/hooks/use-now'
 import { formatDateTime } from '@/lib/format'
 import { queryKeys } from '@/lib/query-keys'
+import { fullName } from '@/lib/utils'
 
 /**
  * Modules 9.3 "Generate System-wide Report", 9.4 "Download/Export System-wide
@@ -56,9 +60,21 @@ export function AdminReportsPage() {
 
   const stats = statsQuery.data
 
+  // Named on paper as the report names its preparer.
+  const preparer =
+    user.profile.kind === 'admin'
+      ? fullName(
+          user.profile.admin.admin_first_name,
+          user.profile.admin.admin_last_name,
+        )
+      : null
+
   return (
     <>
       <PageHeader
+        // On paper the letterhead says what this is, and when and by whom
+        // it was printed.
+        className="print:hidden"
         title="Reports"
         description="System-wide reporting."
         actions={
@@ -87,13 +103,22 @@ export function AdminReportsPage() {
       />
 
       {generate.isError ? (
-        <FormError
-          error={generate.error}
-          title="The report was not generated"
-        />
+        // The outcome of an action on screen, not part of the report.
+        <div className="print:hidden">
+          <FormError
+            error={generate.error}
+            title="The report was not generated"
+          />
+        </div>
       ) : null}
 
-      <div className="space-y-section">
+      {/* On paper this is a document like the doctor's recovery report:
+          `report-sheet` puts it on the report's A4 page, with its margins and
+          running footer, and the cards lose their boxes so the figures sit
+          on the sheet under the letterhead. */}
+      <div className="space-y-section report-sheet">
+        <PrintedLetterhead preparer={preparer} />
+
         {/* --- Current figures ------------------------------------------- */}
         <PageSection
           title="System summary"
@@ -103,8 +128,8 @@ export function AdminReportsPage() {
               : undefined
           }
         >
-          <Card>
-            <CardBody>
+          <Card className="print:rounded-none print:border-0 print:bg-transparent">
+            <CardBody className="print:p-0!">
               {statsQuery.isPending ? (
                 <p className="text-sm text-muted">Loading…</p>
               ) : statsQuery.isError ? (
@@ -171,8 +196,11 @@ export function AdminReportsPage() {
 
         {/* --- Recently generated — module 9.5 ---------------------------- */}
         <PageSection title="Recently generated reports">
-          <Card>
-            <CardBody className="p-0">
+          <Card className="print:rounded-none print:border-0 print:bg-transparent">
+            {/* `sm:p-5` survives `p-0` here. On paper that padding would
+                inset the list from the heading and, under the last row, can
+                spill onto a sheet of its own. */}
+            <CardBody className="p-0 print:p-0!">
               <StateView
                 isPending={reportsQuery.isPending}
                 error={reportsQuery.error}
@@ -190,7 +218,9 @@ export function AdminReportsPage() {
                     {reports.map((report) => (
                       <ListRow
                         key={report.report_id}
-                        className="py-3"
+                        // Flush with the headings on paper, and never split
+                        // across two sheets.
+                        className="py-3 break-inside-avoid print:px-0!"
                         title={
                           report.report_type === 'system_wide'
                             ? 'System-wide report'
@@ -211,5 +241,41 @@ export function AdminReportsPage() {
         </PageSection>
       </div>
     </>
+  )
+}
+
+/**
+ * The printed report's letterhead: the recovery report's own, saying who
+ * printed it and when. Paper only - on screen the page header already says
+ * what the page is.
+ */
+function PrintedLetterhead({ preparer }: { preparer: string | null }) {
+  // Kept to the minute while the page is open, so the time printed is the
+  // time of printing, not of arriving on the page.
+  const now = useNow()
+
+  return (
+    <div className="hidden print:block">
+      <ReportLetterhead
+        title="System-wide report"
+        subtitle="Accounts, appointments and generated reports"
+        meta={
+          <>
+            <p>
+              <span className="text-muted">Printed</span>{' '}
+              <span className="font-semibold text-heading" data-numeric>
+                {reportDateTime(new Date(now).toISOString())}
+              </span>
+            </p>
+            {preparer ? (
+              <p>
+                <span className="text-muted">Prepared by</span>{' '}
+                <span className="font-semibold text-heading">{preparer}</span>
+              </p>
+            ) : null}
+          </>
+        }
+      />
+    </div>
   )
 }
