@@ -65,6 +65,13 @@ export type NoticeProps = {
    * person has already moved on.
    */
   live?: 'polite' | 'assertive'
+  /**
+   * The body text size. Supporting guidance and outcomes stay at `sm`
+   * (14px), so they sit below the page's 16px body. `base` (16px) is for
+   * safety information a person has to take in before acting - the guidance
+   * chat's disclaimer - where secondary sizing would undersell it.
+   */
+  size?: 'sm' | 'base'
   className?: string
 }
 
@@ -82,6 +89,7 @@ export function Notice({
   icon,
   action,
   live,
+  size = 'sm',
   className,
 }: NoticeProps) {
   const styles = toneStyles[tone]
@@ -111,7 +119,13 @@ export function Notice({
         {title ? (
           <p className={cn('font-semibold', styles.title)}>{title}</p>
         ) : null}
-        <div className={cn('text-sm text-body', title && 'mt-0.5')}>
+        <div
+          className={cn(
+            size === 'base' ? 'text-base' : 'text-sm',
+            'text-body',
+            title && 'mt-0.5',
+          )}
+        >
           {children}
         </div>
       </div>

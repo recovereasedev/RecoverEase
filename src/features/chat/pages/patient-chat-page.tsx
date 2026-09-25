@@ -150,8 +150,9 @@ export function PatientChatPage() {
       <PageHeader title="Guidance chat" />
 
       {/* Stated before the conversation, not buried under it. Standing
-          guidance, so it is not announced: it was on the page all along. */}
-      <Notice tone="info" className="mb-5">
+          guidance, so it is not announced: it was on the page all along.
+          At body size: this is what to do if something is urgent. */}
+      <Notice tone="info" size="base" className="mb-5">
         This assistant offers general guidance about recovery. It does not
         diagnose conditions and cannot change your treatment. If you feel
         unwell or something is urgent, contact your doctor or emergency
