@@ -12,7 +12,7 @@ import {
   Stethoscope,
   Target,
 } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { useParams, useSearchParams } from 'react-router-dom'
 
@@ -165,6 +165,16 @@ export function DoctorPatientDetailPage() {
   const patientQuery = usePatient(patientId)
   const logsQuery = useRecoveryLogs(patientId)
   const plansQuery = useTreatmentPlans(patientId)
+  // A first plan created from the keyboard: the form closes back to "Create
+  // treatment plan", which then leaves as the new plan arrives. Focus goes on
+  // to that plan's "Edit plan" rather than to the top of the page.
+  const focusNewPlan = useRef(false)
+  const firstPlanId = plansQuery.data?.[0]?.treatment_plan_id
+  useEffect(() => {
+    if (!focusNewPlan.current || !firstPlanId) return
+    focusNewPlan.current = false
+    document.getElementById(`edit-plan-${firstPlanId}`)?.focus()
+  }, [firstPlanId])
   const schedulesQuery = useMedicationSchedules(patientId)
 
   const weekDoses = useDoses(
@@ -497,8 +507,24 @@ export function DoctorPatientDetailPage() {
                           <TreatmentPlanForm
                             patientId={patientId}
                             doctorId={doctorId}
-                            onDone={() => setCreatingPlan(false)}
-                            onCancel={() => setCreatingPlan(false)}
+                            // Created, focus waits on "Create treatment plan"
+                            // for the new plan (see focusNewPlan); cancelled,
+                            // it returns there.
+                            onDone={() =>
+                              closeFormToOpener(
+                                () => setCreatingPlan(false),
+                                () => {
+                                  focusNewPlan.current = true
+                                  return document.getElementById('create-plan')
+                                },
+                              )
+                            }
+                            onCancel={() =>
+                              closeFormToOpener(
+                                () => setCreatingPlan(false),
+                                () => document.getElementById('create-plan'),
+                              )
+                            }
                           />
                         ) : (
                           <div className="py-6 text-center">
@@ -507,6 +533,7 @@ export function DoctorPatientDetailPage() {
                               patient.
                             </p>
                             <Button
+                              id="create-plan"
                               className="mt-4 max-sm:w-full"
                               onClick={() => setCreatingPlan(true)}
                             >

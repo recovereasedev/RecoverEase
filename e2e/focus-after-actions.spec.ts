@@ -170,6 +170,26 @@ test.describe('inline forms hand focus back to the control that opened them', ()
     await expect(edit).toBeFocused()
   })
 
+  test('a first plan, created, hands focus to its "Edit plan"; cancelled, back to "Create treatment plan"', async ({
+    page,
+    signInAs,
+  }) => {
+    await signInAs('doctor', { treatment_plan: [] })
+    await slowWrites(page, 'treatment_plan')
+    await page.goto(`/doctor/patients/${IDS.alicePat}?tab=treatment`)
+    const create = page.getByRole('button', { name: /^create treatment plan$/i })
+
+    await pressWithKeyboard(page, create)
+    await pressWithKeyboard(page, page.getByRole('button', { name: /^cancel$/i }))
+    await expect(create).toBeFocused()
+
+    await pressWithKeyboard(page, create)
+    await page.getByLabel(/plan title/i).fill('Knee rehabilitation')
+    await pressWithKeyboard(page, page.getByRole('button', { name: /^create treatment plan$/i }))
+
+    await expect(page.getByRole('button', { name: /edit plan/i })).toBeFocused()
+  })
+
   test('cancelling the medication form returns to its button', async ({ page, signInAs }) => {
     await signInAs('doctor')
     await page.goto(`/doctor/patients/${IDS.alicePat}?tab=medication`)
