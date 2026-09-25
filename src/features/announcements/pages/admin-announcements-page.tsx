@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Megaphone, Trash2 } from 'lucide-react'
-import { useState, type MouseEvent } from 'react'
+import { useRef, useState, type MouseEvent } from 'react'
 import { flushSync } from 'react-dom'
 
 import { FormError } from '@/components/feedback/form-error'
@@ -74,6 +74,14 @@ export function AdminAnnouncementsPage() {
     },
   })
 
+  // One press, one announcement. `isLoading` ignores presses only on the
+  // button that is saving: the composer's other button stayed live and sent
+  // a second request, which left a draft and a published copy of the same
+  // notice. Two presses in the same task also both got through, because
+  // React commits the busy button on a later render and React Query does not
+  // deduplicate concurrent `mutate()` calls.
+  const inFlight = useRef(false)
+
   const togglePublished = useMutation({
     mutationFn: (input: { id: string; isPublished: boolean }) =>
       setAnnouncementPublished(input.id, input.isPublished),
@@ -101,7 +109,18 @@ export function AdminAnnouncementsPage() {
       focusFirstInvalid(event.currentTarget.closest('dialog'))
       return
     }
-    create.mutate(publishNow)
+
+    // Nothing below this line may run twice for one announcement.
+    if (inFlight.current) return
+    inFlight.current = true
+
+    create.mutate(publishNow, {
+      // Released however it ends, so a genuine failure can be retried and
+      // the composer is never left permanently locked.
+      onSettled: () => {
+        inFlight.current = false
+      },
+    })
   }
 
   const openComposer = () => {
