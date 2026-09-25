@@ -89,7 +89,12 @@ export function PatientChatPage() {
     // brought back into view: the new messages land above it and push it
     // down, behind the bottom bar, with the cursor still in it.
     if (window.matchMedia('(min-width: 64rem)').matches) {
-      transcriptEndRef.current?.scrollIntoView({ block: 'end' })
+      // The transcript box itself is scrolled, not the end marker scrolled
+      // into view: `scrollIntoView` also moved the browser's starting point
+      // for Tab, so the first Tab after opening the chat skipped the skip
+      // link and navigation and landed in the composer.
+      const transcript = transcriptEndRef.current?.parentElement
+      if (transcript) transcript.scrollTop = transcript.scrollHeight
     } else if (hasSentRef.current) {
       draftRef.current?.scrollIntoView({ block: 'nearest' })
     }
@@ -200,7 +205,14 @@ export function PatientChatPage() {
             takes the composer with it. All three from `lg` only: below it
             the transcript is part of the page and does not scroll by itself.
           */}
-          <CardBody className="lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
+          {/* Named, because from `lg` a long conversation makes this a
+              scrolling box the browser puts in the Tab order - and a
+              focused region with no name says nothing about what it holds. */}
+          <CardBody
+            role="region"
+            aria-label="Conversation"
+            className="lg:min-h-0 lg:flex-1 lg:overflow-y-auto"
+          >
             {activeSession?.chat_session_has_critical_flag ? (
               <Notice tone="warning" className="mb-4">
                 Something you raised in this conversation was flagged for your
