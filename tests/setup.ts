@@ -1,7 +1,21 @@
 import '@testing-library/jest-dom/vitest'
 
-import { cleanup } from '@testing-library/react'
+import { cleanup, configure } from '@testing-library/react'
 import { afterEach } from 'vitest'
+
+/**
+ * How long `findBy*` and `waitFor` keep looking before they fail.
+ *
+ * Testing Library's default is one second. The first test in a file also
+ * pays for loading its modules and the first render, which in an ordinary
+ * full run already takes up to about a second, so under load a correct test
+ * could fail with "Unable to find" while the page was still arriving. A
+ * passing wait returns as soon as its condition holds, so this slows nothing
+ * down; only a real failure takes longer to report. It stays under Vitest's
+ * five-second test timeout, so such a failure still names what it was
+ * waiting for.
+ */
+configure({ asyncUtilTimeout: 3000 })
 
 /**
  * jsdom implements neither of these, and components that respect a user's
