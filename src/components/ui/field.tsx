@@ -124,7 +124,7 @@ export function Field({
 const controlClasses = [
   'block w-full rounded-[var(--radius-md)] bg-surface',
   'border border-[var(--color-border-strong)]',
-  'px-3 text-base text-heading placeholder:text-neutral-400',
+  'px-3 text-base text-heading placeholder:text-muted',
   'transition-colors duration-[var(--duration-fast)]',
   'hover:border-neutral-400',
   'disabled:cursor-not-allowed disabled:bg-neutral-100 disabled:text-muted',
