@@ -13,7 +13,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const fixture = vi.hoisted(() => ({
   reports: vi.fn(),
   record: vi.fn(),
+  user: {} as Record<string, unknown>,
 }))
+
+// The signed-in clinician, as the app shell has them.
+const DOCTOR_USER = {
+  userId: 'u-doctor',
+  profile: {
+    kind: 'doctor',
+    doctor: { doc_id: 'd-1', doc_first_name: 'Alan', doc_last_name: 'Cruz' },
+  },
+}
 
 vi.mock('@/features/patients/hooks', () => ({
   useMyPatients: () => ({
@@ -24,7 +34,7 @@ vi.mock('@/features/patients/hooks', () => ({
 }))
 
 vi.mock('@/features/auth/auth-context', () => ({
-  useCurrentUser: () => ({ userId: 'u-doctor' }),
+  useCurrentUser: () => fixture.user,
 }))
 
 vi.mock('@/features/reports/api', () => ({
@@ -77,10 +87,28 @@ function renderPage() {
 const leftOffPaper = (element: HTMLElement) =>
   element.closest('[class~="print:hidden"]') !== null
 
+/** Whether an element is for paper only: hidden on screen, shown in print. */
+const paperOnly = (element: HTMLElement) =>
+  element.closest('[class~="hidden"][class~="print:block"]') !== null
+
+/**
+ * Whether a section's own heading gives way on paper: the section hides its
+ * first child in print, and that first child holds the heading.
+ */
+const givesWayOnPaper = (heading: HTMLElement) => {
+  const section = heading.closest('section')
+  return (
+    section !== null &&
+    section.classList.contains('print:[&>:first-child]:hidden') &&
+    section.firstElementChild?.contains(heading) === true
+  )
+}
+
 const printListButton = () => screen.getByRole('button', { name: /print list/i })
 const generateButton = () => screen.getByRole('button', { name: /generate report/i })
 
 beforeEach(() => {
+  fixture.user = DOCTOR_USER
   fixture.reports.mockResolvedValue(REPORTS)
   fixture.record.mockResolvedValue({ ...REPORTS[0], report_id: 'rep-3' })
   vi.spyOn(window, 'print').mockImplementation(() => {})
@@ -159,9 +187,15 @@ describe('printing the list of generated reports', () => {
     renderPage()
     await screen.findByText('Alice Santos')
 
-    expect(
-      leftOffPaper(screen.getByRole('heading', { name: 'Generated reports' })),
-    ).toBe(false)
+    // Headed on paper by the report's letterhead, and on screen by the
+    // section's own heading, which gives way to it in print.
+    const [onScreen, onPaper] = screen.getAllByRole('heading', {
+      name: 'Generated reports',
+    })
+    expect(givesWayOnPaper(onScreen!)).toBe(true)
+    expect(paperOnly(onScreen!)).toBe(false)
+    expect(paperOnly(onPaper!)).toBe(true)
+    expect(leftOffPaper(onPaper!)).toBe(false)
 
     const list = screen.getByRole('list')
     const rows = within(list).getAllByRole('listitem')
@@ -190,5 +224,39 @@ describe('printing the list of generated reports', () => {
       .map((button) => button.textContent)
     expect(onPaper).toEqual([])
     expect(screen.getAllByRole('combobox').filter((field) => !leftOffPaper(field))).toEqual([])
+  })
+
+  describe('under the report’s letterhead', () => {
+    beforeEach(() => {
+      // Only the clock: React Query's own timers keep running.
+      vi.useFakeTimers({ toFake: ['Date'] })
+      vi.setSystemTime(new Date(2026, 8, 25, 9, 41))
+    })
+
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    it('names the clinician and the time it was printed, on paper only', async () => {
+      renderPage()
+      await screen.findByText('Alice Santos')
+
+      const clinician = screen.getByText('Dr. Alan Cruz')
+      expect(clinician.parentElement).toHaveTextContent('Prepared by Dr. Alan Cruz')
+      expect(paperOnly(clinician)).toBe(true)
+
+      const printed = screen.getByText('25 Sep 2026, 09:41')
+      expect(printed.parentElement).toHaveTextContent('Printed 25 Sep 2026, 09:41')
+      expect(paperOnly(printed)).toBe(true)
+    })
+
+    it('names no clinician it does not know', async () => {
+      fixture.user = { userId: 'u-doctor', profile: { kind: 'profile-missing', role: 'doctor' } }
+      renderPage()
+      await screen.findByText('Alice Santos')
+
+      expect(screen.queryByText(/prepared by/i)).not.toBeInTheDocument()
+      expect(screen.getByText('25 Sep 2026, 09:41')).toBeInTheDocument()
+    })
   })
 })

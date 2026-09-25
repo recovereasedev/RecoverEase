@@ -18,8 +18,11 @@ import { Combobox, Field } from '@/components/ui/field'
 import { useCurrentUser } from '@/features/auth/auth-context'
 import { useMyPatients } from '@/features/patients/hooks'
 import { fetchReports, recordGeneratedReport } from '@/features/reports/api'
+import { ReportLetterhead } from '@/features/reports/components/report-document'
 import { ReportPreview } from '@/features/reports/components/report-preview'
+import { reportDateTime } from '@/features/reports/report-format'
 import { useDocumentTitle } from '@/hooks/use-document-title'
+import { useNow } from '@/hooks/use-now'
 import { formatDateTime } from '@/lib/format'
 import { queryKeys } from '@/lib/query-keys'
 import { cn, fullName } from '@/lib/utils'
@@ -81,6 +84,15 @@ export function DoctorReportsPage() {
   const isPageHiddenInPrint =
     previewPatientId !== null && printTarget === 'report'
 
+  // Named on paper as the report names its preparer.
+  const clinician =
+    user.profile.kind === 'doctor'
+      ? `Dr. ${fullName(
+          user.profile.doctor.doc_first_name,
+          user.profile.doctor.doc_last_name,
+        )}`
+      : null
+
   return (
     <>
       <div className={cn(isPageHiddenInPrint && 'print:hidden')}>
@@ -92,7 +104,8 @@ export function DoctorReportsPage() {
           className="print:hidden"
         />
 
-        <div className="grid gap-section lg:grid-cols-3 lg:gap-8">
+        {/* A block on paper, so the list below can take its named page. */}
+        <div className="grid gap-section lg:grid-cols-3 lg:gap-8 print:block">
           <PageSection
             title="Generate a recovery report"
             className="h-fit print:hidden lg:col-span-1"
@@ -179,10 +192,18 @@ export function DoctorReportsPage() {
                 Print list
               </Button>
             }
-            className="lg:col-span-2"
+            // On paper the list is a document like the report beside it:
+            // `report-sheet` puts it on the report's A4 page, with its margins
+            // and running footer, and the letterhead below stands in for the
+            // section heading, which is the first child and stays on screen.
+            className="lg:col-span-2 report-sheet print:[&>:first-child]:hidden"
           >
-            <Card>
-              <CardBody className="p-0">
+            <PrintedListLetterhead clinician={clinician} />
+            <Card className="print:rounded-none print:border-0 print:bg-transparent">
+              {/* `sm:p-5` survives `p-0` here. On paper that padding would
+                  inset the list from the letterhead and, under the last row,
+                  can spill onto a sheet of its own. */}
+              <CardBody className="p-0 print:p-0!">
                 <StateView
                   isPending={reportsQuery.isPending}
                   error={reportsQuery.error}
@@ -201,7 +222,9 @@ export function DoctorReportsPage() {
                       {reports.map((report) => (
                         <ListRow
                           key={report.report_id}
-                          className="py-3"
+                          // Flush with the letterhead on paper, and never
+                          // split across two sheets.
+                          className="py-3 break-inside-avoid print:px-0!"
                           title={
                             report.patient
                               ? fullName(
@@ -232,5 +255,41 @@ export function DoctorReportsPage() {
         />
       ) : null}
     </>
+  )
+}
+
+/**
+ * The printed list's letterhead: the recovery report's own, saying who
+ * printed the list and when. Paper only - on screen the page header already
+ * says what the list is.
+ */
+function PrintedListLetterhead({ clinician }: { clinician: string | null }) {
+  // Kept to the minute while the page is open, so the time printed is the
+  // time of printing, not of arriving on the page.
+  const now = useNow()
+
+  return (
+    <div className="mb-6 hidden print:block">
+      <ReportLetterhead
+        title="Generated reports"
+        subtitle="Recovery reports you have generated"
+        meta={
+          <>
+            <p>
+              <span className="text-muted">Printed</span>{' '}
+              <span className="font-semibold text-heading" data-numeric>
+                {reportDateTime(new Date(now).toISOString())}
+              </span>
+            </p>
+            {clinician ? (
+              <p>
+                <span className="text-muted">Prepared by</span>{' '}
+                <span className="font-semibold text-heading">{clinician}</span>
+              </p>
+            ) : null}
+          </>
+        }
+      />
+    </div>
   )
 }
