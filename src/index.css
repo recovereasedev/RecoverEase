@@ -296,6 +296,19 @@
     -webkit-text-size-adjust: 100%;
   }
 
+  /* Below `md` the primary navigation is a bar fixed to the bottom of the
+     screen. Tabbing onto a control near the bottom edge scrolled it only as
+     far as the edge of the viewport - behind the bar, so the focused control
+     and its ring could not be seen (WCAG 2.2, 2.4.11). Padding the page's
+     scrollport by the same 6rem the page keeps under its content, plus the
+     home-indicator inset the bar grows by, makes the browser bring a focused
+     control clear of the bar. Only while the bar is on the page. */
+  @media (width < 48rem) {
+    html:has([data-bottom-nav]) {
+      scroll-padding-bottom: calc(6rem + env(safe-area-inset-bottom));
+    }
+  }
+
   body {
     background-color: var(--color-canvas);
     color: var(--color-body);
