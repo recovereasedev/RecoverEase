@@ -17,13 +17,13 @@ The design system's roles, mapped onto the token layer:
 
 | Role | Token | Value |
 | --- | --- | --- |
-| `primary` — key actions, page titles, active navigation | `--color-brand-800` | `#004269` |
+| `primary` — key actions, active navigation | `--color-brand-800` | `#004269` |
 | `primary-container` — solid fills, hover | `--color-brand-600` | `#0e5a8a` |
 | `secondary` — teal, interactive emphasis and confirmation | `--color-accent-700` | `#006b5f` |
 | `surface-container-lowest` — cards, content containers | `--color-surface` | `#ffffff` |
 | `background` — page floor | `--color-canvas` | `#f9f9ff` |
 | `surface-container-low` — wells, table headers | `--color-surface-sunken` | `#f0f3ff` |
-| `surface-container` — icon tiles, active nav, tonal chips | `--color-surface-raised` | `#e7eeff` |
+| `surface-container` — the blocked-screen icon tile, the printed report's tiles and table header | `--color-surface-raised` | `#e7eeff` |
 | `on-surface` — headings | `--color-heading` | `#111c2d` |
 | `on-surface-variant` — body copy | `--color-body` | `#41474f` |
 | `error` | `--color-danger-600` | `#ba1a1a` |
@@ -116,7 +116,8 @@ The scale is the design system's, exposed as Tailwind text steps:
 
 | Step | Size / line height | Used for |
 | --- | --- | --- |
-| `text-headline-xl` | 36 / 44, −0.02em, 700 | Page titles, `sm:` and up |
+| `text-title` | 30 / 36, −0.02em, 600 | Page titles, `sm:` and up |
+| `text-headline-xl` | 36 / 44, −0.02em, 700 | Landing section headings and the auth brand panel |
 | `text-headline-lg` | 28 / 36, −0.01em, 600 | Page titles on mobile |
 | `text-headline-md` | 20 / 28, 600 | Section headings |
 | `text-body-lg` | 18 / 28 | Lead paragraphs |
@@ -126,19 +127,26 @@ The scale is the design system's, exposed as Tailwind text steps:
 | `text-label-sm` | 12 / 16, 500 | All-caps section anchors |
 
 The landing page hero is the one place the scale is exceeded: `headline-xl`
-on a phone, and a larger explicit size from `sm`. A marketing hero is allowed
-to be bigger than a page title; everything below it on that page is on the
-steps above.
+on a phone, `text-display-sm` (48px) from `sm` and `text-display` (56px) from
+`xl`. A marketing hero is allowed to be bigger than a page title; everything
+below it on that page is on the steps above.
 
 A "strong" hierarchy — large contrast between heading and body — is what lets
-a clinician scan a record instead of reading it. Page titles are set in brand
-blue and section headings in the heading colour; that separation is what lets
-section headings stay small without the page losing its structure.
+a clinician scan a record instead of reading it. Page titles and section
+headings are both set in the heading colour, not brand blue. Hierarchy comes
+from size and weight (a 30px page title over a 20px section heading over 16px
+body), not from colour or boxes, which is what lets sections drop their
+containers.
 
 All-caps is used only for short labels, never for prose: capitals destroy word
 shape and slow reading.
 
-- Body text has a **16px floor**. Nothing clinical is set smaller.
+- Body text has a **16px floor**: running text, form fields and each list
+  item's name. Metadata — a list item's detail line, table cells, most
+  notices — is 14px, and short labels — status badges, timestamps, table
+  headers, the phone's bottom bar — are 12px. Nothing on screen is smaller
+  than 12px, except inside the report preview, which reproduces the printed
+  A4 page at its own sizes.
 - Line height 1.5 for body, 1.25 for headings.
 - Headings use `text-wrap: balance`, body uses `text-wrap: pretty`, so titles
   do not leave a single orphaned word.
@@ -165,8 +173,8 @@ staying structured:
 
 | Token | Size | Used for |
 | --- | --- | --- |
-| `--radius-xs` | 4px | Inline code, tiny chips |
-| `--radius-sm` | 6px | Skeleton blocks, focus ring |
+| `--radius-xs` | 4px | The printed report: sheet, tiles, tables |
+| `--radius-sm` | 6px | Focus ring, inline link targets, small chips |
 | `--radius-md` | 8px | Buttons, inputs, nav items |
 | `--radius-lg` | 16px | Cards, panels, modals |
 | `--radius-xl` | 24px | Large panels |
@@ -182,12 +190,12 @@ each rather than being re-cut per page:
 
 | Component | What it is for |
 | --- | --- |
-| `SectionHeading` | Icon tile + title + description above a group of cards |
-| `Eyebrow` | The small all-caps label above a page or section title |
-| `StatCard` | One measurement in a bento row: label, number, trend, footer |
+| `PageSection` | A titled section of a page: a `<section>` landmark named by its own heading, with no container of its own |
+| `SectionHeading` | The 20px heading and optional description that `PageSection` renders; no icon tile |
+| `StatBand` | A row of related counts as one band divided by hairlines: a number, what it counts, an optional trend and one line of context |
 | `ProgressBar` / `ProgressRing` | A rate, always restating a number written nearby |
 | `Notice` | Guidance, a safety note, or the outcome of an action |
-| `Skeleton` family | Load placeholders that reserve the real content's space |
+| `LoadingState` | The announced loading state for a page or panel |
 | `DataTable` family | Clinical tables: tinted header, horizontal rules only, own scroll container |
 | `ListRow` / `ListRows` | The something / detail / status / action row, stacked on a phone and inline from `sm` |
 
@@ -200,10 +208,12 @@ happened. Changing `display` on a table element strips its implicit
 semantics, so the ARIA roles are written out explicitly and the structure
 survives the restyle.
 
-`StatCard` is deliberately narrow: a label, a number, an optional trend and a
-footer sentence. It will not take an action, a chart or a paragraph, because a
-row of four cards that each do something different stops being scannable —
-which was the only reason to use cards instead of a list.
+`StatBand` is deliberately narrow: a number, what it counts, an optional
+trend and at most one line of context. It will not take an action, a chart or
+a paragraph. It replaced a row of separate stat cards, each with its own
+border and icon tile: four cards read as four things competing for attention,
+where one band reads as one summary, which is what a row of related counts
+is.
 
 ## Motion
 
@@ -327,7 +337,7 @@ Three decisions carry that:
 
 The brief asked for real healthcare software, not a generic AI dashboard:
 
-- **No meaningless metric tiles.** `StatCard` exists, but the rule governing
+- **No meaningless metric tiles.** `StatBand` exists, but the rule governing
   its use has not changed: every number on a dashboard is one the user can act
   on. There is no "total patients seen" counter and no invented adherence
   percentage.
