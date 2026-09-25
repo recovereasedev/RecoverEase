@@ -148,4 +148,31 @@ test.describe('forms that check themselves when submitted', () => {
     await expect(page.getByRole('combobox', { name: /patient/i })).toBeFocused()
     expect(writes).toEqual([])
   })
+
+  test('Generate report keeps its message in view, not under the patient list', async ({
+    page,
+    signInAs,
+  }) => {
+    await signInAs('doctor')
+    await page.goto('/doctor/reports')
+    const picker = page.getByRole('combobox', { name: /patient/i })
+
+    await pressWithKeyboard(page, page.getByRole('button', { name: /generate report/i }))
+
+    const message = page.getByText('Choose which patient this report is for.')
+    await expect(picker).toBeFocused()
+    await expect(picker).toHaveAttribute('aria-expanded', 'false')
+    // Nothing painted over the message: what is at its centre is the message.
+    expect(
+      await message.evaluate((element) => {
+        const box = element.getBoundingClientRect()
+        const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2)
+        return hit !== null && (hit === element || element.contains(hit))
+      }),
+    ).toBe(true)
+
+    // The list still opens on purpose.
+    await page.keyboard.press('ArrowDown')
+    await expect(page.getByRole('listbox')).toBeVisible()
+  })
 })

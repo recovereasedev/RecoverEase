@@ -494,7 +494,13 @@ export function Combobox({
           setActiveIndex(0)
           requestReveal()
         }}
-        onFocus={open}
+        // Focus opens the list, except while the field is showing an error.
+        // A form that finds this field missing takes focus here (M7), and a
+        // list opened by that would cover the very message saying what to
+        // do. Typing, an arrow key, a click or a tap still open it.
+        onFocus={() => {
+          if (!context.hasError) open()
+        }}
         onClick={open}
         onKeyDown={onKeyDown}
         onBlur={() => {
