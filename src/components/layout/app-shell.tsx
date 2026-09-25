@@ -258,6 +258,8 @@ function BottomNav({ items }: { items: NavItem[] }) {
   return (
     <nav
       aria-label="Primary"
+      // Lets the page keep focused controls clear of the bar (index.css).
+      data-bottom-nav
       // The bottom padding keeps the bar clear of the iOS home indicator.
       className="fixed inset-x-0 bottom-0 z-40 border-t border-[var(--color-border)] bg-surface pb-[env(safe-area-inset-bottom)] md:hidden print:hidden!"
     >
