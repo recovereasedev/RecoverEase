@@ -93,7 +93,7 @@ export function DoctorPatientsPage() {
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Search by name"
-              className="h-11 w-full rounded-[var(--radius-md)] border border-[var(--color-border-strong)] bg-surface pl-9 pr-3 text-base text-heading transition-colors placeholder:text-neutral-400 hover:border-neutral-400"
+              className="h-11 w-full rounded-[var(--radius-md)] border border-[var(--color-border-strong)] bg-surface pl-9 pr-3 text-base text-heading transition-colors placeholder:text-muted hover:border-neutral-400"
             />
           </div>
         </div>

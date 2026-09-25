@@ -307,7 +307,7 @@ export function PatientChatPage() {
               // 16px keeps iOS from zooming the viewport on focus, which
               // would push the composer out of view the moment the keyboard
               // opens.
-              className="min-w-0 flex-1 resize-none rounded-[var(--radius-md)] border border-[var(--color-border-strong)] px-3 py-2.5 text-base text-heading placeholder:text-neutral-400 max-md:scroll-mb-24"
+              className="min-w-0 flex-1 resize-none rounded-[var(--radius-md)] border border-[var(--color-border-strong)] px-3 py-2.5 text-base text-heading placeholder:text-muted max-md:scroll-mb-24"
             />
             <Button
               type="submit"

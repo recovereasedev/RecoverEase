@@ -59,10 +59,12 @@ The design system's `outline` is `#717880`. On white that is **4.47:1**, on
 the canvas 4.26:1, and on a tinted container 3.84:1 — below AA for normal text
 in all three.
 
-It is kept as `--color-outline` for what it is genuinely for — hairlines,
-disabled glyphs, placeholder text, all of which WCAG exempts — and
-`--color-muted` is set one step darker at `#5f6672`. Secondary text is most of
-the text in a clinical interface; it has to pass. Accessibility outranks an
+It is kept as `--color-outline` for what it is genuinely for — hairlines and
+disabled glyphs, both of which WCAG exempts — and `--color-muted` is set one
+step darker at `#5f6672`. Secondary text is most of the text in a clinical
+interface; it has to pass. Placeholder text is not exempt, so placeholders
+use `--color-muted` too (5.78:1 on white): still clearly lighter than typed
+text in `--color-heading`. Accessibility outranks an
 exact hex, and this is the kind of detail that silently fails an audit if it
 is not written down.
 
