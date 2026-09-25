@@ -22,7 +22,15 @@ vi.mock('@/features/patients/hooks', () => ({
 }))
 
 vi.mock('@/features/auth/auth-context', () => ({
-  useCurrentUser: () => ({ userId: 'u-doctor' }),
+  // With the doctor profile the signed-in clinician always has, which the
+  // printed list's letterhead names.
+  useCurrentUser: () => ({
+    userId: 'u-doctor',
+    profile: {
+      kind: 'doctor',
+      doctor: { doc_id: 'd-1', doc_first_name: 'Alan', doc_last_name: 'Cruz' },
+    },
+  }),
 }))
 
 vi.mock('@/features/reports/api', () => ({

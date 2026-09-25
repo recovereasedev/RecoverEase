@@ -157,7 +157,8 @@ async function generateFor(name: RegExp) {
  * reports, which is all of the page that ever prints - and the report.
  */
 function printState() {
-  const heading = screen.getByRole('heading', { name: 'Generated reports' })
+  // The list's heading on paper: the letterhead's, after the section's own.
+  const heading = screen.getAllByRole('heading', { name: 'Generated reports' }).at(-1)!
   const preview = document.querySelector('[data-report-preview]')
   return {
     pageHidden: heading.closest('.print\\:hidden') !== null,

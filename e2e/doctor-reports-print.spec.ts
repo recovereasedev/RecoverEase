@@ -59,6 +59,13 @@ async function printedPages(page: Page): Promise<number> {
   return (pdf.match(/\/Type\s*\/Page(?![s\w])/g) ?? []).length
 }
 
+/** The paper the page asks for, in points (A4 is 595 × 842). */
+async function printedPaper(page: Page) {
+  const pdf = (await page.pdf({ preferCSSPageSize: true, printBackground: true })).toString('latin1')
+  const box = pdf.match(/\/MediaBox\s*\[\s*0\s+0\s+([\d.]+)\s+([\d.]+)\s*\]/)
+  return { width: Math.round(Number(box?.[1])), height: Math.round(Number(box?.[2])) }
+}
+
 const reportRow = (page: Page, name: string) =>
   page.getByRole('listitem').filter({ hasText: name })
 
@@ -82,6 +89,10 @@ test.describe('printing the list of generated reports', () => {
     await expect(page.getByRole('button', { name: /generate report/i })).toBeVisible()
     await expect(page.getByRole('button', { name: /print list/i })).toBeEnabled()
     await expect(page.getByRole('heading', { name: 'Generated reports' })).toBeVisible()
+
+    // The letterhead is the paper's alone.
+    await expect(page.getByText('Prepared by Dr. Alan Cruz')).toBeHidden()
+    await expect(page.getByText(/^Printed /)).toBeHidden()
   })
 
   test('prints the list without its controls, and writes nothing', async ({ page, signInAs }) => {
@@ -107,16 +118,32 @@ test.describe('printing the list of generated reports', () => {
     await expect(page.getByRole('navigation', { name: 'Main' })).toBeHidden()
     await expect(page.getByRole('banner')).toBeHidden()
 
-    // The list, as the page already showed it.
+    // Under the report's letterhead: who printed it and when.
     await expect(page.getByRole('heading', { name: 'Generated reports' })).toBeVisible()
+    await expect(page.getByText('Prepared by Dr. Alan Cruz')).toBeVisible()
+    await expect(
+      page.getByText(/^Printed \d{1,2} [A-Z][a-z]{2} \d{4}, \d{2}:\d{2}$/),
+    ).toBeVisible()
+
+    // The list, as the page already showed it, without the screen's card.
     await expect(reportRow(page, 'Alice Santos')).toBeVisible()
     await expect(reportRow(page, 'Bob Reyes')).toBeVisible()
+    const card = await page
+      .getByRole('list')
+      .locator('xpath=ancestor::div[contains(@class, "rounded")][1]')
+      .evaluate((element) => {
+        const style = getComputedStyle(element)
+        return { radius: style.borderTopLeftRadius, border: style.borderTopWidth }
+      })
+    expect(card).toEqual({ radius: '0px', border: '0px' })
 
     // Nothing to press or fill in on paper.
     expect(await page.locator('main button:visible').count()).toBe(0)
     expect(await page.locator('main :is(input, select, textarea):visible').count()).toBe(0)
 
     expect(await printedPages(page)).toBe(1)
+    // On the report's own A4 page, not the browser's default paper.
+    expect(await printedPaper(page)).toEqual({ width: 595, height: 842 })
     expect(errors).toEqual([])
     expect(writes).toEqual([])
   })
