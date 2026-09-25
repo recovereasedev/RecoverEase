@@ -1,5 +1,6 @@
 import { CalendarPlus, CalendarX } from 'lucide-react'
-import { useRef, useState } from 'react'
+import { useRef, useState, type MouseEvent } from 'react'
+import { flushSync } from 'react-dom'
 
 import { FormError } from '@/components/feedback/form-error'
 import { EmptyState, StateView } from '@/components/feedback/state-view'
@@ -27,6 +28,7 @@ import { useCurrentUser } from '@/features/auth/auth-context'
 import { useDocumentTitle } from '@/hooks/use-document-title'
 import { useFocusRecovery } from '@/hooks/use-focus-recovery'
 import { formatDateTime, formatRelative } from '@/lib/format'
+import { focusFirstInvalid } from '@/lib/form-focus'
 import { appointmentStatus, rescheduleRequestStatus } from '@/lib/status'
 import { supabase } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
@@ -134,13 +136,18 @@ export function PatientAppointmentsPage() {
     setBookingOpen(true)
   }
 
-  const submitBooking = () => {
+  const submitBooking = (event: MouseEvent<HTMLButtonElement>) => {
     if (!patient) return
 
-    // Before anything is sent: the picker's `min` does not stop a typed date.
+    // Before anything is sent: the picker's `min` does not stop a typed date,
+    // and "Book appointment" is pressable before a time is chosen. A problem
+    // is shown beside the field, and focus taken to it.
     const problem = appointmentTimeError(bookingValue)
-    setBookingProblem(problem)
-    if (problem) return
+    flushSync(() => setBookingProblem(problem))
+    if (problem) {
+      focusFirstInvalid(event.currentTarget.closest('dialog'))
+      return
+    }
 
     // Nothing below this line may run twice for one user action.
     if (bookingInFlight.current) return
@@ -173,12 +180,15 @@ export function PatientAppointmentsPage() {
     setRescheduleReason('')
   }
 
-  const submitReschedule = () => {
+  const submitReschedule = (event: MouseEvent<HTMLButtonElement>) => {
     if (!reschedulingId) return
 
     const problem = appointmentTimeError(rescheduleValue)
-    setRescheduleProblem(problem)
-    if (problem) return
+    flushSync(() => setRescheduleProblem(problem))
+    if (problem) {
+      focusFirstInvalid(event.currentTarget.closest('dialog'))
+      return
+    }
 
     // Nothing below this line may run twice for one user action.
     if (rescheduleInFlight.current) return
@@ -537,7 +547,6 @@ export function PatientAppointmentsPage() {
             </Button>
             <Button
               onClick={submitBooking}
-              disabled={!bookingValue}
               isLoading={createAppointment.isPending}
               loadingLabel="Booking…"
             >
@@ -586,7 +595,6 @@ export function PatientAppointmentsPage() {
             </Button>
             <Button
               onClick={submitReschedule}
-              disabled={!rescheduleValue}
               isLoading={createReschedule.isPending}
               loadingLabel="Sending request…"
             >

@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { ClipboardPlus, TriangleAlert } from 'lucide-react'
-import { useCallback, useState } from 'react'
+import { useCallback, useState, type MouseEvent } from 'react'
+import { flushSync } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
@@ -12,6 +13,7 @@ import {
   createPatientAccount,
 } from '@/features/patients/account-api'
 import { TemporaryCredential } from '@/features/patients/components/temporary-credential'
+import { focusFirstInvalid } from '@/lib/form-focus'
 import { queryKeys } from '@/lib/query-keys'
 
 type Mode = 'patient' | 'doctor'
@@ -69,6 +71,9 @@ export function RegisterAccountDialog({
   const [specialization, setSpecialization] = useState('')
   const [contactNo, setContactNo] = useState('')
   const [birthDate, setBirthDate] = useState('')
+  const [problems, setProblems] = useState<
+    Partial<Record<'firstName' | 'lastName' | 'email' | 'licenseNo', string>>
+  >({})
   const [issued, setIssued] = useState<{
     name: string
     password: string
@@ -83,6 +88,7 @@ export function RegisterAccountDialog({
     setSpecialization('')
     setContactNo('')
     setBirthDate('')
+    setProblems({})
     setIssued(null)
     // Without this the previous attempt's failure is still on screen when the
     // next account is registered, which is what made a second registration
@@ -135,11 +141,33 @@ export function RegisterAccountDialog({
     },
   })
 
-  const canSubmit =
-    email.trim() !== '' &&
-    firstName.trim() !== '' &&
-    lastName.trim() !== '' &&
-    (mode === 'doctor' ? licenseNo.trim() !== '' : true)
+  // The register button is always pressable. It needs what it used to wait
+  // for - names, a sign-in email, and a doctor's licence number - and what is
+  // missing is said beside its field, with focus taken there, before anything
+  // is sent. The address itself is still checked by the server, as before.
+  const submit = (event: MouseEvent<HTMLButtonElement>) => {
+    const next: typeof problems = {}
+    if (!firstName.trim()) next.firstName = 'Enter their first name.'
+    if (!lastName.trim()) next.lastName = 'Enter their last name.'
+    if (!email.trim()) next.email = 'Enter the email address they will sign in with.'
+    if (mode === 'doctor' && !licenseNo.trim()) {
+      next.licenseNo = 'Enter their licence number.'
+    }
+    flushSync(() => setProblems(next))
+    if (Object.keys(next).length > 0) {
+      focusFirstInvalid(event.currentTarget.closest('dialog'))
+      return
+    }
+    create.mutate()
+  }
+
+  /** Clears one field's message once it is being corrected. */
+  const corrected = (field: keyof typeof problems) =>
+    setProblems((current) => {
+      const next = { ...current }
+      delete next[field]
+      return next
+    })
 
   return (
     <Dialog
@@ -194,8 +222,7 @@ export function RegisterAccountDialog({
               Cancel
             </Button>
             <Button
-              onClick={() => create.mutate()}
-              disabled={!canSubmit}
+              onClick={submit}
               isLoading={create.isPending}
               loadingLabel="Creating the account…"
             >
@@ -226,17 +253,23 @@ export function RegisterAccountDialog({
       ) : (
       <div className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="First name" required>
+          <Field label="First name" required error={problems.firstName}>
             <Input
               value={firstName}
-              onChange={(event) => setFirstName(event.target.value)}
+              onChange={(event) => {
+                setFirstName(event.target.value)
+                corrected('firstName')
+              }}
               autoComplete="off"
             />
           </Field>
-          <Field label="Last name" required>
+          <Field label="Last name" required error={problems.lastName}>
             <Input
               value={lastName}
-              onChange={(event) => setLastName(event.target.value)}
+              onChange={(event) => {
+                setLastName(event.target.value)
+                corrected('lastName')
+              }}
               autoComplete="off"
             />
           </Field>
@@ -249,11 +282,15 @@ export function RegisterAccountDialog({
           // arrives leaves the creator waiting for an email that is never sent.
           description="This becomes their sign-in address. No email is sent — give them the temporary password yourself."
           required
+          error={problems.email}
         >
           <Input
             type="email"
             value={email}
-            onChange={(event) => setEmail(event.target.value)}
+            onChange={(event) => {
+              setEmail(event.target.value)
+              corrected('email')
+            }}
             autoComplete="off"
             placeholder="name@example.com"
           />
@@ -265,10 +302,14 @@ export function RegisterAccountDialog({
               label="Licence number"
               description="Must be unique. The database rejects a duplicate."
               required
+              error={problems.licenseNo}
             >
               <Input
                 value={licenseNo}
-                onChange={(event) => setLicenseNo(event.target.value)}
+                onChange={(event) => {
+                  setLicenseNo(event.target.value)
+                  corrected('licenseNo')
+                }}
                 autoComplete="off"
               />
             </Field>
