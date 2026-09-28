@@ -1,43 +1,41 @@
+import { BrandMark } from '@/components/layout/brand'
 import { cn } from '@/lib/utils'
 
 /**
- * The Recovery Guidance Assistant's mark: a pale ring, a teal disc and the
- * recovery line from the RecoverEase logo. Deliberately not a face or a
- * robot - the assistant offers general guidance, and a persona would promise
- * more than that.
- *
- * Decorative: the assistant's name is always written beside it.
+ * Disc and mark sizes, phone then desktop. Whole pixels with an even margin
+ * on every side, so the mark sits exactly centred and its edges stay crisp.
  */
-export function AssistantAvatar({
-  size = 32,
-  ring = false,
-  className,
-}: {
-  size?: number
-  /** The pale outer ring, for the larger header and welcome marks. */
-  ring?: boolean
-  className?: string
-}) {
+const SIZES = {
+  /** Beside each assistant message. */
+  sm: { disc: 'size-7 lg:size-8', mark: 'size-[18px] lg:size-5' },
+  /** In the assistant header. */
+  md: { disc: 'size-10 lg:size-[46px]', mark: 'size-6 lg:size-7' },
+  /** Above a new conversation. */
+  lg: { disc: 'size-14 lg:size-16', mark: 'size-[34px] lg:size-10' },
+} as const
+
+/**
+ * The Recovery Guidance Assistant's profile image: the RecoverEase mark,
+ * centred on a pale disc. It is the product's own logo, not a persona - the
+ * assistant is part of RecoverEase, not a separate AI, and a face or a robot
+ * would promise more than general guidance.
+ *
+ * The disc is what keeps the mark distinct on the navy assistant header,
+ * where the mark's own navy corner would otherwise run into the background.
+ *
+ * Decorative: the assistant's name is always written beside it, so the mark's
+ * "RecoverEase" label is hidden rather than read out a second time.
+ */
+export function AssistantAvatar({ size = 'sm' }: { size?: keyof typeof SIZES }) {
   return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 46 46"
+    <span
       aria-hidden="true"
-      className={cn('shrink-0', className)}
+      className={cn(
+        'grid shrink-0 place-items-center rounded-full bg-accent-50',
+        SIZES[size].disc,
+      )}
     >
-      {ring ? (
-        <circle cx="23" cy="23" r="23" className="fill-accent-50" />
-      ) : null}
-      <circle cx="23" cy="23" r={ring ? 19 : 23} className="fill-accent-700" />
-      <path
-        d={ring ? 'M12 24h5.5l3-6 5 11 3-5H34' : 'M10 24.5h6l3.2-6.5 5.5 12.3 3.2-5.8H36'}
-        fill="none"
-        stroke="#fff"
-        strokeWidth={ring ? 2.3 : 2.6}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
+      <BrandMark className={SIZES[size].mark} />
+    </span>
   )
 }

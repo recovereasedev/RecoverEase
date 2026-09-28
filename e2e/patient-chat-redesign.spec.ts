@@ -3,8 +3,9 @@ import type { Page } from '@playwright/test'
 import { expect, IDS, test } from './support/fixtures'
 
 /**
- * The redesigned guidance chat: its waiting state, a new conversation, and
- * the phone's past-conversations view.
+ * The redesigned guidance chat: its waiting state, a new conversation, the
+ * phone's past-conversations view, how far the transcript scrolls, and the
+ * assistant's picture.
  *
  * The waiting state stands for a request that is really in flight - it is
  * shown only while the reply request is pending, and a second message cannot
@@ -36,6 +37,21 @@ const ONE_CONVERSATION = {
       chat_message_created_at: '2026-03-05T02:00:00Z',
     },
   ],
+}
+
+/** The same conversation, long enough that its transcript has to scroll. */
+const LONG_CONVERSATION = {
+  chat_session: ONE_CONVERSATION.chat_session,
+  chat_message: [0, 1, 2, 3, 4, 5].map((n) => ({
+    chat_message_id: `m${n}222222-2222-4222-8222-222222222222`,
+    chat_session_id: SESSION,
+    chat_message_role: n % 2 === 0 ? 'patient' : 'assistant',
+    chat_message_content:
+      n % 2 === 0
+        ? 'How should I keep a daily log?'
+        : 'A short note each day about how you slept, any pain, and what you managed to do is enough. Bring it to your next appointment so your care team can see how things are going.',
+    chat_message_created_at: `2026-03-05T02:0${n}:00Z`,
+  })),
 }
 
 /** Holds the assistant's reply until the test lets it go. */
@@ -189,5 +205,55 @@ test.describe('the guidance chat', () => {
       .poll(() => region.evaluate((el) => getComputedStyle(el).overflowY))
       .toBe('visible')
     expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBe(0)
+  })
+
+  test('on a tall desktop, scrolls the conversation all the way to the newest message', async ({
+    page,
+    signInAs,
+  }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    const stub = await signInAs('patient', LONG_CONVERSATION)
+    const release = await holdReply(page)
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await page.goto('/patient/chat')
+    const region = page.getByRole('region', { name: 'Conversation' })
+    await expect(region.getByRole('listitem')).toHaveCount(6)
+    expect(await region.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true)
+    const distanceFromEnd = () =>
+      region.evaluate((el) => el.scrollHeight - el.clientHeight - el.scrollTop)
+
+    await page.getByLabel(/your message/i).fill('Is swelling normal after two weeks?')
+    await page.getByRole('button', { name: /send message/i }).click()
+    await expect(page.getByRole('status')).toContainText('Guidance chat is processing…')
+    await expect.poll(distanceFromEnd).toBeLessThanOrEqual(1)
+
+    // The reply, stored as the Edge Function stores it, arrives after the
+    // waiting state has gone. The transcript still ends at it - not a
+    // message-gap short, which the spacing between messages once caused.
+    stub.addRows('chat_message', [
+      {
+        chat_message_id: 'm9222222-2222-4222-8222-222222222222',
+        chat_session_id: SESSION,
+        chat_message_role: 'assistant',
+        chat_message_content: 'Some swelling is common at two weeks.',
+        chat_message_created_at: new Date(Date.now() + 60_000).toISOString(),
+      },
+    ])
+    release()
+    await expect(region.getByText('Some swelling is common at two weeks.')).toBeVisible()
+    await expect.poll(distanceFromEnd).toBeLessThanOrEqual(1)
+  })
+
+  test("shows RecoverEase's own mark as the assistant's picture, without reading it out again", async ({
+    page,
+    signInAs,
+  }) => {
+    await signInAs('patient')
+    await page.goto('/patient/chat')
+
+    const assistant = page.getByRole('region', { name: 'Recovery Guidance Assistant' })
+    await expect(assistant.locator('svg[aria-label="RecoverEase"]').first()).toBeVisible()
+    // The name is written beside it, so the mark adds nothing to hear.
+    await expect(assistant.getByRole('img', { name: 'RecoverEase' })).toHaveCount(0)
   })
 })

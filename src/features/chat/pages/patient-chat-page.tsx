@@ -280,7 +280,7 @@ export function PatientChatPage() {
             className="flex shrink-0 items-center gap-2.5 bg-brand-800 py-2.5 pl-3.5 pr-1.5 lg:h-20 lg:gap-4 lg:py-0 lg:pl-6 lg:pr-5"
           >
             <div className="relative shrink-0">
-              <AssistantAvatar ring size={46} className="max-lg:size-10" />
+              <AssistantAvatar size="md" />
               {isUnavailable ? null : (
                 <span
                   aria-hidden="true"
@@ -416,7 +416,12 @@ export function PatientChatPage() {
                       </p>
                     ) : null}
 
-                    <ul className="space-y-5 lg:space-y-6">
+                    {/* `gap`, not `space-y`: the spacing from `space-y` is a
+                        margin on every item but the last, and when a message
+                        is added the one before it took that margin a frame
+                        late - after the transcript had been scrolled to its
+                        end, so it stopped a message-gap short. */}
+                    <ul className="flex flex-col gap-5 lg:gap-6">
                       {messages.map((message) => {
                         const isPatient = message.chat_message_role === 'patient'
                         const time = formatTime(message.chat_message_created_at)
@@ -447,7 +452,7 @@ export function PatientChatPage() {
 
                         return (
                           <li key={message.chat_message_id} className="flex gap-2 lg:gap-3">
-                            <AssistantAvatar size={32} className="max-lg:size-7" />
+                            <AssistantAvatar />
                             <div className="flex min-w-0 max-w-[35rem] flex-col gap-1.5">
                               <p className="flex items-center gap-2 text-xs text-muted">
                                 <span className="font-semibold text-body">
@@ -473,7 +478,7 @@ export function PatientChatPage() {
               // Announced once, when it appears; it goes the moment the reply
               // arrives or the request fails.
               <div role="status" className="mt-5 flex gap-2 lg:mt-6 lg:gap-3">
-                <AssistantAvatar size={32} className="max-lg:size-7" />
+                <AssistantAvatar />
                 <div className="flex min-w-0 max-w-[35rem] flex-col gap-1.5">
                   <p className="text-xs font-semibold text-body">{ASSISTANT}</p>
                   <div className="flex flex-col gap-2 rounded-[4px_16px_16px_16px] bg-surface-sunken px-4 py-3 lg:flex-row lg:items-center lg:gap-4 lg:pl-4 lg:pr-5">
@@ -696,7 +701,7 @@ function NewConversation({ onChoose }: { onChoose: (text: string) => void }) {
   return (
     <div className="flex flex-col gap-6 lg:items-center lg:gap-9 lg:py-6 chat-fit:min-h-full chat-fit:justify-center">
       <div className="flex flex-col items-center gap-3 text-center lg:max-w-[32.5rem]">
-        <AssistantAvatar ring size={64} className="max-lg:size-14" />
+        <AssistantAvatar size="lg" />
         <div>
           <p className="text-sm font-semibold text-accent-800">{ASSISTANT}</p>
           <p className="mt-0.5 text-[13px] leading-[18px] text-muted">
