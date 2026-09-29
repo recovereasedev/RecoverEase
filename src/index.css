@@ -12,6 +12,12 @@
 @import '@fontsource-variable/inter/opsz.css';
 @import 'tailwindcss';
 
+/* A desktop screen tall enough to fit the guidance chat to it: the
+   conversation scrolls in its own box and the composer stays in view. On a
+   shorter desktop (1024x768, 1366x768) a fitted box left too little room to
+   read a reply, so there the page scrolls instead, as it does on a phone. */
+@custom-variant chat-fit (@media (min-width: 64rem) and (min-height: 50rem));
+
 /* ===========================================================================
    RecoverEase Design System - "Clinical Clarity"
    ---------------------------------------------------------------------------
@@ -413,6 +419,12 @@
     text-decoration-color, fill, stroke;
 }
 
+/* On the guidance chat's navy assistant header the brand ring is blue on
+   navy, which cannot be seen. There the ring is white, at the same weight. */
+[data-surface='dark'] :focus-visible {
+  outline-color: #ffffff;
+}
+
 /* ===========================================================================
    Print
    ---------------------------------------------------------------------------
@@ -460,7 +472,7 @@
 /* ===========================================================================
    Motion (RecoverEase 2.0)
    ---------------------------------------------------------------------------
-   Five motions, each with a job, all on transform and opacity:
+   Six motions, each with a job, all on transform and opacity:
 
    - A dialog scales up from 0.97 as its backdrop fades in, and leaves the
      same way: it arrives over the page, it does not appear from nowhere.
@@ -470,6 +482,8 @@
    - A dose marked taken: its "Taken" badge settles in, so the change the
      patient just made is seen to happen (applied only to that dose).
    - The landing page's first screen rises into place once, on arrival.
+   - The guidance chat's three dots pulse while a reply is on its way, and
+     only then: they stand for a request that is really in flight.
 
    `prefers-reduced-motion: reduce` collapses all of it (see the base layer):
    every state is complete without the motion.
@@ -604,6 +618,33 @@
     from {
       opacity: 0;
       transform: translateY(12px);
+    }
+  }
+
+  /* The guidance chat's "preparing a response" dots: runs only while a reply
+     is actually on its way, and on opacity alone - nothing bounces. Under
+     reduced motion the base layer stops it, leaving three steady dots. */
+  .typing-dot {
+    opacity: 0.7;
+    animation: typing-dot 1.4s ease-in-out infinite;
+  }
+
+  .typing-dot:nth-child(2) {
+    animation-delay: 0.2s;
+  }
+
+  .typing-dot:nth-child(3) {
+    animation-delay: 0.4s;
+  }
+
+  @keyframes typing-dot {
+    0%,
+    80%,
+    100% {
+      opacity: 0.3;
+    }
+    40% {
+      opacity: 1;
     }
   }
 }
