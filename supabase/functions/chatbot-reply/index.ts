@@ -15,6 +15,17 @@ import {
 import { AuthError, requireCaller, serviceClient } from '../_shared/auth.ts'
 import { handlePreflight, jsonResponse } from '../_shared/cors.ts'
 import {
+  ReplyIdConflictError,
+  replyIdFor,
+  saveReplyOnce,
+} from '../_shared/reply-once.ts'
+import {
+  codeForStatus,
+  isProviderTimeout,
+  type ReplyErrorCode,
+  replyLogLine,
+} from '../_shared/reply-outcome.ts'
+import {
   answerOrRequestReview,
   NEEDS_REVIEW_MESSAGE,
   requestReview,
@@ -54,6 +65,28 @@ import {
 
 /** Beyond this the patient is better served by an honest failure. */
 const REQUEST_TIMEOUT_MS = 25_000
+
+/** A row of `chat_message`, as `select('*')` returns it. */
+type ChatMessageRow = {
+  chat_message_id: string
+  chat_session_id: string
+  chat_message_role: string | null
+  chat_message_content: string
+  chat_message_created_at: string
+}
+
+/**
+ * A refusal or failure, with the code the browser uses to tell the patient
+ * what happened and whether trying again can help (`_shared/reply-outcome.ts`).
+ */
+class ReplyError extends AuthError {
+  readonly code: ReplyErrorCode
+
+  constructor(message: string, status: number, code: ReplyErrorCode) {
+    super(message, status)
+    this.code = code
+  }
+}
 
 /**
  * The database side of a review request (_shared/escalation.ts), for one
@@ -108,6 +141,21 @@ Deno.serve(async (request) => {
   if (preflight) return preflight
 
   const origin = request.headers.get('origin')
+  const requestId = crypto.randomUUID()
+  const startedAt = Date.now()
+
+  // Every answer from here is logged once: how it ended and how long it
+  // took, never what was asked or answered.
+  const respond = (
+    body: Record<string, unknown>,
+    status: number,
+    code: ReplyErrorCode | null,
+  ) => {
+    console.log(
+      replyLogLine({ requestId, status, code, durationMs: Date.now() - startedAt }),
+    )
+    return jsonResponse(code ? { ...body, code } : body, status, origin)
+  }
 
   if (request.method !== 'POST') {
     return jsonResponse({ error: 'Method not allowed' }, 405, origin)
@@ -153,7 +201,7 @@ Deno.serve(async (request) => {
     //    between identical timestamps, so the window is the same every time.
     const { data: newestFirst, error: historyError } = await admin
       .from('chat_message')
-      .select('chat_message_role, chat_message_content')
+      .select('chat_message_id, chat_message_role, chat_message_content')
       .eq('chat_session_id', chatSessionId)
       .order('chat_message_created_at', { ascending: false })
       .order('chat_message_id', { ascending: false })
@@ -161,7 +209,7 @@ Deno.serve(async (request) => {
 
     if (historyError) throw new AuthError('Could not load the conversation', 500)
     if (!newestFirst || newestFirst.length === 0) {
-      throw new AuthError('There is nothing to reply to', 400)
+      throw new ReplyError('There is nothing to reply to', 400, 'bad_request')
     }
     const history = chronologicalWindow(newestFirst)
 
@@ -170,8 +218,16 @@ Deno.serve(async (request) => {
     // provider receives this conversation and no other patient data at all.
     const turns = toInteractionInput(history)
     if (!hasUnansweredPatientMessage(turns)) {
-      throw new AuthError('There is nothing to reply to', 400)
+      // The latest message already has its reply - typically a retry after a
+      // reply that was saved but never reached the browser. Not a failure:
+      // the browser shows the conversation as it is.
+      throw new ReplyError('There is nothing to reply to', 400, 'already_answered')
     }
+
+    // The message being answered: the newest, which is the patient's. Its id
+    // decides the reply's id (_shared/reply-once.ts). It never reaches the
+    // provider - `toInteractionInput` above passes on role and text only.
+    const answering = newestFirst[0]!.chat_message_id as string
 
     // 4. From here the patient is owed an answer: their message is saved and
     //    nobody has replied. If the assistant cannot give one - for any
@@ -185,11 +241,15 @@ Deno.serve(async (request) => {
     //    Authorisation should not depend on whether a provider key happens to
     //    be set, and this ordering also means the refusal paths stay
     //    exercisable before a key exists.
-    const { parsed, inserted } = await answerOrRequestReview(
+    const { parsed, inserted, answeredElsewhere } = await answerOrRequestReview(
       async () => {
         const apiKey = Deno.env.get('GEMINI_API_KEY')
         if (!apiKey) {
-          throw new AuthError('The guidance assistant is not configured.', 503)
+          throw new ReplyError(
+            'The guidance assistant is not configured.',
+            503,
+            'not_configured',
+          )
         }
 
         const { data: promptSetting } = await admin
@@ -223,7 +283,11 @@ Deno.serve(async (request) => {
           // Timeout, DNS, TLS, connection reset. Deliberately not surfaced to
           // the patient in detail; the log is where an operator looks.
           console.error('gemini request failed to complete', cause)
-          throw new AuthError('The guidance assistant is unavailable.', 503)
+          // Our own time limit running out is reported as such, so the
+          // patient hears "took too long" rather than "unavailable".
+          throw isProviderTimeout(cause)
+            ? new ReplyError('The guidance assistant took too long to respond.', 504, 'timeout')
+            : new ReplyError('The guidance assistant is unavailable.', 503, 'unavailable')
         }
 
         if (!response.ok) {
@@ -244,11 +308,12 @@ Deno.serve(async (request) => {
           // assistant is permanently unavailable when it will work in a
           // minute is the wrong failure message.
           const busy = response.status === 429 || response.status >= 500
-          throw new AuthError(
+          throw new ReplyError(
             busy
               ? 'The guidance assistant is busy. Try again in a moment.'
               : 'The guidance assistant is unavailable.',
             busy ? 429 : 502,
+            busy ? 'busy' : 'unavailable',
           )
         }
 
@@ -262,28 +327,80 @@ Deno.serve(async (request) => {
         }
         const parsed = parseAssistantReply(extractOutputText(payload))
 
-        const { data: inserted, error: insertError } = await admin
-          .from('chat_message')
-          .insert({
-            chat_session_id: chatSessionId,
-            chat_message_role: 'assistant',
-            chat_message_content: parsed.message,
-          })
-          .select()
-          .single()
+        // One reply per question, enforced by the database rather than by a
+        // check a concurrent request could slip past: the reply is saved
+        // under an id derived from the message it answers, so a second reply
+        // to the same message - a retry overlapping a slow request, the
+        // conversation open on two devices - collides on the primary key and
+        // adopts the first instead of being saved beside it. Keyed by the
+        // service key, which never leaves the server, so a patient cannot
+        // work the id out and take it first (_shared/reply-once.ts).
+        const replyId = await replyIdFor(
+          answering,
+          Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+        )
+        let saved: Awaited<ReturnType<typeof saveReplyOnce<ChatMessageRow>>>
+        try {
+          saved = await saveReplyOnce<ChatMessageRow>(
+            {
+              async insert() {
+                const { data, error: insertError } = await admin
+                  .from('chat_message')
+                  .insert({
+                    chat_message_id: replyId,
+                    chat_session_id: chatSessionId,
+                    chat_message_role: 'assistant',
+                    chat_message_content: parsed.message,
+                  })
+                  .select()
+                  .single()
 
-        if (insertError) {
-          // Logged for operators; the database's own wording is not something
-          // to show a patient.
-          console.error('assistant reply could not be saved', insertError.message)
-          throw new AuthError("The guidance assistant's reply could not be saved.", 500)
+                // 23505: the id is taken - the reply has already been saved.
+                if (insertError?.code === '23505') return { duplicate: true }
+                if (insertError) {
+                  // Logged for operators; the database's own wording is not
+                  // something to show a patient.
+                  console.error('assistant reply could not be saved', insertError.message)
+                  throw new ReplyError(
+                    "The guidance assistant's reply could not be saved.",
+                    500,
+                    'save_failed',
+                  )
+                }
+                return { row: data as ChatMessageRow }
+              },
+              async find() {
+                const { data } = await admin
+                  .from('chat_message')
+                  .select('*')
+                  .eq('chat_message_id', replyId)
+                  .maybeSingle()
+                return (data as ChatMessageRow | null) ?? null
+              },
+            },
+            chatSessionId,
+          )
+        } catch (error) {
+          if (!(error instanceof ReplyIdConflictError)) throw error
+          console.error('assistant reply id was taken by another message')
+          throw new ReplyError(
+            "The guidance assistant's reply could not be saved.",
+            500,
+            'save_failed',
+          )
         }
 
-        return { parsed, inserted }
+        const inserted = saved.row
+        return { parsed, inserted, answeredElsewhere: !saved.savedHere }
       },
       () => requestReview(reviewStore(admin, patient.doc_id, chatSessionId)),
       (error) => console.error('review request could not be written', error),
     )
+
+    // The other request saved its reply and dealt with any concern in it.
+    if (answeredElsewhere) {
+      return respond({ message: inserted, raisedCriticalConcern: false }, 200, null)
+    }
 
     const critical = raisesCriticalConcern(parsed)
 
@@ -328,7 +445,7 @@ Deno.serve(async (request) => {
       }
     }
 
-    return jsonResponse(
+    return respond(
       {
         message: inserted,
         raisedCriticalConcern: critical,
@@ -336,11 +453,15 @@ Deno.serve(async (request) => {
         shouldContactProvider: parsed.should_contact_provider,
       },
       200,
-      origin,
+      null,
     )
   } catch (error) {
     if (error instanceof AuthError) {
-      return jsonResponse({ error: error.message }, error.status, origin)
+      return respond(
+        { error: error.message },
+        error.status,
+        error instanceof ReplyError ? error.code : codeForStatus(error.status),
+      )
     }
 
     if (error instanceof AssistantReplyError) {
@@ -348,18 +469,18 @@ Deno.serve(async (request) => {
       // the safe outcome; a half-parsed reply is not something to show a
       // recovering patient.
       console.error('gemini output rejected', error.message)
-      return jsonResponse(
+      return respond(
         { error: 'The guidance assistant could not produce a usable reply.' },
         502,
-        origin,
+        'invalid_reply',
       )
     }
 
     console.error('chatbot-reply failed', error)
-    return jsonResponse(
+    return respond(
       { error: 'The guidance assistant is unavailable.' },
       503,
-      origin,
+      'unavailable',
     )
   }
 })
