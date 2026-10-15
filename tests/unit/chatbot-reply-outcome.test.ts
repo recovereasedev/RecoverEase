@@ -105,18 +105,31 @@ describe('chatbot-reply', () => {
     )
   })
 
-  it('saves at most one reply per question, even when a retry overlaps a slow request', () => {
+  it('saves at most one reply per question, enforced by the primary key', () => {
     const answerStep = source.slice(
       source.indexOf('await answerOrRequestReview('),
       source.indexOf('const critical = raisesCriticalConcern(parsed)'),
     )
-    const guard = answerStep.indexOf("latest?.chat_message_role === 'assistant'")
-    const insert = answerStep.indexOf('.insert({')
-    expect(guard).toBeGreaterThan(-1)
-    expect(guard).toBeLessThan(insert)
+    // The reply is saved under the id derived from the message it answers,
+    // and a duplicate-key refusal adopts the reply already there.
+    expect(source).toContain('const answering = newestFirst[0]!.chat_message_id')
+    expect(answerStep).toContain('const replyId = await replyIdFor(answering)')
+    expect(answerStep).toContain('chat_message_id: replyId,')
+    expect(answerStep).toContain("insertError?.code === '23505'")
+    expect(answerStep).toContain('saveReplyOnce<ChatMessageRow>(')
+    // No check-then-insert left for a concurrent request to slip past.
+    expect(answerStep).not.toContain("latest?.chat_message_role === 'assistant'")
     // The other request dealt with its own reply's concerns.
     expect(source.indexOf('if (answeredElsewhere)')).toBeLessThan(
       source.indexOf('const critical = raisesCriticalConcern(parsed)'),
     )
+  })
+
+  it('reads the answered message’s id without sending it to the provider', () => {
+    expect(source).toContain(
+      ".select('chat_message_id, chat_message_role, chat_message_content')",
+    )
+    // The provider still receives role and text only.
+    expect(source).toContain('const turns = toInteractionInput(history)')
   })
 })

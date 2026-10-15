@@ -23,7 +23,9 @@ import {
   createChatSession,
   fetchChatMessages,
   fetchChatSessions,
+  findOwnMessage,
   MessageNotSentError,
+  newChatId,
   requestAssistantReply,
 } from '@/features/chat/api'
 import { AssistantAvatar } from '@/features/chat/components/assistant-avatar'
@@ -56,6 +58,21 @@ const SUGGESTIONS = [
 
 /** Why the last request in a conversation left it without a reply. */
 type Failure = ReplyFailure | 'not_sent'
+
+/**
+ * A message on its way to being saved, with the ids it is saved under. The
+ * ids are chosen once, in the browser, and kept until the save is
+ * confirmed, so sending the same message again - after a save whose answer
+ * was lost - reuses them, and the database refuses a second copy.
+ */
+type PendingSend = {
+  content: string
+  /** The conversation it goes to; null to start a new one. */
+  sessionId: string | null
+  /** The id a new conversation is started under. */
+  newSessionId: string
+  messageId: string
+}
 
 /**
  * What the patient is told when no reply came back. Every message says
@@ -115,6 +132,12 @@ export function PatientChatPage() {
   /** Why the last request left a conversation without a reply, if it did. */
   const [failure, setFailure] = useState<{
     sessionId: string | null
+    /**
+     * A new conversation's own id, when the failure happened while starting
+     * it: if it was in fact created, the page opens it, and the failure
+     * belongs there too.
+     */
+    newSessionId?: string
     kind: Failure
   } | null>(null)
   /** Times the patient has asked again since the last reply; bounded. */
@@ -129,6 +152,8 @@ export function PatientChatPage() {
   const requestInFlight = useRef(false)
   /** The conversation the request in flight belongs to. */
   const requestSessionRef = useRef<string | null>(null)
+  /** The message being sent, until it is known to be saved. */
+  const pendingSendRef = useRef<PendingSend | null>(null)
   /** Phones only: the past-conversations list in place of the conversation. */
   const [showHistory, setShowHistory] = useState(false)
   const transcriptEndRef = useRef<HTMLDivElement>(null)
@@ -186,7 +211,9 @@ export function PatientChatPage() {
   // that was saved even though its response never arrived replaces it.
   const shownFailure =
     failure !== null &&
-    failure.sessionId === activeSessionId &&
+    (failure.sessionId === activeSessionId ||
+      (failure.newSessionId !== undefined &&
+        failure.newSessionId === activeSessionId)) &&
     (failure.kind === 'not_sent' ||
       lastMessage?.chat_message_role !== 'assistant')
       ? failure.kind
@@ -223,21 +250,38 @@ export function PatientChatPage() {
   }
 
   const sendMessage = useMutation({
-    mutationFn: async (content: string) => {
-      let sessionId = activeSessionId
+    mutationFn: async (send: PendingSend) => {
+      let sessionId = send.sessionId
 
       try {
         if (!sessionId) {
-          const session = await createChatSession(patientId)
+          const session = await createChatSession(patientId, send.newSessionId)
           sessionId = session.chat_session_id
           requestSessionRef.current = sessionId
           setActiveSessionId(sessionId)
         }
 
-        await appendPatientMessage({ sessionId, content })
+        await appendPatientMessage({
+          sessionId,
+          content: send.content,
+          messageId: send.messageId,
+        })
       } catch (cause) {
-        throw new MessageNotSentError({ cause })
+        // The save can reach the database even when its answer does not
+        // reach the browser - a time-out after the commit. Look before
+        // saying the message was not sent.
+        const saved = sessionId
+          ? await findOwnMessage(send.messageId).catch(() => null)
+          : null
+        if (!saved) throw new MessageNotSentError({ cause })
       }
+
+      // Only a confirmed save gets here, and a message is saved into a
+      // conversation - so there is one. Said for the type checker.
+      if (!sessionId) throw new MessageNotSentError()
+
+      // Saved: whatever is sent next is a new message, with new ids.
+      pendingSendRef.current = null
 
       // Show the patient's own message immediately, before waiting on a reply
       // that may not come.
@@ -249,7 +293,7 @@ export function PatientChatPage() {
       return requestAssistantReply(sessionId)
     },
     onSuccess: onReplied,
-    onError: (error, content) => {
+    onError: (error, send) => {
       if (!(error instanceof MessageNotSentError)) {
         onReplyFailed(error)
         return
@@ -258,8 +302,12 @@ export function PatientChatPage() {
       setAwaitingReplyFor(null)
       // The message never left, so it goes back in the composer - unless
       // something new has been typed there in the meantime.
-      setDraft((current) => (current.trim() ? current : content))
-      setFailure({ sessionId: requestSessionRef.current, kind: 'not_sent' })
+      setDraft((current) => (current.trim() ? current : send.content))
+      setFailure({
+        sessionId: requestSessionRef.current,
+        newSessionId: send.newSessionId,
+        kind: 'not_sent',
+      })
       void queryClient.invalidateQueries({ queryKey: queryKeys.chat.all })
     },
   })
@@ -341,6 +389,25 @@ export function PatientChatPage() {
     if (requestInFlight.current) return
     const content = draft.trim()
     if (!content) return
+    // The same words, to the same conversation, after a send that was not
+    // confirmed: the same message, so the same ids - if the earlier attempt
+    // did save it, the database refuses this one as a duplicate and the
+    // saved message is used. Anything else is a new message. Worked out
+    // before anything is marked as in flight.
+    const previous = pendingSendRef.current
+    const send: PendingSend =
+      previous !== null &&
+      previous.content === content &&
+      (activeSessionId === previous.sessionId ||
+        activeSessionId === previous.newSessionId)
+        ? { ...previous, sessionId: activeSessionId }
+        : {
+            content,
+            sessionId: activeSessionId,
+            newSessionId: newChatId(),
+            messageId: newChatId(),
+          }
+    pendingSendRef.current = send
     requestInFlight.current = true
     requestSessionRef.current = activeSessionId
     hasSentRef.current = true
@@ -353,7 +420,7 @@ export function PatientChatPage() {
     setDraft('')
     setFailure(null)
     setRetries(0)
-    sendMessage.mutate(content)
+    sendMessage.mutate(send)
   }
 
   const startNew = () => {

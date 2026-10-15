@@ -416,6 +416,29 @@ export class SupabaseStub {
         | Record<string, unknown>[]
       const incoming = Array.isArray(payload) ? payload : [payload]
 
+      // Postgres refuses a second row under a primary key it already holds,
+      // and PostgREST reports it as 409 with the SQLSTATE in `code`. The
+      // guidance chat relies on exactly that to never save a message twice.
+      const key = primaryKeyOf(table)
+      const taken = incoming.find(
+        (row) =>
+          row[key] !== undefined &&
+          this.rowsIn(table).some((existing) => existing[key] === row[key]),
+      )
+      if (taken) {
+        await route.fulfill({
+          status: 409,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            code: '23505',
+            message: `duplicate key value violates unique constraint "${table}_pkey"`,
+            details: `Key (${key})=(${String(taken[key])}) already exists.`,
+            hint: null,
+          }),
+        })
+        return
+      }
+
       const created = incoming.map((row) => ({
         [primaryKeyOf(table)]: crypto.randomUUID(),
         ...this.defaultsFor(table),

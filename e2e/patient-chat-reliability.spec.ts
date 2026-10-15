@@ -374,6 +374,156 @@ test.describe('the guidance chat when a reply does not come back', () => {
     expect(counts.replyRequests).toBe(0)
   })
 
+  test('a message saved whose confirmation was lost is not sent twice', async ({
+    page,
+    signInAs,
+  }) => {
+    const stub = await signInAs('patient', CONVERSATION)
+    let commitButLoseAnswer = true
+    await page.route(
+      (url) => url.pathname.endsWith('/rest/v1/chat_message'),
+      async (route) => {
+        if (route.request().method() === 'POST' && commitButLoseAnswer) {
+          commitButLoseAnswer = false
+          // The database saves the message; its answer never reaches the browser.
+          const row = JSON.parse(route.request().postData() ?? '{}')
+          stub.addRows('chat_message', [
+            { ...row, chat_message_created_at: new Date().toISOString() },
+          ])
+          await route.abort('timedout')
+          return
+        }
+        await route.fallback()
+      },
+    )
+    await page.route(
+      '**/functions/v1/chatbot-reply',
+      reply(503, { error: 'The guidance assistant is unavailable.', code: 'unavailable' }),
+    )
+    const counts = watch(page)
+    await page.goto('/patient/chat')
+
+    await send(page)
+    // The browser looked, found the message saved, and carried on.
+    await expect(page.getByRole('status')).toContainText('not available at the moment')
+    await expect(page.getByText('wasn’t sent')).toHaveCount(0)
+    await expect(page.getByLabel(/your message/i)).toHaveValue('')
+    await expect(page.getByText(QUESTION)).toHaveCount(1)
+    expect(stub.rowsIn('chat_message').filter((row) => row.chat_message_content === QUESTION)).toHaveLength(1)
+    expect(counts.replyRequests).toBe(1)
+  })
+
+  test('sending again after an unconfirmed save does not save the message twice', async ({
+    page,
+    signInAs,
+  }) => {
+    const stub = await signInAs('patient', CONVERSATION)
+    const sentIds: string[] = []
+    let commitButLoseAnswer = true
+    let loseConfirmation = true
+    await page.route(
+      (url) => url.pathname.endsWith('/rest/v1/chat_message'),
+      async (route) => {
+        const request = route.request()
+        if (request.method() === 'POST') {
+          const row = JSON.parse(request.postData() ?? '{}')
+          sentIds.push(row.chat_message_id)
+          if (commitButLoseAnswer) {
+            commitButLoseAnswer = false
+            stub.addRows('chat_message', [
+              { ...row, chat_message_created_at: new Date().toISOString() },
+            ])
+            await route.abort('timedout')
+            return
+          }
+        }
+        // The browser's check for the saved message fails too - every try
+        // (the client retries a failed read) - until the patient sends again.
+        if (
+          request.method() === 'GET' &&
+          new URL(request.url()).searchParams.has('chat_message_id') &&
+          loseConfirmation
+        ) {
+          await route.abort('timedout')
+          return
+        }
+        await route.fallback()
+      },
+    )
+    await page.route(
+      '**/functions/v1/chatbot-reply',
+      reply(503, { error: 'The guidance assistant is unavailable.', code: 'unavailable' }),
+    )
+    const counts = watch(page)
+    await page.goto('/patient/chat')
+
+    await send(page)
+    // After the client's own retries of the check (1 s, 2 s, 4 s apart).
+    await expect(page.getByRole('status')).toContainText('wasn’t sent', { timeout: 15_000 })
+    await expect(page.getByLabel(/your message/i)).toHaveValue(QUESTION)
+
+    // Sending it again reuses the message's id. The database refuses a
+    // second copy, and the browser uses the one that was saved.
+    loseConfirmation = false
+    await page.getByRole('button', { name: /send message/i }).click()
+    await expect(page.getByRole('status')).toContainText('not available at the moment')
+    expect(sentIds).toHaveLength(2)
+    expect(sentIds[0]).toBe(sentIds[1])
+    expect(stub.rowsIn('chat_message').filter((row) => row.chat_message_content === QUESTION)).toHaveLength(1)
+    await expect(page.getByText(QUESTION)).toHaveCount(1)
+    expect(counts.replyRequests).toBe(1)
+  })
+
+  test('a new conversation whose start was not confirmed is not started twice', async ({
+    page,
+    signInAs,
+  }) => {
+    // No conversations yet: the first message starts one.
+    const stub = await signInAs('patient')
+    const before = stub.rowsIn('chat_session').length
+    let commitButLoseAnswer = true
+    await page.route(
+      (url) => url.pathname.endsWith('/rest/v1/chat_session'),
+      async (route) => {
+        if (route.request().method() === 'POST' && commitButLoseAnswer) {
+          commitButLoseAnswer = false
+          const row = JSON.parse(route.request().postData() ?? '{}')
+          stub.addRows('chat_session', [
+            {
+              chat_session_external_ref: null,
+              chat_session_started_at: new Date().toISOString(),
+              chat_session_ended_at: null,
+              chat_session_has_critical_flag: false,
+              chat_session_summary: null,
+              ...row,
+            },
+          ])
+          await route.abort('timedout')
+          return
+        }
+        await route.fallback()
+      },
+    )
+    await page.route(
+      '**/functions/v1/chatbot-reply',
+      reply(503, { error: 'The guidance assistant is unavailable.', code: 'unavailable' }),
+    )
+    await page.goto('/patient/chat')
+
+    await send(page)
+    // The conversation was created after all, so the page opens it (its
+    // messages load beside the notice) - and the notice comes with it.
+    await expect(
+      page.getByRole('status').filter({ hasText: 'wasn’t sent' }),
+    ).toBeVisible()
+    await expect(page.getByLabel(/your message/i)).toHaveValue(QUESTION)
+    await page.getByRole('button', { name: /send message/i }).click()
+    await expect(page.getByRole('status')).toContainText('not available at the moment')
+
+    expect(stub.rowsIn('chat_session').length).toBe(before + 1)
+    expect(stub.rowsIn('chat_message').filter((row) => row.chat_message_content === QUESTION)).toHaveLength(1)
+  })
+
   test('from the keyboard, Try again leaves focus in the composer', async ({
     page,
     signInAs,

@@ -15,6 +15,11 @@ import {
 import { AuthError, requireCaller, serviceClient } from '../_shared/auth.ts'
 import { handlePreflight, jsonResponse } from '../_shared/cors.ts'
 import {
+  ReplyIdConflictError,
+  replyIdFor,
+  saveReplyOnce,
+} from '../_shared/reply-once.ts'
+import {
   codeForStatus,
   isProviderTimeout,
   type ReplyErrorCode,
@@ -60,6 +65,15 @@ import {
 
 /** Beyond this the patient is better served by an honest failure. */
 const REQUEST_TIMEOUT_MS = 25_000
+
+/** A row of `chat_message`, as `select('*')` returns it. */
+type ChatMessageRow = {
+  chat_message_id: string
+  chat_session_id: string
+  chat_message_role: string | null
+  chat_message_content: string
+  chat_message_created_at: string
+}
 
 /**
  * A refusal or failure, with the code the browser uses to tell the patient
@@ -187,7 +201,7 @@ Deno.serve(async (request) => {
     //    between identical timestamps, so the window is the same every time.
     const { data: newestFirst, error: historyError } = await admin
       .from('chat_message')
-      .select('chat_message_role, chat_message_content')
+      .select('chat_message_id, chat_message_role, chat_message_content')
       .eq('chat_session_id', chatSessionId)
       .order('chat_message_created_at', { ascending: false })
       .order('chat_message_id', { ascending: false })
@@ -209,6 +223,11 @@ Deno.serve(async (request) => {
       // the browser shows the conversation as it is.
       throw new ReplyError('There is nothing to reply to', 400, 'already_answered')
     }
+
+    // The message being answered: the newest, which is the patient's. Its id
+    // decides the reply's id (_shared/reply-once.ts). It never reaches the
+    // provider - `toInteractionInput` above passes on role and text only.
+    const answering = newestFirst[0]!.chat_message_id as string
 
     // 4. From here the patient is owed an answer: their message is saved and
     //    nobody has replied. If the assistant cannot give one - for any
@@ -308,37 +327,57 @@ Deno.serve(async (request) => {
         }
         const parsed = parseAssistantReply(extractOutputText(payload))
 
-        // One reply per question. A retry can overlap an earlier request for
-        // the same message that was slow but still running; if that one has
-        // answered while this one waited on the provider, its reply stands
-        // and this one is not saved as a second answer.
-        const { data: latest } = await admin
-          .from('chat_message')
-          .select('*')
-          .eq('chat_session_id', chatSessionId)
-          .order('chat_message_created_at', { ascending: false })
-          .order('chat_message_id', { ascending: false })
-          .limit(1)
-          .maybeSingle()
+        // One reply per question, enforced by the database rather than by a
+        // check a concurrent request could slip past: the reply is saved
+        // under an id derived from the message it answers, so a second reply
+        // to the same message - a retry overlapping a slow request, the
+        // conversation open on two devices - collides on the primary key and
+        // adopts the first instead of being saved beside it.
+        const replyId = await replyIdFor(answering)
+        let saved: Awaited<ReturnType<typeof saveReplyOnce<ChatMessageRow>>>
+        try {
+          saved = await saveReplyOnce<ChatMessageRow>(
+            {
+              async insert() {
+                const { data, error: insertError } = await admin
+                  .from('chat_message')
+                  .insert({
+                    chat_message_id: replyId,
+                    chat_session_id: chatSessionId,
+                    chat_message_role: 'assistant',
+                    chat_message_content: parsed.message,
+                  })
+                  .select()
+                  .single()
 
-        if (latest?.chat_message_role === 'assistant') {
-          return { parsed, inserted: latest, answeredElsewhere: true }
-        }
-
-        const { data: inserted, error: insertError } = await admin
-          .from('chat_message')
-          .insert({
-            chat_session_id: chatSessionId,
-            chat_message_role: 'assistant',
-            chat_message_content: parsed.message,
-          })
-          .select()
-          .single()
-
-        if (insertError) {
-          // Logged for operators; the database's own wording is not something
-          // to show a patient.
-          console.error('assistant reply could not be saved', insertError.message)
+                // 23505: the id is taken - the reply has already been saved.
+                if (insertError?.code === '23505') return { duplicate: true }
+                if (insertError) {
+                  // Logged for operators; the database's own wording is not
+                  // something to show a patient.
+                  console.error('assistant reply could not be saved', insertError.message)
+                  throw new ReplyError(
+                    "The guidance assistant's reply could not be saved.",
+                    500,
+                    'save_failed',
+                  )
+                }
+                return { row: data as ChatMessageRow }
+              },
+              async find() {
+                const { data } = await admin
+                  .from('chat_message')
+                  .select('*')
+                  .eq('chat_message_id', replyId)
+                  .maybeSingle()
+                return (data as ChatMessageRow | null) ?? null
+              },
+            },
+            chatSessionId,
+          )
+        } catch (error) {
+          if (!(error instanceof ReplyIdConflictError)) throw error
+          console.error('assistant reply id was taken by another message')
           throw new ReplyError(
             "The guidance assistant's reply could not be saved.",
             500,
@@ -346,7 +385,8 @@ Deno.serve(async (request) => {
           )
         }
 
-        return { parsed, inserted, answeredElsewhere: false }
+        const inserted = saved.row
+        return { parsed, inserted, answeredElsewhere: !saved.savedHere }
       },
       () => requestReview(reviewStore(admin, patient.doc_id, chatSessionId)),
       (error) => console.error('review request could not be written', error),

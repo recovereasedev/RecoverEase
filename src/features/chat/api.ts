@@ -21,6 +21,31 @@ function dataTimeout(): AbortSignal {
   return AbortSignal.timeout(DATA_TIMEOUT_MS)
 }
 
+/**
+ * A new random id (UUID v4) for a message or conversation, chosen in the
+ * browser so a save can be repeated without being duplicated.
+ * `crypto.randomUUID` is missing from some older phones still in use (iOS
+ * Safari before 15.4), so the same id is built from `getRandomValues`, which
+ * they have.
+ */
+export function newChatId(): string {
+  if (typeof crypto.randomUUID === 'function') return crypto.randomUUID()
+  const bytes = crypto.getRandomValues(new Uint8Array(16))
+  bytes[6] = (bytes[6]! & 0x0f) | 0x40 // version 4
+  bytes[8] = (bytes[8]! & 0x3f) | 0x80 // RFC 9562 variant
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
+}
+
+/**
+ * Postgres's "duplicate key" error. A save that comes back with it under an
+ * id the browser chose was already made by an earlier attempt whose answer
+ * was lost - a timeout after the database had committed it.
+ */
+function isDuplicateKey(error: { code?: string } | null): boolean {
+  return error?.code === '23505'
+}
+
 /** Module 8.4 "View Chat History / Past Conversations". */
 export async function fetchChatSessions(
   patientId: string,
@@ -51,27 +76,70 @@ export async function fetchChatMessages(
   return data
 }
 
-export async function createChatSession(
-  patientId: string,
-): Promise<ChatSession> {
+/** One of the patient's own conversations, by id, or null if there is none. */
+export async function findOwnSession(sessionId: string): Promise<ChatSession | null> {
   const { data, error } = await supabase
     .from('chat_session')
-    .insert({ pat_id: patientId })
-    .select()
+    .select('*')
+    .eq('chat_session_id', sessionId)
     .abortSignal(dataTimeout())
-    .single()
+    .maybeSingle()
 
   if (error) throw error
   return data
 }
 
+/** One of the patient's own messages, by id, or null if there is none. */
+export async function findOwnMessage(messageId: string): Promise<ChatMessage | null> {
+  const { data, error } = await supabase
+    .from('chat_message')
+    .select('*')
+    .eq('chat_message_id', messageId)
+    .abortSignal(dataTimeout())
+    .maybeSingle()
+
+  if (error) throw error
+  return data
+}
+
+/**
+ * Starts a conversation under an id the browser chose. Sending again with
+ * the same id never starts a second one: if an earlier attempt already
+ * created it - and only its answer was lost - that conversation is returned.
+ */
+export async function createChatSession(
+  patientId: string,
+  sessionId: string,
+): Promise<ChatSession> {
+  const { data, error } = await supabase
+    .from('chat_session')
+    .insert({ chat_session_id: sessionId, pat_id: patientId })
+    .select()
+    .abortSignal(dataTimeout())
+    .single()
+
+  if (isDuplicateKey(error)) {
+    const existing = await findOwnSession(sessionId)
+    if (existing) return existing
+  }
+  if (error) throw error
+  return data
+}
+
+/**
+ * Saves the patient's message under an id the browser chose. Sending it
+ * again with the same id never saves it twice: if an earlier attempt already
+ * saved it - and only its answer was lost - the saved message is returned.
+ */
 export async function appendPatientMessage(input: {
   sessionId: string
   content: string
+  messageId: string
 }): Promise<ChatMessage> {
   const { data, error } = await supabase
     .from('chat_message')
     .insert({
+      chat_message_id: input.messageId,
       chat_session_id: input.sessionId,
       chat_message_role: 'patient',
       chat_message_content: input.content,
@@ -80,6 +148,10 @@ export async function appendPatientMessage(input: {
     .abortSignal(dataTimeout())
     .single()
 
+  if (isDuplicateKey(error)) {
+    const existing = await findOwnMessage(input.messageId)
+    if (existing && existing.chat_session_id === input.sessionId) return existing
+  }
   if (error) throw error
   return data
 }
