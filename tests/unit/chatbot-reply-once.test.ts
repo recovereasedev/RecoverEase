@@ -1,50 +1,54 @@
 import { describe, expect, it } from 'vitest'
 
 import {
-  REPLY_ID_NAMESPACE,
   ReplyIdConflictError,
   replyIdFor,
   saveReplyOnce,
   type ReplyStore,
   type SavedMessage,
-  uuidV5,
 } from '../../supabase/functions/_shared/reply-once'
 
 /**
  * One reply per patient message (`_shared/reply-once.ts`). The reply is
- * saved under an id derived from the message it answers, so the database's
- * primary key - not a check that a concurrent request can slip past - is
- * what refuses a second reply. `tests/db/chat-idempotency.test.ts` shows
- * Postgres refusing the duplicate; this shows the function's side of it.
+ * saved under an id derived from the message it answers - keyed by a
+ * server-only secret - so the database's primary key, not a check a
+ * concurrent request can slip past, refuses a second reply, and a patient
+ * cannot work the id out to take it first.
+ * `tests/db/chat-idempotency.test.ts` shows Postgres's side of it.
  */
 
-describe('uuidV5', () => {
-  it('matches the published RFC 9562 example', async () => {
-    // RFC 9562 appendix A.4, and Python's uuid.uuid5(NAMESPACE_DNS, ...).
-    expect(await uuidV5('6ba7b810-9dad-11d1-80b4-00c04fd430c8', 'www.example.com')).toBe(
-      '2ed6657d-e927-568b-95e1-2665a8aea6a2',
-    )
-  })
-})
+const KEY = 'test-service-key-not-a-real-secret'
 
 describe('replyIdFor', () => {
   const message = 'c1c1c1c1-1111-4111-8111-111111111111'
 
   it('gives the same message the same reply id, every time', async () => {
-    expect(await replyIdFor(message)).toBe(await replyIdFor(message))
+    expect(await replyIdFor(message, KEY)).toBe(await replyIdFor(message, KEY))
   })
 
   it('gives different messages different reply ids', async () => {
-    expect(await replyIdFor(message)).not.toBe(
-      await replyIdFor('c2c2c2c2-2222-4222-8222-222222222222'),
+    expect(await replyIdFor(message, KEY)).not.toBe(
+      await replyIdFor('c2c2c2c2-2222-4222-8222-222222222222', KEY),
     )
   })
 
+  it('cannot be worked out from the message id alone', async () => {
+    // A patient knows their message id - they chose it - and can read this
+    // code. Without the server's key, any key they guess gives another id.
+    const real = await replyIdFor(message, KEY)
+    for (const guess of ['recoverease', message, 'anon-key', KEY.slice(0, -1)]) {
+      expect(await replyIdFor(message, guess)).not.toBe(real)
+    }
+  })
+
+  it('refuses to derive an id without a key', async () => {
+    await expect(replyIdFor(message, '')).rejects.toThrow(/needs its key/)
+  })
+
   it('is a valid UUID that is not the message’s own id', async () => {
-    const id = await replyIdFor(message)
-    expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
+    const id = await replyIdFor(message, KEY)
+    expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-8[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
     expect(id).not.toBe(message)
-    expect(id).not.toBe(REPLY_ID_NAMESPACE)
   })
 })
 
@@ -79,7 +83,7 @@ describe('saveReplyOnce', () => {
 
   it('saves a reply that is not there yet', async () => {
     const db = table()
-    const id = await replyIdFor('m1')
+    const id = await replyIdFor('m1', KEY)
     const result = await saveReplyOnce(
       db.store(id, { chat_session_id: session, chat_message_role: 'assistant', chat_message_content: 'A' }),
       session,
@@ -90,7 +94,7 @@ describe('saveReplyOnce', () => {
 
   it('saves one reply when two requests answer the same message at once', async () => {
     const db = table()
-    const id = await replyIdFor('m1')
+    const id = await replyIdFor('m1', KEY)
     const [first, second] = await Promise.all([
       saveReplyOnce(
         db.store(id, { chat_session_id: session, chat_message_role: 'assistant', chat_message_content: 'First answer' }),
@@ -112,7 +116,7 @@ describe('saveReplyOnce', () => {
 
   it('does not adopt a message that is not this conversation’s assistant reply', async () => {
     const db = table()
-    const id = await replyIdFor('m1')
+    const id = await replyIdFor('m1', KEY)
     // Something else already holds the id: a patient message, deliberately.
     db.rows.set(id, {
       chat_message_id: id,

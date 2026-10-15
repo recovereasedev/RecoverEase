@@ -332,8 +332,13 @@ Deno.serve(async (request) => {
         // under an id derived from the message it answers, so a second reply
         // to the same message - a retry overlapping a slow request, the
         // conversation open on two devices - collides on the primary key and
-        // adopts the first instead of being saved beside it.
-        const replyId = await replyIdFor(answering)
+        // adopts the first instead of being saved beside it. Keyed by the
+        // service key, which never leaves the server, so a patient cannot
+        // work the id out and take it first (_shared/reply-once.ts).
+        const replyId = await replyIdFor(
+          answering,
+          Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+        )
         let saved: Awaited<ReturnType<typeof saveReplyOnce<ChatMessageRow>>>
         try {
           saved = await saveReplyOnce<ChatMessageRow>(

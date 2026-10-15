@@ -22,6 +22,8 @@ describe('saving to the guidance chat at most once', () => {
   let fx: Fixture
 
   const DUPLICATE = { code: '23505' }
+  /** Stands in for the service key chatbot-reply derives reply ids with. */
+  const KEY = 'test-service-key-not-a-real-secret'
 
   /** Runs as service_role, the role chatbot-reply's service key maps to. */
   async function asServiceRole<T = Record<string, unknown>>(
@@ -132,6 +134,71 @@ describe('saving to the guidance chat at most once', () => {
     })
   })
 
+  describe('an id that is already taken', () => {
+    it('is refused, never overwritten: a patient row under an id stays theirs', async () => {
+      const id = 'd4d4d4d4-4444-4444-8444-444444444444'
+      await database.asUser(
+        fx.aliceUserId,
+        `insert into public.chat_message
+           (chat_message_id, chat_session_id, chat_message_role, chat_message_content)
+         values ($1, $2, 'patient', 'Holding this id.') returning chat_message_id`,
+        [id, fx.aliceChatSessionId],
+      )
+      // A reply saved under that id - which chatbot-reply never aims for,
+      // since a patient cannot work out a reply id - is refused...
+      await expect(
+        asServiceRole(
+          `insert into public.chat_message
+             (chat_message_id, chat_session_id, chat_message_role, chat_message_content)
+           values ($1, $2, 'assistant', 'A reply.') returning chat_message_id`,
+          [id, fx.aliceChatSessionId],
+        ),
+      ).rejects.toMatchObject(DUPLICATE)
+      // ...and the patient's row is untouched.
+      const [row] = await database.asService<{ role: string; content: string }>(
+        `select chat_message_role as role, chat_message_content as content
+           from public.chat_message where chat_message_id = $1`,
+        [id],
+      )
+      expect(row).toEqual({ role: 'patient', content: 'Holding this id.' })
+    })
+
+    it('tells another patient nothing of what is saved under it', async () => {
+      // Bob reuses an id Alice's message holds. He is refused as a duplicate,
+      // and the refusal names the id he sent - not her conversation, not her
+      // words.
+      const id = 'd4d4d4d4-4444-4444-8444-444444444444'
+      const [bobSession] = await database.asService<{ id: string }>(
+        `insert into public.chat_session (pat_id) values ($1) returning chat_session_id as id`,
+        [fx.bobPatId],
+      )
+      const refusal = await database
+        .asUser(
+          fx.bobUserId,
+          `insert into public.chat_message
+             (chat_message_id, chat_session_id, chat_message_role, chat_message_content)
+           values ($1, $2, 'patient', 'Mine.') returning chat_message_id`,
+          [id, bobSession!.id],
+        )
+        .then(
+          () => null,
+          (error: unknown) => error as { code?: string; message?: string; detail?: string },
+        )
+      expect(refusal).toMatchObject(DUPLICATE)
+      const said = `${refusal?.message ?? ''} ${refusal?.detail ?? ''}`
+      expect(said).not.toContain('Holding this id')
+      expect(said).not.toContain(fx.aliceChatSessionId)
+      // And he still cannot read it.
+      await expectDenied(() =>
+        database.asUser(
+          fx.bobUserId,
+          'select chat_message_content from public.chat_message where chat_message_id = $1',
+          [id],
+        ),
+      )
+    })
+  })
+
   describe('chatbot-reply answering the same message twice', () => {
     it('saves one reply, however two requests interleave', async () => {
       const [question] = await database.asUser<{ id: string }>(
@@ -140,7 +207,7 @@ describe('saving to the guidance chat at most once', () => {
          values ($1, 'patient', 'How should I rest this week?') returning chat_message_id as id`,
         [fx.aliceChatSessionId],
       )
-      const replyId = await replyIdFor(question!.id)
+      const replyId = await replyIdFor(question!.id, KEY)
       const reply = (text: string) =>
         asServiceRole(
           `insert into public.chat_message
@@ -178,7 +245,7 @@ describe('saving to the guidance chat at most once', () => {
           `insert into public.chat_message
              (chat_message_id, chat_session_id, chat_message_role, chat_message_content)
            values ($1, $2, 'assistant', 'Take them slowly.') returning chat_message_id`,
-          [await replyIdFor(question!.id), fx.aliceChatSessionId],
+          [await replyIdFor(question!.id, KEY), fx.aliceChatSessionId],
         ),
       ).toHaveLength(1)
     })

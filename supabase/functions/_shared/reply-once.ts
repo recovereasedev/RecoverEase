@@ -9,51 +9,49 @@
  * collides with the first on `chat_message`'s primary key. Whichever request
  * saves second is refused by Postgres and adopts the reply that is there.
  *
+ * The derivation is keyed by a server-only secret. A patient chooses the ids
+ * of their own messages, so a derivation anyone could compute - a public
+ * hash of the message id - would let them work out a reply's id in advance
+ * and take it with a message of their own, blocking the reply. Without the
+ * key the id cannot be predicted, by the patient or anyone else.
+ *
  * No schema change: the primary key already exists.
  *
  * Free of `Deno` and of any database client, like `assistant.ts`, so it is
- * tested in Node; `chatbot-reply` supplies the database side.
+ * tested in Node; `chatbot-reply` supplies the key and the database side.
  */
 
-/**
- * The namespace reply ids are derived in. Fixed: changing it would let a
- * request deployed after the change answer a message a request deployed
- * before it had already answered.
- */
-export const REPLY_ID_NAMESPACE = '2f6b8d0e-6f3c-4c6a-9a51-6e1d7c3b9f42'
-
-function uuidBytes(uuid: string): Uint8Array {
-  const hex = uuid.replace(/-/g, '')
-  if (!/^[0-9a-f]{32}$/i.test(hex)) throw new Error(`Not a UUID: ${uuid}`)
-  const bytes = new Uint8Array(16)
-  for (let i = 0; i < 16; i += 1) {
-    bytes[i] = Number.parseInt(hex.slice(i * 2, i * 2 + 2), 16)
-  }
-  return bytes
-}
+/** Keeps these ids apart from anything else the same key might derive. */
+const REPLY_ID_CONTEXT = 'recoverease/chat-reply-id/v1'
 
 function formatUuid(bytes: Uint8Array): string {
   const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
 }
 
-/** A name-based UUID, version 5 (RFC 9562): SHA-1 of the namespace and the name. */
-export async function uuidV5(namespace: string, name: string): Promise<string> {
-  const nameBytes = new TextEncoder().encode(name)
-  const input = new Uint8Array(16 + nameBytes.length)
-  input.set(uuidBytes(namespace), 0)
-  input.set(nameBytes, 16)
-
-  const hash = new Uint8Array(await crypto.subtle.digest('SHA-1', input))
-  const bytes = hash.slice(0, 16)
-  bytes[6] = (bytes[6]! & 0x0f) | 0x50 // version 5
+/**
+ * The id the reply to `patientMessageId` is saved under: the same one every
+ * time for the same key, and unpredictable without the key. A UUID version 8
+ * (RFC 9562's custom version) carrying the first 122 bits of
+ * HMAC-SHA-256(key, context + message id).
+ */
+export async function replyIdFor(patientMessageId: string, key: string): Promise<string> {
+  if (!key) throw new Error('A reply id needs its key')
+  const encoder = new TextEncoder()
+  const hmacKey = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(key),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  )
+  const mac = new Uint8Array(
+    await crypto.subtle.sign('HMAC', hmacKey, encoder.encode(`${REPLY_ID_CONTEXT}:${patientMessageId}`)),
+  )
+  const bytes = mac.slice(0, 16)
+  bytes[6] = (bytes[6]! & 0x0f) | 0x80 // version 8
   bytes[8] = (bytes[8]! & 0x3f) | 0x80 // RFC 9562 variant
   return formatUuid(bytes)
-}
-
-/** The id the reply to `patientMessageId` is saved under - always the same one. */
-export function replyIdFor(patientMessageId: string): Promise<string> {
-  return uuidV5(REPLY_ID_NAMESPACE, patientMessageId)
 }
 
 export type SavedMessage = {
@@ -71,11 +69,11 @@ export type ReplyStore<Row extends SavedMessage> = {
 }
 
 /**
- * The id was taken, but not by this conversation's assistant reply. By
- * chance it cannot happen in practice; it would take a patient deliberately
- * saving one of their own messages under the id of its reply. Either way it
- * is a failure to save - the request does not claim an answer it does not
- * have, and the doctor is asked to review the conversation.
+ * The id was taken, but not by this conversation's assistant reply. With a
+ * keyed derivation nobody can aim for it, and by chance it would take a
+ * 122-bit collision. Should it happen anyway it is a failure to save: the
+ * request does not claim an answer it does not have, does not show what the
+ * other row says, and the doctor is asked to review the conversation.
  */
 export class ReplyIdConflictError extends Error {
   constructor() {

@@ -46,6 +46,32 @@ function isDuplicateKey(error: { code?: string } | null): boolean {
   return error?.code === '23505'
 }
 
+/**
+ * A save that did not come back saved.
+ *
+ * `certain` says whether it is known not to have happened. The server
+ * refusing it (a 4xx answer) is certain. No answer at all - a dropped
+ * connection, the browser's time limit, a gateway error - is not: the
+ * database may have committed it before the answer was lost, so the patient
+ * must not be told it failed.
+ */
+export class SaveFailedError extends Error {
+  readonly certain: boolean
+
+  constructor(certain: boolean, options?: { cause?: unknown }) {
+    super(certain ? 'The save was refused.' : 'The save could not be confirmed.', options)
+    this.name = 'SaveFailedError'
+    this.certain = certain
+  }
+}
+
+/** Whether a failed save's HTTP status leaves its outcome unknown. */
+export function saveOutcomeUnknown(status: number): boolean {
+  // 0: no answer (postgrest-js reports a dropped connection or an abort so).
+  // 408 and 5xx: an intermediary gave up; the database may still have saved.
+  return status === 0 || status === 408 || status >= 500
+}
+
 /** Module 8.4 "View Chat History / Past Conversations". */
 export async function fetchChatSessions(
   patientId: string,
@@ -111,7 +137,7 @@ export async function createChatSession(
   patientId: string,
   sessionId: string,
 ): Promise<ChatSession> {
-  const { data, error } = await supabase
+  const { data, error, status } = await supabase
     .from('chat_session')
     .insert({ chat_session_id: sessionId, pat_id: patientId })
     .select()
@@ -122,21 +148,26 @@ export async function createChatSession(
     const existing = await findOwnSession(sessionId)
     if (existing) return existing
   }
-  if (error) throw error
+  if (error) {
+    throw new SaveFailedError(!saveOutcomeUnknown(status), { cause: error })
+  }
   return data
 }
 
 /**
  * Saves the patient's message under an id the browser chose. Sending it
  * again with the same id never saves it twice: if an earlier attempt already
- * saved it - and only its answer was lost - the saved message is returned.
+ * saved it - and only its answer was lost - the saved message is returned,
+ * as it was saved. If the patient has edited the text since, the returned
+ * message is the earlier version: the caller compares and says so, rather
+ * than saving the edit as a second message or overwriting the first.
  */
 export async function appendPatientMessage(input: {
   sessionId: string
   content: string
   messageId: string
 }): Promise<ChatMessage> {
-  const { data, error } = await supabase
+  const { data, error, status } = await supabase
     .from('chat_message')
     .insert({
       chat_message_id: input.messageId,
@@ -152,7 +183,9 @@ export async function appendPatientMessage(input: {
     const existing = await findOwnMessage(input.messageId)
     if (existing && existing.chat_session_id === input.sessionId) return existing
   }
-  if (error) throw error
+  if (error) {
+    throw new SaveFailedError(!saveOutcomeUnknown(status), { cause: error })
+  }
   return data
 }
 
@@ -171,14 +204,36 @@ export class ChatbotUnavailableError extends Error {
 }
 
 /**
- * The patient's message itself was not saved - nothing was sent to the
- * assistant, and nothing is waiting on a reply. Distinct from
+ * The patient's message is not known to be saved, so no reply was asked for.
+ * `certain` is true when it is known not to have been saved, false when its
+ * save could not be confirmed either way. Distinct from
  * `ChatbotUnavailableError`, after which the message is safe.
  */
 export class MessageNotSentError extends Error {
-  constructor(options?: { cause?: unknown }) {
-    super('The message was not sent.', options)
+  readonly certain: boolean
+
+  constructor(certain: boolean, options?: { cause?: unknown }) {
+    super(
+      certain ? 'The message was not sent.' : 'The message could not be confirmed as sent.',
+      options,
+    )
     this.name = 'MessageNotSentError'
+    this.certain = certain
+  }
+}
+
+/**
+ * An earlier version of this submission was saved - its answer was lost,
+ * and the patient edited the text before sending again. The saved version
+ * stands; the edit was not saved, and is not saved as a second message.
+ */
+export class EarlierVersionSavedError extends Error {
+  readonly saved: ChatMessage
+
+  constructor(saved: ChatMessage) {
+    super('An earlier version of the message was saved.')
+    this.name = 'EarlierVersionSavedError'
+    this.saved = saved
   }
 }
 

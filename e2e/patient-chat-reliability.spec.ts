@@ -1,6 +1,6 @@
 import type { Page, Route } from '@playwright/test'
 
-import { expect, IDS, test } from './support/fixtures'
+import { expect, IDS, type SupabaseStub, test } from './support/fixtures'
 
 /**
  * The guidance chat when a reply does not come back as it should: a request
@@ -70,6 +70,88 @@ function watch(page: Page) {
   })
   return counts
 }
+
+/**
+ * The patient's side of the network for saving and reading chat messages,
+ * so a test can say what happens to each save: it reaches the database but
+ * its answer is lost, it is lost before it gets there, or the server refuses
+ * it - and whether reads get through.
+ */
+async function messageNetwork(page: Page, stub: SupabaseStub) {
+  type Fate = 'save-and-lose-answer' | 'lose-before-saving' | 'refuse'
+  const net = {
+    /** What happens to the next saves, in order; then saves go through. */
+    nextSaves: [] as Fate[],
+    /** While true, every read of chat_message fails, as if offline. */
+    readsFail: false,
+    /**
+     * While true, reloading the conversation fails, but looking one message
+     * up by id does not - to hold the page's background reload back.
+     */
+    conversationReadsFail: false,
+    /** The id each save was sent under, in order. */
+    savedIds: [] as string[],
+    /** The text each save was sent with, in order. */
+    savedTexts: [] as string[],
+  }
+  await page.route(
+    (url) => url.pathname.endsWith('/rest/v1/chat_message'),
+    async (route) => {
+      const request = route.request()
+      if (request.method() === 'POST') {
+        const row = JSON.parse(request.postData() ?? '{}')
+        net.savedIds.push(row.chat_message_id)
+        net.savedTexts.push(row.chat_message_content)
+        const fate = net.nextSaves.shift()
+        if (fate === 'save-and-lose-answer') {
+          stub.addRows('chat_message', [
+            { ...row, chat_message_created_at: new Date().toISOString() },
+          ])
+          await route.abort('timedout')
+          return
+        }
+        if (fate === 'lose-before-saving') {
+          await route.abort('timedout')
+          return
+        }
+        if (fate === 'refuse') {
+          await route.fulfill({
+            status: 403,
+            contentType: 'application/json',
+            body: JSON.stringify({
+              code: '42501',
+              message: 'new row violates row-level security policy',
+            }),
+          })
+          return
+        }
+      }
+      const lookup = new URL(request.url()).searchParams.has('chat_message_id')
+      if (
+        request.method() === 'GET' &&
+        (net.readsFail || (net.conversationReadsFail && !lookup))
+      ) {
+        await route.abort('internetdisconnected')
+        return
+      }
+      await route.fallback()
+    },
+  )
+  return net
+}
+
+/** Messages with this text, as the database holds them. */
+function saved(stub: SupabaseStub, text: string) {
+  return stub.rowsIn('chat_message').filter((row) => row.chat_message_content === text)
+}
+
+/** The conversation has loaded - before a test takes the connection down. */
+async function conversationLoaded(page: Page) {
+  await expect(page.getByText('No messages in this conversation yet.')).toBeVisible()
+}
+
+/** Waits past the client's own retries of a failed read (1 s, 2 s, 4 s). */
+const AFTER_RETRIES = { timeout: 15_000 }
 
 async function send(page: Page, text = QUESTION) {
   await page.getByLabel(/your message/i).fill(text)
@@ -242,6 +324,9 @@ test.describe('the guidance chat when a reply does not come back', () => {
 
     await send(page)
     await expect(tryAgain(page)).toBeVisible()
+    // Let the page's own refresh after the failure finish first: if it read
+    // the reply below, it would show it and rightly drop Try again.
+    await page.waitForLoadState('networkidle')
     // Meanwhile an earlier, slow request saved its reply after all.
     stub.addRows('chat_message', [
       {
@@ -349,7 +434,7 @@ test.describe('the guidance chat when a reply does not come back', () => {
     expect(counts.messagesSaved).toBe(1)
   })
 
-  test('puts the message back when it could not be saved, and asks for no reply', async ({
+  test('puts the message back when its save cannot be confirmed, and asks for no reply', async ({
     page,
     signInAs,
   }) => {
@@ -368,7 +453,9 @@ test.describe('the guidance chat when a reply does not come back', () => {
     await page.goto('/patient/chat')
 
     await send(page)
-    await expect(page.getByRole('status')).toContainText('wasn’t sent')
+    // The save never answered, so nobody knows whether it landed: the page
+    // does not claim it failed.
+    await expect(page.getByRole('status')).toContainText('couldn’t confirm', { timeout: 15_000 })
     await expect(page.getByLabel(/your message/i)).toHaveValue(QUESTION)
     await expect(tryAgain(page)).toHaveCount(0)
     expect(counts.replyRequests).toBe(0)
@@ -418,32 +505,298 @@ test.describe('the guidance chat when a reply does not come back', () => {
     signInAs,
   }) => {
     const stub = await signInAs('patient', CONVERSATION)
-    const sentIds: string[] = []
-    let commitButLoseAnswer = true
-    let loseConfirmation = true
+    const net = await messageNetwork(page, stub)
     await page.route(
-      (url) => url.pathname.endsWith('/rest/v1/chat_message'),
+      '**/functions/v1/chatbot-reply',
+      reply(503, { error: 'The guidance assistant is unavailable.', code: 'unavailable' }),
+    )
+    const counts = watch(page)
+    await page.goto('/patient/chat')
+    await conversationLoaded(page)
+
+    // Saved, but the answer is lost - and the connection is down, so the
+    // browser cannot check.
+    net.nextSaves.push('save-and-lose-answer')
+    net.readsFail = true
+    await send(page)
+    // Never "wasn't sent": it may have been.
+    await expect(page.getByRole('status')).toContainText('couldn’t confirm', AFTER_RETRIES)
+    await expect(page.getByText('wasn’t sent')).toHaveCount(0)
+    await expect(page.getByLabel(/your message/i)).toHaveValue(QUESTION)
+
+    // Sending it again reuses the message's id. The database refuses a
+    // second copy, and the browser uses the one that was saved. (The
+    // conversation's own reload is held back until then: if it got through
+    // first it would show the message as sent, which is also right, but is
+    // not what this test is about.)
+    net.conversationReadsFail = true
+    net.readsFail = false
+    await page.getByRole('button', { name: /send message/i }).click()
+    net.conversationReadsFail = false
+    await expect(page.getByRole('status')).toContainText('not available at the moment')
+    expect(net.savedIds).toHaveLength(2)
+    expect(net.savedIds[0]).toBe(net.savedIds[1])
+    expect(saved(stub, QUESTION)).toHaveLength(1)
+    await expect(page.getByText(QUESTION)).toHaveCount(1)
+    expect(counts.replyRequests).toBe(1)
+  })
+
+  test('an edit after an unconfirmed save that did save keeps the original, and says so', async ({
+    page,
+    signInAs,
+  }) => {
+    const stub = await signInAs('patient', CONVERSATION)
+    const net = await messageNetwork(page, stub)
+    await page.route(
+      '**/functions/v1/chatbot-reply',
+      reply(503, { error: 'The guidance assistant is unavailable.', code: 'unavailable' }),
+    )
+    const counts = watch(page)
+    await page.goto('/patient/chat')
+    await conversationLoaded(page)
+
+    net.nextSaves.push('save-and-lose-answer')
+    net.readsFail = true
+    await send(page)
+    await expect(page.getByRole('status')).toContainText('couldn’t confirm', AFTER_RETRIES)
+
+    // The patient changes their mind about the wording and sends again.
+    net.readsFail = false
+    const EDITED = 'Is it normal to feel tired in the afternoons and evenings?'
+    await page.getByLabel(/your message/i).fill(EDITED)
+    await page.getByRole('button', { name: /send message/i }).click()
+
+    // Same submission, same id: the first version was saved, so the edit is
+    // neither saved beside it nor written over it.
+    await expect(page.getByRole('status')).toContainText('sent before you changed it')
+    expect(net.savedIds).toHaveLength(2)
+    expect(net.savedIds[0]).toBe(net.savedIds[1])
+    expect(saved(stub, QUESTION)).toHaveLength(1)
+    expect(saved(stub, EDITED)).toHaveLength(0)
+    // The edit is not lost - it is still in the message box.
+    await expect(page.getByLabel(/your message/i)).toHaveValue(EDITED)
+    // Nothing was asked of the assistant behind the patient's back...
+    expect(counts.replyRequests).toBe(0)
+    // ...until they ask.
+    await page.getByRole('button', { name: 'Get a reply' }).click()
+    await expect(page.getByRole('status')).toContainText('not available at the moment')
+    expect(counts.replyRequests).toBe(1)
+  })
+
+  test('an edit after an unconfirmed save that never arrived saves the edit, once, under the same id', async ({
+    page,
+    signInAs,
+  }) => {
+    const stub = await signInAs('patient', CONVERSATION)
+    const net = await messageNetwork(page, stub)
+    await page.route(
+      '**/functions/v1/chatbot-reply',
+      reply(503, { error: 'The guidance assistant is unavailable.', code: 'unavailable' }),
+    )
+    await page.goto('/patient/chat')
+    await conversationLoaded(page)
+
+    net.nextSaves.push('lose-before-saving')
+    net.readsFail = true
+    await send(page)
+    await expect(page.getByRole('status')).toContainText('couldn’t confirm', AFTER_RETRIES)
+
+    net.readsFail = false
+    const EDITED = 'Is it normal to feel tired in the evenings?'
+    await page.getByLabel(/your message/i).fill(EDITED)
+    await page.getByRole('button', { name: /send message/i }).click()
+
+    await expect(page.getByRole('status')).toContainText('not available at the moment')
+    expect(net.savedIds[0]).toBe(net.savedIds[1])
+    expect(saved(stub, QUESTION)).toHaveLength(0)
+    expect(saved(stub, EDITED)).toHaveLength(1)
+    expect(saved(stub, EDITED)[0]!.chat_message_id).toBe(net.savedIds[0])
+  })
+
+  test('a save the server refused says it was not sent; it is not left unconfirmed', async ({
+    page,
+    signInAs,
+  }) => {
+    const stub = await signInAs('patient', CONVERSATION)
+    const net = await messageNetwork(page, stub)
+    const lookups: string[] = []
+    page.on('request', (request) => {
+      if (
+        request.method() === 'GET' &&
+        new URL(request.url()).searchParams.has('chat_message_id')
+      ) {
+        lookups.push(request.url())
+      }
+    })
+    await page.goto('/patient/chat')
+    await conversationLoaded(page)
+
+    net.nextSaves.push('refuse')
+    await send(page)
+    await expect(page.getByRole('status')).toContainText('wasn’t sent')
+    await expect(page.getByText('couldn’t confirm')).toHaveCount(0)
+    await expect(page.getByLabel(/your message/i)).toHaveValue(QUESTION)
+    // A refusal is an answer: there is nothing to look up.
+    expect(lookups).toHaveLength(0)
+    expect(saved(stub, QUESTION)).toHaveLength(0)
+  })
+
+  test('a save confirmed later by the conversation itself is reported as sent', async ({
+    page,
+    signInAs,
+  }) => {
+    const stub = await signInAs('patient', CONVERSATION)
+    const net = await messageNetwork(page, stub)
+    const lookups: string[] = []
+    page.on('request', (request) => {
+      if (
+        request.method() === 'GET' &&
+        new URL(request.url()).searchParams.has('chat_message_id')
+      ) {
+        lookups.push(request.url())
+      }
+    })
+    // Only the look-up by id fails; the conversation itself still loads.
+    await page.route(
+      (url) =>
+        url.pathname.endsWith('/rest/v1/chat_message') && url.searchParams.has('chat_message_id'),
+      (route) => route.abort('internetdisconnected'),
+    )
+    await page.goto('/patient/chat')
+    await conversationLoaded(page)
+
+    net.nextSaves.push('save-and-lose-answer')
+    await send(page)
+
+    // The reloaded conversation shows the message, so the page says so -
+    // and does not leave it in the box to be sent twice.
+    await expect(page.getByRole('status')).toContainText('Your message was sent.', AFTER_RETRIES)
+    await expect(page.getByLabel(/your message/i)).toHaveValue('')
+    await expect(page.getByRole('button', { name: 'Get a reply' })).toBeVisible()
+    expect(lookups.length).toBeGreaterThan(0)
+    expect(saved(stub, QUESTION)).toHaveLength(1)
+  })
+
+  test('after a refresh, an unconfirmed send keeps its id', async ({ page, signInAs }) => {
+    const stub = await signInAs('patient', CONVERSATION)
+    const net = await messageNetwork(page, stub)
+    await page.route(
+      '**/functions/v1/chatbot-reply',
+      reply(503, { error: 'The guidance assistant is unavailable.', code: 'unavailable' }),
+    )
+    await page.goto('/patient/chat')
+    await conversationLoaded(page)
+
+    // The save is still on its way when the page is refreshed.
+    net.nextSaves.push('lose-before-saving')
+    net.readsFail = true
+    await send(page)
+    await expect(page.getByRole('status')).toContainText('couldn’t confirm', AFTER_RETRIES)
+    const firstId = net.savedIds[0]!
+
+    net.readsFail = false
+    await page.reload()
+    // The conversation loads without it...
+    await conversationLoaded(page)
+    // ...and only now does it reach the database, so the patient cannot see it.
+    stub.addRows('chat_message', [
+      {
+        chat_message_id: firstId,
+        chat_session_id: SESSION,
+        chat_message_role: 'patient',
+        chat_message_content: QUESTION,
+        chat_message_created_at: new Date().toISOString(),
+      },
+    ])
+
+    // The patient, not seeing it, writes their question again.
+    const AGAIN = 'Is feeling tired in the afternoon normal?'
+    await send(page, AGAIN)
+    await expect(page.getByRole('status')).toContainText('sent before you changed it')
+    expect(net.savedIds.at(-1)).toBe(firstId)
+    expect(saved(stub, QUESTION)).toHaveLength(1)
+    expect(saved(stub, AGAIN)).toHaveLength(0)
+    await expect(page.getByLabel(/your message/i)).toHaveValue(AGAIN)
+  })
+
+  test('after a refused save, sending again is a fresh attempt', async ({ page, signInAs }) => {
+    const stub = await signInAs('patient', CONVERSATION)
+    const net = await messageNetwork(page, stub)
+    await page.route(
+      '**/functions/v1/chatbot-reply',
+      reply(503, { error: 'The guidance assistant is unavailable.', code: 'unavailable' }),
+    )
+    await page.goto('/patient/chat')
+    await conversationLoaded(page)
+
+    net.nextSaves.push('refuse')
+    await send(page)
+    await expect(page.getByRole('status')).toContainText('wasn’t sent')
+    await page.getByRole('button', { name: /send message/i }).click()
+    await expect(page.getByRole('status')).toContainText('not available at the moment')
+    // The refused id was never used; it is not carried into the next try.
+    expect(net.savedIds).toHaveLength(2)
+    expect(net.savedIds[1]).not.toBe(net.savedIds[0])
+    expect(saved(stub, QUESTION)).toHaveLength(1)
+  })
+
+  test('once its earlier version is found, an unrelated new message is sent normally', async ({
+    page,
+    signInAs,
+  }) => {
+    const stub = await signInAs('patient', CONVERSATION)
+    const net = await messageNetwork(page, stub)
+    await page.route(
+      '**/functions/v1/chatbot-reply',
+      reply(503, { error: 'The guidance assistant is unavailable.', code: 'unavailable' }),
+    )
+    await page.goto('/patient/chat')
+    await conversationLoaded(page)
+
+    net.nextSaves.push('save-and-lose-answer')
+    net.readsFail = true
+    await send(page)
+    await expect(page.getByRole('status')).toContainText('couldn’t confirm', AFTER_RETRIES)
+
+    // The patient starts editing; the connection comes back and the reloaded
+    // conversation shows the original was sent.
+    await page.getByLabel(/your message/i).fill('Is it normal to feel tired in the evening?')
+    net.readsFail = false
+    await expect(page.getByRole('status')).toContainText('sent before you changed it', AFTER_RETRIES)
+
+    // They write something else entirely: a new message, saved as such.
+    const NEW_QUESTION = 'When can I start walking further?'
+    await page.getByLabel(/your message/i).fill(NEW_QUESTION)
+    await page.getByRole('button', { name: /send message/i }).click()
+    await expect(page.getByRole('status')).toContainText('not available at the moment')
+    expect(saved(stub, NEW_QUESTION)).toHaveLength(1)
+    expect(saved(stub, NEW_QUESTION)[0]!.chat_message_id).not.toBe(net.savedIds[0])
+    expect(saved(stub, QUESTION)).toHaveLength(1)
+  })
+
+  test('a new conversation remembered from before a refresh does not take over the next one', async ({
+    page,
+    signInAs,
+  }) => {
+    // No conversations yet.
+    const stub = await signInAs('patient')
+    let startedButAnswerLost = false
+    await page.route(
+      (url) => url.pathname.endsWith('/rest/v1/chat_session'),
       async (route) => {
-        const request = route.request()
-        if (request.method() === 'POST') {
-          const row = JSON.parse(request.postData() ?? '{}')
-          sentIds.push(row.chat_message_id)
-          if (commitButLoseAnswer) {
-            commitButLoseAnswer = false
-            stub.addRows('chat_message', [
-              { ...row, chat_message_created_at: new Date().toISOString() },
-            ])
-            await route.abort('timedout')
-            return
-          }
-        }
-        // The browser's check for the saved message fails too - every try
-        // (the client retries a failed read) - until the patient sends again.
-        if (
-          request.method() === 'GET' &&
-          new URL(request.url()).searchParams.has('chat_message_id') &&
-          loseConfirmation
-        ) {
+        if (route.request().method() === 'POST' && !startedButAnswerLost) {
+          startedButAnswerLost = true
+          const row = JSON.parse(route.request().postData() ?? '{}')
+          stub.addRows('chat_session', [
+            {
+              chat_session_external_ref: null,
+              chat_session_started_at: '2026-03-01T02:00:00Z',
+              chat_session_ended_at: null,
+              chat_session_has_critical_flag: false,
+              chat_session_summary: null,
+              ...row,
+            },
+          ])
           await route.abort('timedout')
           return
         }
@@ -454,24 +807,48 @@ test.describe('the guidance chat when a reply does not come back', () => {
       '**/functions/v1/chatbot-reply',
       reply(503, { error: 'The guidance assistant is unavailable.', code: 'unavailable' }),
     )
-    const counts = watch(page)
     await page.goto('/patient/chat')
-
     await send(page)
-    // After the client's own retries of the check (1 s, 2 s, 4 s apart).
-    await expect(page.getByRole('status')).toContainText('wasn’t sent', { timeout: 15_000 })
-    await expect(page.getByLabel(/your message/i)).toHaveValue(QUESTION)
+    await expect(page.getByRole('status').filter({ hasText: 'wasn’t sent' })).toBeVisible()
+    const firstSession = stub.rowsIn('chat_session')[0]!.chat_session_id
 
-    // Sending it again reuses the message's id. The database refuses a
-    // second copy, and the browser uses the one that was saved.
-    loseConfirmation = false
-    await page.getByRole('button', { name: /send message/i }).click()
+    await page.reload()
+    // Later, the patient starts a new conversation and asks something else.
+    await page.getByRole('button', { name: /^start new$/i }).click()
+    const LATER = 'Should I keep my wound dry?'
+    await send(page, LATER)
     await expect(page.getByRole('status')).toContainText('not available at the moment')
-    expect(sentIds).toHaveLength(2)
-    expect(sentIds[0]).toBe(sentIds[1])
-    expect(stub.rowsIn('chat_message').filter((row) => row.chat_message_content === QUESTION)).toHaveLength(1)
-    await expect(page.getByText(QUESTION)).toHaveCount(1)
-    expect(counts.replyRequests).toBe(1)
+
+    const [message] = saved(stub, LATER)
+    expect(message).toBeDefined()
+    // In a conversation of its own, not the one remembered from before.
+    expect(message!.chat_session_id).not.toBe(firstSession)
+    expect(stub.rowsIn('chat_session')).toHaveLength(2)
+  })
+
+  test('pressing Enter repeatedly while re-sending sends it once', async ({ page, signInAs }) => {
+    const stub = await signInAs('patient', CONVERSATION)
+    const net = await messageNetwork(page, stub)
+    await page.route(
+      '**/functions/v1/chatbot-reply',
+      reply(503, { error: 'The guidance assistant is unavailable.', code: 'unavailable' }),
+    )
+    await page.goto('/patient/chat')
+    await conversationLoaded(page)
+
+    net.nextSaves.push('lose-before-saving')
+    net.readsFail = true
+    await send(page)
+    await expect(page.getByRole('status')).toContainText('couldn’t confirm', AFTER_RETRIES)
+
+    net.readsFail = false
+    const composer = page.getByLabel(/your message/i)
+    await composer.press('Enter')
+    await composer.press('Enter')
+    await composer.press('Enter')
+    await expect(page.getByRole('status')).toContainText('not available at the moment')
+    expect(net.savedIds).toHaveLength(2)
+    expect(saved(stub, QUESTION)).toHaveLength(1)
   })
 
   test('a new conversation whose start was not confirmed is not started twice', async ({

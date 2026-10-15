@@ -113,7 +113,9 @@ describe('chatbot-reply', () => {
     // The reply is saved under the id derived from the message it answers,
     // and a duplicate-key refusal adopts the reply already there.
     expect(source).toContain('const answering = newestFirst[0]!.chat_message_id')
-    expect(answerStep).toContain('const replyId = await replyIdFor(answering)')
+    expect(answerStep).toMatch(
+      /const replyId = await replyIdFor\(\s*answering,\s*Deno\.env\.get\('SUPABASE_SERVICE_ROLE_KEY'\)/,
+    )
     expect(answerStep).toContain('chat_message_id: replyId,')
     expect(answerStep).toContain("insertError?.code === '23505'")
     expect(answerStep).toContain('saveReplyOnce<ChatMessageRow>(')

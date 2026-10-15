@@ -20,15 +20,25 @@ import { useCurrentUser } from '@/features/auth/auth-context'
 import {
   appendPatientMessage,
   ChatbotUnavailableError,
+  type ChatMessage,
   createChatSession,
+  EarlierVersionSavedError,
   fetchChatMessages,
   fetchChatSessions,
   findOwnMessage,
   MessageNotSentError,
   newChatId,
   requestAssistantReply,
+  SaveFailedError,
 } from '@/features/chat/api'
 import { AssistantAvatar } from '@/features/chat/components/assistant-avatar'
+import {
+  forgetPendingSend,
+  loadPendingSends,
+  type PendingSend,
+  pendingSendFor,
+  rememberPendingSend,
+} from '@/features/chat/pending-send'
 import {
   canRetry,
   MAX_REPLY_RETRIES,
@@ -56,23 +66,30 @@ const SUGGESTIONS = [
   'How can I keep track of my recovery progress?',
 ]
 
-/** Why the last request in a conversation left it without a reply. */
-type Failure = ReplyFailure | 'not_sent'
+/** How the last send, or request for a reply, in a conversation ended. */
+type Failure =
+  | ReplyFailure
+  /** The message is known not to have been saved. */
+  | 'not_sent'
+  /** The message's save could not be confirmed either way. */
+  | 'unconfirmed'
+  /** An unconfirmed message turned out to be saved, as sent. */
+  | 'sent_after_all'
+  /** It turned out to be saved as sent before the patient edited it. */
+  | 'sent_earlier_version'
 
-/**
- * A message on its way to being saved, with the ids it is saved under. The
- * ids are chosen once, in the browser, and kept until the save is
- * confirmed, so sending the same message again - after a save whose answer
- * was lost - reuses them, and the database refuses a second copy.
- */
-type PendingSend = {
-  content: string
-  /** The conversation it goes to; null to start a new one. */
-  sessionId: string | null
-  /** The id a new conversation is started under. */
-  newSessionId: string
-  messageId: string
+/** The outcomes that are about the reply, not about the patient's message. */
+function isReplyFailure(failure: Failure): failure is ReplyFailure {
+  return (
+    failure !== 'not_sent' &&
+    failure !== 'unconfirmed' &&
+    failure !== 'sent_after_all' &&
+    failure !== 'sent_earlier_version'
+  )
 }
+
+/** A send: the ids of its submission, and the text sent this time. */
+type Send = { pending: PendingSend; content: string }
 
 /**
  * What the patient is told when no reply came back. Every message says
@@ -82,6 +99,17 @@ type PendingSend = {
 function failureMessage(failure: Failure, retriesLeft: number): string {
   if (failure === 'not_sent') {
     return 'Your message wasn’t sent. Check your internet connection, then send it again.'
+  }
+  if (failure === 'unconfirmed') {
+    // Never "wasn't sent": it may have been. Sending again is safe - it
+    // reuses the same message, so it cannot be saved twice.
+    return 'We couldn’t confirm your message was sent. Check your internet connection, then send it again. It won’t be sent twice.'
+  }
+  if (failure === 'sent_after_all') {
+    return 'Your message was sent.'
+  }
+  if (failure === 'sent_earlier_version') {
+    return 'Your message was sent before you changed it, so your changes weren’t sent. They’re still in the message box if you want to send them.'
   }
   if (canRetry(failure) && retriesLeft <= 0) {
     return 'The guidance assistant still isn’t replying. Your message has been saved, and your care team can still see it.'
@@ -152,8 +180,19 @@ export function PatientChatPage() {
   const requestInFlight = useRef(false)
   /** The conversation the request in flight belongs to. */
   const requestSessionRef = useRef<string | null>(null)
-  /** The message being sent, until it is known to be saved. */
-  const pendingSendRef = useRef<PendingSend | null>(null)
+  /**
+   * Sends not yet confirmed as saved, with their ids (`pending-send.ts`).
+   * Read from browser storage once, so a refresh does not forget them; kept
+   * here so they also work where storage is blocked.
+   */
+  const pendingSendsRef = useRef<PendingSend[] | null>(null)
+  /** What each unconfirmed send said - in memory only, never stored. */
+  const pendingTextRef = useRef(new Map<string, string>())
+  /**
+   * The edit a submission is held open for, when its earlier version turned
+   * out to be saved while the patient had changed the text (see below).
+   */
+  const heldEditRef = useRef(new Map<string, string>())
   /** Phones only: the past-conversations list in place of the conversation. */
   const [showHistory, setShowHistory] = useState(false)
   const transcriptEndRef = useRef<HTMLDivElement>(null)
@@ -198,6 +237,30 @@ export function PatientChatPage() {
     setRetries(0)
   }
 
+  const pendingSends = (): PendingSend[] => {
+    pendingSendsRef.current ??= loadPendingSends(patientId)
+    return pendingSendsRef.current
+  }
+
+  const rememberSend = (pending: PendingSend, content: string) => {
+    pendingSendsRef.current = [
+      ...pendingSends().filter((entry) => entry.messageId !== pending.messageId),
+      pending,
+    ]
+    pendingTextRef.current.set(pending.messageId, content)
+    rememberPendingSend(patientId, pending)
+  }
+
+  /** The submission is settled: it is saved. Its ids are not used again. */
+  const settleSend = (messageId: string) => {
+    pendingSendsRef.current = pendingSends().filter(
+      (entry) => entry.messageId !== messageId,
+    )
+    pendingTextRef.current.delete(messageId)
+    heldEditRef.current.delete(messageId)
+    forgetPendingSend(patientId, messageId)
+  }
+
   const messagesQuery = useQuery({
     queryKey: queryKeys.chat.messagesFor(activeSessionId ?? ''),
     queryFn: () => fetchChatMessages(activeSessionId as string),
@@ -215,9 +278,48 @@ export function PatientChatPage() {
       (failure.newSessionId !== undefined &&
         failure.newSessionId === activeSessionId)) &&
     (failure.kind === 'not_sent' ||
+      failure.kind === 'unconfirmed' ||
       lastMessage?.chat_message_role !== 'assistant')
       ? failure.kind
       : null
+
+  useEffect(() => {
+    // A send that could not be confirmed can turn out to be saved after
+    // all: it shows up in the conversation. Then it is settled - its ids are
+    // not reused - and the patient is told, instead of being left to send
+    // it again as a second message.
+    const loaded = messagesQuery.data
+    if (!loaded) return
+    for (const entry of pendingSends()) {
+      const saved = loaded.find((message) => message.chat_message_id === entry.messageId)
+      if (!saved) continue
+      const sentText = pendingTextRef.current.get(entry.messageId)
+      if (sentText === undefined) {
+        // From before a refresh: nothing on screen to update.
+        settleSend(entry.messageId)
+        continue
+      }
+      const typed = draftRef.current?.value.trim() ?? ''
+      const edited = typed !== '' && typed !== sentText
+      // An edit in the box keeps the submission open for that edit, so
+      // sending it - even at the very moment this is found - meets the same
+      // id and is refused, never saved as a second message.
+      if (edited) heldEditRef.current.set(entry.messageId, typed)
+      else settleSend(entry.messageId)
+      setDraft((current) => (current.trim() === sentText ? '' : current))
+      setFailure((current) =>
+        current?.kind === 'unconfirmed'
+          ? {
+              sessionId: saved.chat_session_id,
+              kind: edited ? 'sent_earlier_version' : 'sent_after_all',
+            }
+          : current,
+      )
+    }
+    // Runs when the conversation's messages change, which is when a save
+    // can be seen; the helpers only read refs.
+    // oxlint-disable-next-line react/exhaustive-deps
+  }, [messagesQuery.data])
 
   useEffect(() => {
     // After the phone switches between the conversation and its history, a
@@ -250,38 +352,50 @@ export function PatientChatPage() {
   }
 
   const sendMessage = useMutation({
-    mutationFn: async (send: PendingSend) => {
-      let sessionId = send.sessionId
+    mutationFn: async ({ pending, content }: Send) => {
+      let sessionId = pending.sessionId
 
-      try {
-        if (!sessionId) {
-          const session = await createChatSession(patientId, send.newSessionId)
+      if (!sessionId) {
+        try {
+          const session = await createChatSession(patientId, pending.newSessionId)
           sessionId = session.chat_session_id
           requestSessionRef.current = sessionId
           setActiveSessionId(sessionId)
+        } catch (cause) {
+          // Not even the conversation: the message itself was never sent. A
+          // refused start used none of its ids; an unconfirmed one keeps the
+          // conversation's id, so sending again cannot start a second one.
+          if (cause instanceof SaveFailedError && cause.certain) {
+            settleSend(pending.messageId)
+          }
+          throw new MessageNotSentError(true, { cause })
         }
-
-        await appendPatientMessage({
-          sessionId,
-          content: send.content,
-          messageId: send.messageId,
-        })
-      } catch (cause) {
-        // The save can reach the database even when its answer does not
-        // reach the browser - a time-out after the commit. Look before
-        // saying the message was not sent.
-        const saved = sessionId
-          ? await findOwnMessage(send.messageId).catch(() => null)
-          : null
-        if (!saved) throw new MessageNotSentError({ cause })
       }
 
-      // Only a confirmed save gets here, and a message is saved into a
-      // conversation - so there is one. Said for the type checker.
-      if (!sessionId) throw new MessageNotSentError()
+      let saved: ChatMessage | null
+      try {
+        saved = await appendPatientMessage({
+          sessionId,
+          content,
+          messageId: pending.messageId,
+        })
+      } catch (cause) {
+        if (cause instanceof SaveFailedError && cause.certain) {
+          // Refused: the id was never used, and a fresh one is used next time.
+          settleSend(pending.messageId)
+          throw new MessageNotSentError(true, { cause })
+        }
+        // No answer: the database may have saved it all the same. Look
+        // before saying anything about it.
+        saved = await findOwnMessage(pending.messageId).catch(() => null)
+        if (!saved) throw new MessageNotSentError(false, { cause })
+      }
 
-      // Saved: whatever is sent next is a new message, with new ids.
-      pendingSendRef.current = null
+      // Saved - in this version or an earlier one. The submission is settled.
+      settleSend(pending.messageId)
+      if (saved.chat_message_content !== content) {
+        throw new EarlierVersionSavedError(saved)
+      }
 
       // Show the patient's own message immediately, before waiting on a reply
       // that may not come.
@@ -293,20 +407,35 @@ export function PatientChatPage() {
       return requestAssistantReply(sessionId)
     },
     onSuccess: onReplied,
-    onError: (error, send) => {
+    onError: (error, { pending, content }) => {
+      if (error instanceof EarlierVersionSavedError) {
+        // The earlier version stands - not overwritten, and the edit not
+        // saved beside it as a second message. The edit goes back in the
+        // composer, and nothing is asked of the assistant until the patient
+        // chooses to.
+        requestInFlight.current = false
+        setAwaitingReplyFor(null)
+        setDraft((current) => (current.trim() ? current : content))
+        setFailure({
+          sessionId: error.saved.chat_session_id,
+          kind: 'sent_earlier_version',
+        })
+        void queryClient.invalidateQueries({ queryKey: queryKeys.chat.all })
+        return
+      }
       if (!(error instanceof MessageNotSentError)) {
         onReplyFailed(error)
         return
       }
       requestInFlight.current = false
       setAwaitingReplyFor(null)
-      // The message never left, so it goes back in the composer - unless
-      // something new has been typed there in the meantime.
-      setDraft((current) => (current.trim() ? current : send.content))
+      // Back in the composer - unless something new has been typed there in
+      // the meantime - so it can be sent again under the same ids.
+      setDraft((current) => (current.trim() ? current : content))
       setFailure({
         sessionId: requestSessionRef.current,
-        newSessionId: send.newSessionId,
-        kind: 'not_sent',
+        newSessionId: pending.newSessionId,
+        kind: error.certain ? 'not_sent' : 'unconfirmed',
       })
       void queryClient.invalidateQueries({ queryKey: queryKeys.chat.all })
     },
@@ -389,25 +518,36 @@ export function PatientChatPage() {
     if (requestInFlight.current) return
     const content = draft.trim()
     if (!content) return
-    // The same words, to the same conversation, after a send that was not
-    // confirmed: the same message, so the same ids - if the earlier attempt
-    // did save it, the database refuses this one as a duplicate and the
-    // saved message is used. Anything else is a new message. Worked out
-    // before anything is marked as in flight.
-    const previous = pendingSendRef.current
-    const send: PendingSend =
-      previous !== null &&
-      previous.content === content &&
-      (activeSessionId === previous.sessionId ||
-        activeSessionId === previous.newSessionId)
-        ? { ...previous, sessionId: activeSessionId }
-        : {
-            content,
-            sessionId: activeSessionId,
-            newSessionId: newChatId(),
-            messageId: newChatId(),
-          }
-    pendingSendRef.current = send
+    // A send to a conversation with an unconfirmed one is that same
+    // submission - edited or not - so it reuses its ids. Whichever attempt
+    // the database saved first is the one kept; it never keeps two. Only a
+    // conversation with nothing unconfirmed starts a new submission. Worked
+    // out before anything is marked as in flight.
+    let unconfirmed = pendingSendFor(
+      // A new conversation remembered from before a refresh is not continued
+      // by whatever new conversation comes next: nothing on screen ties the
+      // two, and continuing it would put this message into that one.
+      pendingSends().filter(
+        (entry) => entry.sessionId !== null || pendingTextRef.current.has(entry.messageId),
+      ),
+      activeSessionId,
+    )
+    const held = unconfirmed && heldEditRef.current.get(unconfirmed.messageId)
+    if (unconfirmed && held !== undefined && held !== content) {
+      // Held open only for the edit that was in the box; anything else the
+      // patient writes now is a new message.
+      settleSend(unconfirmed.messageId)
+      unconfirmed = undefined
+    }
+    const pending: PendingSend = unconfirmed
+      ? { ...unconfirmed, sessionId: activeSessionId ?? unconfirmed.sessionId }
+      : {
+          messageId: newChatId(),
+          sessionId: activeSessionId,
+          newSessionId: newChatId(),
+          startedAt: Date.now(),
+        }
+    rememberSend(pending, content)
     requestInFlight.current = true
     requestSessionRef.current = activeSessionId
     hasSentRef.current = true
@@ -420,7 +560,7 @@ export function PatientChatPage() {
     setDraft('')
     setFailure(null)
     setRetries(0)
-    sendMessage.mutate(send)
+    sendMessage.mutate({ pending, content })
   }
 
   const startNew = () => {
@@ -453,13 +593,16 @@ export function PatientChatPage() {
   // waiting on a reply, or that the last request failed. It never claims the
   // assistant is available after it has just said it is not.
   const isUnavailable =
-    !awaitingReply && shownFailure !== null && shownFailure !== 'not_sent'
+    !awaitingReply && shownFailure !== null && isReplyFailure(shownFailure)
   const retriesLeft = MAX_REPLY_RETRIES - retries
   const offerRetry =
     shownFailure !== null &&
-    shownFailure !== 'not_sent' &&
+    isReplyFailure(shownFailure) &&
     canRetry(shownFailure) &&
     retriesLeft > 0
+  // Saved after all: the message is safe, and nothing has asked for a reply.
+  const sentAfterAll =
+    shownFailure === 'sent_after_all' || shownFailure === 'sent_earlier_version'
   const status = awaitingReply
     ? { short: 'Preparing a response…', long: 'Preparing a response…' }
     : isUnavailable
@@ -616,7 +759,10 @@ export function PatientChatPage() {
             ) : (
               <StateView
                 isPending={messagesQuery.isPending}
-                error={messagesQuery.error}
+                // A reload that fails - offline, just after a send - leaves
+                // the conversation already on screen in place; only a first
+                // load that fails shows the error.
+                error={messagesQuery.data ? null : messagesQuery.error}
                 data={messagesQuery.data}
                 onRetry={() => void messagesQuery.refetch()}
                 empty={
@@ -737,7 +883,11 @@ export function PatientChatPage() {
               // Announced once, when it appears. Never on screen together
               // with the waiting state: both are cleared and set in the same
               // update, so the page has one status at a time.
-              <Notice tone="warning" live="polite" className="mt-5">
+              <Notice
+                tone={sentAfterAll ? 'info' : 'warning'}
+                live="polite"
+                className="mt-5"
+              >
                 <p>{failureMessage(shownFailure, retriesLeft)}</p>
                 {/* Under the message rather than beside it, so a phone
                     keeps the message at a readable width. */}
@@ -745,6 +895,11 @@ export function PatientChatPage() {
                   <Button variant="outline" className="mt-3" onClick={askAgain}>
                     <RotateCw aria-hidden="true" />
                     Try again
+                  </Button>
+                ) : sentAfterAll ? (
+                  <Button variant="outline" className="mt-3" onClick={askAgain}>
+                    <RotateCw aria-hidden="true" />
+                    Get a reply
                   </Button>
                 ) : null}
               </Notice>
