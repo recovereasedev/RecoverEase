@@ -6,6 +6,7 @@ import {
   CheckCheck,
   ChevronRight,
   History,
+  RotateCw,
   Send,
   SquarePen,
 } from 'lucide-react'
@@ -22,9 +23,16 @@ import {
   createChatSession,
   fetchChatMessages,
   fetchChatSessions,
+  MessageNotSentError,
   requestAssistantReply,
 } from '@/features/chat/api'
 import { AssistantAvatar } from '@/features/chat/components/assistant-avatar'
+import {
+  canRetry,
+  MAX_REPLY_RETRIES,
+  type ReplyFailure,
+  SLOW_REPLY_MS,
+} from '@/features/chat/reply-failure'
 import { useDocumentTitle } from '@/hooks/use-document-title'
 import { formatDateRelative, formatDateTime, formatTime } from '@/lib/format'
 import { refocusAfterKeyboardSubmit } from '@/lib/form-focus'
@@ -46,6 +54,36 @@ const SUGGESTIONS = [
   'How can I keep track of my recovery progress?',
 ]
 
+/** Why the last request in a conversation left it without a reply. */
+type Failure = ReplyFailure | 'not_sent'
+
+/**
+ * What the patient is told when no reply came back. Every message says
+ * whether their own message is safe. Those that can be retried say nothing
+ * about retrying - the Try again button under them does.
+ */
+function failureMessage(failure: Failure, retriesLeft: number): string {
+  if (failure === 'not_sent') {
+    return 'Your message wasn’t sent. Check your internet connection, then send it again.'
+  }
+  if (canRetry(failure) && retriesLeft <= 0) {
+    return 'The guidance assistant still isn’t replying. Your message has been saved, and your care team can still see it.'
+  }
+  switch (failure) {
+    case 'timeout':
+      return 'The guidance assistant took too long to reply. Your message has been saved.'
+    case 'network':
+      return 'The guidance assistant couldn’t be reached. Check your internet connection. Your message has been saved.'
+    case 'busy':
+      return 'The guidance assistant is busy right now. Your message has been saved.'
+    case 'not_allowed':
+      return 'The guidance assistant couldn’t answer in this conversation. Your message has been saved, and your care team can still see it.'
+    case 'unavailable':
+    case 'not_configured':
+      return 'The guidance assistant is not available at the moment. Your message has been saved, and your care team can still see it.'
+  }
+}
+
 /**
  * Modules 8.1 "Chat with AI for Post-Treatment Guidance" and 8.4 "View Chat
  * History".
@@ -66,14 +104,31 @@ export function PatientChatPage() {
 
   const queryClient = useQueryClient()
   const [draft, setDraft] = useState('')
-  const [unavailableReason, setUnavailableReason] = useState<string | null>(null)
   /**
-   * True only while the reply request itself is in flight - after the
-   * patient's message is saved and shown, until the assistant answers or
-   * fails. It drives the "preparing a response" state, so that state never
-   * shows without a real request behind it.
+   * The conversation a reply is being prepared for, only while that request
+   * is in flight - after the patient's message is saved and shown, until the
+   * assistant answers, the request fails, or it times out. It drives the
+   * "preparing a response" state, so that state never shows without a real
+   * request behind it, and only in the conversation the request belongs to.
    */
-  const [awaitingReply, setAwaitingReply] = useState(false)
+  const [awaitingReplyFor, setAwaitingReplyFor] = useState<string | null>(null)
+  /** Why the last request left a conversation without a reply, if it did. */
+  const [failure, setFailure] = useState<{
+    sessionId: string | null
+    kind: Failure
+  } | null>(null)
+  /** Times the patient has asked again since the last reply; bounded. */
+  const [retries, setRetries] = useState(0)
+  /** The reply has taken longer than usual - still a real, pending request. */
+  const [slowReply, setSlowReply] = useState(false)
+  /**
+   * Set the moment a request starts, before React re-renders: a second Enter
+   * or a quick second click on Try again can arrive before the page has
+   * caught up, and must not start a second request.
+   */
+  const requestInFlight = useRef(false)
+  /** The conversation the request in flight belongs to. */
+  const requestSessionRef = useRef<string | null>(null)
   /** Phones only: the past-conversations list in place of the conversation. */
   const [showHistory, setShowHistory] = useState(false)
   const transcriptEndRef = useRef<HTMLDivElement>(null)
@@ -113,11 +168,126 @@ export function PatientChatPage() {
 
   const setActiveSessionId = setChosenSessionId
 
+  const selectSession = (sessionId: string | null) => {
+    setActiveSessionId(sessionId)
+    setRetries(0)
+  }
+
   const messagesQuery = useQuery({
     queryKey: queryKeys.chat.messagesFor(activeSessionId ?? ''),
     queryFn: () => fetchChatMessages(activeSessionId as string),
     enabled: Boolean(activeSessionId),
   })
+
+  const awaitingReply =
+    awaitingReplyFor !== null && awaitingReplyFor === activeSessionId
+  const lastMessage = messagesQuery.data?.at(-1)
+  // A failure stands only while the message is still unanswered: a reply
+  // that was saved even though its response never arrived replaces it.
+  const shownFailure =
+    failure !== null &&
+    failure.sessionId === activeSessionId &&
+    (failure.kind === 'not_sent' ||
+      lastMessage?.chat_message_role !== 'assistant')
+      ? failure.kind
+      : null
+
+  useEffect(() => {
+    // After the phone switches between the conversation and its history, a
+    // keyboard or screen-reader user is taken to the top of what is now
+    // showing, instead of being left on a control that has just gone.
+    focusAfterViewChange.current?.()?.focus()
+    focusAfterViewChange.current = null
+  }, [showHistory])
+
+  const onReplied = () => {
+    requestInFlight.current = false
+    setAwaitingReplyFor(null)
+    setFailure(null)
+    setRetries(0)
+    void queryClient.invalidateQueries({ queryKey: queryKeys.chat.all })
+  }
+
+  const onReplyFailed = (error: unknown) => {
+    requestInFlight.current = false
+    // Cleared in the same update that shows the reason, so the waiting
+    // state and the failure are never both on screen - and every way of
+    // failing, a timeout included, ends the waiting state.
+    setAwaitingReplyFor(null)
+    setFailure({
+      sessionId: requestSessionRef.current,
+      kind:
+        error instanceof ChatbotUnavailableError ? error.reason : 'unavailable',
+    })
+    void queryClient.invalidateQueries({ queryKey: queryKeys.chat.all })
+  }
+
+  const sendMessage = useMutation({
+    mutationFn: async (content: string) => {
+      let sessionId = activeSessionId
+
+      try {
+        if (!sessionId) {
+          const session = await createChatSession(patientId)
+          sessionId = session.chat_session_id
+          requestSessionRef.current = sessionId
+          setActiveSessionId(sessionId)
+        }
+
+        await appendPatientMessage({ sessionId, content })
+      } catch (cause) {
+        throw new MessageNotSentError({ cause })
+      }
+
+      // Show the patient's own message immediately, before waiting on a reply
+      // that may not come.
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.chat.messagesFor(sessionId),
+      })
+
+      setAwaitingReplyFor(sessionId)
+      return requestAssistantReply(sessionId)
+    },
+    onSuccess: onReplied,
+    onError: (error, content) => {
+      if (!(error instanceof MessageNotSentError)) {
+        onReplyFailed(error)
+        return
+      }
+      requestInFlight.current = false
+      setAwaitingReplyFor(null)
+      // The message never left, so it goes back in the composer - unless
+      // something new has been typed there in the meantime.
+      setDraft((current) => (current.trim() ? current : content))
+      setFailure({ sessionId: requestSessionRef.current, kind: 'not_sent' })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.chat.all })
+    },
+  })
+
+  /**
+   * Asks again for a reply to the message already saved. Nothing is sent or
+   * saved a second time: the function answers the conversation's latest
+   * unanswered message, or reports that it has been answered after all.
+   */
+  const retryReply = useMutation({
+    mutationFn: (sessionId: string) => {
+      setAwaitingReplyFor(sessionId)
+      return requestAssistantReply(sessionId)
+    },
+    onSuccess: onReplied,
+    onError: onReplyFailed,
+  })
+
+  const isBusy = sendMessage.isPending || retryReply.isPending
+  // The conversation ends on the patient's own message and nothing is on
+  // its way: after a refresh, say, following a reply that never came.
+  const noReplyYet =
+    Boolean(activeSessionId) &&
+    lastMessage?.chat_message_role === 'patient' &&
+    !awaitingReply &&
+    !isBusy &&
+    shownFailure === null &&
+    !messagesQuery.isFetching
 
   useEffect(() => {
     // On a desktop screen tall enough (`chat-fit`), the transcript is its own
@@ -138,62 +308,41 @@ export function PatientChatPage() {
     } else if (hasSentRef.current) {
       draftRef.current?.scrollIntoView({ block: 'nearest' })
     }
-  }, [messagesQuery.data, awaitingReply])
+  }, [messagesQuery.data, awaitingReply, slowReply, shownFailure, noReplyYet])
 
   useEffect(() => {
-    // After the phone switches between the conversation and its history, a
-    // keyboard or screen-reader user is taken to the top of what is now
-    // showing, instead of being left on a control that has just gone.
-    focusAfterViewChange.current?.()?.focus()
-    focusAfterViewChange.current = null
-  }, [showHistory])
+    // Only while a real request is pending: after a while the patient is
+    // told it is slow, so a long wait does not look like nothing happening.
+    if (!awaitingReplyFor) return
+    const timer = window.setTimeout(() => setSlowReply(true), SLOW_REPLY_MS)
+    return () => {
+      window.clearTimeout(timer)
+      setSlowReply(false)
+    }
+  }, [awaitingReplyFor])
 
-  const sendMessage = useMutation({
-    mutationFn: async (content: string) => {
-      let sessionId = activeSessionId
-
-      if (!sessionId) {
-        const session = await createChatSession(patientId)
-        sessionId = session.chat_session_id
-        setActiveSessionId(sessionId)
-      }
-
-      await appendPatientMessage({ sessionId, content })
-
-      // Show the patient's own message immediately, before waiting on a reply
-      // that may not come.
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.chat.messagesFor(sessionId),
-      })
-
-      setAwaitingReply(true)
-      return requestAssistantReply(sessionId)
-    },
-    onSuccess: () => {
-      setAwaitingReply(false)
-      setUnavailableReason(null)
-      void queryClient.invalidateQueries({ queryKey: queryKeys.chat.all })
-    },
-    onError: (error) => {
-      // Cleared in the same update that shows the reason, so the waiting
-      // state and the failure are never both on screen.
-      setAwaitingReply(false)
-      setUnavailableReason(
-        error instanceof ChatbotUnavailableError
-          ? 'The guidance assistant is not available at the moment. Your message has been saved, and your care team can still see it.'
-          : 'Something went wrong sending that message. Your message has been saved.',
-      )
-      void queryClient.invalidateQueries({ queryKey: queryKeys.chat.all })
-    },
-  })
+  const askAgain = (event: React.MouseEvent<HTMLButtonElement>) => {
+    if (requestInFlight.current || !activeSessionId) return
+    requestInFlight.current = true
+    requestSessionRef.current = activeSessionId
+    // From the keyboard, focus would drop to the page when this button goes;
+    // it moves to the composer, where the conversation carries on.
+    const section = event.currentTarget.closest('section')
+    if (section) refocusAfterKeyboardSubmit(section, draftRef.current)
+    setRetries((count) => count + 1)
+    setFailure(null)
+    retryReply.mutate(activeSessionId)
+  }
 
   const onSubmit = (event: React.FormEvent) => {
     event.preventDefault()
     // One message at a time: while a reply is on its way, Enter in the
     // composer does nothing, and what the patient has typed stays there.
-    if (sendMessage.isPending) return
+    if (requestInFlight.current) return
     const content = draft.trim()
     if (!content) return
+    requestInFlight.current = true
+    requestSessionRef.current = activeSessionId
     hasSentRef.current = true
     // Sent with Send from the keyboard: the button is disabled the moment the
     // draft empties, which dropped focus to the page. Back into the composer,
@@ -202,12 +351,14 @@ export function PatientChatPage() {
     const composer = draftRef.current
     if (composer?.form) refocusAfterKeyboardSubmit(composer.form, composer)
     setDraft('')
+    setFailure(null)
+    setRetries(0)
     sendMessage.mutate(content)
   }
 
   const startNew = () => {
-    setActiveSessionId(null)
-    setUnavailableReason(null)
+    selectSession(null)
+    setFailure(null)
   }
 
   const openHistory = () => {
@@ -234,7 +385,14 @@ export function PatientChatPage() {
   // What the header says about the assistant is only what the page knows:
   // waiting on a reply, or that the last request failed. It never claims the
   // assistant is available after it has just said it is not.
-  const isUnavailable = !awaitingReply && unavailableReason !== null
+  const isUnavailable =
+    !awaitingReply && shownFailure !== null && shownFailure !== 'not_sent'
+  const retriesLeft = MAX_REPLY_RETRIES - retries
+  const offerRetry =
+    shownFailure !== null &&
+    shownFailure !== 'not_sent' &&
+    canRetry(shownFailure) &&
+    retriesLeft > 0
   const status = awaitingReply
     ? { short: 'Preparing a response…', long: 'Preparing a response…' }
     : isUnavailable
@@ -497,15 +655,41 @@ export function PatientChatPage() {
                       <p className="text-sm text-body">
                         Please wait while I prepare a response.
                       </p>
+                      {slowReply ? (
+                        <p className="mt-1 text-sm text-body">
+                          This is taking longer than usual.
+                        </p>
+                      ) : null}
                     </div>
                   </div>
                 </div>
               </div>
             ) : null}
 
-            {unavailableReason ? (
+            {shownFailure !== null ? (
+              // Announced once, when it appears. Never on screen together
+              // with the waiting state: both are cleared and set in the same
+              // update, so the page has one status at a time.
               <Notice tone="warning" live="polite" className="mt-5">
-                {unavailableReason}
+                <p>{failureMessage(shownFailure, retriesLeft)}</p>
+                {/* Under the message rather than beside it, so a phone
+                    keeps the message at a readable width. */}
+                {offerRetry ? (
+                  <Button variant="outline" className="mt-3" onClick={askAgain}>
+                    <RotateCw aria-hidden="true" />
+                    Try again
+                  </Button>
+                ) : null}
+              </Notice>
+            ) : noReplyYet ? (
+              // Not announced: it describes the conversation as it was found,
+              // not something that just happened.
+              <Notice tone="info" className="mt-5">
+                <p>Your last message hasn’t had a reply yet.</p>
+                <Button variant="outline" className="mt-3" onClick={askAgain}>
+                  <RotateCw aria-hidden="true" />
+                  Get a reply
+                </Button>
               </Notice>
             ) : null}
 
@@ -544,7 +728,7 @@ export function PatientChatPage() {
               <Button
                 type="submit"
                 disabled={!draft.trim()}
-                isLoading={sendMessage.isPending}
+                isLoading={isBusy}
                 loadingLabel="Sending…"
                 aria-label="Send message"
                 className="size-12 shrink-0 rounded-[var(--radius-lg)] bg-brand-700 px-0 text-[15px] hover:bg-brand-800 lg:h-14 lg:w-auto lg:px-5 [&_svg]:size-5"
@@ -643,7 +827,7 @@ export function PatientChatPage() {
                       <button
                         type="button"
                         onClick={() => {
-                          setActiveSessionId(session.chat_session_id)
+                          selectSession(session.chat_session_id)
                           closeHistory(() => assistantHeadingRef.current)
                         }}
                         aria-current={isOpen ? 'true' : undefined}
