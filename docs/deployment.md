@@ -115,6 +115,17 @@ supabase secrets set ALLOWED_ORIGINS="https://<your-app>.vercel.app"
 supabase secrets set GEMINI_API_KEY="..."
 ```
 
+`chatbot-reply` imports `zod` by its bare name, so it needs an import map.
+Unless one is passed with `--import-map` or set in `config.toml`,
+`supabase functions deploy` reads it from the function's own folder —
+`supabase/functions/chatbot-reply/deno.json` — and never from
+`supabase/functions/deno.json`; without the function's own copy the bundle
+fails with `Relative import path "zod" not prefixed with /, ./, or ../`. The
+root copy stays for editors and other local Deno tooling. The two must map
+the same versions, and `tests/unit/edge-function-import-maps.test.ts` fails if
+they drift or if any function imports a bare name its own `deno.json` does not
+map.
+
 `SUPABASE_URL`, `SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY` are
 injected by the platform — do not set them yourself.
 
