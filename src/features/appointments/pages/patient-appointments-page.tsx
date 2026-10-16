@@ -351,6 +351,20 @@ export function PatientAppointmentsPage() {
     )
   }
 
+  // No upcoming appointment to attend. No instruction to confirm attendance:
+  // there is nothing here to confirm.
+  const noUpcoming = (
+    <PageSection title="Upcoming">
+      <Card>
+        <EmptyState
+          icon={CalendarX}
+          title="No upcoming appointments"
+          description="Book a follow-up when you need to see your doctor again."
+        />
+      </Card>
+    </PageSection>
+  )
+
   return (
     <>
       {/* The header is inside too, so an action with nothing after it -
@@ -374,61 +388,56 @@ export function PatientAppointmentsPage() {
             error={appointmentsQuery.error}
             data={upcoming}
             onRetry={() => void appointmentsQuery.refetch()}
-            empty={
-              <PageSection
-                title="Upcoming"
-                description="Confirm that you will attend, or ask for a different time."
-              >
-                <Card>
-                  <EmptyState
-                    icon={CalendarX}
-                    title="No upcoming appointments"
-                    description="Book a follow-up when you need to see your doctor again."
-                  />
-                </Card>
-              </PageSection>
-            }
+            empty={noUpcoming}
           >
             {(items) => {
-              // Sorted soonest first upstream, so the first is the one being
-              // asked about: it is lifted out of the list and given the size
-              // its answer deserves.
-              const [next, ...later] = items
-              if (!next) return null
+              // Sorted soonest first upstream. The one being asked about is
+              // the soonest that has not been cancelled - the dashboard's rule
+              // - and it is lifted out of the list and given the size its
+              // answer deserves. A cancelled visit is never put forward to be
+              // attended; it stays in the list below with its status.
+              const next = items.find(
+                (appointment) => appointment.appointment_status !== 'cancelled',
+              )
+              const later = items.filter((appointment) => appointment !== next)
 
               return (
                 <>
-                  <PageSection
-                    title="Next appointment"
-                    description="Confirm that you will attend, or ask for a different time."
-                  >
-                    <Card variant="elevated">
-                      <CardBody>
-                        <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
-                          <div className="min-w-0">
-                            <p
-                              className="text-balance text-headline-lg text-heading sm:text-title"
-                              data-numeric
-                            >
-                              {formatDateTime(next.appointment_date)}
-                            </p>
-                            {/* How far away it is, in words: the date answers
-                                "when", this answers "how soon". */}
-                            <p className="mt-1 text-body-md text-muted first-letter:uppercase">
-                              {formatRelative(next.appointment_date)}
-                            </p>
+                  {next ? (
+                    <PageSection
+                      title="Next appointment"
+                      description="Confirm that you will attend, or ask for a different time."
+                    >
+                      <Card variant="elevated">
+                        <CardBody>
+                          <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
+                            <div className="min-w-0">
+                              <p
+                                className="text-balance text-headline-lg text-heading sm:text-title"
+                                data-numeric
+                              >
+                                {formatDateTime(next.appointment_date)}
+                              </p>
+                              {/* How far away it is, in words: the date answers
+                                  "when", this answers "how soon". */}
+                              <p className="mt-1 text-body-md text-muted first-letter:uppercase">
+                                {formatRelative(next.appointment_date)}
+                              </p>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              {statusesFor(next)}
+                            </div>
                           </div>
-                          <div className="flex flex-wrap items-center gap-2">
-                            {statusesFor(next)}
-                          </div>
-                        </div>
 
-                        {notesFor(next)}
+                          {notesFor(next)}
 
-                        <div className="mt-5">{actionsFor(next, true)}</div>
-                      </CardBody>
-                    </Card>
-                  </PageSection>
+                          <div className="mt-5">{actionsFor(next, true)}</div>
+                        </CardBody>
+                      </Card>
+                    </PageSection>
+                  ) : (
+                    noUpcoming
+                  )}
 
                   {later.length > 0 ? (
                     <PageSection
