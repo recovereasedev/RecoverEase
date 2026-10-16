@@ -11,12 +11,16 @@ import { seedFixture, type Fixture } from './helpers/fixtures'
  *
  * Phase A gives every account a clinic. This first step adds the `clinic`
  * table and the rules around it, but no clinic row, no clinic name and no
- * clinic column on any profile - migration 29 does that, once the real name
- * of the existing clinic is known. So everything here is checked against a
- * database in which nobody belongs to a clinic yet.
+ * clinic column on any profile - migration 29 does that. So everything here
+ * is checked against a database built up to migration 28 and no further, in
+ * which nobody belongs to a clinic yet. clinic-migration.test.ts and
+ * clinic-isolation.test.ts cover what 29 and 30 do.
  *
  * Clinic names below are synthetic and exist only in this test database.
  */
+
+/** The last migration this file describes. */
+const THROUGH_MIGRATION_28 = { stopAfter: '20260902100028' }
 
 const MIGRATION_28 = 'supabase/migrations/20260902100028_clinic_schema.sql'
 const MIGRATION_27 = 'supabase/migrations/20260902100027_account_roles_are_server_only.sql'
@@ -87,7 +91,7 @@ describe('clinic schema (migration 28)', () => {
   )
 
   beforeAll(async () => {
-    database = await createTestDatabase()
+    database = await createTestDatabase(THROUGH_MIGRATION_28)
     fx = await seedFixture(database)
   })
 
@@ -480,7 +484,7 @@ describe('rolling migration 28 back with its own down-script', () => {
   const { asServiceRole } = harness(() => database)
 
   beforeAll(async () => {
-    database = await createTestDatabase()
+    database = await createTestDatabase(THROUGH_MIGRATION_28)
     fx = await seedFixture(database)
   })
 

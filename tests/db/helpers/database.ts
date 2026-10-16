@@ -111,6 +111,12 @@ export type TestDatabase = {
     sql: string,
     params?: unknown[],
   ) => Promise<T[]>
+  /**
+   * Applies one migration file, named by its version prefix, exactly as the
+   * replay does. For a database built with `stopAfter`; the error is the
+   * migration's own, so a test can assert why it refused.
+   */
+  applyMigration: (version: string) => Promise<void>
   close: () => Promise<void>
 }
 
@@ -140,9 +146,13 @@ async function readMigrations(): Promise<{ name: string; sql: string }[]> {
  * so a test can prove that a migration's REVOKE from `anon` really holds.
  * It is opt-in because several suites assert that an anonymous UPDATE
  * raises, which is only true while `anon` holds no UPDATE privilege.
+ *
+ * `stopAfter` (a version prefix such as '20260902100028') stops the replay
+ * after that migration, so a test can describe an earlier schema, or seed
+ * data before the next migration and watch what it does to it.
  */
 export async function createTestDatabase(
-  options: { anonTablePrivileges?: boolean } = {},
+  options: { anonTablePrivileges?: boolean; stopAfter?: string } = {},
 ): Promise<TestDatabase> {
   const db = new PGlite()
   await db.waitReady
@@ -153,7 +163,13 @@ export async function createTestDatabase(
     await db.exec('alter default privileges in schema public grant all on tables to anon;')
   }
 
-  for (const migration of await readMigrations()) {
+  const migrations = await readMigrations()
+  const replayed =
+    options.stopAfter === undefined
+      ? migrations
+      : migrations.filter((migration) => migrationVersion(migration.name) <= options.stopAfter!)
+
+  for (const migration of replayed) {
     try {
       await db.exec(migration.sql)
     } catch (error) {
@@ -199,14 +215,26 @@ export async function createTestDatabase(
     }
   }
 
+  const applyMigration = async (version: string): Promise<void> => {
+    const migration = migrations.find((m) => migrationVersion(m.name) === version)
+    if (!migration) throw new Error(`No migration with version ${version}`)
+    await db.exec(migration.sql)
+  }
+
   return {
     db,
     asService,
     asUser: (userId, sql, params) =>
       runAs(userId, 'authenticated', sql, params),
     asAnon: (sql, params) => runAs(null, 'anon', sql, params),
+    applyMigration,
     close: () => db.close(),
   }
+}
+
+/** The version prefix of a migration file: everything before the first `_`. */
+function migrationVersion(name: string): string {
+  return name.split('_', 1)[0]!
 }
 
 /**

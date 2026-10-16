@@ -81,11 +81,13 @@ band. In the SQL editor:
 insert into public.user_account (user_id, user_email, user_role)
 values ('<auth user id>', '<email lowercased>', 'admin');
 
-insert into public.admin (user_id, admin_first_name, admin_last_name)
-values ('<auth user id>', 'First', 'Last');
+insert into public.admin (user_id, admin_first_name, admin_last_name, clinic_id)
+values ('<auth user id>', 'First', 'Last', (select clinic_id from public.clinic));
 ```
 
-`user_email` must be lower case — a CHECK constraint enforces it.
+`user_email` must be lower case — a CHECK constraint enforces it. A Clinic
+Admin must belong to a clinic (migration 29 creates the first one), so the
+`clinic_id` is required.
 
 From there the flow is entirely in-app: the administrator registers doctors,
 and each doctor registers their own patients.
@@ -212,6 +214,29 @@ are used.
 - Redirect URLs: add `https://<your-app>.vercel.app/reset-password`
 
 Without the redirect URL, password reset links will not return to the app.
+
+## Clinic migrations (Phase A)
+
+For a project that already has data, migrations 29 and 30 change who sees
+what, so they go in a fixed order. Each is applied on its own with the
+Supabase connector's `apply_migration` - never `db push` or history repair on
+this project - and checked read-only before the next step:
+
+1. **Apply migration 29** (`initial_clinic`). It creates the clinic, puts
+   every doctor and Clinic Admin in it, and stops with nothing applied on any
+   inconsistency.
+2. **Deploy `create-account` and `reset-account-password`.** Deployed before
+   step 1 they refuse to register or reset a doctor, with nothing created;
+   patient registration and resets work either way.
+3. **Apply migration 30** (`clinic_admin_scope`). It refuses to run before 29.
+4. The website can be merged at any point. Its only new screen, "Reassign
+   patients", needs migration 30, appears only for a deactivated doctor, and
+   until then says the count could not be loaded.
+
+Stopping after any step leaves the system working, and the single-clinic gate
+holds throughout. Tested down-scripts are in `supabase/rollbacks/`: 30's
+first, then 29's. A rollback is applied as a new migration, never by deleting
+history.
 
 ## Scheduled jobs
 

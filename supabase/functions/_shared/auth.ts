@@ -1,5 +1,11 @@
 import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2'
 
+import { AuthError, type AuditEntry, type Caller } from './caller.ts'
+
+// Re-exported so every function keeps importing these from one place.
+export { AuthError }
+export type { Caller }
+
 /**
  * Identifies the caller of an Edge Function, and gives access to a
  * service-role client for the privileged work that follows.
@@ -13,20 +19,6 @@ import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2'
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? ''
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
 const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') ?? ''
-
-export type Caller = {
-  userId: string
-  email: string
-  role: 'patient' | 'doctor' | 'admin'
-}
-
-export class AuthError extends Error {
-  status: number
-  constructor(message: string, status = 401) {
-    super(message)
-    this.status = status
-  }
-}
 
 /** A client that bypasses Row Level Security. Server-side only, always. */
 export function serviceClient(): SupabaseClient {
@@ -92,13 +84,7 @@ export async function requireCaller(request: Request): Promise<Caller> {
 /** Records a privileged action. Failure to log must not fail the action. */
 export async function writeAuditLog(
   client: SupabaseClient,
-  entry: {
-    userId: string
-    action: string
-    entity: string
-    entityId: string | null
-    details?: Record<string, unknown>
-  },
+  entry: AuditEntry,
 ): Promise<void> {
   const { error } = await client.from('audit_log').insert({
     user_id: entry.userId,

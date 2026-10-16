@@ -23,6 +23,7 @@ export type Database = {
           admin_first_name: string
           admin_last_name: string
           admin_created_at: string
+          clinic_id: string | null
         }
         Insert: {
           admin_id?: string
@@ -30,6 +31,7 @@ export type Database = {
           admin_first_name: string
           admin_last_name: string
           admin_created_at?: string
+          clinic_id?: string | null
         }
         Update: {
           admin_id?: string
@@ -37,8 +39,16 @@ export type Database = {
           admin_first_name?: string
           admin_last_name?: string
           admin_created_at?: string
+          clinic_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: 'admin_clinic_id_fkey'
+            columns: ['clinic_id']
+            isOneToOne: false
+            referencedRelation: 'clinic'
+            referencedColumns: ['clinic_id']
+          },
           {
             foreignKeyName: 'admin_user_id_fkey'
             columns: ['user_id']
@@ -56,6 +66,7 @@ export type Database = {
           announcement_content: string
           announcement_published_at: string | null
           announcement_created_at: string
+          clinic_id: string | null
         }
         Insert: {
           announcement_id?: string
@@ -64,6 +75,7 @@ export type Database = {
           announcement_content: string
           announcement_published_at?: string | null
           announcement_created_at?: string
+          clinic_id?: string | null
         }
         Update: {
           announcement_id?: string
@@ -72,6 +84,7 @@ export type Database = {
           announcement_content?: string
           announcement_published_at?: string | null
           announcement_created_at?: string
+          clinic_id?: string | null
         }
         Relationships: [
           {
@@ -80,6 +93,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: 'admin'
             referencedColumns: ['admin_id']
+          },
+          {
+            foreignKeyName: 'announcement_clinic_id_fkey'
+            columns: ['clinic_id']
+            isOneToOne: false
+            referencedRelation: 'clinic'
+            referencedColumns: ['clinic_id']
           },
         ]
       }
@@ -91,6 +111,7 @@ export type Database = {
           appointment_date: string
           appointment_status: Database['public']['Enums']['appointment_status']
           appointment_created_at: string
+          appointment_reminder_sent_at: string | null
         }
         Insert: {
           appointment_id?: string
@@ -99,6 +120,7 @@ export type Database = {
           appointment_date: string
           appointment_status?: Database['public']['Enums']['appointment_status']
           appointment_created_at?: string
+          appointment_reminder_sent_at?: string | null
         }
         Update: {
           appointment_id?: string
@@ -107,6 +129,7 @@ export type Database = {
           appointment_date?: string
           appointment_status?: Database['public']['Enums']['appointment_status']
           appointment_created_at?: string
+          appointment_reminder_sent_at?: string | null
         }
         Relationships: [
           {
@@ -134,6 +157,8 @@ export type Database = {
           audit_log_entity_id: string | null
           audit_log_timestamp: string
           audit_log_details: Json | null
+          audit_scope: Database['public']['Enums']['audit_scope']
+          clinic_id: string | null
         }
         Insert: {
           audit_log_id?: string
@@ -143,6 +168,8 @@ export type Database = {
           audit_log_entity_id?: string | null
           audit_log_timestamp?: string
           audit_log_details?: Json | null
+          audit_scope?: Database['public']['Enums']['audit_scope']
+          clinic_id?: string | null
         }
         Update: {
           audit_log_id?: string
@@ -152,8 +179,17 @@ export type Database = {
           audit_log_entity_id?: string | null
           audit_log_timestamp?: string
           audit_log_details?: Json | null
+          audit_scope?: Database['public']['Enums']['audit_scope']
+          clinic_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: 'audit_log_clinic_id_fkey'
+            columns: ['clinic_id']
+            isOneToOne: false
+            referencedRelation: 'clinic'
+            referencedColumns: ['clinic_id']
+          },
           {
             foreignKeyName: 'audit_log_user_id_fkey'
             columns: ['user_id']
@@ -233,6 +269,33 @@ export type Database = {
           },
         ]
       }
+      clinic: {
+        Row: {
+          clinic_id: string
+          clinic_name: string
+          clinic_status: Database['public']['Enums']['clinic_status']
+          clinic_timezone: string
+          clinic_created_at: string
+          clinic_updated_at: string
+        }
+        Insert: {
+          clinic_id?: string
+          clinic_name: string
+          clinic_status?: Database['public']['Enums']['clinic_status']
+          clinic_timezone?: string
+          clinic_created_at?: string
+          clinic_updated_at?: string
+        }
+        Update: {
+          clinic_id?: string
+          clinic_name?: string
+          clinic_status?: Database['public']['Enums']['clinic_status']
+          clinic_timezone?: string
+          clinic_created_at?: string
+          clinic_updated_at?: string
+        }
+        Relationships: []
+      }
       doctor: {
         Row: {
           doc_id: string
@@ -244,6 +307,7 @@ export type Database = {
           doc_contact_no: string | null
           doc_is_active: boolean
           doc_created_at: string
+          clinic_id: string
         }
         Insert: {
           doc_id?: string
@@ -255,6 +319,7 @@ export type Database = {
           doc_contact_no?: string | null
           doc_is_active?: boolean
           doc_created_at?: string
+          clinic_id?: string
         }
         Update: {
           doc_id?: string
@@ -266,8 +331,16 @@ export type Database = {
           doc_contact_no?: string | null
           doc_is_active?: boolean
           doc_created_at?: string
+          clinic_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: 'doctor_clinic_id_fkey'
+            columns: ['clinic_id']
+            isOneToOne: false
+            referencedRelation: 'clinic'
+            referencedColumns: ['clinic_id']
+          },
           {
             foreignKeyName: 'doctor_user_id_fkey'
             columns: ['user_id']
@@ -591,6 +664,7 @@ export type Database = {
           report_type: Database['public']['Enums']['report_type']
           report_generated_at: string
           report_file_path: string | null
+          clinic_id: string
         }
         Insert: {
           report_id?: string
@@ -599,6 +673,7 @@ export type Database = {
           report_type: Database['public']['Enums']['report_type']
           report_generated_at?: string
           report_file_path?: string | null
+          clinic_id?: string
         }
         Update: {
           report_id?: string
@@ -607,8 +682,16 @@ export type Database = {
           report_type?: Database['public']['Enums']['report_type']
           report_generated_at?: string
           report_file_path?: string | null
+          clinic_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: 'report_clinic_id_fkey'
+            columns: ['clinic_id']
+            isOneToOne: false
+            referencedRelation: 'clinic'
+            referencedColumns: ['clinic_id']
+          },
           {
             foreignKeyName: 'report_pat_id_fkey'
             columns: ['pat_id']
@@ -837,6 +920,14 @@ export type Database = {
         Args: { window_days?: number }
         Returns: Json
       }
+      admin_doctor_patient_count: {
+        Args: { target_doc_id: string }
+        Returns: number
+      }
+      admin_reassign_doctor_patients: {
+        Args: { from_doc_id: string; to_doc_id: string; expected_count: number }
+        Returns: number
+      }
       app_today: {
         Args: Record<PropertyKey, never>
         Returns: string
@@ -844,6 +935,8 @@ export type Database = {
     }
     Enums: {
       appointment_status: 'scheduled' | 'confirmed' | 'completed' | 'cancelled' | 'no_show'
+      audit_scope: 'platform' | 'administration' | 'clinical'
+      clinic_status: 'active' | 'inactive'
       medication_log_status: 'pending' | 'taken' | 'missed' | 'skipped'
       notification_type: 'appointment' | 'medication' | 'treatment' | 'chat_critical' | 'announcement' | 'general'
       patient_status: 'active' | 'inactive' | 'discharged'

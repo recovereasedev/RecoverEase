@@ -5,9 +5,11 @@ import type { TablesUpdate } from '@/types/database.types'
 
 import {
   fetchAllDoctors,
+  fetchDoctorPatientCount,
   fetchMyDoctor,
   fetchMyPatients,
   fetchPatient,
+  reassignDoctorPatients,
   setDoctorActive,
   updateDoctor,
   updatePatient,
@@ -75,6 +77,26 @@ export function useUpdateDoctor(doctorId: string) {
       updateDoctor(doctorId, changes),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.doctors.all })
+    },
+  })
+}
+
+export function useDoctorPatientCount(doctorId: string) {
+  return useQuery({
+    queryKey: queryKeys.doctors.patientCount(doctorId),
+    queryFn: () => fetchDoctorPatientCount(doctorId),
+  })
+}
+
+export function useReassignDoctorPatients() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: reassignDoctorPatients,
+    onSuccess: () => {
+      // The counts on the doctors page and the dashboard both moved.
+      void queryClient.invalidateQueries({ queryKey: queryKeys.doctors.all })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.admin.dashboard() })
     },
   })
 }

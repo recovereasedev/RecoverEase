@@ -1,4 +1,4 @@
-import { KeyRound, Stethoscope, UserPlus } from 'lucide-react'
+import { KeyRound, Stethoscope, UserPlus, Users } from 'lucide-react'
 import { useState } from 'react'
 
 import { EmptyState, StateView } from '@/components/feedback/state-view'
@@ -7,6 +7,7 @@ import { StatusBadge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardBody } from '@/components/ui/card'
 import { Notice } from '@/components/ui/notice'
+import { ReassignPatientsDialog } from '@/features/patients/components/reassign-patients-dialog'
 import { RegisterAccountDialog } from '@/features/patients/components/register-account-dialog'
 import { ResetCredentialDialog } from '@/features/patients/components/reset-credential-dialog'
 import { useAllDoctors, useSetDoctorActive } from '@/features/patients/hooks'
@@ -34,6 +35,11 @@ export function AdminDoctorsPage() {
   // dialog; the object carries the name so the confirmation can say who it
   // is for without another lookup.
   const [resetting, setResetting] = useState<{
+    doctorId: string
+    name: string
+  } | null>(null)
+  // The deactivated doctor whose patients are being handed over (D8).
+  const [reassigning, setReassigning] = useState<{
     doctorId: string
     name: string
   } | null>(null)
@@ -75,6 +81,17 @@ export function AdminDoctorsPage() {
             doctorId: resetting.doctorId,
             name: resetting.name,
           }}
+        />
+      ) : null}
+
+      {/* Mounted only while a doctor is selected, like the reset above, so
+          each opening counts that doctor's patients afresh. */}
+      {reassigning ? (
+        <ReassignPatientsDialog
+          isOpen
+          onClose={() => setReassigning(null)}
+          from={reassigning}
+          doctors={doctorsQuery.data ?? []}
         />
       ) : null}
 
@@ -168,6 +185,36 @@ export function AdminDoctorsPage() {
                           </span>
                         </Button>
 
+                        {/* D8. A deactivated clinician's patients have
+                            nobody who can see their records until they are
+                            handed to an active doctor. */}
+                        {doctor.doc_is_active ? null : (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() =>
+                              setReassigning({
+                                doctorId: doctor.doc_id,
+                                name: `Dr ${fullName(
+                                  doctor.doc_first_name,
+                                  doctor.doc_last_name,
+                                )}`,
+                              })
+                            }
+                          >
+                            <Users aria-hidden="true" />
+                            Reassign patients
+                            <span className="sr-only">
+                              {' '}
+                              of Dr{' '}
+                              {fullName(
+                                doctor.doc_first_name,
+                                doctor.doc_last_name,
+                              )}
+                            </span>
+                          </Button>
+                        )}
+
                         <Button
                           size="sm"
                           variant={
@@ -208,7 +255,7 @@ export function AdminDoctorsPage() {
       <Notice tone="info" className="mt-4">
         Deactivating a clinician immediately withdraws their access to all
         patient records. Their patients keep their history and remain assigned
-        to them until reassigned.
+        to them until you reassign them to an active doctor in your clinic.
       </Notice>
     </>
   )
