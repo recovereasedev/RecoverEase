@@ -31,8 +31,40 @@ Authorization reads the role from `public.user_account`.
 It is **never** read from `auth.jwt()` metadata. In Supabase,
 `raw_user_meta_data` is writable by the user it belongs to and surfaces in the
 JWT, so a role taken from there could simply be set to `admin` by the patient
-it describes. `user_account` has no self-update policy, which is what makes it
-trustworthy for this.
+it describes.
+
+What makes `user_account` trustworthy for this is that **no browser session
+can write it at all** (migration 27). Accounts are created by `create-account`
+with the service role, and a role is fixed when the account is created:
+
+- There is no INSERT, UPDATE or DELETE policy on `user_account`, and `anon` and
+  `authenticated` hold no INSERT, UPDATE, DELETE or TRUNCATE privilege on it.
+  Until migration 27 an administrator could UPDATE any account's
+  `user_role` — one Data API request made a patient or a doctor an
+  administrator.
+- `user_account_guard_writes` refuses every write from those two roles
+  whatever the policies say, so a policy or grant added later cannot quietly
+  reopen it, and refuses a change of `user_id` from anyone.
+- Doctor profiles are created only by `create-account`; there is no INSERT
+  policy or privilege on `doctor` for a browser session.
+
+The guard tells a browser write from a server write by `current_user`, which
+is the role PostgreSQL actually executes as, not anything the caller sends:
+
+| Path | `current_user` | Guard |
+| --- | --- | --- |
+| Data API request, signed out | `anon` | refused |
+| Data API request, signed in (any role in the app) | `authenticated` | refused |
+| Edge Function with the service key (`create-account`) | `service_role` | allowed |
+| A `SECURITY DEFINER` function, a migration, the SQL editor | the owner, `postgres` | allowed |
+
+PostgREST picks the role from the signed JWT's `role` claim, which only the
+service key can set to `service_role`; `anon` and `authenticated` are members
+of no other role, so a session cannot switch to a trusted one. The one way a
+session's request runs as a trusted role is through a `SECURITY DEFINER`
+function, which only a migration can install — so any such function that
+writes `user_account` must check its caller itself. There is none today, and
+`tests/db/account-integrity.test.ts` fails if one a session can call appears.
 
 ## The `app_private` schema
 
@@ -108,8 +140,9 @@ Applied to every policy, each guarding a specific failure:
 
 | Table | Patient | Doctor (assigned) | Admin |
 | --- | --- | --- | --- |
+| `user_account` | own row (r) | own + own patients (r) | r — **no session writes it** |
 | `patient` | own row (r/w, guarded) | r/w | **none** |
-| `doctor` | own clinician (r) | own row (r/w, guarded) | r/w |
+| `doctor` | own clinician (r) | own row (r/w, guarded) | r + update (no insert) |
 | `admin` | none | none | own row (r/w) |
 | `treatment_plan` / `treatment_goal` | r | r/w | none |
 | `prescription` / `medication_schedule` | r | r/w | none |
@@ -172,10 +205,14 @@ the columns that decide their own privileges, so triggers close that gap:
 | `doctor_guard_protected_columns` | A deactivated doctor reactivating themselves, or changing their own licence number. |
 | `appointment_guard_patient_transitions` | A patient marking their own appointment `completed` (a clinical assertion), or moving its time instead of using the reschedule flow. |
 | `medication_log_guard_slot` | Anyone moving when a dose was due, which would make the adherence history meaningless. |
+| `user_account_guard_writes` | Any browser session writing an account — a role, a sign-in address, a login — even if a later policy allowed it; and anyone re-pointing an account at a different login. |
+| `profile_matches_account_role` | A doctor or patient profile being created for an account of a different role — a doctor profile on a patient's account, a patient profile on an administrator's. Applies to the service role too. |
+| `patient_guard_reassignment` | A patient being reassigned to a deactivated doctor, or to a doctor row whose account is not a doctor's, where no active clinician could see them. |
 
-Each is covered by a test in `tests/db/rls.test.ts` that asserts both the
-refusal **and** that the legitimate edit still works — a guard that blocks
-everything would pass a one-sided test.
+Each is covered by a test in `tests/db/rls.test.ts` or
+`tests/db/account-integrity.test.ts` that asserts both the refusal **and**
+that the legitimate edit still works — a guard that blocks everything would
+pass a one-sided test.
 
 ## PHI must not leak through the audit trail
 

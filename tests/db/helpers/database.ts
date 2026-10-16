@@ -77,12 +77,20 @@ const SUPABASE_COMPAT = `
  * RLS then decides which rows those roles actually see. Reproduce that, or
  * every policy test would fail on a plain permission error and prove nothing
  * about the policies themselves.
+ *
+ * Granted as default privileges before the migrations run, which is how
+ * Supabase does it: each table gets them when it is created, so a migration
+ * that later revokes one (migration 27 revokes writes on `user_account`) is
+ * tested as it behaves in production. Granting after the migrations would
+ * silently undo every such revoke.
  */
 const GRANT_TABLE_PRIVILEGES = `
-  grant select, insert, update, delete
-    on all tables in schema public to authenticated;
-  grant usage, select on all sequences in schema public to authenticated;
-  grant all on all tables in schema public to service_role;
+  alter default privileges in schema public
+    grant select, insert, update, delete on tables to authenticated;
+  alter default privileges in schema public
+    grant usage, select on sequences to authenticated;
+  alter default privileges in schema public
+    grant all on tables to service_role;
 `
 
 export type TestDatabase = {
@@ -126,12 +134,24 @@ async function readMigrations(): Promise<{ name: string; sql: string }[]> {
  * Every migration is replayed from the files that ship in the repository, so
  * a test failing here means the migrations themselves are wrong — not a
  * hand-maintained copy of them.
+ *
+ * `anonTablePrivileges` additionally gives `anon` what Supabase gives it on
+ * every public table — every table privilege, with RLS deciding the rows —
+ * so a test can prove that a migration's REVOKE from `anon` really holds.
+ * It is opt-in because several suites assert that an anonymous UPDATE
+ * raises, which is only true while `anon` holds no UPDATE privilege.
  */
-export async function createTestDatabase(): Promise<TestDatabase> {
+export async function createTestDatabase(
+  options: { anonTablePrivileges?: boolean } = {},
+): Promise<TestDatabase> {
   const db = new PGlite()
   await db.waitReady
 
   await db.exec(SUPABASE_COMPAT)
+  await db.exec(GRANT_TABLE_PRIVILEGES)
+  if (options.anonTablePrivileges) {
+    await db.exec('alter default privileges in schema public grant all on tables to anon;')
+  }
 
   for (const migration of await readMigrations()) {
     try {
@@ -141,8 +161,6 @@ export async function createTestDatabase(): Promise<TestDatabase> {
       throw new Error(`Migration ${migration.name} failed: ${reason}`)
     }
   }
-
-  await db.exec(GRANT_TABLE_PRIVILEGES)
 
   const asService = async <T = Record<string, unknown>>(
     sql: string,
