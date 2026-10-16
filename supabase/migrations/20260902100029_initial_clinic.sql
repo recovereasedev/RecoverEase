@@ -28,23 +28,12 @@
 -- without a doctor - or any change it did not intend stops it, and nothing at
 -- all is applied. It runs once: it refuses to start if a clinic exists.
 --
--- Rollback, should it be needed - and only before migration 30, which builds
--- on this. No clinical row is touched either way:
---   drop trigger doctor_assign_single_clinic on public.doctor;
---   drop trigger doctor_clinic_is_fixed on public.doctor;
---   drop trigger admin_guard_clinic on public.admin;
---   drop trigger patient_reassignment_stays_in_clinic on public.patient;
---   drop function public.doctor_assign_single_clinic();
---   drop function public.profile_clinic_is_fixed();
---   drop function public.admin_guard_clinic();
---   drop function public.patient_guard_clinic();
---   drop function app_private.admin_clinic_id();
---   drop function app_private.clinic_of_user(uuid);
---   alter table public.doctor drop column clinic_id;
---   alter table public.admin drop column clinic_id;
---   delete from public.clinic;
---   then re-run migration 28's "Which clinic" section, which restores the
---   helpers' "none" bodies. The audit entries this wrote stay.
+-- Rollback, should it be needed: supabase/rollbacks/20260902100029_initial_clinic.down.sql,
+-- only after migration 30's own rollback, and applied as a new migration
+-- with approval. tests/db/clinic-rollback.test.ts proves it returns the
+-- schema to exactly what migration 28 left, with every row kept. It removes
+-- the clinic and every profile's place in it; no clinical row is touched,
+-- and the audit entries this wrote stay.
 -- ===========================================================================
 
 -- ---------------------------------------------------------------------------

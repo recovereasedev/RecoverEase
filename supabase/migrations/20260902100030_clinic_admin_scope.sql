@@ -31,17 +31,13 @@
 -- backfills, and compares, and stops with nothing applied on any difference.
 -- It runs once: it refuses to start if the columns already exist.
 --
--- Rollback, should it be needed. No clinical row is touched either way; D8
--- moves made in between are not undone (reverse one by moving back):
---   drop the four new functions and the three new triggers below, and
---   app_private.audit_scope_for(text, uuid, jsonb) and
---   app_private.audit_clinic_for(text, uuid, uuid, jsonb);
---   drop and recreate the ten policies from migration 06 (and report_insert
---   from migration 11), and re-run migration 07's "Administrator
---   aggregates" section;
---   then drop audit_log.audit_scope, audit_log.clinic_id,
---   announcement.clinic_id, report.clinic_id and type public.audit_scope.
---   Entries written in between lose their scope and clinic with them.
+-- Rollback, should it be needed:
+-- supabase/rollbacks/20260902100030_clinic_admin_scope.down.sql, applied as a
+-- new migration with approval. tests/db/clinic-rollback.test.ts proves it
+-- returns the schema to exactly what migration 29 left, with every row kept.
+-- No clinical row is touched; patients moved with D8 stay moved (move them
+-- back the same way), and entries written in between lose their scope and
+-- clinic with the columns.
 -- ===========================================================================
 
 -- Before anything is created: 29 must be in, and 30 not yet.
