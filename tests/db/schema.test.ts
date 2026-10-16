@@ -27,7 +27,8 @@ describe('database schema', () => {
         order by table_name`,
     )
 
-    // 19 entities from the ERD plus chat_message, the one documented addition.
+    // 19 entities from the ERD, chat_message (the transcript the chat modules
+    // need) and clinic (Phase A, migration 28).
     expect(tables.map((row) => row.table_name)).toEqual([
       'admin',
       'announcement',
@@ -35,6 +36,7 @@ describe('database schema', () => {
       'audit_log',
       'chat_message',
       'chat_session',
+      'clinic',
       'doctor',
       'doctor_note',
       'medication_log',
