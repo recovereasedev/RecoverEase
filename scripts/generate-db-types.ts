@@ -74,6 +74,17 @@ function scalarToTsType(udtName: string): string {
   }
 }
 
+/**
+ * NOT NULL columns with no default that a BEFORE INSERT trigger always fills,
+ * so an insert may leave them out. Introspection cannot see a trigger's
+ * assignments, so they are named here.
+ */
+const FILLED_ON_INSERT = new Set([
+  'audit_log.audit_scope', // audit_log_classify, migration 30
+  'doctor.clinic_id', // doctor_assign_single_clinic, migration 29
+  'report.clinic_id', // report_assign_clinic, migration 30
+])
+
 function quoteKey(name: string): string {
   return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name) ? name : `'${name}'`
 }
@@ -210,7 +221,8 @@ async function main(): Promise<void> {
         const optional =
           column.has_default ||
           column.is_nullable === 'YES' ||
-          column.is_identity === 'YES'
+          column.is_identity === 'YES' ||
+          FILLED_ON_INSERT.has(`${tableName}.${column.column_name}`)
         const nullable = column.is_nullable === 'YES' ? ' | null' : ''
         lines.push(
           `          ${quoteKey(column.column_name)}${optional ? '?' : ''}: ${toTsType(column)}${nullable}`,
@@ -268,6 +280,20 @@ async function main(): Promise<void> {
     lines.push('      admin_chatbot_usage: {')
     lines.push('        Args: { window_days?: number }')
     lines.push('        Returns: Json')
+    lines.push('      }')
+    lines.push('      admin_doctor_patient_count: {')
+    lines.push('        Args: { target_doc_id: string }')
+    lines.push('        Returns: number')
+    lines.push('      }')
+    lines.push('      admin_reassign_doctor_patients: {')
+    lines.push(
+      '        Args: { from_doc_id: string; to_doc_id: string; expected_count: number }',
+    )
+    lines.push('        Returns: number')
+    lines.push('      }')
+    lines.push('      app_today: {')
+    lines.push('        Args: Record<PropertyKey, never>')
+    lines.push('        Returns: string')
     lines.push('      }')
     lines.push('    }')
 

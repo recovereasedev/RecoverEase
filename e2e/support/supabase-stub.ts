@@ -137,6 +137,7 @@ export class SupabaseStub {
   private password = 'correct-horse-battery'
   /** Requests the app made, for assertions about what it asked for. */
   readonly requests: string[] = []
+  private readonly rpcResults = new Map<string, unknown>()
 
   constructor(tables: TableRows) {
     // Deep copy so a mutation in one test cannot leak into the next.
@@ -154,6 +155,15 @@ export class SupabaseStub {
 
   rowsIn(table: string): Record<string, unknown>[] {
     return this.tables[table] ?? []
+  }
+
+  /**
+   * The answer to a `.rpc()` call that returns a single value - a count, say
+   * - rather than a JSON object. Without one, an RPC answers with the first
+   * row seeded under `rpc/<name>`.
+   */
+  setRpcResult(name: string, value: unknown): void {
+    this.rpcResults.set(name, value)
   }
 
   /**
@@ -337,11 +347,14 @@ export class SupabaseStub {
     // supabase-js sends .rpc() as POST /rest/v1/rpc/<name>. It is a function
     // call, not an insert, so it must not fall through to the table routing.
     if (table.startsWith('rpc/')) {
-      const rows = this.rowsIn(table)
+      const name = table.slice('rpc/'.length)
+      const result = this.rpcResults.has(name)
+        ? this.rpcResults.get(name)
+        : (this.rowsIn(table)[0] ?? null)
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify(rows[0] ?? null),
+        body: JSON.stringify(result),
       })
       return
     }

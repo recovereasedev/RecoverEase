@@ -114,3 +114,39 @@ export async function setDoctorActive(
 
   if (error) throw error
 }
+
+/**
+ * Decision D8: how many patients a deactivated doctor still has.
+ *
+ * A count, never a list. The administrator is deciding where those patients
+ * go, which needs how many and nothing about who they are; the database
+ * function refuses anything but a deactivated doctor in the caller's clinic.
+ */
+export async function fetchDoctorPatientCount(doctorId: string): Promise<number> {
+  const { data, error } = await supabase.rpc('admin_doctor_patient_count', {
+    target_doc_id: doctorId,
+  })
+
+  if (error) throw error
+  return data
+}
+
+/**
+ * Decision D8: moves every patient of a deactivated doctor to an active
+ * doctor in the same clinic. `expectedCount` is the number the administrator
+ * was shown; if it has changed since, nothing moves. Returns how many did.
+ */
+export async function reassignDoctorPatients(input: {
+  fromDoctorId: string
+  toDoctorId: string
+  expectedCount: number
+}): Promise<number> {
+  const { data, error } = await supabase.rpc('admin_reassign_doctor_patients', {
+    from_doc_id: input.fromDoctorId,
+    to_doc_id: input.toDoctorId,
+    expected_count: input.expectedCount,
+  })
+
+  if (error) throw error
+  return data
+}

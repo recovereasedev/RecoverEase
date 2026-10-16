@@ -131,6 +131,18 @@ provider's own conversation id, so both models coexist.
 | `medication_schedule_created_at` | Same reason. |
 | `reschedule_request_created_at` | The ERD has `respondedAt` but no submission time, so a doctor could not see which request arrived first (module 6.4). |
 
+### 8. Clinics are new
+
+The ERD has a single implicit clinic. Phase A adds `clinic` (migration 28)
+and gives every doctor and Clinic Admin one (`doctor.clinic_id`, required;
+`admin.clinic_id`, required of a Clinic Admin; migration 29). A patient has no
+clinic column: their clinic is their doctor's, so it cannot disagree with it.
+`announcement.clinic_id` and `report.clinic_id` record whose they are, and
+`audit_log` gains `clinic_id` and `audit_scope` (migration 30). Triggers set
+all of these from the row's source rather than from the request. Until
+migration 31 makes settings per clinic, a unique index allows only one clinic
+row.
+
 ## Assumptions where the ERD was silent
 
 The ERD types every status column as `varchar` without listing values. Each

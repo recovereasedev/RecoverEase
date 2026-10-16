@@ -83,12 +83,29 @@ export async function seedFixture(database: TestDatabase): Promise<Fixture> {
   }
 
   // --- Accounts ----------------------------------------------------------
+  // From migration 29 a Clinic Admin must belong to a clinic, and the
+  // database holds exactly one. A database built only up to migration 28 has
+  // neither the column nor the clinic.
+  const adminsHaveClinic =
+    (
+      await database.asService(
+        `select 1 from information_schema.columns
+          where table_schema = 'public' and table_name = 'admin' and column_name = 'clinic_id'`,
+      )
+    ).length > 0
+
   const adminUserId = await createAccount(database, 'admin@recoverease.test', 'admin')
-  const adminId = await one<string>(
-    `insert into public.admin (user_id, admin_first_name, admin_last_name)
-     values ($1, 'Ada', 'Reyes') returning admin_id`,
-    [adminUserId],
-  )
+  const adminId = adminsHaveClinic
+    ? await one<string>(
+        `insert into public.admin (user_id, admin_first_name, admin_last_name, clinic_id)
+         values ($1, 'Ada', 'Reyes', (select clinic_id from public.clinic)) returning admin_id`,
+        [adminUserId],
+      )
+    : await one<string>(
+        `insert into public.admin (user_id, admin_first_name, admin_last_name)
+         values ($1, 'Ada', 'Reyes') returning admin_id`,
+        [adminUserId],
+      )
 
   const doctorAUserId = await createAccount(database, 'doctor.a@recoverease.test', 'doctor')
   const doctorAId = await one<string>(

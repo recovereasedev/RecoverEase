@@ -138,7 +138,7 @@ Applied to every policy, each guarding a specific failure:
 
 ## Access matrix
 
-| Table | Patient | Doctor (assigned) | Admin |
+| Table | Patient | Doctor (assigned) | Clinic Admin (own clinic only) |
 | --- | --- | --- | --- |
 | `user_account` | own row (r) | own + own patients (r) | r — **no session writes it** |
 | `patient` | own row (r/w, guarded) | r/w | **none** |
@@ -153,10 +153,13 @@ Applied to every policy, each guarding a specific failure:
 | `reschedule_request` | r, insert | r + **decide** | none |
 | `chat_session` / `chat_message` | own (r/w) | r | **none** |
 | `notification` | own (r + mark read) | own + send to own patient | own |
-| `announcement` | published only | published only | full |
+| `announcement` | published, own clinic's | published, own clinic's | full |
 | `report` | **none** | own | own + system-wide |
-| `audit_log` | none | none | **read only** |
-| `system_setting` | none | none | r/w |
+| `audit_log` | none | none | **read only** (administration and clinical entries) |
+| `system_setting` | none | none | r/w — platform-wide until migration 31 |
+
+Every Clinic Admin cell is limited to the administrator's own clinic (see
+"Clinics" below).
 
 Four rows in that table are worth calling out.
 
@@ -192,6 +195,44 @@ querying it receives zero rows, not a filtered view.
 
 Rows are written by `SECURITY DEFINER` triggers, so no session can forge an
 entry, and no session — administrators included — can alter or erase one.
+
+## Clinics
+
+Every account belongs to a clinic (migrations 28 to 30): doctors and Clinic
+Admins directly, through `doctor.clinic_id` and `admin.clinic_id`, and
+patients through their doctor. The existing clinic is Harborview Recovery
+Clinic.
+
+- **A Clinic Admin works within their own clinic.** Each administration
+  policy compares the row's clinic with `app_private.admin_clinic_id()`,
+  which is the caller's clinic only when the caller is a Clinic Admin, and
+  empty for anyone else. That covers accounts (emails included, decision D5),
+  doctors, announcements, system-wide reports and the audit log, and the
+  dashboard and chatbot usage counts. Another clinic's rows read as empty and
+  writes to them fail.
+- **The clinic never comes from the request.** A new doctor joins the
+  registering administrator's clinic (`create-account`). An announcement takes
+  its author's clinic and a report its patient's, or its author's, from
+  triggers, whatever the request says. A Clinic Admin resets only their own
+  clinic's doctors (`reset-account-password`), and another clinic's doctor is
+  answered exactly as one that does not exist.
+- **A profile's clinic is fixed** for every writer, the service role
+  included, and a patient can only move to an active doctor in the same
+  clinic.
+- **Moving a deactivated doctor's patients (decision D8)** is one audited
+  database function, for that clinic's Clinic Admin only. It shows a count
+  and never a name, moves only each patient's doctor, keeps the author of
+  every plan, prescription and note, and moves nothing if the count has
+  changed since it was shown.
+- **Settings stay platform-wide** until migration 31 (decision D3). Until
+  then a single-clinic gate refuses a second clinic, so no clinic can change
+  another's settings.
+
+**Deployment fails closed.** `create-account` and `reset-account-password`
+read the caller's clinic before creating or changing anything. Deployed
+before migration 29, that read fails and the request is refused with nothing
+created; registering and resetting patients does not need it and works
+either way.
 
 ## Column-level guards
 
@@ -237,6 +278,21 @@ which is what an audit trail is for, without being handed the clinical data.
 
 `tests/db/rls.test.ts` asserts that no patient name, prescription note or
 plan title appears anywhere in audit details.
+
+### Every entry has a scope and a clinic
+
+From migration 30 every audit entry carries `audit_scope` (`platform`,
+`administration` or `clinical`) and the clinic it is about. A trigger works
+the scope out from the entry's entity as the entry is written; no writer
+chooses it, and anything unrecognised is `clinical`, the most restricted.
+Only clinic entries are `platform`. Patients, prescriptions, treatment plans
+and patients' accounts are `clinical`.
+
+A Clinic Admin reads their own clinic's administration and clinical entries,
+which is what an administrator saw before, within one clinic. Platform
+entries are for the Super Admin (migration 33), who will read nothing else.
+An account's entry is written a moment before its profile and cannot know
+its clinic yet; the Clinic Admin policy resolves it as it is read.
 
 ## The recovery guidance assistant
 

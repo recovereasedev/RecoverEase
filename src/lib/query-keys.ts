@@ -19,6 +19,8 @@ export const queryKeys = {
     all: ['doctors'] as const,
     list: () => [...queryKeys.doctors.all, 'list'] as const,
     mine: () => [...queryKeys.doctors.all, 'mine'] as const,
+    patientCount: (doctorId: string) =>
+      [...queryKeys.doctors.all, 'patient-count', doctorId] as const,
   },
 
   appointments: {

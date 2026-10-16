@@ -28,6 +28,7 @@ const DOCTOR: Doctor = {
   doc_contact_no: null,
   doc_is_active: true,
   doc_created_at: '2026-01-01T00:00:00Z',
+  clinic_id: 'c-1',
 }
 
 const NOTE_TEXT = 'Wound healing well.\nContinue physiotherapy twice weekly.'
@@ -125,6 +126,7 @@ function recordFor(overrides: Partial<PatientReportData> = {}): PatientReportDat
         appointment_date: '2026-09-14T02:00:00Z',
         appointment_status: 'scheduled',
         appointment_created_at: '2026-09-01T00:00:00Z',
+        appointment_reminder_sent_at: null,
       },
       {
         appointment_id: 'a-2',
@@ -133,6 +135,7 @@ function recordFor(overrides: Partial<PatientReportData> = {}): PatientReportDat
         appointment_date: '2026-08-01T01:00:00Z',
         appointment_status: 'completed',
         appointment_created_at: '2026-07-01T00:00:00Z',
+        appointment_reminder_sent_at: null,
       },
     ],
     weekAdherence: { taken: 5, missed: 1, skipped: 0, pending: 2, resolved: 6, rate: 83 },
