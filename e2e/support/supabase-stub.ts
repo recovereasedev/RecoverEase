@@ -26,6 +26,32 @@ export type StubSession = {
    * production, so the app may read it but never write it.
    */
   mustChangePassword?: boolean
+  /**
+   * The account's authenticator app (Supabase Auth MFA, TOTP), for the
+   * Super Admin's console. No factor unless one is given; a session starts at
+   * `aal1`, as a password sign-in does.
+   */
+  mfa?: { verifiedFactor?: boolean; aal?: 'aal1' | 'aal2' }
+}
+
+/** A factor as Supabase Auth lists it on the user. */
+type StubFactor = {
+  id: string
+  friendly_name: string
+  factor_type: 'totp'
+  status: 'verified' | 'unverified'
+  created_at: string
+  updated_at: string
+}
+
+/**
+ * The code the stubbed authenticator app shows. Supabase Auth accepts it for
+ * any of the account's factors, and refuses every other code.
+ */
+export const STUB_TOTP_CODE = '123456'
+
+function base64Url(value: string): string {
+  return Buffer.from(value, 'utf8').toString('base64url')
 }
 
 const FILTER_OPERATORS = [
@@ -138,6 +164,8 @@ export class SupabaseStub {
   /** Requests the app made, for assertions about what it asked for. */
   readonly requests: string[] = []
   private readonly rpcResults = new Map<string, unknown>()
+  private factors: StubFactor[] = []
+  private aal: 'aal1' | 'aal2' = 'aal1'
 
   constructor(tables: TableRows) {
     // Deep copy so a mutation in one test cannot leak into the next.
@@ -146,6 +174,11 @@ export class SupabaseStub {
 
   setSession(session: StubSession | null): void {
     this.session = session
+  }
+
+  /** The account's factors, as Supabase Auth holds them now. */
+  factorsNow(): readonly StubFactor[] {
+    return this.factors
   }
 
   /** Models an account whose password has been changed server-side. */
@@ -192,9 +225,22 @@ export class SupabaseStub {
   /** Seeds a signed-in session into storage before the app boots. */
   async signInAs(page: Page, session: StubSession): Promise<void> {
     this.setSession(session)
+    this.aal = session.mfa?.aal ?? 'aal1'
+    this.factors = session.mfa?.verifiedFactor
+      ? [
+          {
+            id: 'f0000000-0000-4000-8000-000000000001',
+            friendly_name: '',
+            factor_type: 'totp',
+            status: 'verified',
+            created_at: '2026-01-01T00:00:00Z',
+            updated_at: '2026-01-01T00:00:00Z',
+          },
+        ]
+      : []
 
     const payload = {
-      access_token: `stub-access-${session.userId}`,
+      access_token: this.accessToken(session),
       token_type: 'bearer',
       expires_in: 3600,
       // Far future, so supabase-js does not attempt a refresh mid-test.
@@ -211,6 +257,52 @@ export class SupabaseStub {
     )
   }
 
+  /**
+   * A token shaped like Supabase Auth's: supabase-js reads the assurance
+   * level and sign-in methods from its claims (`aal`, `amr`). It is not
+   * signed - nothing in the browser verifies one; the database does.
+   */
+  private accessToken(session: StubSession): string {
+    const now = Math.floor(Date.now() / 1000)
+    const amr = [{ method: 'password', timestamp: now }]
+    if (this.aal === 'aal2') amr.push({ method: 'totp', timestamp: now })
+    const claims = {
+      sub: session.userId,
+      aud: 'authenticated',
+      role: 'authenticated',
+      email: session.email,
+      aal: this.aal,
+      amr,
+      session_id: `5e550000-0000-4000-8000-${session.userId.slice(-12)}`,
+      iat: now,
+      exp: now + 60 * 60 * 24,
+    }
+    return [
+      base64Url(JSON.stringify({ alg: 'HS256', typ: 'JWT' })),
+      base64Url(JSON.stringify(claims)),
+      base64Url('stub-signature'),
+    ].join('.')
+  }
+
+  /** What `super_admin_assured()` answers for this session, as the database would. */
+  private isAssured(): boolean {
+    return (
+      this.aal === 'aal2' &&
+      this.factors.some((factor) => factor.status === 'verified')
+    )
+  }
+
+  private sessionPayload(session: StubSession) {
+    return {
+      access_token: this.accessToken(session),
+      token_type: 'bearer',
+      expires_in: 3600,
+      expires_at: Math.floor(Date.now() / 1000) + 60 * 60 * 24,
+      refresh_token: `stub-refresh-${session.userId}`,
+      user: this.authUser(session),
+    }
+  }
+
   private authUser(session: StubSession) {
     return {
       id: session.userId,
@@ -225,14 +317,107 @@ export class SupabaseStub {
       // Deliberately empty. The app must never read a role from here, and a
       // stub that supplied one could hide a regression that started doing so.
       user_metadata: {},
+      factors: this.factors.map((factor) => ({ ...factor })),
       created_at: '2026-01-01T00:00:00Z',
     }
+  }
+
+  /**
+   * Supabase Auth's MFA endpoints: enrol, challenge, verify and unenrol a
+   * TOTP factor. A verified code raises the session to `aal2` and returns
+   * the raised session, as Supabase Auth does.
+   */
+  private async handleFactors(route: Route, url: URL): Promise<void> {
+    const request = route.request()
+    const method = request.method()
+    const json = (status: number, body: unknown) =>
+      route.fulfill({
+        status,
+        contentType: 'application/json',
+        body: JSON.stringify(body),
+      })
+
+    if (!this.session) {
+      await json(401, { error_code: 'no_authorization', msg: 'not signed in' })
+      return
+    }
+
+    const [, factorId, action] =
+      url.pathname.match(/\/factors(?:\/([^/]+))?(?:\/(challenge|verify))?$/) ?? []
+
+    if (method === 'POST' && !factorId) {
+      const now = new Date().toISOString()
+      const factor: StubFactor = {
+        id: crypto.randomUUID(),
+        friendly_name: '',
+        factor_type: 'totp',
+        status: 'unverified',
+        created_at: now,
+        updated_at: now,
+      }
+      this.factors = [...this.factors, factor]
+      await json(200, {
+        id: factor.id,
+        type: 'totp',
+        friendly_name: '',
+        totp: {
+          qr_code:
+            '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><rect width="4" height="4"/></svg>',
+          secret: 'JBSWY3DPEHPK3PXP',
+          uri: 'otpauth://totp/RecoverEase:stub?secret=JBSWY3DPEHPK3PXP&issuer=RecoverEase',
+        },
+      })
+      return
+    }
+
+    const factor = this.factors.find((candidate) => candidate.id === factorId)
+    if (!factor) {
+      await json(404, { error_code: 'mfa_factor_not_found', msg: 'Factor not found' })
+      return
+    }
+
+    if (method === 'DELETE' && !action) {
+      this.factors = this.factors.filter((candidate) => candidate.id !== factor.id)
+      await json(200, { id: factor.id })
+      return
+    }
+
+    if (method === 'POST' && action === 'challenge') {
+      await json(200, {
+        id: crypto.randomUUID(),
+        type: 'totp',
+        expires_at: Math.floor(Date.now() / 1000) + 300,
+      })
+      return
+    }
+
+    if (method === 'POST' && action === 'verify') {
+      const body = JSON.parse(request.postData() ?? '{}') as { code?: string }
+      if (body.code !== STUB_TOTP_CODE) {
+        await json(422, {
+          error_code: 'mfa_verification_failed',
+          msg: 'Invalid TOTP code entered',
+        })
+        return
+      }
+      factor.status = 'verified'
+      this.aal = 'aal2'
+      await json(200, this.sessionPayload(this.session))
+      return
+    }
+
+    await json(405, { msg: 'unsupported' })
   }
 
   private async handleAuth(route: Route): Promise<void> {
     const request = route.request()
     const url = new URL(request.url())
     this.requests.push(`${request.method()} ${url.pathname}`)
+
+    if (/\/factors(\/|$)/.test(url.pathname)) {
+      await this.handleFactors(route, url)
+      return
+    }
 
     if (url.pathname.endsWith('/token')) {
       const body = JSON.parse(request.postData() ?? '{}') as {
@@ -257,14 +442,7 @@ export class SupabaseStub {
         await route.fulfill({
           status: 200,
           contentType: 'application/json',
-          body: JSON.stringify({
-            access_token: `stub-access-${this.session.userId}`,
-            token_type: 'bearer',
-            expires_in: 3600,
-            expires_at: Math.floor(Date.now() / 1000) + 60 * 60 * 24,
-            refresh_token: `stub-refresh-${this.session.userId}`,
-            user: this.authUser(this.session),
-          }),
+          body: JSON.stringify(this.sessionPayload(this.session)),
         })
         return
       }
@@ -291,24 +469,21 @@ export class SupabaseStub {
         email: account['user_email'] as string,
       }
       this.setSession(session)
+      // A password alone: the session starts at aal1, whatever factors the
+      // account has.
+      this.aal = 'aal1'
 
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({
-          access_token: `stub-access-${session.userId}`,
-          token_type: 'bearer',
-          expires_in: 3600,
-          expires_at: Math.floor(Date.now() / 1000) + 60 * 60 * 24,
-          refresh_token: `stub-refresh-${session.userId}`,
-          user: this.authUser(session),
-        }),
+        body: JSON.stringify(this.sessionPayload(session)),
       })
       return
     }
 
     if (url.pathname.endsWith('/logout')) {
       this.setSession(null)
+      this.aal = 'aal1'
       await route.fulfill({ status: 204, body: '' })
       return
     }
@@ -348,9 +523,17 @@ export class SupabaseStub {
     // call, not an insert, so it must not fall through to the table routing.
     if (table.startsWith('rpc/')) {
       const name = table.slice('rpc/'.length)
-      const result = this.rpcResults.has(name)
-        ? this.rpcResults.get(name)
-        : (this.rowsIn(table)[0] ?? null)
+      let result: unknown
+      if (this.rpcResults.has(name)) {
+        result = this.rpcResults.get(name)
+      } else if (name === 'super_admin_assured') {
+        // The database's answer, from this session: the real one also
+        // checks the session, factor and code against Supabase Auth's
+        // tables (tests/db/super-admin.test.ts).
+        result = this.isAssured()
+      } else {
+        result = this.rowsIn(table)[0] ?? null
+      }
       await route.fulfill({
         status: 200,
         contentType: 'application/json',

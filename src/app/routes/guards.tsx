@@ -23,6 +23,16 @@ const HOME_FOR_ROLE: Record<UserRole, string> = {
   patient: '/patient',
   doctor: '/doctor',
   admin: '/admin',
+  // The platform console. Reached only through the authenticator gate.
+  super_admin: '/platform',
+}
+
+/** A role as the person holding it would say it. */
+const ROLE_NOUN: Record<UserRole, string> = {
+  patient: 'patient',
+  doctor: 'doctor',
+  admin: 'administrator',
+  super_admin: 'platform administrator',
 }
 
 export function roleHome(role: UserRole): string {
@@ -104,13 +114,7 @@ function describeProblem(problem: AccountProblem): {
     case 'profile-missing':
       return {
         title: 'Your profile is incomplete',
-        description: `Your account is registered as a ${problem.role}, but the matching profile record is missing. Please contact your system administrator.`,
-      }
-    case 'platform-account':
-      return {
-        title: 'This is a platform administrator account',
-        description:
-          'This account manages the RecoverEase platform, not a clinic, so it has no screens on this site. Sign out to use a clinic account.',
+        description: `Your account is registered as a ${ROLE_NOUN[problem.role]}, but the matching profile record is missing. Please contact your system administrator.`,
       }
   }
 }

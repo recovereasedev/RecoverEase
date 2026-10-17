@@ -277,9 +277,17 @@ Each step is its own approval, in this order:
 3. **Apply migration 34**, which lifts the single-clinic gate and drops the
    key-only settings index. Only once `chatbot-reply` v15 and a website that
    saves settings by clinic and key (PR #40) are live. It creates no clinic.
-4. **Make the first Super Admin**, with the owner-only procedure in
-   `docs/security.md`, once the person is chosen. Confirm TOTP MFA is enabled
-   in Supabase Auth first; it is on by default.
+4. **Merge the console (PR 5).** Vercel deploys `main` on merge. It can go
+   before or after the steps above: until 33 no account can be a Super Admin,
+   so nothing reaches `/platform`, and the console asks the database before
+   it shows anything. It changes no clinic screen.
+5. **Make the first Super Admin**, with the owner-only procedure in
+   `docs/security.md`, once the person is chosen and steps 1, 2 and 4 are
+   live. First confirm, read-only, that TOTP enrolment and verification are
+   enabled in the project's Supabase Auth settings (Multi-Factor); they are
+   on by default. Then confirm, read-only, that their first code was recorded as
+   the database's check expects - `auth.sessions.factor_id` set and a `totp`
+   row in `auth.mfa_amr_claims` for that session - before relying on it.
 
 Rollback goes the other way: `supabase/rollbacks/20260902100034_lift_single_clinic_gate.down.sql`
 (refused once a second clinic exists - clinics are never deleted), then

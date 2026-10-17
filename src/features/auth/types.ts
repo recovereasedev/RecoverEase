@@ -4,11 +4,13 @@ import type { Enums, Tables } from '@/types/database.types'
 export type AccountRole = Enums<'user_role'>
 
 /**
- * The roles this website serves. A Super Admin (migration 33) runs the
- * platform from its own console, which this site does not have yet; a Super
- * Admin who signs in here is stopped with an explanation (`AccountProblem`).
+ * The roles this website serves: the three clinic roles, and the Super Admin
+ * (migration 33), whose platform console is under /platform.
  */
-export type UserRole = Exclude<AccountRole, 'super_admin'>
+export type UserRole = AccountRole
+
+/** The roles that work inside a clinic, and have its screens. */
+export type ClinicRole = Exclude<UserRole, 'super_admin'>
 
 /**
  * The signed-in principal, resolved from the database.
@@ -42,6 +44,7 @@ export type AppProfile =
   | { kind: 'patient'; patient: Tables<'patient'> }
   | { kind: 'doctor'; doctor: Tables<'doctor'> }
   | { kind: 'admin'; admin: Tables<'admin'> }
+  | { kind: 'super_admin'; superAdmin: Tables<'super_admin'> }
 
 /**
  * Why a session exists but cannot be used. These are distinct from ordinary
@@ -54,8 +57,6 @@ export type AccountProblem =
   | { kind: 'doctor-deactivated' }
   /** A role row is missing, e.g. a user_account marked doctor with no doctor. */
   | { kind: 'profile-missing'; role: UserRole }
-  /** A Super Admin: the platform console is not part of this site yet. */
-  | { kind: 'platform-account' }
 
 export type AuthStatus =
   | { state: 'loading' }

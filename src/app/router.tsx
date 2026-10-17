@@ -6,6 +6,7 @@ import {
   RedirectIfSignedIn,
   RequireAuth,
   RequireRole,
+  roleHome,
 } from '@/app/routes/guards'
 import * as Page from '@/app/routes/lazy-pages'
 import { RouteErrorBoundary } from '@/components/feedback/route-error-boundary'
@@ -14,6 +15,8 @@ import { AppShell } from '@/components/layout/app-shell'
 import { InstallAppPrompt } from '@/components/layout/install-app-prompt'
 import { ConsentGate } from '@/features/auth/components/consent-gate'
 import { PasswordSetupGate } from '@/features/auth/components/password-setup-gate'
+import type { UserRole } from '@/features/auth/types'
+import { SuperAdminAssuranceGate } from '@/features/platform/components/assurance-gate'
 
 function LazyBoundary({ children }: { children: ReactNode }) {
   return (
@@ -50,9 +53,13 @@ function PublicEntry() {
  * accepted the privacy notice cannot reach any clinical screen — including by
  * typing a deep link, since the gate wraps every child route rather than
  * being a redirect from the dashboard.
+ *
+ * The Super Admin's console sits behind the authenticator gate the same way:
+ * no console screen, the navigation included, renders until this session
+ * has entered a code. The database asks for it again on every call.
  */
 function protectedSection(
-  role: 'patient' | 'doctor' | 'admin',
+  role: UserRole,
   children: RouteObject[],
 ): RouteObject {
   const shell =
@@ -60,6 +67,10 @@ function protectedSection(
       <ConsentGate>
         <AppShell />
       </ConsentGate>
+    ) : role === 'super_admin' ? (
+      <SuperAdminAssuranceGate>
+        <AppShell />
+      </SuperAdminAssuranceGate>
     ) : (
       <AppShell />
     )
@@ -69,7 +80,7 @@ function protectedSection(
   // of the person it belongs to, so it must not be shown the privacy notice
   // to accept on that person's behalf.
   return {
-    path: role,
+    path: roleHome(role),
     element: (
       <RequireAuth>
         <RequireRole allow={[role]}>
@@ -168,6 +179,12 @@ export const router = createBrowserRouter([
     { path: 'notifications', element: <Page.NotificationsPage /> },
     { path: 'settings', element: <Page.SystemSettingsPage /> },
     { path: 'profile', element: <Page.AdminProfilePage /> },
+  ]),
+
+  protectedSection('super_admin', [
+    { index: true, element: <Page.PlatformClinicsPage /> },
+    { path: 'announcements', element: <Page.PlatformAnnouncementsPage /> },
+    { path: 'audit', element: <Page.PlatformAuditPage /> },
   ]),
 
   // Ambiguous entry point: send people to the root, which routes them on.

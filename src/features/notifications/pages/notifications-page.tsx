@@ -14,7 +14,7 @@ import { EmptyState, StateView } from '@/components/feedback/state-view'
 import { PageHeader } from '@/components/layout/page-header'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Card, CardBody } from '@/components/ui/card'
-import type { UserRole } from '@/features/auth/types'
+import type { ClinicRole } from '@/features/auth/types'
 import type { NotificationType } from '@/features/notifications/api'
 import {
   useMarkAllNotificationsRead,
@@ -46,7 +46,7 @@ const TYPE_ICON: Record<NotificationType, LucideIcon> = {
  * only true for a patient. Read from the route, which is where the portal is
  * already decided.
  */
-const DESCRIPTION: Record<UserRole, string> = {
+const DESCRIPTION: Record<ClinicRole, string> = {
   patient: 'Reminders and updates about your care.',
   doctor: 'Alerts and updates about your patients.',
   admin: 'Updates about the system.',
@@ -56,7 +56,7 @@ const DESCRIPTION: Record<UserRole, string> = {
 export function NotificationsPage() {
   useDocumentTitle('Notifications')
   const portal = useLocation().pathname.split('/')[1]
-  const role: UserRole =
+  const role: ClinicRole =
     portal === 'doctor' || portal === 'admin' ? portal : 'patient'
   const notificationsQuery = useNotifications()
   const markRead = useMarkNotificationRead()

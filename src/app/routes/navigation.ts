@@ -1,6 +1,7 @@
 import {
   Activity,
   Bell,
+  Building2,
   CalendarDays,
   ClipboardList,
   FileBarChart,
@@ -160,10 +161,30 @@ const ADMIN_NAV: NavSection[] = [
   },
 ]
 
+/**
+ * The platform console. Clinics, platform announcements and the platform's
+ * own audit trail - nothing inside a clinic, so nothing clinical.
+ */
+const PLATFORM_NAV: NavSection[] = [
+  {
+    items: [
+      { label: 'Clinics', to: '/platform', icon: Building2 },
+      {
+        label: 'Announcements',
+        shortLabel: 'Notices',
+        to: '/platform/announcements',
+        icon: Megaphone,
+      },
+      { label: 'Audit log', to: '/platform/audit', icon: ScrollText },
+    ],
+  },
+]
+
 const NAV_BY_ROLE: Record<UserRole, NavSection[]> = {
   patient: PATIENT_NAV,
   doctor: DOCTOR_NAV,
   admin: ADMIN_NAV,
+  super_admin: PLATFORM_NAV,
 }
 
 export function navigationFor(role: UserRole): NavSection[] {

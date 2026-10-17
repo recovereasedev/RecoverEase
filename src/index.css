@@ -346,7 +346,8 @@
     --color-role-soft: var(--color-brand-50);
   }
 
-  [data-role='admin'] {
+  [data-role='admin'],
+  [data-role='super_admin'] {
     --color-role: var(--color-neutral-800);
     --color-role-strong: var(--color-neutral-900);
     --color-role-soft: var(--color-neutral-100);

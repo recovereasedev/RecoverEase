@@ -101,4 +101,16 @@ export const queryKeys = {
     settings: () => [...queryKeys.admin.all, 'settings'] as const,
     clinic: () => [...queryKeys.admin.all, 'clinic'] as const,
   },
+
+  /** The platform console (Super Admin). */
+  platform: {
+    all: ['platform'] as const,
+    /** Whether this session may use the console; see SuperAdminAssuranceGate. */
+    assurance: (userId: string) =>
+      [...queryKeys.platform.all, 'assurance', userId] as const,
+    clinics: () => [...queryKeys.platform.all, 'clinics'] as const,
+    announcements: () =>
+      [...queryKeys.platform.all, 'announcements'] as const,
+    audit: () => [...queryKeys.platform.all, 'audit'] as const,
+  },
 } as const
