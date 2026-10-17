@@ -1,6 +1,6 @@
 import { test as base, type Browser, type Page } from '@playwright/test'
 
-import { SupabaseStub, type TableRows } from './supabase-stub'
+import { SupabaseStub, type StubSession, type TableRows } from './supabase-stub'
 
 /**
  * The same cast as the database suite, so a reader comparing the two is
@@ -26,6 +26,9 @@ export const IDS = {
   doctorB: 'bbbb2222-2222-4222-8222-dddddddddddd',
   adminUser: 'cccc3333-3333-4333-8333-333333333333',
   admin: 'cccc3333-3333-4333-8333-eeeeeeeeeeee',
+  superAdminUser: 'dddd4444-4444-4444-8444-444444444444',
+  superAdmin: 'dddd4444-4444-4444-8444-ffffffffffff',
+  clinic: 'c1c1c1c1-0000-4000-8000-000000000001',
   planA: 'p1a11111-1111-4111-8111-111111111111',
   goalA: 'g1a11111-1111-4111-8111-111111111111',
   prescriptionA: 'r1a11111-1111-4111-8111-111111111111',
@@ -343,6 +346,45 @@ export function datasetFor(role: 'patient' | 'doctor' | 'admin'): TableRows {
   }
 }
 
+/**
+ * The platform's side: one Super Admin, who has no clinic profile and reads
+ * no clinical row, and the clinic list the console shows. Everything the
+ * console reads is a Super Admin function, answered here by RPC.
+ */
+export function platformDataset(): TableRows {
+  return {
+    user_account: [
+      {
+        user_id: IDS.superAdminUser,
+        user_email: 'platform@recoverease.test',
+        user_role: 'super_admin',
+      },
+    ],
+    super_admin: [
+      {
+        super_admin_id: IDS.superAdmin,
+        user_id: IDS.superAdminUser,
+        super_admin_first_name: 'Pat',
+        super_admin_last_name: 'Reyes',
+        super_admin_created_at: '2026-01-01T00:00:00Z',
+      },
+    ],
+    'rpc/super_admin_list_clinics': [],
+  }
+}
+
+export const PLATFORM_CLINICS = [
+  {
+    clinic_id: IDS.clinic,
+    clinic_name: 'Harbor Clinic',
+    clinic_status: 'active',
+    clinic_timezone: 'Asia/Manila',
+    clinic_created_at: '2026-01-01T00:00:00Z',
+    clinic_updated_at: '2026-01-01T00:00:00Z',
+    clinic_admin_count: 1,
+  },
+]
+
 type Fixtures = {
   /**
    * Whether RecoverEase's own offer to install itself as an app may appear
@@ -355,9 +397,9 @@ type Fixtures = {
   installPrompt: 'block' | 'allow'
   stub: SupabaseStub
   signInAs: (
-    role: 'patient' | 'doctor' | 'admin',
+    role: 'patient' | 'doctor' | 'admin' | 'super_admin',
     overrides?: Partial<TableRows>,
-    options?: { mustChangePassword?: boolean },
+    options?: { mustChangePassword?: boolean; mfa?: StubSession['mfa'] },
   ) => Promise<SupabaseStub>
 }
 
@@ -388,7 +430,8 @@ export const test = base.extend<Fixtures>({
 
   signInAs: async ({ page }, use) => {
     await use(async (role, overrides = {}, options = {}) => {
-      const data: TableRows = datasetFor(role)
+      const data: TableRows =
+        role === 'super_admin' ? platformDataset() : datasetFor(role)
       // Assigned rather than spread: spreading a Partial widens every value
       // to `| undefined`, which TableRows does not allow.
       for (const [table, rows] of Object.entries(overrides)) {
@@ -396,17 +439,26 @@ export const test = base.extend<Fixtures>({
       }
       const stub = new SupabaseStub(data)
       await stub.install(page)
+      if (role === 'super_admin') {
+        stub.setRpcResult('super_admin_list_clinics', PLATFORM_CLINICS)
+        stub.setRpcResult('super_admin_list_announcements', [])
+        stub.setRpcResult('super_admin_list_audit', [])
+      }
 
-      const session =
-        role === 'patient'
-          ? { userId: IDS.aliceUser, email: 'alice@recoverease.test' }
-          : role === 'doctor'
-            ? { userId: IDS.doctorAUser, email: 'doctor.a@recoverease.test' }
-            : { userId: IDS.adminUser, email: 'admin@recoverease.test' }
+      const session = {
+        patient: { userId: IDS.aliceUser, email: 'alice@recoverease.test' },
+        doctor: { userId: IDS.doctorAUser, email: 'doctor.a@recoverease.test' },
+        admin: { userId: IDS.adminUser, email: 'admin@recoverease.test' },
+        super_admin: {
+          userId: IDS.superAdminUser,
+          email: 'platform@recoverease.test',
+        },
+      }[role]
 
       await stub.signInAs(page, {
         ...session,
         mustChangePassword: options.mustChangePassword === true,
+        ...(options.mfa ? { mfa: options.mfa } : {}),
       })
 
       // Returned so a test can move the account on — completing onboarding,
@@ -418,4 +470,5 @@ export const test = base.extend<Fixtures>({
 
 export { expect } from '@playwright/test'
 export { SupabaseStub }
+export { STUB_TOTP_CODE } from './supabase-stub'
 export type { Browser, Page }

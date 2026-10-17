@@ -307,8 +307,50 @@ A Super Admin has no admin, doctor or patient profile, so every existing
 policy gives them nothing: `tests/db/super-admin.test.ts` counts every table
 as a verified Super Admin and finds only their own account and profile and
 published platform announcements. Every Clinic Admin function refuses them.
-The clinic website stops a Super Admin who signs in with a "platform
-administrator account" screen; their console is separate (PR 5).
+
+**The console, and its authenticator step.** A Super Admin signs in on the
+same sign-in page as everyone else and lands on `/platform`: clinics and
+their Clinic Admins, platform announcements and the platform audit log - the
+functions above and nothing else. No clinic route renders for them, and no
+clinic role reaches `/platform`. Before any console screen renders, the
+navigation included, `SuperAdminAssuranceGate` asks for the authenticator:
+
+| The session | The console shows |
+| --- | --- |
+| No verified TOTP factor | Setting one up: a QR code, the same secret as a setup key to type, then its first code |
+| A verified TOTP factor, session `aal1` | A code, every sign-in |
+| `aal2`, and `super_admin_assured()` is true | The console |
+| `aal2`, but `super_admin_assured()` is false | Nothing: sign out and sign in again |
+| Any of it unreadable | Nothing: an error, and sign out |
+
+This is presentation; the database is the boundary. The gate never trusts
+the token's `aal` alone - it asks `super_admin_assured()`, which reads the
+same Supabase Auth tables as every Super Admin function - and its answer is
+neither cached between sessions nor kept once the gate is gone. Each code is
+checked with a fresh challenge. The only factors the website ever removes
+are the person's own unfinished enrolments, which cannot be used to sign in,
+so an abandoned QR code cannot be completed later. It never removes a
+verified factor, and it offers no way to skip, defer or replace the code.
+
+**A lost authenticator** is replaced by the platform owner, never through the
+website:
+
+1. Confirm who is asking by a channel that is not the account itself - in
+   person, or a call to a number already on record. Email to the account's
+   address proves nothing: whoever has the account may have the mailbox.
+2. Remove the factor with Supabase Auth's admin API -
+   `auth.admin.mfa.deleteFactor({ id, userId })` with the service key, run
+   by the owner from their own machine, never from the website or an Edge
+   Function. Removing it ends Super Admin access at once for every session
+   it raised: the database's check joins the session to its factor, and
+   finds none. (Supabase Auth itself only lowers the token's `aal` at the
+   next refresh.)
+3. The next time they sign in, the console asks them to set up a new
+   authenticator.
+
+Record that it was done, and why, outside RecoverEase: it is a change to
+Supabase Auth, not a platform entry, so the platform audit log does not
+show it.
 
 **Adding a Clinic Admin hands over no password.** A Super Admin calls
 `create-account` with `kind: 'clinic_admin'`, an email, names and the
@@ -337,12 +379,17 @@ link or token.
 **The first Super Admin** is a deliberate, approved act, not an endpoint:
 
 1. Create the person's sign-in in Supabase Auth (Authentication → Users),
-   with an address that has no RecoverEase account.
+   with an address that has no RecoverEase account, and with no password
+   anyone else knows - an invitation does this. Confirm with a read-only
+   query that it is the only sign-in with that address and has no
+   `user_account` row: sign-up is open, so an address can already have one.
 2. As the database owner, in the SQL editor:
    `select app_private.provision_super_admin('<auth user id>', '<first name>', '<last name>');`
-3. They sign in and enrol an authenticator app (Supabase Auth MFA, TOTP).
-   Until they have, and in every session until they enter a code, every
-   Super Admin operation refuses them.
+3. They choose their own password with "Forgot password" on the website,
+   sign in, and set up an authenticator app at `/platform` (Supabase Auth
+   MFA, TOTP). Until they have, and in every session until they enter a
+   code, the console shows nothing and every Super Admin operation refuses
+   them. Nobody else ever holds their password or their authenticator.
 
 TOTP MFA must be enabled for the project in Supabase Auth; it is on by
 default, and checking it changes nothing.

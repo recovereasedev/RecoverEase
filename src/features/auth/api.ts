@@ -42,11 +42,39 @@ export async function loadAppUser(
   }
 
   switch (account.user_role) {
-    // The platform's administrator has no clinic, patients or screens here:
-    // their console is separate (PR 5). Stopped, and told why - never given
-    // a clinic's dashboard.
-    case 'super_admin':
-      return { state: 'blocked', problem: { kind: 'platform-account' } }
+    // The platform's administrator: no clinic and no patients, only the
+    // platform console. Their profile is just their name. Signing in is not
+    // enough to use the console - it asks for an authenticator code first
+    // (SuperAdminAssuranceGate), and the database checks for one on every
+    // call (migration 33).
+    case 'super_admin': {
+      const { data: superAdmin, error } = await supabase
+        .from('super_admin')
+        .select('*')
+        .eq('user_id', userId)
+        .maybeSingle()
+
+      if (error) return { state: 'error', error }
+      if (!superAdmin) {
+        return {
+          state: 'blocked',
+          problem: { kind: 'profile-missing', role: 'super_admin' },
+        }
+      }
+
+      return {
+        state: 'signed-in',
+        user: {
+          ...base,
+          role: 'super_admin',
+          displayName: fullName(
+            superAdmin.super_admin_first_name,
+            superAdmin.super_admin_last_name,
+          ),
+          profile: { kind: 'super_admin', superAdmin },
+        } satisfies AppUser,
+      }
+    }
 
     case 'patient': {
       const { data: patient, error } = await supabase

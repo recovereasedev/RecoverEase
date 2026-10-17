@@ -2,6 +2,7 @@ import { Bell, LogOut, Menu, X } from 'lucide-react'
 import { useEffect, useId, useRef, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 
+import { roleHome } from '@/app/routes/guards'
 import {
   navigationFor,
   primaryMobileNavFor,
@@ -18,6 +19,7 @@ const ROLE_LABEL: Record<UserRole, string> = {
   patient: 'Patient',
   doctor: 'Clinician',
   admin: 'Administrator',
+  super_admin: 'Super Admin',
 }
 
 /**
@@ -33,6 +35,7 @@ const ROLE_CONTEXT: Record<UserRole, string> = {
   patient: 'Patient care portal',
   doctor: 'Clinician workspace',
   admin: 'System administration',
+  super_admin: 'Platform administration',
 }
 
 function navLinkClasses(isActive: boolean): string {
@@ -324,7 +327,11 @@ export function AppShell() {
 
   if (!user) return null
 
-  const notificationsHref = `/${user.role}/notifications`
+  const home = roleHome(user.role)
+  // The platform has no notifications: nothing is ever sent to a Super
+  // Admin, so the bell would only ever say "none unread".
+  const notificationsHref =
+    user.role === 'super_admin' ? null : `/${user.role}/notifications`
   const mobileItems = primaryMobileNavFor(user.role)
   const handleSignOut = () => void signOut()
 
@@ -349,7 +356,7 @@ export function AppShell() {
       <div className="hidden lg:fixed lg:inset-y-0 lg:left-0 lg:flex lg:w-sidebar lg:flex-col lg:border-r lg:border-[var(--color-border)] lg:bg-surface print:hidden!">
         <div className="flex h-20 items-center border-b border-[var(--color-border)] px-5">
           <Link
-            to={`/${user.role}`}
+            to={home}
             className="min-w-0 rounded-[var(--radius-sm)]"
           >
             <BrandLockup subtitle={ROLE_CONTEXT[user.role]} />
@@ -395,7 +402,7 @@ export function AppShell() {
           </Button>
 
           <Link
-            to={`/${user.role}`}
+            to={home}
             // A navigation target, and the wordmark alone measured 38px. No
             // `sm:` reset here, unlike the landing header: this link is
             // `lg:hidden`, so it only ever exists on a touch device.
@@ -409,12 +416,16 @@ export function AppShell() {
               wordmark; the portal is named once, in the portal's accent. */}
 
           <div className="ml-auto flex items-center gap-1 sm:gap-3">
-            <NotificationBell to={notificationsHref} />
+            {notificationsHref ? (
+              <>
+                <NotificationBell to={notificationsHref} />
 
-            <span
-              aria-hidden="true"
-              className="hidden h-8 w-px bg-[var(--color-border)] sm:block"
-            />
+                <span
+                  aria-hidden="true"
+                  className="hidden h-8 w-px bg-[var(--color-border)] sm:block"
+                />
+              </>
+            ) : null}
 
             {/* Sign out is not repeated here on a phone: the drawer carries
                 it, and a five-control header at 375px leaves every target

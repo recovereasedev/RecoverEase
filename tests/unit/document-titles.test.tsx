@@ -70,6 +70,11 @@ const ROUTES: { path: string; page: string; file: string; title: string | null }
   { path: '/admin/notifications', page: 'NotificationsPage', file: 'notifications/pages/notifications-page.tsx', title: 'Notifications' },
   { path: '/admin/settings', page: 'SystemSettingsPage', file: 'system-settings/pages/system-settings-page.tsx', title: 'System Settings' },
   { path: '/admin/profile', page: 'AdminProfilePage', file: 'system-settings/pages/admin-profile-page.tsx', title: 'My Profile' },
+
+  // Platform (Super Admin).
+  { path: '/platform', page: 'PlatformClinicsPage', file: 'platform/pages/platform-clinics-page.tsx', title: 'Clinics' },
+  { path: '/platform/announcements', page: 'PlatformAnnouncementsPage', file: 'platform/pages/platform-announcements-page.tsx', title: 'Platform Announcements' },
+  { path: '/platform/audit', page: 'PlatformAuditPage', file: 'platform/pages/platform-audit-page.tsx', title: 'Platform Audit Log' },
 ]
 
 /** The 404 screen lives with the route guards, not under `features/`. */

@@ -37,6 +37,20 @@ function patient(): AppUser {
   }
 }
 
+function superAdmin(): AppUser {
+  return {
+    userId: 'u-platform',
+    email: 'platform@example.test',
+    role: 'super_admin',
+    displayName: 'Pat Reyes',
+    mustChangePassword: false,
+    profile: {
+      kind: 'super_admin',
+      superAdmin: { super_admin_id: 'sa-1' } as never,
+    },
+  }
+}
+
 function signedIn(user: AppUser) {
   mockAuth.status = { state: 'signed-in', user }
   mockAuth.user = user
@@ -61,6 +75,7 @@ function renderAt(element: React.ReactNode) {
         <Route path="/patient" element={<p>Patient home</p>} />
         <Route path="/doctor" element={<p>Doctor home</p>} />
         <Route path="/admin" element={<p>Admin home</p>} />
+        <Route path="/platform" element={<p>Platform home</p>} />
       </Routes>
     </MemoryRouter>,
   )
@@ -117,17 +132,19 @@ describe('RequireAuth', () => {
     expect(screen.getByText(/care team/i)).toBeInTheDocument()
   })
 
-  it('stops a platform administrator, explaining why, and shows nothing of a clinic', () => {
+  it('explains a platform administrator whose profile is missing, in words', () => {
     mockAuth.status = {
       state: 'blocked',
-      problem: { kind: 'platform-account' },
+      problem: { kind: 'profile-missing', role: 'super_admin' },
     }
     renderAt(<RequireAuth>secret</RequireAuth>)
 
     expect(
-      screen.getByRole('heading', { name: /platform administrator account/i }),
+      screen.getByRole('heading', { name: /profile is incomplete/i }),
     ).toBeInTheDocument()
-    expect(screen.getByText(/manages the RecoverEase platform, not a clinic/i)).toBeInTheDocument()
+    expect(
+      screen.getByText(/registered as a platform administrator/i),
+    ).toBeInTheDocument()
     expect(screen.queryByText('secret')).not.toBeInTheDocument()
   })
 
@@ -169,6 +186,24 @@ describe('RequireRole', () => {
 
     expect(screen.getByText('Sign in page')).toBeInTheDocument()
   })
+
+  it('keeps every clinic role out of the platform console', () => {
+    signedIn({ ...patient(), role: 'admin' })
+    renderAt(<RequireRole allow={['super_admin']}>platform console</RequireRole>)
+
+    expect(screen.getByText('Admin home')).toBeInTheDocument()
+    expect(screen.queryByText('platform console')).not.toBeInTheDocument()
+  })
+
+  it("sends a Super Admin who reaches a clinic's screens to the console", () => {
+    // A Super Admin has no clinic: the database gives them none of its rows,
+    // and the website gives them none of its screens.
+    signedIn(superAdmin())
+    renderAt(<RequireRole allow={['admin']}>admin area</RequireRole>)
+
+    expect(screen.getByText('Platform home')).toBeInTheDocument()
+    expect(screen.queryByText('admin area')).not.toBeInTheDocument()
+  })
 })
 
 describe('RedirectIfSignedIn', () => {
@@ -193,5 +228,6 @@ describe('roleHome', () => {
     expect(roleHome('patient')).toBe('/patient')
     expect(roleHome('doctor')).toBe('/doctor')
     expect(roleHome('admin')).toBe('/admin')
+    expect(roleHome('super_admin')).toBe('/platform')
   })
 })
