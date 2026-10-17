@@ -34,6 +34,29 @@ async function slowWrites(page: Page, table: string) {
   return writes
 }
 
+/**
+ * Holds each write to a table until the test releases it, so the page can be
+ * checked, and acted on, mid-save for as long as that takes. A fixed delay is
+ * not enough for that: on a slow run the checks outlast it, the save ends
+ * first, and a change meant for "while it saves" arrives after it.
+ */
+async function heldWrites(page: Page, table: string) {
+  const writes: string[] = []
+  let release!: () => void
+  const released = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  await page.route(`**/rest/v1/${table}**`, async (route) => {
+    const method = route.request().method()
+    if (method !== 'GET' && method !== 'HEAD') {
+      writes.push(method)
+      await released
+    }
+    await route.fallback()
+  })
+  return { writes, release }
+}
+
 const daysFromNow = (days: number) => new Date(Date.now() + days * 86_400_000).toISOString()
 
 const pastScheduled = (id: string, daysAgo: number) => ({
@@ -207,7 +230,7 @@ test('a goal’s select keeps focus while its change saves, and takes no other c
   signInAs,
 }) => {
   await signInAs('doctor')
-  const writes = await slowWrites(page, 'treatment_goal')
+  const { writes, release } = await heldWrites(page, 'treatment_goal')
   await page.goto(`/doctor/patients/${IDS.alicePat}?tab=treatment`)
   const progress = page.getByRole('combobox', { name: /progress/i }).first()
 
@@ -227,6 +250,9 @@ test('a goal’s select keeps focus while its change saves, and takes no other c
   })
   await expect(progress).not.toHaveValue('missed')
 
+  // Only now does the save finish: everything above happened while it was
+  // still in flight.
+  release()
   await expect(progress).not.toHaveAttribute('aria-disabled')
   await expect(progress).toBeFocused()
   expect(writes).toHaveLength(1)
