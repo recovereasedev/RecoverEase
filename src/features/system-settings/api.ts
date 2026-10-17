@@ -3,6 +3,12 @@ import type { Tables } from '@/types/database.types'
 
 export type SystemSetting = Tables<'system_setting'>
 
+/** The administrator's clinic, as far as its settings need it. */
+export type ClinicSettings = Pick<
+  Tables<'clinic'>,
+  'clinic_id' | 'clinic_timezone' | 'clinic_updated_at'
+>
+
 /** What a setting makes of a value typed in: the value to store, or why not. */
 export type SettingParseResult =
   | { ok: true; value: string }
@@ -26,22 +32,57 @@ export function parseGraceHours(input: string): SettingParseResult {
 }
 
 /**
+ * A named zone in the shape the database lists them: UTC, GMT or Area/City.
+ * Browsers also accept offsets such as "+08:00", which the database does not.
+ */
+const NAMED_ZONE = /^(?:UTC|GMT|[A-Za-z_]+(?:\/[A-Za-z0-9_+-]+)+)$/
+
+/**
+ * A time zone the browser knows, in its canonical spelling ("asia/manila"
+ * becomes "Asia/Manila"). The database checks it again against its own list
+ * of zones, which is the one that counts.
+ */
+export function parseTimezone(input: string): SettingParseResult {
+  const zone = input.trim()
+  if (zone === '') {
+    return { ok: false, message: 'Enter a time zone, such as Asia/Manila.' }
+  }
+  if (!NAMED_ZONE.test(zone)) {
+    return { ok: false, message: 'Enter a time zone name, such as Asia/Manila or Asia/Singapore.' }
+  }
+  try {
+    const canonical = new Intl.DateTimeFormat('en-US', { timeZone: zone }).resolvedOptions().timeZone
+    return { ok: true, value: canonical }
+  } catch {
+    return { ok: false, message: 'Enter a time zone name, such as Asia/Manila or Asia/Singapore.' }
+  }
+}
+
+/**
+ * The clinic's time zone (migration 31). It belongs to the clinic rather
+ * than being a stored setting, and is saved through its own audited
+ * function; the form shows it like any other setting.
+ */
+export const TIMEZONE_DEFINITION = {
+  key: 'clinic.timezone',
+  label: 'Clinic time zone',
+  description:
+    'Medication times are wall-clock times in this zone. A dose set for 08:00 means 08:00 here. It also decides "today", reminder hours and the dates in notifications.',
+  placeholder: 'Asia/Manila',
+  multiline: false,
+  parse: parseTimezone,
+} as const
+
+/**
  * The settings the application understands, with the guidance an
- * administrator needs to set them sensibly.
+ * administrator needs to set them sensibly. Each is the administrator's own
+ * clinic's (migration 31).
  *
  * Declaring them here rather than letting arbitrary keys be typed in means
  * the settings screen can explain each one, and a typo cannot silently create
  * a setting nothing reads.
  */
 export const SETTING_DEFINITIONS = [
-  {
-    key: 'app.timezone',
-    label: 'Clinic time zone',
-    description:
-      'Medication times are wall-clock times in this zone. A dose set for 08:00 means 08:00 here.',
-    placeholder: 'Asia/Manila',
-    multiline: false,
-  },
   {
     key: 'chatbot.system_prompt',
     label: 'Chatbot guidance',
@@ -64,7 +105,10 @@ export const SETTING_DEFINITIONS = [
 
 export type SettingKey = (typeof SETTING_DEFINITIONS)[number]['key']
 
-/** Module 14.1 "Configure System Settings". */
+/**
+ * Module 14.1 "Configure System Settings": the administrator's clinic's
+ * settings, which is all Row Level Security returns.
+ */
 export async function fetchSystemSettings(): Promise<SystemSetting[]> {
   const { data, error } = await supabase
     .from('system_setting')
@@ -76,23 +120,47 @@ export async function fetchSystemSettings(): Promise<SystemSetting[]> {
 }
 
 /**
- * Upsert on the key, which is unique in the database. Using insert-or-update
- * here means the settings form does not need to know whether a value has ever
- * been saved before.
+ * Upsert on the clinic and key, which are unique together in the database.
+ * Using insert-or-update here means the settings form does not need to know
+ * whether a value has ever been saved before. The clinic is sent to name the
+ * row; the database sets it from the administrator regardless.
  */
 export async function saveSystemSetting(input: {
   adminId: string
+  clinicId: string
   key: string
   value: string
 }): Promise<void> {
   const { error } = await supabase.from('system_setting').upsert(
     {
       admin_id: input.adminId,
+      clinic_id: input.clinicId,
       system_setting_key: input.key,
       system_setting_value: input.value,
     },
-    { onConflict: 'system_setting_key' },
+    { onConflict: 'clinic_id,system_setting_key' },
   )
+
+  if (error) throw error
+}
+
+/** The administrator's clinic: its time zone, and when it last changed. */
+export async function fetchClinicSettings(): Promise<ClinicSettings> {
+  const { data, error } = await supabase
+    .from('clinic')
+    .select('clinic_id, clinic_timezone, clinic_updated_at')
+    .maybeSingle()
+
+  if (error) throw error
+  if (!data) throw new Error('Your clinic could not be found.')
+  return data
+}
+
+/** Sets the administrator's clinic's time zone. Refused for an unknown zone. */
+export async function saveClinicTimezone(timezone: string): Promise<void> {
+  const { error } = await supabase.rpc('admin_set_clinic_timezone', {
+    new_timezone: timezone,
+  })
 
   if (error) throw error
 }

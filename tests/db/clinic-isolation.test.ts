@@ -1,15 +1,17 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
+import { liftSingleClinicGate } from './helpers/clinics'
 import { createTestDatabase, expectDenied, type TestDatabase } from './helpers/database'
 import { seedFixture, type Fixture } from './helpers/fixtures'
 
 /**
  * Two clinics, side by side (migration 30).
  *
- * Production has one clinic and a gate that refuses a second until settings
- * are per clinic (migration 31). This suite lifts the gate in its own
- * database only, so that every Clinic Admin rule can be shown to stop at the
- * clinic's edge - not merely to pass because there is nothing beyond it.
+ * Production has one clinic and a gate that refuses a second until every
+ * reader of a setting is clinic-aware (lifted with clinic creation, after
+ * migration 31). This suite lifts the gate in its own database only, so that
+ * every Clinic Admin rule can be shown to stop at the clinic's edge - not
+ * merely to pass because there is nothing beyond it.
  *
  *   Clinic A (Harborview, from migration 29): the shared fixture -
  *     admin, doctors A and B, deactivated doctor C; Alice, Bob, Carol, Dave.
@@ -54,7 +56,7 @@ async function seedSecondClinic(database: TestDatabase): Promise<ClinicB> {
     Object.values((await database.asService<Record<string, string>>(sql, params))[0]!)[0]!
 
   const clinicA = await one('select clinic_id from public.clinic')
-  await database.db.exec('drop index public.clinic_single_clinic_gate')
+  await liftSingleClinicGate(database)
   const clinicB = await one(
     `insert into public.clinic (clinic_name, clinic_timezone)
      values ('Synthetic Second Clinic', 'Asia/Tokyo') returning clinic_id`,
@@ -94,7 +96,10 @@ async function seedSecondClinic(database: TestDatabase): Promise<ClinicB> {
   const erin = await patient('erin@second.test', 'Erin', doctorE.docId)
 
   await database.asService(
-    `insert into public.prescription (pat_id, doc_id, prescription_notes) values ($1, $2, 'Second clinic notes')`,
+    // With two clinics "today" is whose-today: a server-side insert gives its
+    // date rather than take app_today()'s default (migration 31).
+    `insert into public.prescription (pat_id, doc_id, prescription_notes, prescription_issued_date)
+     values ($1, $2, 'Second clinic notes', date '2026-09-01')`,
     [dana.patId, doctorD.docId],
   )
   await database.asService(
@@ -314,13 +319,15 @@ describe('a Clinic Admin works within their own clinic', () => {
           [b.draftBId],
         ),
       )
+      // Refused before the policy is even asked: from migration 31 an
+      // announcement keeps its clinic and author (clinic-settings.test.ts).
       await expect(
         database.asUser(
           fx.adminUserId,
           'update public.announcement set clinic_id = $2 where announcement_id = $1',
           [fx.publishedAnnouncementId, b.clinicB],
         ),
-      ).rejects.toThrow(/row-level security/)
+      ).rejects.toThrow(/keeps the author and clinic/)
       expect(
         await database.asService(
           'select count(*)::int as n from public.announcement where announcement_id in ($1, $2)',
@@ -504,11 +511,18 @@ describe('a Clinic Admin works within their own clinic', () => {
   })
 
   describe('settings', () => {
-    it('stay one platform-wide set until migration 31, which is why production keeps the gate', async () => {
-      // Per-clinic settings are PR 3 (decision D3). Until then a second
-      // clinic would share them, so outside this test a second clinic cannot
-      // exist (clinic-migration.test.ts). Doctors and patients still have no
-      // access at all.
+    it('are each clinic’s own (migration 31), and doctors and patients still have no access at all', async () => {
+      // The full rules are in clinic-settings.test.ts; here, that the second
+      // clinic's administrator does not see the first clinic's.
+      await database.asUser(
+        fx.adminUserId,
+        `insert into public.system_setting (system_setting_key, system_setting_value)
+         values ('chatbot.system_prompt', 'Harborview guidance')`,
+      )
+      expect(
+        await database.asUser(b.adminBUserId, 'select system_setting_key from public.system_setting'),
+      ).toEqual([])
+
       for (const userId of [b.doctorDUserId, b.danaUserId, fx.doctorAUserId]) {
         expect(await database.asUser(userId, 'select system_setting_id from public.system_setting')).toEqual([])
         await expect(
@@ -563,6 +577,9 @@ describe('D8: moving a deactivated doctor’s patients', () => {
     await expect(count(fx.adminUserId, fx.doctorAId)).rejects.toThrow(/Only a deactivated doctor/)
     // Another clinic's doctor is indistinguishable from one that does not exist.
     await expect(count(fx.adminUserId, b.doctorEId)).rejects.toThrow('That doctor account could not be found')
+    await expect(
+      database.asUser(fx.adminUserId, 'select public.admin_doctor_appointment_count($1)', [b.doctorEId]),
+    ).rejects.toThrow('That doctor account could not be found')
     await expect(count(fx.adminUserId, '00000000-0000-0000-0000-000000000000')).rejects.toThrow(
       'That doctor account could not be found',
     )
@@ -650,7 +667,7 @@ describe('D8: moving a deactivated doctor’s patients', () => {
       actor: fx.adminUserId,
       scope: 'administration',
       clinic: b.clinicA,
-      details: { from_doc_id: fx.doctorCId, to_doc_id: fx.doctorAId, patient_count: 1 },
+      details: { from_doc_id: fx.doctorCId, to_doc_id: fx.doctorAId, patient_count: 1, appointment_count: 0 },
     })
 
     // Each patient's own entry records that the doctor changed, not to whom.

@@ -90,8 +90,9 @@ gives 08:00, 12:00 and 16:00. The rules:
   day of the course, so a time past midnight would be scheduled on the first
   day before the first dose.
 - The calculation is clock arithmetic on times of day, with no date or time
-  zone involved. Dose generation places the times in the `app.timezone`
-  setting, as it always has.
+  zone involved. Dose generation places the times in the patient's clinic's
+  time zone (`clinic.clinic_timezone`; before migration 31, the
+  `app.timezone` setting, which held the same zone).
 
 Only the calculated times are stored, in `medication_schedule_times`, with
 `medication_schedule_frequency` counted from them. There is no interval
@@ -139,9 +140,21 @@ and gives every doctor and Clinic Admin one (`doctor.clinic_id`, required;
 clinic column: their clinic is their doctor's, so it cannot disagree with it.
 `announcement.clinic_id` and `report.clinic_id` record whose they are, and
 `audit_log` gains `clinic_id` and `audit_scope` (migration 30). Triggers set
-all of these from the row's source rather than from the request. Until
-migration 31 makes settings per clinic, a unique index allows only one clinic
-row.
+all of these from the row's source rather than from the request.
+
+Migration 31 makes settings and time the clinic's (decision D3).
+`system_setting.clinic_id` is required, set from the Clinic Admin who writes
+it, and unique together with the key. `clinic.clinic_timezone` is the only
+time zone anything reads: each function that works out a date or a time -
+"today", dose slots, missed doses, reminders, notices, date checks - resolves
+the clinic from its own row, through the patient's doctor. The old
+`app.timezone` row stays, read by nothing, as an alias the settings screen
+deployed before 31 saves through.
+
+A unique index still allows only one clinic row. It is lifted only by the
+later migration that creates clinics, together with the key-only settings
+index and the alias, once everything that reads a setting is known to be
+clinic-aware.
 
 ## Assumptions where the ERD was silent
 
@@ -177,8 +190,8 @@ Other assumptions:
   ERD, and it is `NOT NULL` here: a patient with no doctor would be invisible
   to every clinician, since RLS scopes doctor access through this column.
 - **Medication times are wall-clock times in the clinic's zone**, read from
-  the `app.timezone` system setting. A dose set for 08:00 must mean 08:00
-  where the patient lives, not 08:00 UTC.
+  the patient's clinic (`clinic.clinic_timezone`, migration 31). A dose set
+  for 08:00 must mean 08:00 where the patient lives, not 08:00 UTC.
 
 ## Referential integrity
 

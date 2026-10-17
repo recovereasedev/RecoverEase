@@ -185,10 +185,8 @@ describe('medication reminders', () => {
       await database.asService(
         `update public.patient
             set pat_reminder_preferred_time =
-                  ((now() at time zone coalesce(
-                     (select system_setting_value from public.system_setting
-                       where system_setting_key = 'app.timezone'), 'UTC'
-                   )) + interval '50 minutes')::time
+                  ((now() at time zone (select clinic_timezone from public.clinic))
+                   + interval '50 minutes')::time
           where pat_id = $1`,
         [fx.alicePatId],
       )
@@ -201,10 +199,8 @@ describe('medication reminders', () => {
       await database.asService(
         `update public.patient
             set pat_reminder_preferred_time =
-                  ((now() at time zone coalesce(
-                     (select system_setting_value from public.system_setting
-                       where system_setting_key = 'app.timezone'), 'UTC'
-                   )) - interval '50 minutes')::time
+                  ((now() at time zone (select clinic_timezone from public.clinic))
+                   - interval '50 minutes')::time
           where pat_id = $1`,
         [fx.alicePatId],
       )

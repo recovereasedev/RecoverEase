@@ -97,24 +97,24 @@ ability to sign in.
 
 `app_private` holds every authorization helper. One function sits outside it,
 deliberately: `public.app_today()`, which returns the current date in the
-clinic timezone.
+caller's clinic's time zone (migration 31).
 
 It has to be in `public` and callable by `authenticated`, because column
 `DEFAULT` expressions are evaluated with the privileges of the *inserting*
 role, not the table owner — a default that called into `app_private` would
 fail for every real user.
 
-It has to be `SECURITY DEFINER`, because it reads `system_setting`, which is
-readable only by administrators. Under invoker rights a patient would match no
-row, silently fall back to `UTC`, and reintroduce exactly the bug the function
-exists to remove.
+It is `SECURITY DEFINER` so that it reads the caller's clinic and that
+clinic's zone whoever calls it. With no member asking - a cron job, the
+service key, a migration - it answers only while there is a single clinic,
+and refuses rather than guess once there are more.
 
 What keeps that acceptable:
 
-- It takes **no arguments**, so there is nothing to point it at.
+- It takes **no arguments**, so there is nothing to point it at: the clinic
+  is always the caller's own.
 - It returns **a date**, never table data. The only thing it discloses is what
-  day the server thinks it is, which every HTTP `Date` response header already
-  carries.
+  day it is in the caller's own clinic.
 - `EXECUTE` is revoked from `PUBLIC` and `anon`; it is not reachable
   unauthenticated. A test asserts this.
 - `search_path` is pinned to empty, like every helper in `app_private`.
@@ -156,7 +156,7 @@ Applied to every policy, each guarding a specific failure:
 | `announcement` | published, own clinic's | published, own clinic's | full |
 | `report` | **none** | own | own + system-wide |
 | `audit_log` | none | none | **read only** (administration and clinical entries) |
-| `system_setting` | none | none | r/w — platform-wide until migration 31 |
+| `system_setting` | none | none | r/w, own clinic's (migration 31) |
 
 Every Clinic Admin cell is limited to the administrator's own clinic (see
 "Clinics" below).
@@ -220,13 +220,25 @@ Clinic.
   included, and a patient can only move to an active doctor in the same
   clinic.
 - **Moving a deactivated doctor's patients (decision D8)** is one audited
-  database function, for that clinic's Clinic Admin only. It shows a count
+  database function, for that clinic's Clinic Admin only. It shows counts
   and never a name, moves only each patient's doctor, keeps the author of
-  every plan, prescription and note, and moves nothing if the count has
-  changed since it was shown.
-- **Settings stay platform-wide** until migration 31 (decision D3). Until
-  then a single-clinic gate refuses a second clinic, so no clinic can change
-  another's settings.
+  every plan, prescription and note, and moves nothing if a count has
+  changed since it was shown. From migration 31 (option A) their upcoming
+  scheduled and confirmed appointments move with them, to the same times;
+  past and closed ones stay with the doctor they were with. Nothing moves if
+  any would clash with another booking. The patient and the new doctor are
+  notified, reminders already sent are not repeated, and each moved
+  appointment gets a clinical audit entry naming only the changed field.
+- **Settings and the time zone are the clinic's** from migration 31
+  (decision D3). A Clinic Admin reads and writes only their own clinic's; the
+  clinic comes from who is writing, never from the request, and cannot be
+  changed afterwards. The time zone is set with `admin_set_clinic_timezone`,
+  audited as an administration entry. The chatbot uses the patient's clinic's
+  prompt, and the built-in guidance - never another clinic's - when it cannot
+  be read. A single-clinic gate still refuses a second clinic until the
+  clinic-creation migration.
+- **An announcement keeps its author and clinic** (migration 31): neither can
+  be changed by anyone, the service key included.
 
 **Deployment fails closed.** `create-account` and `reset-account-password`
 read the caller's clinic before creating or changing anything. Deployed
@@ -285,8 +297,10 @@ From migration 30 every audit entry carries `audit_scope` (`platform`,
 `administration` or `clinical`) and the clinic it is about. A trigger works
 the scope out from the entry's entity as the entry is written; no writer
 chooses it, and anything unrecognised is `clinical`, the most restricted.
-Only clinic entries are `platform`. Patients, prescriptions, treatment plans
-and patients' accounts are `clinical`.
+Only clinic entries are `platform`. A clinic's settings, including its time
+zone (`clinic_settings`, migration 31), are `administration`. Patients,
+prescriptions, treatment plans, appointments and patients' accounts are
+`clinical`.
 
 A Clinic Admin reads their own clinic's administration and clinical entries,
 which is what an administrator saw before, within one clinic. Platform

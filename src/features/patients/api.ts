@@ -115,36 +115,46 @@ export async function setDoctorActive(
   if (error) throw error
 }
 
-/**
- * Decision D8: how many patients a deactivated doctor still has.
- *
- * A count, never a list. The administrator is deciding where those patients
- * go, which needs how many and nothing about who they are; the database
- * function refuses anything but a deactivated doctor in the caller's clinic.
- */
-export async function fetchDoctorPatientCount(doctorId: string): Promise<number> {
-  const { data, error } = await supabase.rpc('admin_doctor_patient_count', {
-    target_doc_id: doctorId,
-  })
+/** What would move with a deactivated doctor's patients: counts only. */
+export type ReassignmentCounts = { patients: number; appointments: number }
 
-  if (error) throw error
-  return data
+/**
+ * Decision D8: how many patients a deactivated doctor still has, and how many
+ * upcoming appointments would move with them (migration 31).
+ *
+ * Counts, never a list. The administrator is deciding where those patients
+ * go, which needs how many and nothing about who they are; the database
+ * functions refuse anything but a deactivated doctor in the caller's clinic.
+ */
+export async function fetchReassignmentCounts(doctorId: string): Promise<ReassignmentCounts> {
+  const [patients, appointments] = await Promise.all([
+    supabase.rpc('admin_doctor_patient_count', { target_doc_id: doctorId }),
+    supabase.rpc('admin_doctor_appointment_count', { target_doc_id: doctorId }),
+  ])
+
+  if (patients.error) throw patients.error
+  if (appointments.error) throw appointments.error
+  return { patients: patients.data, appointments: appointments.data }
 }
 
 /**
- * Decision D8: moves every patient of a deactivated doctor to an active
- * doctor in the same clinic. `expectedCount` is the number the administrator
- * was shown; if it has changed since, nothing moves. Returns how many did.
+ * Decision D8: moves every patient of a deactivated doctor, with their
+ * upcoming appointments, to an active doctor in the same clinic. The counts
+ * are the ones the administrator was shown; if either has changed since, or
+ * an appointment would clash with another booking, nothing moves. Returns how
+ * many patients did.
  */
 export async function reassignDoctorPatients(input: {
   fromDoctorId: string
   toDoctorId: string
   expectedCount: number
+  expectedAppointmentCount: number
 }): Promise<number> {
   const { data, error } = await supabase.rpc('admin_reassign_doctor_patients', {
     from_doc_id: input.fromDoctorId,
     to_doc_id: input.toDoctorId,
     expected_count: input.expectedCount,
+    expected_appointment_count: input.expectedAppointmentCount,
   })
 
   if (error) throw error

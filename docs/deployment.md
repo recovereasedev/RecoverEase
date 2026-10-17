@@ -94,18 +94,20 @@ and each doctor registers their own patients.
 
 ## 4. Seed the system settings
 
-Optional but recommended. Without `app.timezone`, medication dose slots are
-generated in UTC.
+Optional. Settings belong to the clinic (migration 31), and the clinic's time
+zone is the clinic's own: migration 29 creates the first clinic in
+`Asia/Manila`. Without a grace period setting, the missed-dose job uses six
+hours.
 
 ```sql
-insert into public.system_setting (system_setting_key, system_setting_value)
-values
-  ('app.timezone', 'Asia/Manila'),
-  ('medication.reminder_grace_hours', '6')
-on conflict (system_setting_key) do nothing;
+insert into public.system_setting (clinic_id, system_setting_key, system_setting_value)
+values ((select clinic_id from public.clinic), 'medication.reminder_grace_hours', '6')
+on conflict (clinic_id, system_setting_key) do nothing;
 ```
 
-These are also editable from **Admin → System settings** (module 14.1).
+The time zone, the grace period and the chatbot guidance are all editable
+from **Admin → System settings** (modules 14.1 and 8.7), each for the
+administrator's own clinic.
 
 ## 5. Deploy the Edge Functions
 
@@ -237,6 +239,34 @@ Stopping after any step leaves the system working, and the single-clinic gate
 holds throughout. Tested down-scripts are in `supabase/rollbacks/`: 30's
 first, then 29's. A rollback is applied as a new migration, never by deleting
 history.
+
+Migration 31 (`clinic_settings`, per-clinic settings and time zone) goes in
+after 30, in this order:
+
+1. **Apply migration 31.** It refuses to run before 30, or if the
+   `app.timezone` setting and the clinic's zone differ, and changes no
+   setting's value. The website and `chatbot-reply` already deployed keep
+   working: the settings screen still saves by key and edits the time zone
+   through the `app.timezone` alias, and the chatbot still finds the one
+   prompt there is.
+2. **Deploy `chatbot-reply`.** It looks up the patient's clinic's prompt,
+   which reads `system_setting.clinic_id`; deployed before step 1 it would
+   use the built-in guidance for everyone.
+3. **Merge the website.** Vercel deploys `main` on merge, so this comes
+   after step 1: the new settings screen saves by clinic and key and sets the
+   time zone through `admin_set_clinic_timezone`, both of which 31 adds.
+
+`create-account`, `reset-account-password` and `complete-password-setup` read
+no setting and need no redeploy. Stopping after any step leaves the system
+working, and the single-clinic gate stays in place: it is lifted only by the
+later clinic-creation migration, separately approved, after every reader of a
+setting is verified clinic-aware.
+
+To roll back 31, go the other way: the website from before 31, then
+`chatbot-reply` from before 31, then `supabase/rollbacks/20260902100031_clinic_settings.down.sql`
+as a new migration. It refuses while there is more than one clinic - two
+clinics' settings cannot be folded into one - and writes the clinic's zone
+back into the global `app.timezone` row so nothing that reads it moves.
 
 ## Scheduled jobs
 
@@ -372,7 +402,7 @@ the invitation flow in `create-account`.
 - [ ] `npm run test:e2e` passes (42 browser tests)
 - [ ] Migrations applied; `db advisors` reports no security findings
 - [ ] First administrator provisioned
-- [ ] `app.timezone` set
+- [ ] Clinic time zone checked (Admin → System settings)
 - [ ] Edge Functions deployed with `ALLOWED_ORIGINS` set
 - [ ] Vercel env vars set for Production (and Preview if used)
 - [ ] Supabase Site URL and `/reset-password` redirect configured

@@ -5,9 +5,10 @@ import { expect, IDS, test, type SupabaseStub } from './support/fixtures'
  * patients to an active doctor in the same clinic.
  *
  * The stub answers as the database would after its own checks; what is
- * proven here is the screen's side - that it asks for a count and shows
+ * proven here is the screen's side - that it asks for counts and shows
  * nothing more, sends exactly what was confirmed, and keeps keyboard focus
- * where a keyboard user needs it.
+ * where a keyboard user needs it. Upcoming appointments go with the patients
+ * (decision D8, option A, migration 31).
  */
 
 function doctor(id: string, userId: string, first: string, last: string, active: boolean) {
@@ -33,8 +34,9 @@ const withDeactivatedDoctor = {
 }
 
 /** Dr Bea Lim holds two patients, and moving them moves two. */
-function twoPatientsToMove(stub: SupabaseStub) {
+function twoPatientsToMove(stub: SupabaseStub, upcomingAppointments = 0) {
   stub.setRpcResult('admin_doctor_patient_count', 2)
+  stub.setRpcResult('admin_doctor_appointment_count', upcomingAppointments)
   stub.setRpcResult('admin_reassign_doctor_patients', 2)
 }
 
@@ -72,6 +74,7 @@ test.describe('reassigning a deactivated doctor’s patients', () => {
       from_doc_id: IDS.doctorB,
       to_doc_id: IDS.doctorA,
       expected_count: 2,
+      expected_appointment_count: 0,
     })
 
     const done = page
@@ -88,6 +91,33 @@ test.describe('reassigning a deactivated doctor’s patients', () => {
     await done.click()
     await expect(page.getByRole('dialog')).toHaveCount(0)
     await expect(opener).toBeFocused()
+  })
+
+  test('moves their upcoming appointments with them, confirming that count too', async ({
+    page,
+    signInAs,
+  }) => {
+    twoPatientsToMove(await signInAs('admin', withDeactivatedDoctor), 3)
+    await page.goto('/admin/doctors')
+    await page.getByRole('button', { name: /reassign patients of dr bea lim/i }).click()
+
+    const dialog = page.getByRole('dialog', { name: 'Reassign patients' })
+    await expect(dialog.getByText('Dr Bea Lim has 2 patients and 3 upcoming appointments.')).toBeVisible()
+    await expect(dialog.getByText(/Upcoming appointments keep their times with the new doctor/)).toBeVisible()
+
+    await dialog.getByRole('combobox', { name: /new doctor/i }).selectOption({ label: 'Dr Alan Cruz' })
+    const sent = page.waitForRequest((request) =>
+      request.url().includes('/rest/v1/rpc/admin_reassign_doctor_patients'),
+    )
+    await dialog.getByRole('button', { name: 'Move 2 patients and 3 upcoming appointments' }).click()
+    expect((await sent).postDataJSON()).toEqual({
+      from_doc_id: IDS.doctorB,
+      to_doc_id: IDS.doctorA,
+      expected_count: 2,
+      expected_appointment_count: 3,
+    })
+    await expect(page.getByText('2 patients and 3 upcoming appointments moved to Dr Alan Cruz')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Done' })).toBeFocused()
   })
 
   test('opens and closes from the keyboard, handing focus back to the button', async ({

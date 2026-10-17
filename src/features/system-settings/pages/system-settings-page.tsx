@@ -5,9 +5,12 @@ import { ErrorState, LoadingState } from '@/components/feedback/state-view'
 import { PageHeader } from '@/components/layout/page-header'
 import { useCurrentUser } from '@/features/auth/auth-context'
 import {
+  fetchClinicSettings,
   fetchSystemSettings,
+  saveClinicTimezone,
   saveSystemSetting,
   SETTING_DEFINITIONS,
+  TIMEZONE_DEFINITION,
 } from '@/features/system-settings/api'
 import { SettingForm } from '@/features/system-settings/components/setting-form'
 import { useDocumentTitle } from '@/hooks/use-document-title'
@@ -21,6 +24,9 @@ import { queryKeys } from '@/lib/query-keys'
  * explanation of what changing it does. A free-form key/value editor would
  * let an administrator create settings nothing consumes, and mistype the ones
  * that matter.
+ *
+ * Every one is the administrator's own clinic's (migration 31): the time zone
+ * belongs to the clinic itself, the others are stored settings of the clinic.
  */
 export function SystemSettingsPage() {
   useDocumentTitle('System Settings')
@@ -34,18 +40,32 @@ export function SystemSettingsPage() {
     queryFn: fetchSystemSettings,
   })
 
+  const clinicQuery = useQuery({
+    queryKey: queryKeys.admin.clinic(),
+    queryFn: fetchClinicSettings,
+  })
+
   const save = useMutation({
     mutationFn: (input: { key: string; value: string }) =>
-      saveSystemSetting({ adminId, ...input }),
+      input.key === TIMEZONE_DEFINITION.key
+        ? saveClinicTimezone(input.value)
+        : saveSystemSetting({
+            adminId,
+            clinicId: clinicQuery.data?.clinic_id ?? '',
+            ...input,
+          }),
     onSuccess: (_result, variables) => {
       setSavedKey(variables.key)
       void queryClient.invalidateQueries({
         queryKey: queryKeys.admin.settings(),
       })
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.admin.clinic(),
+      })
     },
   })
 
-  if (settingsQuery.isPending) {
+  if (settingsQuery.isPending || clinicQuery.isPending) {
     return (
       <>
         <PageHeader title="System settings" />
@@ -54,56 +74,73 @@ export function SystemSettingsPage() {
     )
   }
 
-  if (settingsQuery.isError) {
+  if (settingsQuery.isError || clinicQuery.isError) {
     return (
       <>
         <PageHeader title="System settings" />
         <ErrorState
-          error={settingsQuery.error}
-          onRetry={() => void settingsQuery.refetch()}
+          error={settingsQuery.error ?? clinicQuery.error}
+          onRetry={() => {
+            void settingsQuery.refetch()
+            void clinicQuery.refetch()
+          }}
         />
       </>
     )
   }
 
   const stored = settingsQuery.data ?? []
+  const clinic = clinicQuery.data
+
+  const forms = [
+    {
+      definition: TIMEZONE_DEFINITION,
+      savedValue: clinic.clinic_timezone,
+      updatedAt: clinic.clinic_updated_at,
+    },
+    ...SETTING_DEFINITIONS.map((definition) => {
+      const record = stored.find(
+        (setting) => setting.system_setting_key === definition.key,
+      )
+      return {
+        definition,
+        savedValue: record?.system_setting_value ?? '',
+        updatedAt: record?.system_setting_updated_at ?? null,
+      }
+    }),
+  ]
 
   return (
     <>
       <PageHeader
         title="System settings"
-        description="Configuration that affects how RecoverEase behaves for everyone."
+        description="Configuration for your clinic: how RecoverEase behaves for its staff and patients."
       />
 
       <div className="space-y-5">
-        {SETTING_DEFINITIONS.map((definition) => {
-          const record = stored.find(
-            (setting) => setting.system_setting_key === definition.key,
-          )
-
-          return (
-            <SettingForm
-              // Remounts with the saved value as its initial state whenever
-              // the stored record changes, rather than syncing via an effect.
-              key={`${definition.key}:${record?.system_setting_updated_at ?? 'unset'}`}
-              definition={definition}
-              record={record}
-              isSaving={
-                save.isPending && save.variables?.key === definition.key
-              }
-              error={
-                save.isError && save.variables?.key === definition.key
-                  ? save.error
-                  : null
-              }
-              wasJustSaved={savedKey === definition.key}
-              onSave={(value) => {
-                setSavedKey(null)
-                save.mutate({ key: definition.key, value })
-              }}
-            />
-          )
-        })}
+        {forms.map(({ definition, savedValue, updatedAt }) => (
+          <SettingForm
+            // Remounts with the saved value as its initial state whenever
+            // the stored value changes, rather than syncing via an effect.
+            key={`${definition.key}:${updatedAt ?? 'unset'}`}
+            definition={definition}
+            savedValue={savedValue}
+            updatedAt={updatedAt}
+            isSaving={
+              save.isPending && save.variables?.key === definition.key
+            }
+            error={
+              save.isError && save.variables?.key === definition.key
+                ? save.error
+                : null
+            }
+            wasJustSaved={savedKey === definition.key}
+            onSave={(value) => {
+              setSavedKey(null)
+              save.mutate({ key: definition.key, value })
+            }}
+          />
+        ))}
       </div>
     </>
   )
