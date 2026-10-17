@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 
-import { generateTemporaryPassword } from '../../supabase/functions/_shared/credentials'
+import {
+  generateTemporaryPassword,
+  generateUnusablePassword,
+} from '../../supabase/functions/_shared/credentials'
 import { PASSPHRASE_WORDS } from '../../supabase/functions/_shared/word-list'
 
 /**
@@ -150,5 +153,17 @@ describe('the passphrase word list', () => {
     for (const term of unsuitable) {
       expect(PASSPHRASE_WORDS).not.toContain(term)
     }
+  })
+})
+
+describe('generateUnusablePassword', () => {
+  it('is 256 random bits, as 64 hex characters, different every time', () => {
+    const drawn = new Set(Array.from({ length: 200 }, () => generateUnusablePassword()))
+    expect(drawn.size).toBe(200)
+    for (const value of drawn) expect(value).toMatch(/^[0-9a-f]{64}$/)
+  })
+
+  it('fits Supabase Auth’s 72-byte password limit', () => {
+    expect(new TextEncoder().encode(generateUnusablePassword()).length).toBeLessThanOrEqual(72)
   })
 })

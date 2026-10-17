@@ -3,6 +3,7 @@ import { join } from 'node:path'
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
+import { catalog } from './helpers/catalog'
 import { addClinic, liftSingleClinicGate } from './helpers/clinics'
 import { createTestDatabase, type TestDatabase } from './helpers/database'
 import { seedFixture, type Fixture } from './helpers/fixtures'
@@ -21,40 +22,6 @@ import { seedFixture, type Fixture } from './helpers/fixtures'
 const ROLLBACK_31 = 'supabase/rollbacks/20260902100031_clinic_settings.down.sql'
 const ROLLBACK_30 = 'supabase/rollbacks/20260902100030_clinic_admin_scope.down.sql'
 const ROLLBACK_29 = 'supabase/rollbacks/20260902100029_initial_clinic.down.sql'
-
-/** Everything that defines the schema's behaviour, in a comparable form. */
-const CATALOG = `
-  select 'policy' as kind, tablename || '.' || policyname as name,
-         cmd || ' ' || array_to_string(roles, ',') || ' ' || coalesce(qual, '-')
-           || ' ' || coalesce(with_check, '-') as detail
-    from pg_policies where schemaname = 'public'
-  union all
-  select 'function', n.nspname || '.' || p.proname || '(' || pg_get_function_identity_arguments(p.oid) || ')',
-         md5(p.prosrc) || ' definer=' || p.prosecdef || ' ' || p.provolatile::text
-           || ' config=' || coalesce(array_to_string(p.proconfig, ','), '-')
-           || ' acl=' || coalesce(array_to_string(p.proacl, ','), '-')
-    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-   where n.nspname in ('public', 'app_private')
-  union all
-  select 'column', table_name || '.' || column_name,
-         data_type || ' ' || is_nullable || ' ' || coalesce(column_default, '-')
-    from information_schema.columns where table_schema = 'public'
-  union all
-  select 'trigger', c.relname || '.' || t.tgname, pg_get_triggerdef(t.oid) || ' ' || t.tgenabled::text
-    from pg_trigger t join pg_class c on c.oid = t.tgrelid
-   where not t.tgisinternal and c.relnamespace = 'public'::regnamespace
-  union all
-  select 'index', indexname, indexdef from pg_indexes where schemaname = 'public'
-  union all
-  select 'enum', t.typname, string_agg(e.enumlabel, ',' order by e.enumsortorder)
-    from pg_type t join pg_enum e on e.enumtypid = t.oid
-   where t.typnamespace = 'public'::regnamespace
-   group by t.typname
-  order by 1, 2
-`
-
-const catalog = (database: TestDatabase) =>
-  database.asService<{ kind: string; name: string; detail: string }>(CATALOG)
 
 /** The rows a rollback must leave alone. */
 const rows = async (database: TestDatabase) => ({
@@ -87,7 +54,9 @@ describe('rolling back migrations 31, 30 and 29 with their down-scripts', () => 
 
   beforeAll(async () => {
     ;[used, through28, through29, through30] = await Promise.all([
-      createTestDatabase(),
+      // Built through 31: migrations 32 onwards have their own rollbacks
+      // (super-admin-rollback.test.ts), applied before these.
+      createTestDatabase({ stopAfter: '20260902100031' }),
       createTestDatabase({ stopAfter: '20260902100028' }),
       createTestDatabase({ stopAfter: '20260902100029' }),
       createTestDatabase({ stopAfter: '20260902100030' }),
@@ -175,7 +144,7 @@ describe('rolling back migrations 31, 30 and 29 with their down-scripts', () => 
 
 describe('rolling back migration 31 once there are two clinics', () => {
   it('is refused, and changes nothing: two clinics’ settings cannot be folded into one', async () => {
-    const database = await createTestDatabase()
+    const database = await createTestDatabase({ stopAfter: '20260902100031' })
     try {
       await liftSingleClinicGate(database)
       const second = await addClinic(database, 'Synthetic Second Clinic', 'Asia/Tokyo')

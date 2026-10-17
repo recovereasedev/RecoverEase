@@ -526,7 +526,7 @@ describe('a doctor created without a clinic, until migration 31', () => {
     // deleted afterwards, by design.
     const two = await createTestDatabase()
     try {
-      await two.db.exec('drop index public.clinic_single_clinic_gate')
+      await two.db.exec('drop index if exists public.clinic_single_clinic_gate')
       await two.asService(`insert into public.clinic (clinic_name) values ('Synthetic Second Clinic')`)
       await expect(newDoctorWithoutClinic(two, 'lic-auto-2')).rejects.toMatchObject({
         code: '23502',

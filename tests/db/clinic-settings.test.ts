@@ -19,6 +19,12 @@ import { seedFixture, type Fixture } from './helpers/fixtures'
  */
 
 const BEFORE_31 = '20260902100030'
+/**
+ * The last migration before the single-clinic gate and the key-only settings
+ * index are dropped (migration 34). The release-window suites below describe
+ * the screen deployed before 31, whose key-only upsert needs that index.
+ */
+const BEFORE_GATE_LIFT = '20260902100033'
 const MIGRATION_31 = '20260902100031'
 const REFUSED = { code: '42501' }
 
@@ -659,7 +665,7 @@ describe('the settings screen deployed before migration 31, during the release',
   let fx: Fixture
 
   beforeAll(async () => {
-    database = await createTestDatabase()
+    database = await createTestDatabase({ stopAfter: BEFORE_GATE_LIFT })
     fx = await seedFixture(database)
   })
 
@@ -739,7 +745,7 @@ describe('the app.timezone alias reaches the clinic only when it is written', ()
   let fx: Fixture
 
   beforeAll(async () => {
-    database = await createTestDatabase()
+    database = await createTestDatabase({ stopAfter: BEFORE_GATE_LIFT })
     fx = await seedFixture(database)
   })
 
@@ -833,7 +839,7 @@ describe('the app.timezone alias reaches the clinic only when it is written', ()
   })
 
   it('rolls back a genuine insert of a zone that does not exist, leaving no row', async () => {
-    const other = await createTestDatabase()
+    const other = await createTestDatabase({ stopAfter: BEFORE_GATE_LIFT })
     try {
       await expect(
         other.asService(

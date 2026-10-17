@@ -117,6 +117,20 @@ describe('RequireAuth', () => {
     expect(screen.getByText(/care team/i)).toBeInTheDocument()
   })
 
+  it('stops a platform administrator, explaining why, and shows nothing of a clinic', () => {
+    mockAuth.status = {
+      state: 'blocked',
+      problem: { kind: 'platform-account' },
+    }
+    renderAt(<RequireAuth>secret</RequireAuth>)
+
+    expect(
+      screen.getByRole('heading', { name: /platform administrator account/i }),
+    ).toBeInTheDocument()
+    expect(screen.getByText(/manages the RecoverEase platform, not a clinic/i)).toBeInTheDocument()
+    expect(screen.queryByText('secret')).not.toBeInTheDocument()
+  })
+
   it('renders the page once the session is usable', () => {
     signedIn(patient())
     renderAt(<RequireAuth>secret</RequireAuth>)

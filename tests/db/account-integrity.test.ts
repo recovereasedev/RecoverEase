@@ -540,11 +540,14 @@ describe('account roles and identity are server-only', () => {
       }
     })
 
-    it('ships no function a session can call that writes accounts', async () => {
+    it('ships no function a session can call that writes accounts, but the Super Admin’s', async () => {
       // Every function in the exposed and helper schemas that inserts,
-      // updates or deletes user_account. Today there is none; one added
-      // later must be reviewed for its own caller check before this is
-      // updated.
+      // updates or deletes user_account. One added later must be reviewed for
+      // its own caller check before this is updated. The one there is,
+      // super_admin_attach_clinic_admin (migration 33), refuses anyone but a
+      // Super Admin in a session verified with their authenticator, and can
+      // only make a Clinic Admin of a sign-in create-account marked for that
+      // clinic: tests/db/super-admin.test.ts.
       const writers = await database.asService<{ fn: string }>(
         `select n.nspname || '.' || p.proname as fn
            from pg_proc p
@@ -556,7 +559,7 @@ describe('account roles and identity are server-only', () => {
             and (has_function_privilege('anon', p.oid, 'EXECUTE')
                  or has_function_privilege('authenticated', p.oid, 'EXECUTE'))`,
       )
-      expect(writers).toEqual([])
+      expect(writers).toEqual([{ fn: 'public.super_admin_attach_clinic_admin' }])
     })
 
     it('gives the Data API roles no way to become a trusted role', async () => {

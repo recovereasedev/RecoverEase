@@ -47,7 +47,7 @@ describe('calendar dates resolve in the clinic timezone, not the server one', ()
       `insert into public.system_setting
          (system_setting_key, system_setting_value)
        values ('app.timezone', $1)
-       on conflict (system_setting_key) do update
+       on conflict (clinic_id, system_setting_key) do update
          set system_setting_value = excluded.system_setting_value`,
       [CLINIC_ZONE],
     )

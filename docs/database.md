@@ -151,10 +151,27 @@ the clinic from its own row, through the patient's doctor. The old
 `app.timezone` row stays, read by nothing, as an alias the settings screen
 deployed before 31 saves through.
 
-A unique index still allows only one clinic row. It is lifted only by the
-later migration that creates clinics, together with the key-only settings
-index and the alias, once everything that reads a setting is known to be
-clinic-aware.
+Migration 34 drops the index that allowed only one clinic row, and the
+key-only settings index, which only the settings screen deployed before 31
+needed: every reader of a setting, date or time now resolves its clinic from
+its own row, and `tests/db/gate-lift.test.ts` shows two clinics, one with
+daylight saving time, each keeping its own settings, "today" and dose times.
+What still assumes a single clinic refuses rather than guesses: `app_today()`
+and the settings and doctor clinic defaults, asked by a server-side writer
+that names no clinic, raise once there are two. The `app.timezone` alias
+stays, as one clinic's row passed only to that clinic; a new clinic gets
+none.
+
+### 9. The Super Admin is new
+
+The ERD's administrator is a clinic's. Migration 32 adds `super_admin` to
+`user_role`, and migration 33 a `super_admin` profile table (names only, no
+clinic) for the platform's administrator. An announcement now has exactly one
+author: a Clinic Admin (`admin_id`, with their clinic) or a Super Admin
+(`super_admin_id`, with no clinic - a platform announcement). `clinic_name`
+is bounded at 120 characters. The audit log's `platform` scope gains the
+Super Admin's own entities: `super_admin`, `clinic_admin_account` and
+platform announcements.
 
 ## Assumptions where the ERD was silent
 

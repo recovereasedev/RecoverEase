@@ -235,8 +235,9 @@ Clinic.
   changed afterwards. The time zone is set with `admin_set_clinic_timezone`,
   audited as an administration entry. The chatbot uses the patient's clinic's
   prompt, and the built-in guidance - never another clinic's - when it cannot
-  be read. A single-clinic gate still refuses a second clinic until the
-  clinic-creation migration.
+  be read. A single-clinic gate refused a second clinic until every reader
+  was clinic-aware; migration 34 lifts it, and only a Super Admin creates
+  clinics (below).
 - **An announcement keeps its author and clinic** (migration 31): neither can
   be changed by anyone, the service key included.
 
@@ -245,6 +246,115 @@ read the caller's clinic before creating or changing anything. Deployed
 before migration 29, that read fails and the request is refused with nothing
 created; registering and resetting patients does not need it and works
 either way.
+
+## The Super Admin
+
+The Super Admin runs the platform - clinics, their Clinic Admins, platform
+announcements and the platform's audit trail - and never patient care
+(migrations 32 and 33).
+
+**The role is given by one procedure, run by the database owner.**
+`super_admin` (migration 32) is written to an account only by
+`app_private.provision_super_admin`, which no API role can call: not `anon`,
+not `authenticated`, not `service_role`. The account guard refuses the role
+to every other writer, the service role and a direct owner write included,
+and never changes a Super Admin's role afterwards. It is never given to an
+existing account, so a patient's, doctor's or Clinic Admin's access never
+comes with it. `app_private.revoke_super_admin` removes one, also owner-only.
+
+**Every operation checks the caller again, in the database.** Each Super
+Admin function is `SECURITY DEFINER` with an empty `search_path`, refused to
+`anon`, and starts with `app_private.require_super_admin()`. It accepts a
+caller only when all of these hold, read from Supabase Auth's own tables -
+the token's claims alone are never enough:
+
+| Requirement | Evidence |
+| --- | --- |
+| A `super_admin` account with its profile | `user_account.user_role`, `super_admin` |
+| A sign-in that exists, is not deleted and is not banned | `auth.users` |
+| The token's session is live and is the caller's | `auth.sessions`: the token's `session_id`, same `user_id`, before `not_after`; a signed-out session's row is gone |
+| `aal2`, in the token and in the session | the `aal` claim and `auth.sessions.aal` |
+| Raised with an authenticator app, in this session | a `totp` row in `auth.mfa_amr_claims` for the session |
+| Using the caller's own verified TOTP factor | `auth.sessions.factor_id` names a `verified` `totp` factor whose `user_id` is the caller |
+
+So calling the functions directly, without the website, gains nothing; nor
+does a user id, role or clinic in the request, another user's session or
+factor, an `aal1` token for a session raised since, or a stale one. A
+Clinic Admin, doctor or patient is refused even with `aal2` and a verified
+factor of their own. `public.super_admin_assured()` tells the console
+whether to ask for an authenticator code, about the caller only.
+
+**What a Super Admin reaches** - nothing but these functions:
+
+- clinics: list (name, status, time zone, timestamps, Clinic Admin count),
+  create (a validated, bounded name; a time zone PostgreSQL knows; the
+  clinic's own default settings and nothing of another clinic's, in one
+  transaction) and set status. `active` and `inactive` are the only states
+  and each moves only to the other. An inactive clinic takes no new Clinic
+  Admin; its people and records are untouched. No clinic is ever deleted.
+- Clinic Admins: provisioned with `create-account` (below).
+- platform announcements: write, edit, publish, withdraw and delete. A
+  published one reaches every signed-in user, which is what migration 30's
+  policy already said of an announcement with no clinic; a draft reaches no
+  one through the table. A Clinic Admin cannot touch one, and no
+  announcement's author or clinic can change.
+- the platform audit trail: `platform` entries only - clinics, Super Admins,
+  Clinic Admin provisioning and platform announcements - paged newest first.
+  The filter is in the function, not the caller's request, and the table
+  itself shows a Super Admin nothing.
+
+A Super Admin has no admin, doctor or patient profile, so every existing
+policy gives them nothing: `tests/db/super-admin.test.ts` counts every table
+as a verified Super Admin and finds only their own account and profile and
+published platform announcements. Every Clinic Admin function refuses them.
+The clinic website stops a Super Admin who signs in with a "platform
+administrator account" screen; their console is separate (PR 5).
+
+**Adding a Clinic Admin hands over no password.** A Super Admin calls
+`create-account` with `kind: 'clinic_admin'`, an email, names and the
+clinic. The role is always Clinic Admin: the request has no field for it,
+and `kind: 'super_admin'` is refused.
+
+1. As the Super Admin, with their own token, the database checks their
+   verified session and that the clinic exists and is active
+   (`super_admin_check_clinic_for_admin`) - before any login exists.
+2. The login is created with the service key: confirmed, with a 256-bit
+   password nobody is told, and marked in `app_metadata` (which only the
+   service key writes) as made for that clinic's administrator.
+3. As the Super Admin again, `super_admin_attach_clinic_admin` makes the
+   account and the Clinic Admin profile in one transaction, but only for a
+   login marked for that clinic and with no account yet, and audits it as a
+   platform entry with no name or email. If it refuses, `create-account`
+   deletes the login.
+4. Supabase Auth's own password-recovery email goes to the address, back to
+   the website's `/reset-password`; the new Clinic Admin sets their own
+   password there. If it cannot be sent the account still exists, the
+   response says so, and "Forgot password" sends it again.
+
+The response is the new ids and whether the email went: never a password,
+link or token.
+
+**The first Super Admin** is a deliberate, approved act, not an endpoint:
+
+1. Create the person's sign-in in Supabase Auth (Authentication → Users),
+   with an address that has no RecoverEase account.
+2. As the database owner, in the SQL editor:
+   `select app_private.provision_super_admin('<auth user id>', '<first name>', '<last name>');`
+3. They sign in and enrol an authenticator app (Supabase Auth MFA, TOTP).
+   Until they have, and in every session until they enter a code, every
+   Super Admin operation refuses them.
+
+TOTP MFA must be enabled for the project in Supabase Auth; it is on by
+default, and checking it changes nothing.
+
+**What the tests can and cannot show.** PGlite has no GoTrue, so the tests
+build `auth.sessions`, `auth.mfa_factors` and `auth.mfa_amr_claims` with the
+names, types and enum labels read from production, and write their rows the
+way GoTrue does when a code is verified. That GoTrue really records
+`sessions.factor_id` and the `totp` claim is its documented behaviour, not
+something these tests can run; the first real enrolment should confirm it
+with a read-only query before the Super Admin relies on it. If it did not,
+the check would refuse - it fails closed.
 
 ## Column-level guards
 
@@ -297,14 +407,16 @@ From migration 30 every audit entry carries `audit_scope` (`platform`,
 `administration` or `clinical`) and the clinic it is about. A trigger works
 the scope out from the entry's entity as the entry is written; no writer
 chooses it, and anything unrecognised is `clinical`, the most restricted.
-Only clinic entries are `platform`. A clinic's settings, including its time
-zone (`clinic_settings`, migration 31), are `administration`. Patients,
-prescriptions, treatment plans, appointments and patients' accounts are
-`clinical`.
+Clinics, Super Admins and their accounts, Clinic Admin provisioning and
+platform announcements are `platform` (migration 33). A clinic's settings,
+including its time zone (`clinic_settings`, migration 31), are
+`administration`. Patients, prescriptions, treatment plans, appointments and
+patients' accounts are `clinical`.
 
 A Clinic Admin reads their own clinic's administration and clinical entries,
 which is what an administrator saw before, within one clinic. Platform
-entries are for the Super Admin (migration 33), who will read nothing else.
+entries are for the Super Admin, who reads nothing else
+(`super_admin_list_audit`).
 An account's entry is written a moment before its profile and cannot know
 its clinic yet; the Clinic Admin policy resolves it as it is read.
 

@@ -21,10 +21,65 @@ const MIGRATIONS_DIR = fileURLToPath(
 const SUPABASE_COMPAT = `
   create schema if not exists auth;
 
+  -- The columns of Supabase's auth.users that the migrations read. Supabase
+  -- keeps app_metadata in raw_app_meta_data, writable only with the service
+  -- key.
   create table if not exists auth.users (
-    id    uuid primary key,
-    email text not null
+    id                uuid primary key,
+    email             text not null,
+    raw_app_meta_data jsonb not null default '{}'::jsonb,
+    created_at        timestamptz not null default now(),
+    banned_until      timestamptz,
+    deleted_at        timestamptz
   );
+
+  -- Supabase Auth's sessions and MFA records, as far as the Super Admin
+  -- checks (migration 33) read them. Same names, types and enum labels as
+  -- production (read from kwsezszstdagzllbyjuk on 2026-10-17); GoTrue itself
+  -- is not here, so tests write these rows the way it would.
+  create type auth.aal_level as enum ('aal1', 'aal2', 'aal3');
+  create type auth.factor_type as enum ('totp', 'webauthn', 'phone', 'recovery_code');
+  create type auth.factor_status as enum ('unverified', 'verified');
+
+  create table if not exists auth.mfa_factors (
+    id            uuid primary key default gen_random_uuid(),
+    user_id       uuid not null references auth.users (id) on delete cascade,
+    friendly_name text,
+    factor_type   auth.factor_type not null,
+    status        auth.factor_status not null,
+    created_at    timestamptz not null default now(),
+    updated_at    timestamptz not null default now()
+  );
+
+  create table if not exists auth.sessions (
+    id         uuid primary key default gen_random_uuid(),
+    user_id    uuid not null references auth.users (id) on delete cascade,
+    created_at timestamptz default now(),
+    updated_at timestamptz default now(),
+    factor_id  uuid,
+    aal        auth.aal_level,
+    not_after  timestamptz
+  );
+
+  create table if not exists auth.mfa_amr_claims (
+    id                    uuid primary key default gen_random_uuid(),
+    session_id            uuid not null references auth.sessions (id) on delete cascade,
+    created_at            timestamptz not null default now(),
+    updated_at            timestamptz not null default now(),
+    authentication_method text not null
+  );
+
+  -- Supabase's definition: the verified JWT's claims, as PostgREST sets them.
+  create or replace function auth.jwt()
+  returns jsonb
+  language sql
+  stable
+  as $$
+    select coalesce(
+      nullif(current_setting('request.jwt.claim', true), ''),
+      nullif(current_setting('request.jwt.claims', true), '')
+    )::jsonb;
+  $$;
 
   create or replace function auth.uid()
   returns uuid
@@ -70,6 +125,7 @@ const SUPABASE_COMPAT = `
   -- which is exactly the production posture.
   grant usage on schema auth to anon, authenticated, service_role;
   grant execute on function auth.uid() to anon, authenticated, service_role;
+  grant execute on function auth.jwt() to anon, authenticated, service_role;
 `
 
 /**
@@ -108,6 +164,16 @@ export type TestDatabase = {
   ) => Promise<T[]>
   /** Run SQL with no session at all, as an unauthenticated visitor. */
   asAnon: <T = Record<string, unknown>>(
+    sql: string,
+    params?: unknown[],
+  ) => Promise<T[]>
+  /**
+   * Run SQL as `authenticated` with exactly these JWT claims - a session id,
+   * an assurance level, or a `sub` that disagrees with them - for the checks
+   * that read more of the token than its subject.
+   */
+  asClaims: <T = Record<string, unknown>>(
+    claims: Record<string, unknown>,
     sql: string,
     params?: unknown[],
   ) => Promise<T[]>
@@ -192,14 +258,15 @@ export async function createTestDatabase(
    * half-configured state that bleeds into the next assertion.
    */
   const runAs = async <T = Record<string, unknown>>(
-    userId: string | null,
+    who: string | Record<string, unknown> | null,
     role: 'authenticated' | 'anon',
     sql: string,
     params: unknown[] = [],
   ): Promise<T[]> => {
     await db.exec('begin')
     try {
-      const claims = userId === null ? '' : JSON.stringify({ sub: userId })
+      const claims =
+        who === null ? '' : JSON.stringify(typeof who === 'string' ? { sub: who } : who)
       await db.query('select set_config($1, $2, true)', [
         'request.jwt.claims',
         claims,
@@ -227,6 +294,7 @@ export async function createTestDatabase(
     asUser: (userId, sql, params) =>
       runAs(userId, 'authenticated', sql, params),
     asAnon: (sql, params) => runAs(null, 'anon', sql, params),
+    asClaims: (claims, sql, params) => runAs(claims, 'authenticated', sql, params),
     applyMigration,
     close: () => db.close(),
   }

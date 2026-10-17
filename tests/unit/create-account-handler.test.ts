@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { AuthError, type Caller } from '../../supabase/functions/_shared/caller'
 import {
   createAccount,
+  refusalFromDatabase,
   type AccountStore,
   type CreateAccountRequest,
 } from '../../supabase/functions/create-account/handler'
@@ -18,6 +19,17 @@ import {
 const admin: Caller = { userId: 'admin-user', email: 'admin@harborview.test', role: 'admin' }
 const doctor: Caller = { userId: 'doctor-user', email: 'doctor@harborview.test', role: 'doctor' }
 const patient: Caller = { userId: 'patient-user', email: 'patient@harborview.test', role: 'patient' }
+const superAdmin: Caller = { userId: 'super-user', email: 'super@platform.test', role: 'super_admin' }
+
+const CLINIC = '7d2f3c1e-8a4b-4c5d-9e6f-0a1b2c3d4e5f'
+
+const newClinicAdmin: CreateAccountRequest = {
+  kind: 'clinic_admin',
+  email: ' New.Admin@Lakeside.test ',
+  firstName: ' Lena ',
+  lastName: 'Hart',
+  clinicId: CLINIC,
+}
 
 const newDoctor: CreateAccountRequest = {
   kind: 'doctor',
@@ -52,6 +64,10 @@ function store(overrides: Partial<AccountStore> = {}) {
     insertDoctor: vi.fn(record('insertDoctor', async () => 'new-doc')),
     insertPatient: vi.fn(record('insertPatient', async () => 'new-pat')),
     audit: vi.fn(record('audit', async () => undefined)),
+    checkClinicForAdmin: vi.fn(record('checkClinicForAdmin', async () => undefined)),
+    createClinicAdminLogin: vi.fn(record('createClinicAdminLogin', async () => 'new-admin-user')),
+    attachClinicAdmin: vi.fn(record('attachClinicAdmin', async () => 'new-admin')),
+    sendPasswordSetup: vi.fn(record('sendPasswordSetup', async () => true)),
   }
   return { store: { ...base, ...overrides }, calls }
 }
@@ -235,5 +251,141 @@ describe('create-account', () => {
       body: { error: 'An account already exists for that email address' },
     })
     expect(s.deleteLogin).not.toHaveBeenCalled()
+  })
+
+  describe('adding a Clinic Admin (a Super Admin, migration 33)', () => {
+    it('asks the database first, then creates the login, then attaches it - and hands over no password', async () => {
+      const { store: s, calls } = store()
+      const result = await createAccount(superAdmin, newClinicAdmin, s, password)
+
+      expect(result).toEqual({
+        status: 201,
+        body: { userId: 'new-admin-user', profileId: 'new-admin', clinicId: CLINIC, setupEmailSent: true },
+      })
+      expect(JSON.stringify(result)).not.toContain('temporary-passphrase')
+      expect(calls).toEqual(['checkClinicForAdmin', 'createClinicAdminLogin', 'attachClinicAdmin', 'sendPasswordSetup'])
+      expect(s.checkClinicForAdmin).toHaveBeenCalledWith(CLINIC)
+      expect(s.createClinicAdminLogin).toHaveBeenCalledWith('new.admin@lakeside.test', CLINIC)
+      expect(s.attachClinicAdmin).toHaveBeenCalledWith({
+        userId: 'new-admin-user',
+        clinicId: CLINIC,
+        firstName: 'Lena',
+        lastName: 'Hart',
+      })
+      expect(s.sendPasswordSetup).toHaveBeenCalledWith('new.admin@lakeside.test')
+      // Neither the handover password nor the doctor and patient path is used.
+      expect(s.createLogin).not.toHaveBeenCalled()
+      expect(s.insertAccount).not.toHaveBeenCalled()
+    })
+
+    it.each([
+      ['a Clinic Admin', admin],
+      ['a doctor', doctor],
+      ['a patient', patient],
+    ])('is refused to %s, before anything is asked or created', async (_label, caller) => {
+      const { store: s, calls } = store()
+      expect(await createAccount(caller, newClinicAdmin, s, password)).toEqual({
+        status: 403,
+        body: { error: 'Only a Super Admin can add a Clinic Admin' },
+      })
+      expect(calls).toEqual([])
+    })
+
+    it('takes no role from the request, and has no kind that makes a Super Admin', async () => {
+      const { store: s } = store()
+      const withRole = { ...newClinicAdmin, role: 'super_admin' } as CreateAccountRequest
+      await createAccount(superAdmin, withRole, s, password)
+      // The database makes a Clinic Admin; nothing else the request says reaches it.
+      expect(s.attachClinicAdmin).toHaveBeenCalledWith({
+        userId: 'new-admin-user', clinicId: CLINIC, firstName: 'Lena', lastName: 'Hart',
+      })
+
+      const { store: s2, calls: calls2 } = store()
+      const asSuperAdmin = { ...newClinicAdmin, kind: 'super_admin' } as unknown as CreateAccountRequest
+      expect(await createAccount(superAdmin, asSuperAdmin, s2, password)).toEqual({
+        status: 400,
+        body: { error: 'Unknown account kind' },
+      })
+      expect(calls2).toEqual([])
+    })
+
+    it.each([
+      ['no clinic', { clinicId: undefined }, 'Choose the clinic they will administer'],
+      ['a clinic that is not an id', { clinicId: 'harborview' }, 'Choose the clinic they will administer'],
+      ['a bad email', { email: 'not-an-email' }, 'Enter a valid email address'],
+      ['no first name', { firstName: '  ' }, 'First name is required'],
+    ])('checks %s before asking the database or creating anything', async (_label, change, message) => {
+      const { store: s, calls } = store()
+      const body = { ...newClinicAdmin, ...change } as CreateAccountRequest
+      expect(await createAccount(superAdmin, body, s, password)).toEqual({ status: 400, body: { error: message } })
+      expect(calls).toEqual([])
+    })
+
+    it('creates no login when the database refuses the Super Admin or the clinic', async () => {
+      const { store: s } = store({
+        checkClinicForAdmin: vi.fn(async () => {
+          throw refusalFromDatabase({
+            code: '42501',
+            message: 'Super Admin access requires a current session verified with an authenticator app',
+          })
+        }),
+      })
+      expect(await createAccount(superAdmin, newClinicAdmin, s, password)).toEqual({
+        status: 403,
+        body: { error: 'Super Admin access requires a current session verified with an authenticator app' },
+      })
+      expect(s.createClinicAdminLogin).not.toHaveBeenCalled()
+      expect(s.attachClinicAdmin).not.toHaveBeenCalled()
+    })
+
+    it('removes the login when the database will not attach it', async () => {
+      const { store: s } = store({
+        attachClinicAdmin: vi.fn(async () => {
+          throw refusalFromDatabase({ code: '55000', message: 'That clinic is inactive and cannot take a new Clinic Admin' })
+        }),
+      })
+      expect(await createAccount(superAdmin, newClinicAdmin, s, password)).toEqual({
+        status: 409,
+        body: { error: 'That clinic is inactive and cannot take a new Clinic Admin' },
+      })
+      expect(s.deleteLogin).toHaveBeenCalledWith('new-admin-user')
+      expect(s.sendPasswordSetup).not.toHaveBeenCalled()
+    })
+
+    it('still creates the account when the setup email cannot be sent, and says so', async () => {
+      const { store: s } = store({
+        sendPasswordSetup: vi.fn(async () => {
+          throw new Error('rate limited')
+        }),
+      })
+      expect(await createAccount(superAdmin, newClinicAdmin, s, password)).toEqual({
+        status: 201,
+        body: { userId: 'new-admin-user', profileId: 'new-admin', clinicId: CLINIC, setupEmailSent: false },
+      })
+      expect(s.deleteLogin).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('the database\u2019s refusals', () => {
+    it.each([
+      ['42501', 403],
+      ['P0002', 404],
+      ['55000', 409],
+      ['23505', 409],
+      ['23514', 400],
+    ])('keep their own message for %s, as %s', (code, status) => {
+      const refusal = refusalFromDatabase({ code, message: 'Written for the reader' })
+      expect(refusal).toBeInstanceOf(AuthError)
+      expect(refusal).toMatchObject({ status, message: 'Written for the reader' })
+    })
+
+    it('fail closed with a plain message for anything else, such as a missing function', () => {
+      const refusal = refusalFromDatabase({
+        code: 'PGRST202',
+        message: 'Could not find the function public.super_admin_check_clinic_for_admin',
+      })
+      expect(refusal).toMatchObject({ status: 503, message: 'Clinic Admins cannot be added right now. Nothing was created.' })
+      expect(refusalFromDatabase({})).toMatchObject({ status: 503 })
+    })
   })
 })
