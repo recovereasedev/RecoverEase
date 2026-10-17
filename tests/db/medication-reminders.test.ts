@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createTestDatabase, expectDenied, type TestDatabase } from './helpers/database'
 import { seedFixture, type Fixture } from './helpers/fixtures'
@@ -41,6 +41,45 @@ describe('medication reminders', () => {
       dispatch_medication_reminders: number
     }>('select public.dispatch_medication_reminders($1)', [graceMinutes])
     return Number(row!.dispatch_medication_reminders)
+  }
+
+  /** Alice's clinic's time of day, as the dispatcher reads it. `$1` is her pat_id. */
+  const CLINIC_TIME = `(now() at time zone (
+      select c.clinic_timezone from public.patient p
+        join public.doctor d on d.doc_id = p.doc_id
+        join public.clinic c on c.clinic_id = d.clinic_id
+       where p.pat_id = $1))::time`
+
+  /**
+   * A preferred time of day before or after the clinic's current one, never
+   * across midnight. A time of day has no date: 50 minutes before 00:14 is
+   * 23:24, later on the clock, and the dispatcher rightly waits for it. So
+   * these stop at the day's edges - midnight for "earlier", and 24:00, after
+   * every time of day, for "later".
+   */
+  const PREFERRED = {
+    earlier: `case when ${CLINIC_TIME} >= time '00:50'
+                   then ${CLINIC_TIME} - interval '50 minutes' else time '00:00' end`,
+    later: `case when ${CLINIC_TIME} < time '23:10'
+                 then ${CLINIC_TIME} + interval '50 minutes' else time '24:00' end`,
+  }
+
+  /**
+   * Sets Alice's preferred time and runs the dispatcher in one transaction,
+   * so both read the same "now": the clock cannot pass midnight between
+   * choosing the time and comparing against it.
+   */
+  async function dispatchWithPreferredTime(preferred: string): Promise<number> {
+    return database.db.transaction(async (tx) => {
+      await tx.query(
+        `update public.patient set pat_reminder_preferred_time = ${preferred} where pat_id = $1`,
+        [fx.alicePatId],
+      )
+      const { rows } = await tx.query<{ sent: number }>(
+        'select public.dispatch_medication_reminders(30) as sent',
+      )
+      return Number(rows[0]!.sent)
+    })
   }
 
   async function aliceNotifications(): Promise<number> {
@@ -180,38 +219,79 @@ describe('medication reminders', () => {
     })
 
     it('waits until the preferred time of day has been reached', async () => {
-      // Preferred time set to just under an hour from now, in clinic-local
-      // terms, so "now" is definitively before it.
-      await database.asService(
-        `update public.patient
-            set pat_reminder_preferred_time =
-                  ((now() at time zone (select clinic_timezone from public.clinic))
-                   + interval '50 minutes')::time
-          where pat_id = $1`,
-        [fx.alicePatId],
-      )
+      // Preferred time later today, in clinic-local terms, so "now" is
+      // definitively before it.
       await overdueDose(120)
 
-      expect(await dispatch()).toBe(0)
+      expect(await dispatchWithPreferredTime(PREFERRED.later)).toBe(0)
     })
 
     it('sends once the preferred time has been reached', async () => {
-      await database.asService(
-        `update public.patient
-            set pat_reminder_preferred_time =
-                  ((now() at time zone (select clinic_timezone from public.clinic))
-                   - interval '50 minutes')::time
-          where pat_id = $1`,
-        [fx.alicePatId],
-      )
       await overdueDose(120)
 
-      expect(await dispatch()).toBe(1)
+      expect(await dispatchWithPreferredTime(PREFERRED.earlier)).toBe(1)
     })
 
     it('sends immediately when no preference is set', async () => {
       await overdueDose(120)
       expect(await dispatch()).toBe(1)
+    })
+
+    describe('around midnight, with the database clock pinned', () => {
+      // Clinic-local times on a fixed past date. Asia/Manila is UTC+8 all
+      // year, with no daylight saving time.
+      const AT = {
+        '00:00': '2026-01-14T16:00:00Z',
+        '00:14': '2026-01-14T16:14:00Z',
+        '00:49': '2026-01-14T16:49:00Z',
+        '12:00': '2026-01-15T04:00:00Z',
+        '23:11': '2026-01-15T15:11:00Z',
+        '23:50': '2026-01-15T15:50:00Z',
+        '23:59': '2026-01-15T15:59:00Z',
+      } as const
+
+      /** The test database reads the time from JavaScript's clock: pin only that. */
+      async function at(time: keyof typeof AT) {
+        vi.useFakeTimers({ toFake: ['Date'] })
+        vi.setSystemTime(new Date(AT[time]))
+        // If the pin ever stopped reaching the database, fail rather than
+        // quietly test the real clock.
+        const [row] = await database.asService<{ clinic_time: string }>(
+          `select to_char(${CLINIC_TIME}, 'HH24:MI') as clinic_time`,
+          [fx.alicePatId],
+        )
+        expect(row!.clinic_time).toBe(time)
+      }
+
+      afterEach(() => {
+        vi.useRealTimers()
+      })
+
+      it.each(Object.keys(AT) as (keyof typeof AT)[])(
+        'at %s, a later preferred time waits and an earlier one sends',
+        async (time) => {
+          await at(time)
+          await overdueDose(120)
+
+          expect(await dispatchWithPreferredTime(PREFERRED.later)).toBe(0)
+          expect(await dispatchWithPreferredTime(PREFERRED.earlier)).toBe(1)
+        },
+      )
+
+      it('reads a preferred time as a time of day: at 00:14, an evening one is still to come', async () => {
+        await at('00:14')
+        await overdueDose(120)
+
+        expect(await dispatchWithPreferredTime(`time '23:24'`)).toBe(0)
+        expect(await dispatchWithPreferredTime(`time '00:00'`)).toBe(1)
+      })
+
+      it('and at 23:50, an early-morning one was reached hours ago', async () => {
+        await at('23:50')
+        await overdueDose(120)
+
+        expect(await dispatchWithPreferredTime(`time '00:40'`)).toBe(1)
+      })
     })
   })
 
