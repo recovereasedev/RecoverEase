@@ -8,7 +8,7 @@
 export type Caller = {
   userId: string
   email: string
-  role: 'patient' | 'doctor' | 'admin'
+  role: 'patient' | 'doctor' | 'admin' | 'super_admin'
 }
 
 export class AuthError extends Error {

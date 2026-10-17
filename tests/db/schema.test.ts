@@ -28,7 +28,7 @@ describe('database schema', () => {
     )
 
     // 19 entities from the ERD, chat_message (the transcript the chat modules
-    // need) and clinic (Phase A, migration 28).
+    // need), clinic (Phase A, migration 28) and super_admin (migration 33).
     expect(tables.map((row) => row.table_name)).toEqual([
       'admin',
       'announcement',
@@ -47,6 +47,7 @@ describe('database schema', () => {
       'recovery_log',
       'report',
       'reschedule_request',
+      'super_admin',
       'system_setting',
       'treatment_goal',
       'treatment_plan',

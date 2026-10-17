@@ -97,7 +97,7 @@ describe('missed-dose grace period', () => {
       fx.adminUserId,
       `insert into public.system_setting (admin_id, system_setting_key, system_setting_value)
        values ($1, $2, $3)
-       on conflict (system_setting_key) do update
+       on conflict (clinic_id, system_setting_key) do update
          set admin_id = excluded.admin_id,
              system_setting_value = excluded.system_setting_value
        returning system_setting_value`,
@@ -473,7 +473,7 @@ describe('missed-dose grace period', () => {
       await expectDenied(() =>
         as(`insert into public.system_setting (system_setting_key, system_setting_value)
             values ($1, '2')
-            on conflict (system_setting_key) do update
+            on conflict (clinic_id, system_setting_key) do update
               set system_setting_value = excluded.system_setting_value
             returning 1`),
       )

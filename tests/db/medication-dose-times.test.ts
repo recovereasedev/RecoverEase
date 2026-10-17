@@ -73,7 +73,7 @@ describe('a medication schedule worked out from frequency and interval', () => {
     await database.asService(
       `insert into public.system_setting (system_setting_key, system_setting_value)
        values ('app.timezone', $1)
-       on conflict (system_setting_key) do update
+       on conflict (clinic_id, system_setting_key) do update
          set system_setting_value = excluded.system_setting_value`,
       [CLINIC_ZONE],
     )

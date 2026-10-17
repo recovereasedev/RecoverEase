@@ -42,6 +42,12 @@ export async function loadAppUser(
   }
 
   switch (account.user_role) {
+    // The platform's administrator has no clinic, patients or screens here:
+    // their console is separate (PR 5). Stopped, and told why - never given
+    // a clinic's dashboard.
+    case 'super_admin':
+      return { state: 'blocked', problem: { kind: 'platform-account' } }
+
     case 'patient': {
       const { data: patient, error } = await supabase
         .from('patient')

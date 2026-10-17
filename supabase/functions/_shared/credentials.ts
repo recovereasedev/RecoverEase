@@ -120,3 +120,15 @@ export function generateTemporaryPassword(): string {
 
   return [...words, String(number)].join('-')
 }
+
+/**
+ * A password nobody is ever told: 256 random bits, for a sign-in whose owner
+ * sets their own password through the emailed link (a Clinic Admin
+ * provisioned by a Super Admin). Never returned, stored readably or logged;
+ * until the owner follows the link, the sign-in cannot be used at all.
+ */
+export function generateUnusablePassword(): string {
+  const bytes = new Uint8Array(32)
+  crypto.getRandomValues(bytes)
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')
+}

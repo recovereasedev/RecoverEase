@@ -258,9 +258,35 @@ after 30, in this order:
 
 `create-account`, `reset-account-password` and `complete-password-setup` read
 no setting and need no redeploy. Stopping after any step leaves the system
-working, and the single-clinic gate stays in place: it is lifted only by the
-later clinic-creation migration, separately approved, after every reader of a
-setting is verified clinic-aware.
+working, and the single-clinic gate stays in place: it is lifted only by
+migration 34, separately approved, after every reader of a setting is
+verified clinic-aware.
+
+### The Super Admin (migrations 32 to 34)
+
+Each step is its own approval, in this order:
+
+1. **Apply migration 32, then 33, straight after.** 32 only adds the
+   `super_admin` role; 33 adds everything that uses it, and the guard that
+   refuses the role to every writer but the owner-only procedure. Between the
+   two, the service role could still write the value; 33 refuses to run if
+   anything did. Nothing anyone sees changes: no account has the role.
+2. **Deploy `create-account`.** It adds Clinic Admin provisioning for a
+   Super Admin. Deployed before 33, that request is refused before any login
+   is created; registering doctors and patients is unchanged either way.
+3. **Apply migration 34**, which lifts the single-clinic gate and drops the
+   key-only settings index. Only once `chatbot-reply` v15 and a website that
+   saves settings by clinic and key (PR #40) are live. It creates no clinic.
+4. **Make the first Super Admin**, with the owner-only procedure in
+   `docs/security.md`, once the person is chosen. Confirm TOTP MFA is enabled
+   in Supabase Auth first; it is on by default.
+
+Rollback goes the other way: `supabase/rollbacks/20260902100034_lift_single_clinic_gate.down.sql`
+(refused once a second clinic exists - clinics are never deleted), then
+`…100033_super_admin_platform.down.sql` (refused while a Super Admin or a
+platform announcement exists). Migration 32's enum value stays, unused:
+PostgreSQL cannot drop one. `tests/db/super-admin-rollback.test.ts` proves
+both return the schema to exactly what 32 left, with every row kept.
 
 To roll back 31, go the other way: the website from before 31, then
 `chatbot-reply` from before 31, then `supabase/rollbacks/20260902100031_clinic_settings.down.sql`

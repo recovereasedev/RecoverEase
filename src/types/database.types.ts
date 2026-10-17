@@ -61,30 +61,33 @@ export type Database = {
       announcement: {
         Row: {
           announcement_id: string
-          admin_id: string
+          admin_id: string | null
           announcement_title: string
           announcement_content: string
           announcement_published_at: string | null
           announcement_created_at: string
           clinic_id: string | null
+          super_admin_id: string | null
         }
         Insert: {
           announcement_id?: string
-          admin_id: string
+          admin_id?: string | null
           announcement_title: string
           announcement_content: string
           announcement_published_at?: string | null
           announcement_created_at?: string
           clinic_id?: string | null
+          super_admin_id?: string | null
         }
         Update: {
           announcement_id?: string
-          admin_id?: string
+          admin_id?: string | null
           announcement_title?: string
           announcement_content?: string
           announcement_published_at?: string | null
           announcement_created_at?: string
           clinic_id?: string | null
+          super_admin_id?: string | null
         }
         Relationships: [
           {
@@ -100,6 +103,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: 'clinic'
             referencedColumns: ['clinic_id']
+          },
+          {
+            foreignKeyName: 'announcement_super_admin_id_fkey'
+            columns: ['super_admin_id']
+            isOneToOne: false
+            referencedRelation: 'super_admin'
+            referencedColumns: ['super_admin_id']
           },
         ]
       }
@@ -756,6 +766,38 @@ export type Database = {
           },
         ]
       }
+      super_admin: {
+        Row: {
+          super_admin_id: string
+          user_id: string
+          super_admin_first_name: string
+          super_admin_last_name: string
+          super_admin_created_at: string
+        }
+        Insert: {
+          super_admin_id?: string
+          user_id: string
+          super_admin_first_name: string
+          super_admin_last_name: string
+          super_admin_created_at?: string
+        }
+        Update: {
+          super_admin_id?: string
+          user_id?: string
+          super_admin_first_name?: string
+          super_admin_last_name?: string
+          super_admin_created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'super_admin_user_id_fkey'
+            columns: ['user_id']
+            isOneToOne: true
+            referencedRelation: 'user_account'
+            referencedColumns: ['user_id']
+          },
+        ]
+      }
       system_setting: {
         Row: {
           system_setting_id: string
@@ -950,6 +992,54 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: string
       }
+      super_admin_assured: {
+        Args: Record<PropertyKey, never>
+        Returns: boolean
+      }
+      super_admin_list_clinics: {
+        Args: Record<PropertyKey, never>
+        Returns: { clinic_id: string; clinic_name: string; clinic_status: Database['public']['Enums']['clinic_status']; clinic_timezone: string; clinic_created_at: string; clinic_updated_at: string; clinic_admin_count: number }[]
+      }
+      super_admin_create_clinic: {
+        Args: { new_clinic_name: string; new_clinic_timezone: string }
+        Returns: { clinic_id: string; clinic_name: string; clinic_status: Database['public']['Enums']['clinic_status']; clinic_timezone: string; clinic_created_at: string; clinic_updated_at: string; clinic_admin_count: number }[]
+      }
+      super_admin_set_clinic_status: {
+        Args: { target_clinic_id: string; new_status: string }
+        Returns: { clinic_id: string; clinic_name: string; clinic_status: Database['public']['Enums']['clinic_status']; clinic_timezone: string; clinic_created_at: string; clinic_updated_at: string; clinic_admin_count: number }[]
+      }
+      super_admin_check_clinic_for_admin: {
+        Args: { target_clinic_id: string }
+        Returns: boolean
+      }
+      super_admin_attach_clinic_admin: {
+        Args: { target_user_id: string; target_clinic_id: string; first_name: string; last_name: string }
+        Returns: string
+      }
+      super_admin_list_announcements: {
+        Args: Record<PropertyKey, never>
+        Returns: { announcement_id: string; announcement_title: string; announcement_content: string; announcement_published_at: string | null; announcement_created_at: string }[]
+      }
+      super_admin_create_announcement: {
+        Args: { title: string; content: string; publish?: boolean }
+        Returns: string
+      }
+      super_admin_update_announcement: {
+        Args: { target_announcement_id: string; title: string; content: string }
+        Returns: undefined
+      }
+      super_admin_set_announcement_published: {
+        Args: { target_announcement_id: string; published: boolean }
+        Returns: string | null
+      }
+      super_admin_delete_announcement: {
+        Args: { target_announcement_id: string }
+        Returns: undefined
+      }
+      super_admin_list_audit: {
+        Args: { page_size?: number; before_timestamp?: string; before_id?: string }
+        Returns: { audit_log_id: string; audit_log_timestamp: string; audit_log_action: string; audit_log_entity: string; audit_log_entity_id: string | null; clinic_id: string | null; actor_user_id: string | null; audit_log_details: Json | null }[]
+      }
     }
     Enums: {
       appointment_status: 'scheduled' | 'confirmed' | 'completed' | 'cancelled' | 'no_show'
@@ -962,7 +1052,7 @@ export type Database = {
       reschedule_request_status: 'pending' | 'approved' | 'declined'
       treatment_goal_status: 'pending' | 'in_progress' | 'achieved' | 'missed'
       treatment_plan_status: 'draft' | 'active' | 'completed' | 'cancelled'
-      user_role: 'patient' | 'doctor' | 'admin'
+      user_role: 'patient' | 'doctor' | 'admin' | 'super_admin'
     }
     CompositeTypes: { [_ in never]: never }
   }

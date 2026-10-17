@@ -31,6 +31,23 @@ export function serviceClient(): SupabaseClient {
 }
 
 /**
+ * A client that acts as the caller, with their own token. Row Level Security
+ * and the database's own caller checks apply to everything it does - which is
+ * how a Super Admin operation reaches the database as the Super Admin, so
+ * the database itself confirms their verified session (migration 33).
+ */
+export function callerClient(request: Request): SupabaseClient {
+  const authorization = request.headers.get('Authorization')
+  if (!authorization?.startsWith('Bearer ')) {
+    throw new AuthError('Authentication required')
+  }
+  return createClient(SUPABASE_URL, ANON_KEY, {
+    global: { headers: { Authorization: authorization } },
+    auth: { autoRefreshToken: false, persistSession: false },
+  })
+}
+
+/**
  * Verifies the bearer token and resolves the caller's role from the database.
  *
  * The role is read from `user_account`, not from the JWT's metadata: metadata
@@ -46,15 +63,10 @@ export async function requireCaller(request: Request): Promise<Caller> {
   const token = authorization.slice('Bearer '.length)
 
   // Verified against Supabase Auth, so a forged or expired token fails here.
-  const anon = createClient(SUPABASE_URL, ANON_KEY, {
-    global: { headers: { Authorization: authorization } },
-    auth: { autoRefreshToken: false, persistSession: false },
-  })
-
   const {
     data: { user },
     error,
-  } = await anon.auth.getUser(token)
+  } = await callerClient(request).auth.getUser(token)
 
   if (error || !user) {
     throw new AuthError('Your session is not valid. Sign in again.')

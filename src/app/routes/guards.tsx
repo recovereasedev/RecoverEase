@@ -106,6 +106,12 @@ function describeProblem(problem: AccountProblem): {
         title: 'Your profile is incomplete',
         description: `Your account is registered as a ${problem.role}, but the matching profile record is missing. Please contact your system administrator.`,
       }
+    case 'platform-account':
+      return {
+        title: 'This is a platform administrator account',
+        description:
+          'This account manages the RecoverEase platform, not a clinic, so it has no screens on this site. Sign out to use a clinic account.',
+      }
   }
 }
 

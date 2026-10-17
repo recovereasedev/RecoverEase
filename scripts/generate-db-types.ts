@@ -304,6 +304,47 @@ async function main(): Promise<void> {
     lines.push('        Args: Record<PropertyKey, never>')
     lines.push('        Returns: string')
     lines.push('      }')
+
+    // The Super Admin's operations (migration 33). Each refuses anyone but a
+    // Super Admin in a session verified with their authenticator app.
+    const clinicRow =
+      "{ clinic_id: string; clinic_name: string; clinic_status: Database['public']['Enums']['clinic_status']; " +
+      'clinic_timezone: string; clinic_created_at: string; clinic_updated_at: string; clinic_admin_count: number }[]'
+    const superAdminFunctions: [name: string, args: string, returns: string][] = [
+      ['super_admin_assured', 'Record<PropertyKey, never>', 'boolean'],
+      ['super_admin_list_clinics', 'Record<PropertyKey, never>', clinicRow],
+      ['super_admin_create_clinic', '{ new_clinic_name: string; new_clinic_timezone: string }', clinicRow],
+      ['super_admin_set_clinic_status', '{ target_clinic_id: string; new_status: string }', clinicRow],
+      ['super_admin_check_clinic_for_admin', '{ target_clinic_id: string }', 'boolean'],
+      [
+        'super_admin_attach_clinic_admin',
+        '{ target_user_id: string; target_clinic_id: string; first_name: string; last_name: string }',
+        'string',
+      ],
+      [
+        'super_admin_list_announcements',
+        'Record<PropertyKey, never>',
+        '{ announcement_id: string; announcement_title: string; announcement_content: string; ' +
+          'announcement_published_at: string | null; announcement_created_at: string }[]',
+      ],
+      ['super_admin_create_announcement', '{ title: string; content: string; publish?: boolean }', 'string'],
+      ['super_admin_update_announcement', '{ target_announcement_id: string; title: string; content: string }', 'undefined'],
+      ['super_admin_set_announcement_published', '{ target_announcement_id: string; published: boolean }', 'string | null'],
+      ['super_admin_delete_announcement', '{ target_announcement_id: string }', 'undefined'],
+      [
+        'super_admin_list_audit',
+        '{ page_size?: number; before_timestamp?: string; before_id?: string }',
+        '{ audit_log_id: string; audit_log_timestamp: string; audit_log_action: string; audit_log_entity: string; ' +
+          'audit_log_entity_id: string | null; clinic_id: string | null; actor_user_id: string | null; ' +
+          'audit_log_details: Json | null }[]',
+      ],
+    ]
+    for (const [name, args, returns] of superAdminFunctions) {
+      lines.push(`      ${name}: {`)
+      lines.push(`        Args: ${args}`)
+      lines.push(`        Returns: ${returns}`)
+      lines.push('      }')
+    }
     lines.push('    }')
 
     lines.push('    Enums: {')
