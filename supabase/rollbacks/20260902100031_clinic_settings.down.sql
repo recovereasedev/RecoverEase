@@ -742,6 +742,8 @@ comment on function public.mark_overdue_medication_logs(integer) is
 -- The settings: the time zone in force goes back into the global row, then
 -- the policies are migration 06's again and the column goes.
 
+drop trigger if exists system_setting_sync_clinic_timezone on public.system_setting;
+drop function if exists public.system_setting_sync_clinic_timezone();
 drop trigger if exists system_setting_assign_clinic on public.system_setting;
 drop function if exists public.system_setting_assign_clinic();
 

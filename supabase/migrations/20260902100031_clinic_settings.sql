@@ -193,10 +193,9 @@ grant execute on function app_private.clinic_today(uuid) to authenticated, servi
 -- server-side write - the service key, a migration - names its clinic, and
 -- may leave it out only while there is a single clinic to mean.
 --
--- `app.timezone` is the alias described above: a value saved there by the
--- deployed settings screen is passed on to the clinic, where
--- clinic_validate_timezone refuses a zone that does not exist - and with it
--- the save.
+-- `app.timezone` is the alias described above. Its value is trimmed here;
+-- passing it on to the clinic is the next trigger's job, once the row has
+-- really been written.
 
 create or replace function public.system_setting_assign_clinic()
 returns trigger
@@ -229,14 +228,6 @@ begin
 
   if new.system_setting_key = 'app.timezone' then
     new.system_setting_value := btrim(new.system_setting_value);
-
-    if tg_op = 'INSERT'
-       or new.system_setting_value is distinct from old.system_setting_value then
-      update public.clinic
-         set clinic_timezone = new.system_setting_value
-       where clinic_id = new.clinic_id
-         and clinic_timezone is distinct from new.system_setting_value;
-    end if;
   end if;
 
   return new;
@@ -245,8 +236,7 @@ $$;
 
 comment on function public.system_setting_assign_clinic() is
   'Gives a new setting its clinic - the writing Clinic Admin''s, or the only '
-  'one for a server-side write - keeps it there, and passes a time zone saved '
-  'as app.timezone on to the clinic. Run only by its trigger.';
+  'one for a server-side write - and keeps it there. Run only by its trigger.';
 
 drop trigger if exists system_setting_assign_clinic on public.system_setting;
 create trigger system_setting_assign_clinic
@@ -254,6 +244,51 @@ create trigger system_setting_assign_clinic
   for each row execute function public.system_setting_assign_clinic();
 
 revoke all on function public.system_setting_assign_clinic() from public, anon, authenticated;
+
+-- A zone saved as `app.timezone` by the deployed settings screen is passed on
+-- to the clinic - after the row is written, never before. PostgreSQL runs a
+-- BEFORE INSERT trigger for every row an INSERT proposes, including one that
+-- ON CONFLICT DO NOTHING then skips; an AFTER trigger runs only for a row
+-- really inserted or updated. In the same statement, so a zone that does not
+-- exist - which clinic_validate_timezone refuses - undoes the whole save.
+-- Nothing is written when the clinic already has the zone, and the clinic's
+-- own triggers do not touch settings, so admin_set_clinic_timezone (which
+-- updates the clinic, then the alias) cannot loop.
+
+create or replace function public.system_setting_sync_clinic_timezone()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if tg_op = 'UPDATE'
+     and new.system_setting_value is not distinct from old.system_setting_value
+     and new.system_setting_key is not distinct from old.system_setting_key then
+    return null;
+  end if;
+
+  update public.clinic
+     set clinic_timezone = new.system_setting_value
+   where clinic_id = new.clinic_id
+     and clinic_timezone is distinct from new.system_setting_value;
+
+  return null;
+end;
+$$;
+
+comment on function public.system_setting_sync_clinic_timezone() is
+  'Passes a time zone written as the app.timezone setting on to its clinic, '
+  'for a row really inserted or updated. Run only by its trigger.';
+
+drop trigger if exists system_setting_sync_clinic_timezone on public.system_setting;
+create trigger system_setting_sync_clinic_timezone
+  after insert or update on public.system_setting
+  for each row
+  when (new.system_setting_key = 'app.timezone')
+  execute function public.system_setting_sync_clinic_timezone();
+
+revoke all on function public.system_setting_sync_clinic_timezone() from public, anon, authenticated;
 
 -- The three settings policies: the caller's clinic, where they were every
 -- administrator's.

@@ -726,3 +726,158 @@ describe('the settings screen deployed before migration 31, during the release',
     ).toEqual([{ system_setting_value: 'Guidance' }])
   })
 })
+
+/**
+ * The `app.timezone` alias passes a zone on to the clinic only when the row
+ * is really written. PostgreSQL runs BEFORE INSERT triggers for every row an
+ * INSERT proposes, including one that ON CONFLICT DO NOTHING then skips, so
+ * the pass-through runs after the write (migration 31's
+ * system_setting_sync_clinic_timezone), never before it.
+ */
+describe('the app.timezone alias reaches the clinic only when it is written', () => {
+  let database: TestDatabase
+  let fx: Fixture
+
+  beforeAll(async () => {
+    database = await createTestDatabase()
+    fx = await seedFixture(database)
+  })
+
+  afterAll(async () => {
+    await database?.close()
+  })
+
+  const clinicZone = () => value<string>(database, 'select clinic_timezone from public.clinic')
+  const aliasRows = () =>
+    database.asService<{ v: string }>(
+      `select system_setting_value as v from public.system_setting where system_setting_key = 'app.timezone'`,
+    )
+  const auditCount = (entity: string, action: string) =>
+    value<number>(
+      database,
+      'select count(*)::int from public.audit_log where audit_log_entity = $1 and audit_log_action = $2',
+      [entity, action],
+    )
+  // The two ON CONFLICT targets a writer could name: the key the deployed
+  // screen upserts on, and the clinic and key.
+  const doNothing = (target: string, zone: string, as: 'admin' | 'service') => {
+    const sql = `insert into public.system_setting (admin_id, system_setting_key, system_setting_value)
+                 values ($1, 'app.timezone', $2)
+                 on conflict ${target} do nothing
+                 returning system_setting_id`
+    return as === 'admin'
+      ? database.asUser(fx.adminUserId, sql, [fx.adminId, zone])
+      : database.asService(sql, [fx.adminId, zone])
+  }
+  const oldScreenSave = (zone: string) =>
+    database.asUser(
+      fx.adminUserId,
+      `insert into public.system_setting (admin_id, system_setting_key, system_setting_value)
+       values ($1, 'app.timezone', $2)
+       on conflict (system_setting_key) do update
+         set admin_id = excluded.admin_id, system_setting_value = excluded.system_setting_value
+       returning system_setting_value`,
+      [fx.adminId, zone],
+    )
+
+  it('is passed on when a genuine insert creates the row', async () => {
+    expect(await aliasRows()).toEqual([])
+    expect(await clinicZone()).toBe('Asia/Manila')
+
+    expect(await oldScreenSave(' Asia/Singapore ')).toEqual([{ system_setting_value: 'Asia/Singapore' }])
+
+    expect(await aliasRows()).toEqual([{ v: 'Asia/Singapore' }])
+    expect(await clinicZone()).toBe('Asia/Singapore')
+  })
+
+  it('changes nothing - not the setting, not the clinic - when ON CONFLICT DO NOTHING skips the row', async () => {
+    const clinicUpdates = await auditCount('clinic', 'update')
+    for (const target of ['(system_setting_key)', '(clinic_id, system_setting_key)']) {
+      for (const as of ['admin', 'service'] as const) {
+        expect(await doNothing(target, 'Asia/Tokyo', as)).toEqual([])
+      }
+    }
+    expect(await aliasRows()).toEqual([{ v: 'Asia/Singapore' }])
+    expect(await clinicZone()).toBe('Asia/Singapore')
+    expect(await auditCount('clinic', 'update')).toBe(clinicUpdates)
+    expect(
+      await database.asUser(fx.doctorAUserId, 'select public.app_today()::text as d'),
+    ).toEqual([{ d: await value<string>(database, `select (now() at time zone 'Asia/Singapore')::date::text`) }])
+  })
+
+  it('changes nothing either when the skipped row names a zone that does not exist', async () => {
+    expect(await doNothing('(system_setting_key)', 'Nowhere/Atlantis', 'admin')).toEqual([])
+    expect(await aliasRows()).toEqual([{ v: 'Asia/Singapore' }])
+    expect(await clinicZone()).toBe('Asia/Singapore')
+  })
+
+  it('is passed on when the deployed screen’s upsert really updates the row', async () => {
+    expect(await oldScreenSave('Asia/Tokyo')).toEqual([{ system_setting_value: 'Asia/Tokyo' }])
+    expect(await aliasRows()).toEqual([{ v: 'Asia/Tokyo' }])
+    expect(await clinicZone()).toBe('Asia/Tokyo')
+  })
+
+  it('rolls back the whole save, setting and clinic, when the zone does not exist', async () => {
+    const before = await auditCount('system_setting', 'update')
+    await expect(oldScreenSave('Nowhere/Atlantis')).rejects.toThrow(/Unknown time zone/)
+    await expect(
+      database.asUser(
+        fx.adminUserId,
+        `update public.system_setting set system_setting_value = 'Mars/Olympus_Mons'
+          where system_setting_key = 'app.timezone'`,
+      ),
+    ).rejects.toThrow(/Unknown time zone/)
+    expect(await aliasRows()).toEqual([{ v: 'Asia/Tokyo' }])
+    expect(await clinicZone()).toBe('Asia/Tokyo')
+    expect(await auditCount('system_setting', 'update')).toBe(before)
+  })
+
+  it('rolls back a genuine insert of a zone that does not exist, leaving no row', async () => {
+    const other = await createTestDatabase()
+    try {
+      await expect(
+        other.asService(
+          `insert into public.system_setting (system_setting_key, system_setting_value) values ('app.timezone', 'Nowhere/Atlantis')`,
+        ),
+      ).rejects.toThrow(/Unknown time zone/)
+      expect(
+        await other.asService(`select 1 from public.system_setting where system_setting_key = 'app.timezone'`),
+      ).toEqual([])
+      expect(await other.asService('select clinic_timezone from public.clinic')).toEqual([
+        { clinic_timezone: 'Asia/Manila' },
+      ])
+    } finally {
+      await other.close()
+    }
+  })
+
+  it('stays in step with admin_set_clinic_timezone, which updates the clinic once and the alias once', async () => {
+    const clinicUpdates = await auditCount('clinic', 'update')
+    const settingUpdates = await auditCount('system_setting', 'update')
+    const zoneChanges = await auditCount('clinic_settings', 'update')
+
+    expect(
+      await database.asUser(fx.adminUserId, `select public.admin_set_clinic_timezone('Asia/Manila') as z`),
+    ).toEqual([{ z: 'Asia/Manila' }])
+
+    expect(await clinicZone()).toBe('Asia/Manila')
+    expect(await aliasRows()).toEqual([{ v: 'Asia/Manila' }])
+    // One clinic update: the alias's own pass-through finds the clinic
+    // already there and writes nothing - no second update, no loop.
+    expect(await auditCount('clinic', 'update')).toBe(clinicUpdates + 1)
+    expect(await auditCount('system_setting', 'update')).toBe(settingUpdates + 1)
+    expect(await auditCount('clinic_settings', 'update')).toBe(zoneChanges + 1)
+
+    // Nothing to change: nothing written at all.
+    await database.asUser(fx.adminUserId, `select public.admin_set_clinic_timezone('Asia/Manila')`)
+    expect(await auditCount('clinic', 'update')).toBe(clinicUpdates + 1)
+    expect(await auditCount('system_setting', 'update')).toBe(settingUpdates + 1)
+    expect(await auditCount('clinic_settings', 'update')).toBe(zoneChanges + 1)
+  })
+
+  it('keeps the single-clinic gate', async () => {
+    await expect(
+      database.asService(`insert into public.clinic (clinic_name, clinic_timezone) values ('Second', 'UTC')`),
+    ).rejects.toThrow(/clinic_single_clinic_gate/)
+  })
+})
