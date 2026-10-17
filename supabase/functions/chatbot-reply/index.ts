@@ -13,6 +13,7 @@ import {
   toInteractionInput,
 } from '../_shared/assistant.ts'
 import { AuthError, requireCaller, serviceClient } from '../_shared/auth.ts'
+import { loadClinicPrompt, PROMPT_KEY, type PromptStore } from '../_shared/clinic-prompt.ts'
 import { handlePreflight, jsonResponse } from '../_shared/cors.ts'
 import {
   ReplyIdConflictError,
@@ -58,6 +59,13 @@ import {
  * review the conversation (see _shared/escalation.ts). It never falls back
  * to a canned or partial reply.
  *
+ * Each clinic writes its own guidance (migration 31): the prompt is the
+ * patient's clinic's, and the built-in guidance when that cannot be read.
+ * Deploy only once migration 31 is applied - the lookup reads
+ * `system_setting.clinic_id`; deployed earlier, every conversation gets the
+ * built-in guidance. And before any second clinic exists: the version before
+ * this one reads the prompt by key alone.
+ *
  * Deploy:
  *   supabase functions deploy chatbot-reply
  *   supabase secrets set GEMINI_API_KEY=...
@@ -85,6 +93,35 @@ class ReplyError extends AuthError {
   constructor(message: string, status: number, code: ReplyErrorCode) {
     super(message, status)
     this.code = code
+  }
+}
+
+/**
+ * The database side of the prompt lookup (_shared/clinic-prompt.ts): the
+ * patient's doctor's clinic, and that clinic's prompt. With the service key,
+ * since a patient cannot read settings; every query names the clinic.
+ */
+function promptStore(admin: ReturnType<typeof serviceClient>): PromptStore {
+  return {
+    async clinicOfDoctor(docId) {
+      const { data, error } = await admin
+        .from('doctor')
+        .select('clinic_id')
+        .eq('doc_id', docId)
+        .maybeSingle()
+      if (error) throw new Error(error.message)
+      return (data?.clinic_id as string | null | undefined) ?? null
+    },
+    async clinicPrompt(clinicId) {
+      const { data, error } = await admin
+        .from('system_setting')
+        .select('system_setting_value')
+        .eq('clinic_id', clinicId)
+        .eq('system_setting_key', PROMPT_KEY)
+        .maybeSingle()
+      if (error) throw new Error(error.message)
+      return (data?.system_setting_value as string | null | undefined) ?? null
+    },
   }
 }
 
@@ -252,16 +289,12 @@ Deno.serve(async (request) => {
           )
         }
 
-        const { data: promptSetting } = await admin
-          .from('system_setting')
-          .select('system_setting_value')
-          .eq('system_setting_key', 'chatbot.system_prompt')
-          .maybeSingle()
+        // The patient's clinic's guidance; the built-in one if it cannot be
+        // read. The clinic comes from the conversation proved theirs above.
+        const prompt = await loadClinicPrompt(promptStore(admin), patient.doc_id)
 
         const body = buildInteractionRequest({
-          systemInstruction: buildSystemInstruction(
-            promptSetting?.system_setting_value,
-          ),
+          systemInstruction: buildSystemInstruction(prompt),
           turns,
         })
 

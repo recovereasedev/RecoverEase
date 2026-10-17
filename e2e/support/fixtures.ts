@@ -179,9 +179,21 @@ export function datasetFor(role: 'patient' | 'doctor' | 'admin'): TableRows {
         {
           system_setting_id: 'set-1',
           admin_id: IDS.admin,
+          clinic_id: 'clinic-harborview',
           system_setting_key: 'app.timezone',
           system_setting_value: 'Asia/Manila',
           system_setting_updated_at: '2026-03-01T00:00:00Z',
+        },
+      ],
+      // The administrator's own clinic, which is all the policy shows them.
+      clinic: [
+        {
+          clinic_id: 'clinic-harborview',
+          clinic_name: 'Harborview Recovery Clinic',
+          clinic_status: 'active',
+          clinic_timezone: 'Asia/Manila',
+          clinic_created_at: '2026-01-01T00:00:00Z',
+          clinic_updated_at: '2026-03-01T00:00:00Z',
         },
       ],
     }

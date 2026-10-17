@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { flushSync } from 'react-dom'
 
 import { FormError } from '@/components/feedback/form-error'
 
@@ -6,11 +7,9 @@ import { Button } from '@/components/ui/button'
 import { SavedNotice } from '@/components/feedback/state-view'
 import { Card, CardBody, CardFooter, CardHeader } from '@/components/ui/card'
 import { Field, Input, Textarea } from '@/components/ui/field'
-import type {
-  SettingParseResult,
-  SystemSetting,
-} from '@/features/system-settings/api'
+import type { SettingParseResult } from '@/features/system-settings/api'
 import { useFocusRecovery } from '@/hooks/use-focus-recovery'
+import { focusFirstInvalid } from '@/lib/form-focus'
 import { formatDateTime } from '@/lib/format'
 
 export type SettingDefinition = {
@@ -28,29 +27,32 @@ export type SettingDefinition = {
 }
 
 /**
- * One configurable setting (modules 14.1 and 8.7).
+ * One configurable setting (modules 14.1 and 8.7), or the clinic's time zone.
  *
- * Split out so the page can key it on the stored record. That keying is what
+ * Split out so the page can key it on the stored value's last change. That keying is what
  * lets the saved value be the field's initial state rather than something an
  * effect copies in after the query resolves — which would blank the field on
  * first paint and could discard text an administrator had already typed.
  */
 export function SettingForm({
   definition,
-  record,
+  savedValue,
+  updatedAt,
   isSaving,
   error,
   wasJustSaved,
   onSave,
 }: {
   definition: SettingDefinition
-  record: SystemSetting | undefined
+  /** The value as stored, or '' when it never has been. */
+  savedValue: string
+  /** When it last changed, or null when it never has been set. */
+  updatedAt: string | null
   isSaving: boolean
   error: unknown
   wasJustSaved: boolean
   onSave: (value: string) => void
 }) {
-  const savedValue = record?.system_setting_value ?? ''
   const [value, setValue] = useState(savedValue)
   const [invalid, setInvalid] = useState<string | undefined>(undefined)
 
@@ -76,10 +78,13 @@ export function SettingForm({
               return
             }
             // Refused here rather than saved and then ignored, so the stored
-            // value stays as it was.
+            // value stays as it was. Focus goes to the field, where the reason
+            // is said, as on every other form.
             const parsed = definition.parse(value)
             if (!parsed.ok) {
-              setInvalid(parsed.message)
+              const form = event.currentTarget
+              flushSync(() => setInvalid(parsed.message))
+              focusFirstInvalid(form)
               return
             }
             setInvalid(undefined)
@@ -129,9 +134,7 @@ export function SettingForm({
       </CardBody>
 
       <CardFooter className="text-sm text-muted">
-        {record
-          ? `Last updated ${formatDateTime(record.system_setting_updated_at)}`
-          : 'Not yet configured'}
+        {updatedAt ? `Last updated ${formatDateTime(updatedAt)}` : 'Not yet configured'}
       </CardFooter>
     </Card>
   )

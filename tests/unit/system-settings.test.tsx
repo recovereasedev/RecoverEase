@@ -4,23 +4,30 @@ import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 /**
- * QA-03 — the missed-dose grace period on Admin → System settings.
+ * Admin → System settings: QA-03's missed-dose grace period, and the
+ * clinic's own settings and time zone (migration 31).
  *
  * The overdue job uses a whole number of hours from 1 to 24 and ignores
  * anything else, so the form refuses anything else before it is saved: the
  * administrator is told why, nothing is sent, and the stored value stands.
- * The other settings still save exactly what was typed.
+ * The chatbot guidance saves exactly what was typed. The time zone is the
+ * clinic's: shown from the clinic, saved through its own function, and
+ * refused before sending when it is not a zone at all.
  */
 
 const api = vi.hoisted(() => ({
   fetchSystemSettings: vi.fn(),
   saveSystemSetting: vi.fn(),
+  fetchClinicSettings: vi.fn(),
+  saveClinicTimezone: vi.fn(),
 }))
 
 vi.mock('@/features/system-settings/api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/features/system-settings/api')>()),
   fetchSystemSettings: api.fetchSystemSettings,
   saveSystemSetting: api.saveSystemSetting,
+  fetchClinicSettings: api.fetchClinicSettings,
+  saveClinicTimezone: api.saveClinicTimezone,
 }))
 
 vi.mock('@/features/auth/auth-context', () => ({
@@ -31,7 +38,7 @@ vi.mock('@/features/auth/auth-context', () => ({
   }),
 }))
 
-const { parseGraceHours } = await import('@/features/system-settings/api')
+const { parseGraceHours, parseTimezone } = await import('@/features/system-settings/api')
 const { SystemSettingsPage } = await import(
   '@/features/system-settings/pages/system-settings-page'
 )
@@ -79,11 +86,18 @@ function stored(key: string, value: string) {
 }
 
 async function renderSettings(graceHours = '8') {
+  // The time zone alias the website before migration 31 used is still a row;
+  // this page ignores it and reads the clinic.
   api.fetchSystemSettings.mockResolvedValue([
-    stored('app.timezone', 'Asia/Manila'),
+    stored('app.timezone', 'Asia/Tokyo'),
     stored('chatbot.system_prompt', 'Be kind.'),
     stored(GRACE, graceHours),
   ])
+  api.fetchClinicSettings.mockResolvedValue({
+    clinic_id: 'clinic-1',
+    clinic_timezone: 'Asia/Manila',
+    clinic_updated_at: '2026-09-01T00:00:00Z',
+  })
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
@@ -115,6 +129,8 @@ const settle = () => new Promise((resolve) => setTimeout(resolve, 20))
 beforeEach(() => {
   api.fetchSystemSettings.mockReset()
   api.saveSystemSetting.mockReset().mockResolvedValue(undefined)
+  api.fetchClinicSettings.mockReset()
+  api.saveClinicTimezone.mockReset().mockResolvedValue(undefined)
 })
 
 describe('reading a grace period', () => {
@@ -145,6 +161,7 @@ describe('the grace period on the settings page', () => {
     await waitFor(() => expect(api.saveSystemSetting).toHaveBeenCalledTimes(1))
     expect(api.saveSystemSetting).toHaveBeenCalledWith({
       adminId: 'admin-1',
+      clinicId: 'clinic-1',
       key: GRACE,
       value,
     })
@@ -180,6 +197,7 @@ describe('the grace period on the settings page', () => {
     await waitFor(() =>
       expect(api.saveSystemSetting).toHaveBeenCalledWith({
         adminId: 'admin-1',
+        clinicId: 'clinic-1',
         key: GRACE,
         value: '2',
       }),
@@ -188,24 +206,77 @@ describe('the grace period on the settings page', () => {
   })
 })
 
-describe('the other settings are unchanged', () => {
-  it('saves the clinic time zone exactly as typed', async () => {
+describe('reading a time zone', () => {
+  it.each([
+    ['Asia/Manila', 'Asia/Manila'],
+    [' Asia/Singapore ', 'Asia/Singapore'],
+    ['asia/manila', 'Asia/Manila'],
+    ['UTC', 'UTC'],
+  ])('accepts %j as %j', (input, value) => {
+    expect(parseTimezone(input)).toEqual({ ok: true, value })
+  })
+
+  it.each(['Mars/Olympus_Mons', '0', 'Manila', '+08:00', 'UTC+8'])('refuses %j', (input) => {
+    expect(parseTimezone(input)).toEqual({
+      ok: false,
+      message: 'Enter a time zone name, such as Asia/Manila or Asia/Singapore.',
+    })
+  })
+
+  it('asks for one when the field is empty', () => {
+    expect(parseTimezone('   ')).toEqual({ ok: false, message: 'Enter a time zone, such as Asia/Manila.' })
+  })
+})
+
+describe('the clinic time zone (migration 31)', () => {
+  it('is the clinic’s, not the old setting’s, and the page says the settings are the clinic’s', async () => {
     await renderSettings()
     const zone = await field('Clinic time zone')
 
-    zone.type(' 0 ')
+    expect(zone.control).toHaveValue('Asia/Manila')
+    expect(screen.getByText(/Configuration for your clinic/)).toBeInTheDocument()
+  })
+
+  it('is saved through the clinic’s own function, in its canonical spelling, and nothing else is saved', async () => {
+    await renderSettings()
+    const zone = await field('Clinic time zone')
+
+    zone.type(' asia/singapore ')
     zone.save()
 
-    await waitFor(() =>
-      expect(api.saveSystemSetting).toHaveBeenCalledWith({
-        adminId: 'admin-1',
-        key: 'app.timezone',
-        value: ' 0 ',
-      }),
-    )
+    await waitFor(() => expect(api.saveClinicTimezone).toHaveBeenCalledWith('Asia/Singapore'))
+    expect(api.saveSystemSetting).not.toHaveBeenCalled()
     expect(zone.alert()).toBeNull()
   })
 
+  it('is refused before sending when it is not a time zone', async () => {
+    await renderSettings()
+    const zone = await field('Clinic time zone')
+
+    zone.type('Mars/Olympus_Mons')
+    zone.save()
+    await settle()
+
+    expect(zone.alert()).toHaveTextContent('Enter a time zone name, such as Asia/Manila or Asia/Singapore.')
+    expect(zone.control).toHaveAttribute('aria-invalid', 'true')
+    expect(api.saveClinicTimezone).not.toHaveBeenCalled()
+  })
+
+  it('shows the database’s refusal when its own list of zones does not have it', async () => {
+    // The browser's list and the database's can differ; the database decides.
+    api.saveClinicTimezone.mockRejectedValue(new Error('Unknown time zone: Asia/Singapore'))
+    await renderSettings()
+    const zone = await field('Clinic time zone')
+
+    zone.type('Asia/Singapore')
+    zone.save()
+
+    expect(await screen.findByText(/Unknown time zone: Asia\/Singapore/)).toBeInTheDocument()
+    expect(screen.getByText('The setting was not saved')).toBeInTheDocument()
+  })
+})
+
+describe('the chatbot guidance', () => {
   it('saves the chatbot guidance exactly as typed', async () => {
     await renderSettings()
     const guidance = await field('Chatbot guidance')
@@ -216,6 +287,7 @@ describe('the other settings are unchanged', () => {
     await waitFor(() =>
       expect(api.saveSystemSetting).toHaveBeenCalledWith({
         adminId: 'admin-1',
+        clinicId: 'clinic-1',
         key: 'chatbot.system_prompt',
         value: 'Be kind.\nNever diagnose. 25',
       }),

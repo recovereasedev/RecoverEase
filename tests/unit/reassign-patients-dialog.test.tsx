@@ -8,14 +8,16 @@ import type { Doctor } from '@/features/patients/api'
  * Decision D8's dialog: handing a deactivated doctor's patients to an active
  * doctor in the same clinic.
  *
- * The administrator learns how many patients, never who. Everything else here
+ * The administrator learns how many patients and upcoming appointments,
+ * never who; the appointments go with the patients (decision D8, option A,
+ * migration 31). Everything else here
  * is the ordinary contract of a form in this app: checked on submit, the
  * problem said beside its field with focus taken there, a failure explained,
  * and focus kept inside the dialog when the button pressed goes away.
  */
 
 const api = vi.hoisted(() => ({
-  fetchDoctorPatientCount: vi.fn(),
+  fetchReassignmentCounts: vi.fn(),
   reassignDoctorPatients: vi.fn(),
 }))
 
@@ -70,7 +72,11 @@ function renderDialog(doctors: Doctor[] = DOCTORS) {
 }
 
 const dialog = () => screen.getByRole('dialog', { name: /reassign patients/i })
-const moveButton = () => within(dialog()).getByRole('button', { name: /^Move \d+ patients?$/ })
+const moveButton = () =>
+  within(dialog()).getByRole('button', {
+    name: /^Move \d+ patients?( and \d+ upcoming appointments?)?$/,
+  })
+const counts = (patients: number, appointments = 0) => ({ patients, appointments })
 const newDoctor = () => within(dialog()).getByRole('combobox', { name: /new doctor/i })
 
 beforeAll(() => {
@@ -83,20 +89,20 @@ beforeAll(() => {
 })
 
 beforeEach(() => {
-  api.fetchDoctorPatientCount.mockReset()
+  api.fetchReassignmentCounts.mockReset()
   api.reassignDoctorPatients.mockReset()
 })
 
 describe('reassigning a deactivated doctor’s patients', () => {
   it('says how many patients, never who, and offers only active doctors', async () => {
-    api.fetchDoctorPatientCount.mockResolvedValue(3)
+    api.fetchReassignmentCounts.mockResolvedValue(counts(3))
     renderDialog()
 
-    expect(within(dialog()).getByRole('status')).toHaveTextContent('Counting patients…')
+    expect(within(dialog()).getByRole('status')).toHaveTextContent('Counting patients and appointments…')
     expect(await within(dialog()).findByText(/Dr Cay Tan has/)).toHaveTextContent(
       'Dr Cay Tan has 3 patients. Choose an active doctor in your clinic to take them over.',
     )
-    expect(api.fetchDoctorPatientCount).toHaveBeenCalledWith('d-c')
+    expect(api.fetchReassignmentCounts).toHaveBeenCalledWith('d-c')
 
     // The doctor leaving and the other deactivated doctor are not choices.
     expect(within(newDoctor()).getAllByRole('option').map((option) => option.textContent)).toEqual([
@@ -108,7 +114,7 @@ describe('reassigning a deactivated doctor’s patients', () => {
   })
 
   it('says a doctor is needed beside the field, and takes focus there, before sending anything', async () => {
-    api.fetchDoctorPatientCount.mockResolvedValue(2)
+    api.fetchReassignmentCounts.mockResolvedValue(counts(2))
     renderDialog()
     fireEvent.click(await screen.findByRole('button', { name: 'Move 2 patients' }))
 
@@ -121,7 +127,7 @@ describe('reassigning a deactivated doctor’s patients', () => {
   })
 
   it('moves them with the count that was shown, then confirms and hands focus to Done', async () => {
-    api.fetchDoctorPatientCount.mockResolvedValue(2)
+    api.fetchReassignmentCounts.mockResolvedValue(counts(2))
     api.reassignDoctorPatients.mockResolvedValue(2)
     renderDialog()
 
@@ -131,7 +137,7 @@ describe('reassigning a deactivated doctor’s patients', () => {
 
     await waitFor(() =>
       expect(api.reassignDoctorPatients).toHaveBeenCalledWith(
-        { fromDoctorId: 'd-c', toDoctorId: 'd-b', expectedCount: 2 },
+        { fromDoctorId: 'd-c', toDoctorId: 'd-b', expectedCount: 2, expectedAppointmentCount: 0 },
         expect.anything(),
       ),
     )
@@ -143,7 +149,7 @@ describe('reassigning a deactivated doctor’s patients', () => {
   })
 
   it('reports a refused move and keeps the choice, so it can be tried again', async () => {
-    api.fetchDoctorPatientCount.mockResolvedValue(1)
+    api.fetchReassignmentCounts.mockResolvedValue(counts(1))
     api.reassignDoctorPatients.mockRejectedValue(
       new Error('The number of patients has changed since it was shown. Check it and try again.'),
     )
@@ -164,7 +170,7 @@ describe('reassigning a deactivated doctor’s patients', () => {
   })
 
   it('says there is nothing to move when the doctor has no patients', async () => {
-    api.fetchDoctorPatientCount.mockResolvedValue(0)
+    api.fetchReassignmentCounts.mockResolvedValue(counts(0))
     renderDialog()
 
     expect(
@@ -175,7 +181,7 @@ describe('reassigning a deactivated doctor’s patients', () => {
   })
 
   it('says when no active doctor can take them over', async () => {
-    api.fetchDoctorPatientCount.mockResolvedValue(4)
+    api.fetchReassignmentCounts.mockResolvedValue(counts(4))
     renderDialog([DEACTIVATED, doctor('d-x', 'Xen', 'Ong', false)])
 
     expect(await within(dialog()).findByText('No active doctor to take them over')).toBeVisible()
@@ -184,13 +190,67 @@ describe('reassigning a deactivated doctor’s patients', () => {
   })
 
   it('says when the count cannot be loaded, and changes nothing', async () => {
-    api.fetchDoctorPatientCount.mockRejectedValue(new Error('Could not find the function'))
+    api.fetchReassignmentCounts.mockRejectedValue(new Error('Could not find the function'))
     const { onClose } = renderDialog()
 
-    expect(await within(dialog()).findByText('The patient count could not be loaded')).toBeVisible()
+    expect(await within(dialog()).findByText('The counts could not be loaded')).toBeVisible()
     expect(within(dialog()).queryByRole('button', { name: /^Move/ })).toBeNull()
     fireEvent.click(within(dialog()).getByRole('button', { name: 'Close' }))
     expect(onClose).toHaveBeenCalled()
     expect(api.reassignDoctorPatients).not.toHaveBeenCalled()
+  })
+
+  describe('with upcoming appointments (migration 31)', () => {
+    it('says how many go with the patients, and what happens to them', async () => {
+      api.fetchReassignmentCounts.mockResolvedValue(counts(2, 3))
+      renderDialog()
+
+      expect(await within(dialog()).findByText(/Dr Cay Tan has/)).toHaveTextContent(
+        'Dr Cay Tan has 2 patients and 3 upcoming appointments. Choose an active doctor in your clinic to take them over.',
+      )
+      expect(
+        within(dialog()).getByText(/Upcoming appointments keep their times with the new doctor/),
+      ).toHaveTextContent(/Past appointments stay as they were\. If any would clash with another booking, nothing is moved\./)
+      expect(moveButton()).toHaveTextContent('Move 2 patients and 3 upcoming appointments')
+    })
+
+    it('confirms both counts, and says the patients and the new doctor were told', async () => {
+      api.fetchReassignmentCounts.mockResolvedValue(counts(1, 1))
+      api.reassignDoctorPatients.mockResolvedValue(1)
+      renderDialog()
+
+      await screen.findByRole('button', { name: 'Move 1 patient and 1 upcoming appointment' })
+      fireEvent.change(newDoctor(), { target: { value: 'd-a' } })
+      fireEvent.click(moveButton())
+
+      await waitFor(() =>
+        expect(api.reassignDoctorPatients).toHaveBeenCalledWith(
+          { fromDoctorId: 'd-c', toDoctorId: 'd-a', expectedCount: 1, expectedAppointmentCount: 1 },
+          expect.anything(),
+        ),
+      )
+      expect(await screen.findByText('1 patient and 1 upcoming appointment moved to Dr Alan Cruz')).toBeVisible()
+      expect(screen.getByText(/The patients and the new doctor have been told about each appointment\./)).toBeVisible()
+      expect(screen.getByRole('button', { name: 'Done' })).toHaveFocus()
+    })
+
+    it('reports a clash, moves nothing, and keeps the choice so another doctor can be tried', async () => {
+      api.fetchReassignmentCounts.mockResolvedValue(counts(1, 2))
+      api.reassignDoctorPatients.mockRejectedValue(
+        new Error(
+          '1 of the upcoming appointments would clash with another booking at the same time, so nothing was moved. Choose a different doctor, or have the clashing booking moved first.',
+        ),
+      )
+      renderDialog()
+
+      await screen.findByRole('button', { name: 'Move 1 patient and 2 upcoming appointments' })
+      fireEvent.change(newDoctor(), { target: { value: 'd-b' } })
+      fireEvent.click(moveButton())
+
+      expect(await within(dialog()).findByText('The patients were not moved')).toBeVisible()
+      expect(within(dialog()).getByText(/1 of the upcoming appointments would clash/)).toBeVisible()
+      expect(newDoctor()).toHaveValue('d-b')
+      expect(moveButton()).toBeVisible()
+    })
   })
 })

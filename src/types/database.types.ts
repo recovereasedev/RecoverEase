@@ -763,6 +763,7 @@ export type Database = {
           system_setting_key: string
           system_setting_value: string
           system_setting_updated_at: string
+          clinic_id: string
         }
         Insert: {
           system_setting_id?: string
@@ -770,6 +771,7 @@ export type Database = {
           system_setting_key: string
           system_setting_value: string
           system_setting_updated_at?: string
+          clinic_id?: string
         }
         Update: {
           system_setting_id?: string
@@ -777,6 +779,7 @@ export type Database = {
           system_setting_key?: string
           system_setting_value?: string
           system_setting_updated_at?: string
+          clinic_id?: string
         }
         Relationships: [
           {
@@ -785,6 +788,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: 'admin'
             referencedColumns: ['admin_id']
+          },
+          {
+            foreignKeyName: 'system_setting_clinic_id_fkey'
+            columns: ['clinic_id']
+            isOneToOne: false
+            referencedRelation: 'clinic'
+            referencedColumns: ['clinic_id']
           },
         ]
       }
@@ -920,13 +930,21 @@ export type Database = {
         Args: { window_days?: number }
         Returns: Json
       }
+      admin_doctor_appointment_count: {
+        Args: { target_doc_id: string }
+        Returns: number
+      }
       admin_doctor_patient_count: {
         Args: { target_doc_id: string }
         Returns: number
       }
       admin_reassign_doctor_patients: {
-        Args: { from_doc_id: string; to_doc_id: string; expected_count: number }
+        Args: { from_doc_id: string; to_doc_id: string; expected_count: number; expected_appointment_count?: number }
         Returns: number
+      }
+      admin_set_clinic_timezone: {
+        Args: { new_timezone: string }
+        Returns: string
       }
       app_today: {
         Args: Record<PropertyKey, never>

@@ -5,10 +5,10 @@ import type { TablesUpdate } from '@/types/database.types'
 
 import {
   fetchAllDoctors,
-  fetchDoctorPatientCount,
   fetchMyDoctor,
   fetchMyPatients,
   fetchPatient,
+  fetchReassignmentCounts,
   reassignDoctorPatients,
   setDoctorActive,
   updateDoctor,
@@ -81,10 +81,10 @@ export function useUpdateDoctor(doctorId: string) {
   })
 }
 
-export function useDoctorPatientCount(doctorId: string) {
+export function useReassignmentCounts(doctorId: string) {
   return useQuery({
-    queryKey: queryKeys.doctors.patientCount(doctorId),
-    queryFn: () => fetchDoctorPatientCount(doctorId),
+    queryKey: queryKeys.doctors.reassignmentCounts(doctorId),
+    queryFn: () => fetchReassignmentCounts(doctorId),
   })
 }
 

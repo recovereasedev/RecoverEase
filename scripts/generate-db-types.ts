@@ -83,6 +83,7 @@ const FILLED_ON_INSERT = new Set([
   'audit_log.audit_scope', // audit_log_classify, migration 30
   'doctor.clinic_id', // doctor_assign_single_clinic, migration 29
   'report.clinic_id', // report_assign_clinic, migration 30
+  'system_setting.clinic_id', // system_setting_assign_clinic, migration 31
 ])
 
 function quoteKey(name: string): string {
@@ -281,15 +282,23 @@ async function main(): Promise<void> {
     lines.push('        Args: { window_days?: number }')
     lines.push('        Returns: Json')
     lines.push('      }')
+    lines.push('      admin_doctor_appointment_count: {')
+    lines.push('        Args: { target_doc_id: string }')
+    lines.push('        Returns: number')
+    lines.push('      }')
     lines.push('      admin_doctor_patient_count: {')
     lines.push('        Args: { target_doc_id: string }')
     lines.push('        Returns: number')
     lines.push('      }')
     lines.push('      admin_reassign_doctor_patients: {')
     lines.push(
-      '        Args: { from_doc_id: string; to_doc_id: string; expected_count: number }',
+      '        Args: { from_doc_id: string; to_doc_id: string; expected_count: number; expected_appointment_count?: number }',
     )
     lines.push('        Returns: number')
+    lines.push('      }')
+    lines.push('      admin_set_clinic_timezone: {')
+    lines.push('        Args: { new_timezone: string }')
+    lines.push('        Returns: string')
     lines.push('      }')
     lines.push('      app_today: {')
     lines.push('        Args: Record<PropertyKey, never>')

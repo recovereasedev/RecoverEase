@@ -8,7 +8,7 @@ import { Dialog } from '@/components/ui/dialog'
 import { Field, Select } from '@/components/ui/field'
 import { Notice } from '@/components/ui/notice'
 import type { Doctor } from '@/features/patients/api'
-import { useDoctorPatientCount, useReassignDoctorPatients } from '@/features/patients/hooks'
+import { useReassignDoctorPatients, useReassignmentCounts } from '@/features/patients/hooks'
 import { focusFirstInvalid } from '@/lib/form-focus'
 import { fullName } from '@/lib/utils'
 
@@ -20,13 +20,21 @@ import { fullName } from '@/lib/utils'
  * their patients with nobody who can see their records. This moves them, all
  * together, in one audited step.
  *
- * The administrator is told how many patients, and never who. Choosing where
- * a caseload goes needs the number; the names, and anything in the records,
- * are clinical information an administrator does not hold. The database
- * functions enforce the same thing - this screen only asks.
+ * Their upcoming appointments go with them, to the same times with the new
+ * doctor; past appointments stay with the doctor they were with (decision D8,
+ * option A). If an appointment would clash with another booking, nothing
+ * moves and the database says how many clashed.
+ *
+ * The administrator is told how many patients and appointments, and never
+ * who. Choosing where a caseload goes needs the numbers; the names, and
+ * anything in the records, are clinical information an administrator does
+ * not hold. The database functions enforce the same thing - this screen only
+ * asks.
  */
 
 const patients = (count: number) => (count === 1 ? '1 patient' : `${count} patients`)
+const appointments = (count: number) =>
+  count === 1 ? '1 upcoming appointment' : `${count} upcoming appointments`
 
 export function ReassignPatientsDialog({
   isOpen,
@@ -41,12 +49,12 @@ export function ReassignPatientsDialog({
   /** The doctors the administrator can see, which are their clinic's. */
   doctors: Doctor[]
 }) {
-  const countQuery = useDoctorPatientCount(from.doctorId)
+  const countQuery = useReassignmentCounts(from.doctorId)
   const reassign = useReassignDoctorPatients()
   const inFlight = useRef(false)
   const [toDoctorId, setToDoctorId] = useState('')
   const [problem, setProblem] = useState<string | undefined>()
-  const [moved, setMoved] = useState<{ count: number; to: string } | null>(null)
+  const [moved, setMoved] = useState<{ count: number; appointments: number; to: string } | null>(null)
 
   // Once moved, the button just pressed is gone. "Done" takes focus, rather
   // than letting it fall to the page behind the dialog.
@@ -63,7 +71,8 @@ export function ReassignPatientsDialog({
     return doctor ? `Dr ${fullName(doctor.doc_first_name, doctor.doc_last_name)}` : 'the new doctor'
   }
 
-  const count = countQuery.data
+  const count = countQuery.data?.patients
+  const upcoming = countQuery.data?.appointments ?? 0
   const canMove = count !== undefined && count > 0 && candidates.length > 0 && !moved
 
   const close = () => {
@@ -88,9 +97,10 @@ export function ReassignPatientsDialog({
     inFlight.current = true
 
     reassign.mutate(
-      { fromDoctorId: from.doctorId, toDoctorId, expectedCount: count },
+      { fromDoctorId: from.doctorId, toDoctorId, expectedCount: count, expectedAppointmentCount: upcoming },
       {
-        onSuccess: (movedCount) => setMoved({ count: movedCount, to: nameOf(toDoctorId) }),
+        onSuccess: (movedCount) =>
+          setMoved({ count: movedCount, appointments: upcoming, to: nameOf(toDoctorId) }),
         onSettled: () => {
           inFlight.current = false
         },
@@ -115,7 +125,9 @@ export function ReassignPatientsDialog({
               isLoading={reassign.isPending}
               loadingLabel="Moving patients…"
             >
-              Move {patients(count)}
+              {upcoming > 0
+                ? `Move ${patients(count)} and ${appointments(upcoming)}`
+                : `Move ${patients(count)}`}
             </Button>
           </>
         ) : (
@@ -127,16 +139,27 @@ export function ReassignPatientsDialog({
     >
       <div className="space-y-4">
         {moved ? (
-          <Notice tone="success" title={`${patients(moved.count)} moved to ${moved.to}`} icon={CheckCircle2}>
+          <Notice
+            tone="success"
+            title={
+              moved.appointments > 0
+                ? `${patients(moved.count)} and ${appointments(moved.appointments)} moved to ${moved.to}`
+                : `${patients(moved.count)} moved to ${moved.to}`
+            }
+            icon={CheckCircle2}
+          >
             Their records and history are unchanged, and everything {from.name} wrote
             still shows them as its author.
+            {moved.appointments > 0
+              ? ' The patients and the new doctor have been told about each appointment.'
+              : null}
           </Notice>
         ) : countQuery.isPending ? (
           <p role="status" className="text-sm text-muted">
-            Counting patients…
+            Counting patients and appointments…
           </p>
         ) : countQuery.isError ? (
-          <Notice tone="danger" title="The patient count could not be loaded" icon={TriangleAlert}>
+          <Notice tone="danger" title="The counts could not be loaded" icon={TriangleAlert}>
             Nothing has been changed. Close this and try again in a moment.
           </Notice>
         ) : count === 0 ? (
@@ -151,8 +174,14 @@ export function ReassignPatientsDialog({
         ) : (
           <>
             <p className="text-body">
-              {from.name} has <strong data-numeric>{patients(count ?? 0)}</strong>. Choose an
-              active doctor in your clinic to take them over.
+              {from.name} has <strong data-numeric>{patients(count ?? 0)}</strong>
+              {upcoming > 0 ? (
+                <>
+                  {' '}
+                  and <strong data-numeric>{appointments(upcoming)}</strong>
+                </>
+              ) : null}
+              . Choose an active doctor in your clinic to take them over.
             </p>
 
             <Field label="New doctor" error={problem} required>
@@ -175,6 +204,9 @@ export function ReassignPatientsDialog({
             <Notice tone="info">
               Only the doctor caring for them changes. Their records, history and who wrote
               each entry stay as they are, and the move is recorded in the audit log.
+              {upcoming > 0
+                ? ' Upcoming appointments keep their times with the new doctor, and each patient and the new doctor are told. Past appointments stay as they were. If any would clash with another booking, nothing is moved.'
+                : null}
             </Notice>
 
             {reassign.isError ? (

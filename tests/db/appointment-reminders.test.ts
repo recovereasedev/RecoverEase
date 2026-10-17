@@ -239,9 +239,11 @@ describe('appointment reminders', () => {
       expect(result.insideWasStamped).toBe(true)
     }
 
-    // `app.timezone` is shared state and was unset before this ran — the
-    // dispatcher falls back to UTC when the row is absent. Put it back, so a
-    // test added after this one does not silently inherit a clinic zone.
+    // A zone saved as `app.timezone` is the clinic's own from migration 31,
+    // and the clinic's zone is shared state. Put the fixture clinic back in
+    // Asia/Manila, and remove the row again, so a test added after this one
+    // does not silently inherit another zone.
+    await database.asService(`update public.clinic set clinic_timezone = 'Asia/Manila'`)
     await database.asService(
       `delete from public.system_setting where system_setting_key = 'app.timezone'`,
     )
@@ -359,10 +361,7 @@ describe('appointment reminders', () => {
                 appointment_status,
                 appointment_reminder_sent_at is not null as stamped,
                 to_char(
-                  appointment_date at time zone coalesce(
-                    (select system_setting_value from public.system_setting
-                      where system_setting_key = 'app.timezone'),
-                    'UTC'),
+                  appointment_date at time zone (select clinic_timezone from public.clinic),
                   'HH24:MI') as clock
            from public.appointment where appointment_id = $1`,
         [appointmentId],

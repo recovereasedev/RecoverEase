@@ -19,8 +19,8 @@ export const queryKeys = {
     all: ['doctors'] as const,
     list: () => [...queryKeys.doctors.all, 'list'] as const,
     mine: () => [...queryKeys.doctors.all, 'mine'] as const,
-    patientCount: (doctorId: string) =>
-      [...queryKeys.doctors.all, 'patient-count', doctorId] as const,
+    reassignmentCounts: (doctorId: string) =>
+      [...queryKeys.doctors.all, 'reassignment-counts', doctorId] as const,
   },
 
   appointments: {
@@ -99,5 +99,6 @@ export const queryKeys = {
     auditLog: (filters: string) =>
       [...queryKeys.admin.all, 'audit-log', filters] as const,
     settings: () => [...queryKeys.admin.all, 'settings'] as const,
+    clinic: () => [...queryKeys.admin.all, 'clinic'] as const,
   },
 } as const
