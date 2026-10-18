@@ -15,6 +15,7 @@ import {
   createAnnouncement,
   deleteAnnouncement,
   fetchAnnouncements,
+  isPlatformAnnouncement,
   setAnnouncementPublished,
 } from '@/features/announcements/api'
 import { useCurrentUser } from '@/features/auth/auth-context'
@@ -33,6 +34,11 @@ import { queryKeys } from '@/lib/query-keys'
  *
  * Deletion asks for confirmation. It is the only destructive action in the
  * administrator's interface and it cannot be undone.
+ *
+ * A Clinic Admin's announcements reach the people in their clinic. Published
+ * platform announcements - RecoverEase's, written by a Super Admin - are
+ * listed with them, marked as RecoverEase's and without Publish or Delete:
+ * only a Super Admin can change those, and the database refuses anyone else.
  */
 export function AdminAnnouncementsPage() {
   useDocumentTitle('Announcements')
@@ -137,7 +143,7 @@ export function AdminAnnouncementsPage() {
       <div ref={focusRecovery}>
         <PageHeader
           title="Announcements"
-          description="Notices shown to everyone using RecoverEase."
+          description="Notices for everyone in your clinic, with any notices from RecoverEase."
           actions={
             <Button className="max-sm:w-full" onClick={openComposer}>
               <Megaphone aria-hidden="true" />
@@ -156,7 +162,7 @@ export function AdminAnnouncementsPage() {
               <EmptyState
                 icon={Megaphone}
                 title="No announcements yet"
-                description="Create one to notify everyone using the system."
+                description="Create one to notify everyone in your clinic."
               />
             </Card>
           }
@@ -172,6 +178,7 @@ export function AdminAnnouncementsPage() {
               <ul className="divide-y divide-[var(--color-border)]">
                 {announcements.map((announcement) => {
                   const isPublished = Boolean(announcement.announcement_published_at)
+                  const fromRecoverEase = isPlatformAnnouncement(announcement)
 
                   return (
                     <li key={announcement.announcement_id}>
@@ -187,55 +194,87 @@ export function AdminAnnouncementsPage() {
                                 : `Draft, created ${formatDateTime(announcement.announcement_created_at)}`}
                             </p>
                           </div>
-                          <Badge
-                            tone={isPublished ? 'success' : 'neutral'}
-                            className="ms-auto shrink-0"
-                          >
-                            {isPublished ? 'Published' : 'Draft'}
-                          </Badge>
+                          {fromRecoverEase ? (
+                            <Badge tone="info" className="ms-auto shrink-0">
+                              From RecoverEase
+                            </Badge>
+                          ) : (
+                            <Badge
+                              tone={isPublished ? 'success' : 'neutral'}
+                              className="ms-auto shrink-0"
+                            >
+                              {isPublished ? 'Published' : 'Draft'}
+                            </Badge>
+                          )}
                         </div>
 
                         <p className="mt-3 max-w-prose whitespace-pre-wrap text-pretty leading-relaxed text-body">
                           {announcement.announcement_content}
                         </p>
 
-                        {/* Publish and Delete are not alternatives to each
-                            other, so they are not given equal width: the
-                            destructive one stays a quiet ghost button beside the
-                            one an administrator actually came here to press. */}
-                        <div className="mt-4 flex flex-wrap gap-2">
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            isLoading={
-                              togglePublished.isPending &&
-                              togglePublished.variables?.id ===
-                                announcement.announcement_id
-                            }
-                            onClick={() =>
-                              togglePublished.mutate({
-                                id: announcement.announcement_id,
-                                isPublished: !isPublished,
-                              })
-                            }
-                          >
-                            {isPublished ? 'Unpublish' : 'Publish now'}
-                          </Button>
+                        {fromRecoverEase ? (
+                          // RecoverEase's own notice is read here, never
+                          // managed: no button the database would refuse.
+                          <p className="mt-4 text-sm text-muted">
+                            Only RecoverEase can change or remove this notice.
+                          </p>
+                        ) : (
+                          <>
+                            {/* Publish and Delete are not alternatives to each
+                                other, so they are not given equal width: the
+                                destructive one stays a quiet ghost button beside
+                                the one an administrator actually came here to
+                                press. */}
+                            <div className="mt-4 flex flex-wrap gap-2">
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                isLoading={
+                                  togglePublished.isPending &&
+                                  togglePublished.variables?.id ===
+                                    announcement.announcement_id
+                                }
+                                onClick={() =>
+                                  togglePublished.mutate({
+                                    id: announcement.announcement_id,
+                                    isPublished: !isPublished,
+                                  })
+                                }
+                              >
+                                {isPublished ? 'Unpublish' : 'Publish now'}
+                              </Button>
 
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() =>
-                              setPendingDeleteId(announcement.announcement_id)
-                            }
-                          >
-                            <Trash2 aria-hidden="true" />
-                            Delete
-                            <span className="sr-only">
-                              : {announcement.announcement_title}
-                            </span>
-                          </Button>
-                        </div>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() =>
+                                  setPendingDeleteId(announcement.announcement_id)
+                                }
+                              >
+                                <Trash2 aria-hidden="true" />
+                                Delete
+                                <span className="sr-only">
+                                  : {announcement.announcement_title}
+                                </span>
+                              </Button>
+                            </div>
+
+                            {togglePublished.isError &&
+                            togglePublished.variables?.id ===
+                              announcement.announcement_id ? (
+                              <div className="mt-3">
+                                <FormError
+                                  error={togglePublished.error}
+                                  title={
+                                    isPublished
+                                      ? 'The announcement was not unpublished'
+                                      : 'The announcement was not published'
+                                  }
+                                />
+                              </div>
+                            ) : null}
+                          </>
+                        )}
                       </article>
                     </li>
                   )
