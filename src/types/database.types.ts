@@ -68,6 +68,7 @@ export type Database = {
           announcement_created_at: string
           clinic_id: string | null
           super_admin_id: string | null
+          doc_id: string | null
         }
         Insert: {
           announcement_id?: string
@@ -78,6 +79,7 @@ export type Database = {
           announcement_created_at?: string
           clinic_id?: string | null
           super_admin_id?: string | null
+          doc_id?: string | null
         }
         Update: {
           announcement_id?: string
@@ -88,6 +90,7 @@ export type Database = {
           announcement_created_at?: string
           clinic_id?: string | null
           super_admin_id?: string | null
+          doc_id?: string | null
         }
         Relationships: [
           {
@@ -103,6 +106,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: 'clinic'
             referencedColumns: ['clinic_id']
+          },
+          {
+            foreignKeyName: 'announcement_doc_id_fkey'
+            columns: ['doc_id']
+            isOneToOne: false
+            referencedRelation: 'doctor'
+            referencedColumns: ['doc_id']
           },
           {
             foreignKeyName: 'announcement_super_admin_id_fkey'

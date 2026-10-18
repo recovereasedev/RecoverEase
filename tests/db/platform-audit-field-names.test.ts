@@ -344,7 +344,8 @@ describe('migration 35 beside migration 34', () => {
   it('goes in before 34, as production will have it: no entry rewritten, the gate still standing, then the same schema once 34 follows', async () => {
     const [production, repository] = await Promise.all([
       createTestDatabase({ stopAfter: '20260902100033' }),
-      createTestDatabase(),
+      // The repository's order, up to 35: what this test compares is 34 and 35.
+      createTestDatabase({ stopAfter: MIGRATION_35 }),
     ])
     try {
       const fx = await seedFixture(production)
@@ -385,7 +386,7 @@ describe('the down-script for migration 35', () => {
 
   beforeAll(async () => {
     ;[used, through34] = await Promise.all([
-      createTestDatabase(),
+      createTestDatabase({ stopAfter: MIGRATION_35 }),
       createTestDatabase({ stopAfter: MIGRATION_34 }),
     ])
     const fx = await seedFixture(used)

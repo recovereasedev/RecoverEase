@@ -289,8 +289,8 @@ Each step is its own approval, in this order:
    the database's check expects - `auth.sessions.factor_id` set and a `totp`
    row in `auth.mfa_amr_claims` for that session - before relying on it.
 
-Rollback goes the other way: 35's down-script first, where 35 is applied
-(below), then `supabase/rollbacks/20260902100034_lift_single_clinic_gate.down.sql`
+Rollback goes the other way: 36's and 35's down-scripts first, where they
+are applied (below), then `supabase/rollbacks/20260902100034_lift_single_clinic_gate.down.sql`
 (refused once a second clinic exists - clinics are never deleted), then
 `…100033_super_admin_platform.down.sql` (refused while a Super Admin or a
 platform announcement exists). Migration 32's enum value stays, unused:
@@ -318,6 +318,30 @@ without it; it needs nothing else.
 Its down-script, `supabase/rollbacks/20260902100035_platform_audit_field_names.down.sql`,
 restores migration 33's function - values included - and goes before 34's
 and 33's.
+
+### Doctors' announcements (migration 36)
+
+Migration 36 lets a doctor write announcements for their own patients. It
+needs migration 33 and refuses to run without it; it is independent of 34
+and 35 (`tests/db/doctor-announcements.test.ts` applies it after 33 and 35
+with 34 unapplied, as production has them). Each step is its own approval:
+
+1. **Apply migration 36.** It adds `announcement.doc_id` and
+   `app_private.current_assigned_doctor_id()`, widens the one-author and
+   clinic rules to a doctor, and replaces the announcement policies with
+   ones that keep every Clinic Admin condition and add the doctor's and
+   the patient's. A Clinic Admin's and a platform announcement reach exactly
+   whom they reached before. No row changes, and the website deployed
+   before it keeps working: it sends no `doc_id`.
+2. **Merge the website.** Vercel deploys `main` on merge, so this comes after
+   step 1: the doctor's Announcements page posts with `doc_id`, which a
+   database without 36 refuses - the page would load and read, but every
+   new announcement would fail.
+
+Its down-script, `supabase/rollbacks/20260902100036_doctor_announcements.down.sql`,
+returns the table and its policies to what 33 left and drops the helper 36
+added. It refuses while any doctor's announcement exists, and goes before
+35's, 34's and 33's.
 
 To roll back 31, go the other way: the website from before 31, then
 `chatbot-reply` from before 31, then `supabase/rollbacks/20260902100031_clinic_settings.down.sql`

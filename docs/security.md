@@ -153,7 +153,7 @@ Applied to every policy, each guarding a specific failure:
 | `reschedule_request` | r, insert | r + **decide** | none |
 | `chat_session` / `chat_message` | own (r/w) | r | **none** |
 | `notification` | own (r + mark read) | own + send to own patient | own |
-| `announcement` | published, own clinic's | published, own clinic's | full |
+| `announcement` | published: platform, own clinic's Clinic Admin's, **own active doctor's** (migration 36) | published platform and Clinic Admin's; **writes for own patients, reads and manages only own** (migration 36) | full |
 | `report` | **none** | own | own + system-wide |
 | `audit_log` | none | none | **read only** (administration and clinical entries) |
 | `system_setting` | none | none | r/w, own clinic's (migration 31) |
@@ -240,6 +240,23 @@ Clinic.
   clinics (below).
 - **An announcement keeps its author and clinic** (migration 31): neither can
   be changed by anyone, the service key included.
+- **A doctor writes announcements for their own patients** (migration 36).
+  Once published, one reaches only the patients assigned to that doctor now
+  (`app_private.current_assigned_doctor_id()`), so the audience follows
+  reassignment, and only while the doctor is active: a deactivated doctor's
+  leave their patients' feeds at once, before the patients are moved. Not
+  the doctor's colleagues, not another doctor's patients, no one in another
+  clinic. They write only as themselves and only while active
+  (`app_private.current_doctor_id()` is empty for a deactivated doctor); the
+  clinic is their own, set by the database from the author. They read their
+  own, drafts included, and publish, withdraw, edit and delete only their
+  own - never a Clinic Admin's, a colleague's, another clinic's or a
+  platform one. Their Clinic Admin keeps the access they had to every
+  announcement of the clinic, theirs included, and cannot hand one to
+  another author. Platform announcements stay the Super Admin's: a doctor's
+  matches none of the Super Admin's functions, and a platform one matches
+  none of a doctor's policies. `tests/db/doctor-announcements.test.ts` holds
+  each of these.
 
 **Deployment fails closed.** `create-account` and `reset-account-password`
 read the caller's clinic before creating or changing anything. Deployed

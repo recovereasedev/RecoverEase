@@ -99,7 +99,7 @@ test('a patient sees which notices come from RecoverEase and which from their cl
   await signInAs('patient', { announcement: [PLATFORM_NOTICE, CLINIC_NOTICE] })
   await page.goto('/patient/announcements')
 
-  await expect(page.getByText('Notices from your clinic and from RecoverEase.')).toBeVisible()
+  await expect(page.getByText('Notices from your clinic, your doctor and RecoverEase.')).toBeVisible()
   await expect(notice(page, 'Planned maintenance').getByText('From RecoverEase')).toBeVisible()
   await expect(notice(page, 'Clinic hours').getByText('From your clinic')).toBeVisible()
   await expect(page.getByRole('main').getByRole('button', { name: /publish|delete/i })).toHaveCount(0)
