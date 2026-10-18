@@ -4,7 +4,10 @@ import { Megaphone } from 'lucide-react'
 import { EmptyState, StateView } from '@/components/feedback/state-view'
 import { PageHeader } from '@/components/layout/page-header'
 import { Card } from '@/components/ui/card'
-import { fetchAnnouncements } from '@/features/announcements/api'
+import {
+  fetchAnnouncements,
+  isPlatformAnnouncement,
+} from '@/features/announcements/api'
 import { useDocumentTitle } from '@/hooks/use-document-title'
 import { formatDateRelative } from '@/lib/format'
 import { queryKeys } from '@/lib/query-keys'
@@ -15,6 +18,9 @@ import { queryKeys } from '@/lib/query-keys'
  * Only published announcements reach a non-administrator: the RLS policy
  * filters drafts out, so an unfinished notice cannot be read early by
  * guessing a URL.
+ *
+ * Two sources reach this page: the clinic's own announcements, and platform
+ * announcements from RecoverEase. Each notice says which it is.
  */
 export function AnnouncementsPage() {
   useDocumentTitle('Announcements')
@@ -27,7 +33,7 @@ export function AnnouncementsPage() {
     <>
       <PageHeader
         title="Announcements"
-        description="Notices from your clinic."
+        description="Notices from your clinic and from RecoverEase."
       />
 
       <StateView
@@ -40,7 +46,7 @@ export function AnnouncementsPage() {
             <EmptyState
               icon={Megaphone}
               title="No announcements"
-              description="Notices from your clinic will appear here."
+              description="Notices from your clinic and from RecoverEase will appear here."
             />
           </Card>
         }
@@ -64,6 +70,13 @@ export function AnnouncementsPage() {
                         {announcement.announcement_title}
                       </h2>
                       <p className="mt-1 text-sm text-muted">
+                        {/* Who it is from, then when: a notice from
+                            RecoverEase is about the service itself, not this
+                            clinic's care. */}
+                        {isPlatformAnnouncement(announcement)
+                          ? 'From RecoverEase'
+                          : 'From your clinic'}
+                        {' · '}
                         {published ? (
                           // "Today", "Yesterday", then the dated day: how
                           // recent it is, which is what makes a notice worth

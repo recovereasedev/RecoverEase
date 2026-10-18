@@ -679,12 +679,26 @@ export class SupabaseStub {
     }
 
     if (method === 'DELETE') {
-      this.tables[table] = this.rowsIn(table).filter(
-        (row) =>
-          ![...url.searchParams.entries()]
-            .filter(([key]) => !NON_FILTER_PARAMS.has(key))
-            .every(([key, expression]) => matches(row, key, expression)),
-      )
+      const deleted: Record<string, unknown>[] = []
+      this.tables[table] = this.rowsIn(table).filter((row) => {
+        const isMatch = [...url.searchParams.entries()]
+          .filter(([key]) => !NON_FILTER_PARAMS.has(key))
+          .every(([key, expression]) => matches(row, key, expression))
+        if (isMatch) deleted.push(row)
+        return !isMatch
+      })
+
+      // As PostgREST does: the removed rows come back only when they were
+      // asked for (`.delete().select()`), which is how a caller tells a
+      // refused delete - no row - from a done one.
+      if (url.searchParams.has('select')) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify(wantsSingle ? deleted[0] : deleted),
+        })
+        return
+      }
       await route.fulfill({ status: 204, body: '' })
       return
     }
