@@ -324,24 +324,48 @@ and 33's.
 Migration 36 lets a doctor write announcements for their own patients. It
 needs migration 33 and refuses to run without it; it is independent of 34
 and 35 (`tests/db/doctor-announcements.test.ts` applies it after 33 and 35
-with 34 unapplied, as production has them). Each step is its own approval:
+with 34 unapplied, as production has them). It adds `announcement.doc_id`
+and `app_private.current_assigned_doctor_id()`, widens the one-author and
+clinic rules to a doctor, and replaces the announcement policies with ones
+that keep every Clinic Admin condition and add the doctor's and the
+patient's. A Clinic Admin's and a platform announcement reach exactly whom
+they reached before, and no row changes. The website deployed before it
+keeps working once it is applied: that website sends no `doc_id`.
 
-1. **Apply migration 36.** It adds `announcement.doc_id` and
-   `app_private.current_assigned_doctor_id()`, widens the one-author and
-   clinic rules to a doctor, and replaces the announcement policies with
-   ones that keep every Clinic Admin condition and add the doctor's and
-   the patient's. A Clinic Admin's and a platform announcement reach exactly
-   whom they reached before. No row changes, and the website deployed
-   before it keeps working: it sends no `doc_id`.
-2. **Merge the website.** Vercel deploys `main` on merge, so this comes after
-   step 1: the doctor's Announcements page posts with `doc_id`, which a
-   database without 36 refuses - the page would load and read, but every
-   new announcement would fail.
+**The website from PR #47 depends on migration 36 for reading, not only for
+writing.** Every announcement list - the patient's, the doctor's and the
+Clinic Admin's - reads each announcement with its doctor author
+(`doctor ( doc_first_name, doc_last_name )`, through `announcement.doc_id`).
+Without migration 36 that relationship does not exist, so the request fails
+with HTTP 400 and the page shows its error instead of any announcement. A
+doctor's new announcement, sent with `doc_id`, is refused as well.
+
+This happened on 2026-10-18. PR #47 was merged at 20:09Z and deployed before
+migration 36 was applied, and the patient Announcements page failed - three
+HTTP 400 responses, observed in production - until 36 was applied at
+20:23Z. The doctor's and the Clinic Admin's pages make the same request and
+were expected to fail the same way; they were not checked live.
+
+The release order, each step its own approval:
+
+1. **Review the change** - the PR and its migration.
+2. **Approve migration 36**, separately.
+3. **Apply and verify migration 36 in production** - its history entry, the
+   schema and the policies - before anything is merged.
+4. **Only then approve merging the website PR.** Vercel deploys `main` on
+   merge, so approving the merge is approving the deployment.
+5. **Verify the production deployment** - the announcement pages load, with
+   no HTTP 400.
+
+Migration 34 is not part of this. It stays separate and optional, and 36
+leaves the single-clinic gate in place.
 
 Its down-script, `supabase/rollbacks/20260902100036_doctor_announcements.down.sql`,
 returns the table and its policies to what 33 left and drops the helper 36
 added. It refuses while any doctor's announcement exists, and goes before
-35's, 34's and 33's.
+35's, 34's and 33's. Rolling 36 back under the website from PR #47 would
+break the announcement lists in the same way, so the website goes back
+first.
 
 To roll back 31, go the other way: the website from before 31, then
 `chatbot-reply` from before 31, then `supabase/rollbacks/20260902100031_clinic_settings.down.sql`
@@ -482,6 +506,9 @@ the invitation flow in `create-account`.
 - [ ] `npm run verify` passes (lint, typecheck, 164 tests, build)
 - [ ] `npm run test:e2e` passes (42 browser tests)
 - [ ] Migrations applied; `db advisors` reports no security findings
+- [ ] Every migration a website change depends on is applied and verified
+      **before** that change is merged - Vercel deploys `main` on merge
+      (see "Doctors' announcements (migration 36)")
 - [ ] First administrator provisioned
 - [ ] Clinic time zone checked (Admin → System settings)
 - [ ] Edge Functions deployed with `ALLOWED_ORIGINS` set
