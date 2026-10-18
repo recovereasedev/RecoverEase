@@ -119,6 +119,13 @@ const DOCTOR_NAV: NavSection[] = [
         icon: CalendarDays,
       },
       { label: 'Reports', to: '/doctor/reports', icon: FileBarChart },
+      {
+        label: 'Announcements',
+        // "Announcements" at 12px overruns a fifth of a 320px bar.
+        shortLabel: 'Notices',
+        to: '/doctor/announcements',
+        icon: Megaphone,
+      },
     ],
   },
   {

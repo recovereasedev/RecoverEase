@@ -58,6 +58,7 @@ const ROUTES: { path: string; page: string; file: string; title: string | null }
   { path: '/doctor/patients/:patientId', page: 'DoctorPatientDetailPage', file: 'patients/pages/doctor-patient-detail-page.tsx', title: 'Patient Record' },
   { path: '/doctor/appointments', page: 'DoctorAppointmentsPage', file: 'appointments/pages/doctor-appointments-page.tsx', title: 'Appointments' },
   { path: '/doctor/reports', page: 'DoctorReportsPage', file: 'reports/pages/doctor-reports-page.tsx', title: 'Reports' },
+  { path: '/doctor/announcements', page: 'DoctorAnnouncementsPage', file: 'announcements/pages/doctor-announcements-page.tsx', title: 'Announcements' },
   { path: '/doctor/notifications', page: 'NotificationsPage', file: 'notifications/pages/notifications-page.tsx', title: 'Notifications' },
   { path: '/doctor/profile', page: 'DoctorProfilePage', file: 'patients/pages/doctor-profile-page.tsx', title: 'My Profile' },
 

@@ -176,6 +176,16 @@ platform announcements. From migration 35 the Super Admin's read of them,
 the fields an update changed (`{"changed_columns": [...]}`, or NULL), never a
 stored value; the entries themselves are unchanged.
 
+Migration 36 adds a third announcement author: `announcement.doc_id`, a
+doctor writing for their own patients. An announcement still has exactly one
+author (`announcement_one_author`: a Clinic Admin, a doctor or a Super
+Admin), and its clinic still follows from that author
+(`announcement_clinic_follows_author`, set by `announcement_assign_clinic`).
+Who reads it follows from the author too: a platform announcement everyone,
+a Clinic Admin's their clinic, and a doctor's only the patients assigned to
+that doctor now, while the doctor is active
+(`app_private.current_assigned_doctor_id()`).
+
 ## Assumptions where the ERD was silent
 
 The ERD types every status column as `varchar` without listing values. Each

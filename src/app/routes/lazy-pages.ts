@@ -113,6 +113,11 @@ export const DoctorReportsPage = lazy(() =>
     default: m.DoctorReportsPage,
   })),
 )
+export const DoctorAnnouncementsPage = lazy(() =>
+  import('@/features/announcements/pages/doctor-announcements-page').then((m) => ({
+    default: m.DoctorAnnouncementsPage,
+  })),
+)
 export const DoctorProfilePage = lazy(() =>
   import('@/features/patients/pages/doctor-profile-page').then((m) => ({
     default: m.DoctorProfilePage,

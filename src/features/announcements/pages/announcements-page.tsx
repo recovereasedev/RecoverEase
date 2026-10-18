@@ -6,11 +6,20 @@ import { PageHeader } from '@/components/layout/page-header'
 import { Card } from '@/components/ui/card'
 import {
   fetchAnnouncements,
+  isDoctorAnnouncement,
   isPlatformAnnouncement,
+  type ListedAnnouncement,
 } from '@/features/announcements/api'
 import { useDocumentTitle } from '@/hooks/use-document-title'
 import { formatDateRelative } from '@/lib/format'
 import { queryKeys } from '@/lib/query-keys'
+
+/** Who a notice is from, as the patient knows them. */
+function sourceOf(announcement: ListedAnnouncement): string {
+  if (isPlatformAnnouncement(announcement)) return 'From RecoverEase'
+  if (isDoctorAnnouncement(announcement)) return 'From your doctor'
+  return 'From your clinic'
+}
 
 /**
  * Module 7.4 "View System Announcements".
@@ -19,8 +28,9 @@ import { queryKeys } from '@/lib/query-keys'
  * filters drafts out, so an unfinished notice cannot be read early by
  * guessing a URL.
  *
- * Two sources reach this page: the clinic's own announcements, and platform
- * announcements from RecoverEase. Each notice says which it is.
+ * Three sources reach this page: the clinic's Clinic Admin, for everyone in
+ * the clinic; the patient's own doctor, for their patients (migration 36);
+ * and RecoverEase itself. Each notice says which it is.
  */
 export function AnnouncementsPage() {
   useDocumentTitle('Announcements')
@@ -33,7 +43,7 @@ export function AnnouncementsPage() {
     <>
       <PageHeader
         title="Announcements"
-        description="Notices from your clinic and from RecoverEase."
+        description="Notices from your clinic, your doctor and RecoverEase."
       />
 
       <StateView
@@ -46,7 +56,7 @@ export function AnnouncementsPage() {
             <EmptyState
               icon={Megaphone}
               title="No announcements"
-              description="Notices from your clinic and from RecoverEase will appear here."
+              description="Notices from your clinic, your doctor and RecoverEase will appear here."
             />
           </Card>
         }
@@ -73,9 +83,7 @@ export function AnnouncementsPage() {
                         {/* Who it is from, then when: a notice from
                             RecoverEase is about the service itself, not this
                             clinic's care. */}
-                        {isPlatformAnnouncement(announcement)
-                          ? 'From RecoverEase'
-                          : 'From your clinic'}
+                        {sourceOf(announcement)}
                         {' · '}
                         {published ? (
                           // "Today", "Yesterday", then the dated day: how

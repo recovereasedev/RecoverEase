@@ -31,6 +31,26 @@ const client = vi.hoisted(() => {
     from: vi.fn((table: string) => {
       state.calls.push(['from', table])
       return {
+        select: (columns: string) => {
+          state.calls.push(['select', columns])
+          return {
+            order: async (column: string, options: unknown) => {
+              state.calls.push(['order', column, options])
+              return { data: state.rows, error: state.error }
+            },
+          }
+        },
+        insert: (payload: Record<string, unknown>) => {
+          state.calls.push(['insert', payload])
+          return {
+            select: () => ({
+              single: async () => ({
+                data: state.error ? null : { announcement_id: 'ann-new', ...payload },
+                error: state.error,
+              }),
+            }),
+          }
+        },
         update: (payload: unknown) => {
           state.calls.push(['update', payload])
           return { eq: filtered }
@@ -47,13 +67,68 @@ const client = vi.hoisted(() => {
 
 vi.mock('@/lib/supabase/client', () => ({ supabase: client.supabase }))
 
-const { deleteAnnouncement, isPlatformAnnouncement, setAnnouncementPublished } =
-  await import('@/features/announcements/api')
+const {
+  createAnnouncement,
+  deleteAnnouncement,
+  fetchAnnouncements,
+  isDoctorAnnouncement,
+  isPlatformAnnouncement,
+  setAnnouncementPublished,
+} = await import('@/features/announcements/api')
 
 beforeEach(() => {
   client.state.calls.length = 0
   client.state.rows = [{ announcement_id: 'ann-1' }]
   client.state.error = null
+})
+
+describe('fetchAnnouncements', () => {
+  it('reads every announcement the database allows, newest first, with its doctor author’s name', async () => {
+    await fetchAnnouncements()
+
+    // Who sees which is the RLS policy's decision: the request asks for no
+    // clinic, author or audience.
+    expect(client.state.calls).toEqual([
+      ['from', 'announcement'],
+      ['select', '*, doctor ( doc_first_name, doc_last_name )'],
+      ['order', 'announcement_created_at', { ascending: false }],
+    ])
+  })
+})
+
+describe('createAnnouncement', () => {
+  it('writes a Clinic Admin’s as theirs, sending no clinic and no other author', async () => {
+    await createAnnouncement({ author: { adminId: 'admin-1' }, title: 'T', content: 'C', publishNow: false })
+
+    expect(client.state.calls).toEqual([
+      ['from', 'announcement'],
+      [
+        'insert',
+        { admin_id: 'admin-1', announcement_title: 'T', announcement_content: 'C', announcement_published_at: null },
+      ],
+    ])
+  })
+
+  it('writes a doctor’s as theirs, sending no clinic and no other author', async () => {
+    await createAnnouncement({ author: { doctorId: 'doc-1' }, title: 'T', content: 'C', publishNow: true })
+
+    const [, payload] = client.state.calls[1] as [string, Record<string, unknown>]
+    expect(payload).toEqual({
+      doc_id: 'doc-1',
+      announcement_title: 'T',
+      announcement_content: 'C',
+      announcement_published_at: expect.any(String),
+    })
+    for (const column of ['admin_id', 'super_admin_id', 'clinic_id']) expect(payload).not.toHaveProperty(column)
+  })
+
+  it('passes the database’s refusal through', async () => {
+    client.state.error = { message: 'new row violates row-level security policy for table "announcement"' }
+
+    await expect(
+      createAnnouncement({ author: { doctorId: 'doc-1' }, title: 'T', content: 'C', publishNow: true }),
+    ).rejects.toMatchObject({ message: expect.stringMatching(/row-level security/) })
+  })
 })
 
 describe('setAnnouncementPublished', () => {
@@ -148,12 +223,27 @@ describe('isPlatformAnnouncement', () => {
       announcement_content: 'c',
       announcement_published_at: null,
       announcement_created_at: '2026-10-01T00:00:00Z',
+      doc_id: null,
     }
     expect(
       isPlatformAnnouncement({ ...base, admin_id: null, super_admin_id: 'sa-1', clinic_id: null }),
     ).toBe(true)
     expect(
       isPlatformAnnouncement({ ...base, admin_id: 'admin-1', super_admin_id: null, clinic_id: 'clinic-1' }),
+    ).toBe(false)
+    expect(
+      isPlatformAnnouncement({ ...base, doc_id: 'doc-1', admin_id: null, super_admin_id: null, clinic_id: 'clinic-1' }),
+    ).toBe(false)
+
+    // isDoctorAnnouncement: only one a doctor wrote, for their patients.
+    expect(
+      isDoctorAnnouncement({ ...base, doc_id: 'doc-1', admin_id: null, super_admin_id: null, clinic_id: 'clinic-1' }),
+    ).toBe(true)
+    expect(
+      isDoctorAnnouncement({ ...base, admin_id: 'admin-1', super_admin_id: null, clinic_id: 'clinic-1' }),
+    ).toBe(false)
+    expect(
+      isDoctorAnnouncement({ ...base, admin_id: null, super_admin_id: 'sa-1', clinic_id: null }),
     ).toBe(false)
   })
 })
