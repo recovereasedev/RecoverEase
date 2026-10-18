@@ -289,12 +289,35 @@ Each step is its own approval, in this order:
    the database's check expects - `auth.sessions.factor_id` set and a `totp`
    row in `auth.mfa_amr_claims` for that session - before relying on it.
 
-Rollback goes the other way: `supabase/rollbacks/20260902100034_lift_single_clinic_gate.down.sql`
+Rollback goes the other way: 35's down-script first, where 35 is applied
+(below), then `supabase/rollbacks/20260902100034_lift_single_clinic_gate.down.sql`
 (refused once a second clinic exists - clinics are never deleted), then
 `…100033_super_admin_platform.down.sql` (refused while a Super Admin or a
 platform announcement exists). Migration 32's enum value stays, unused:
 PostgreSQL cannot drop one. `tests/db/super-admin-rollback.test.ts` proves
 both return the schema to exactly what 32 left, with every row kept.
+
+### The platform audit trail's field names (migration 35)
+
+Migration 35 changes one function, `super_admin_list_audit`, so that the
+Super Admin's audit read returns only the names of the fields an update
+changed and never a stored value. It needs migration 33, and refuses to run
+without it; it needs nothing else.
+
+1. **Apply migration 35** on its own, with approval, before or after 34. The
+   two touch nothing in common: `tests/db/platform-audit-field-names.test.ts`
+   applies 35 and then 34, as production will have them, and ends with the
+   same schema as the repository's order. Production records each migration
+   under the time it was applied, not its file number, so 35 can be there
+   before 34. The single-clinic gate stays until 34 is separately approved.
+2. **Nothing else.** The function keeps its arguments and columns and the
+   console already shows only field names, so the website deployed now works
+   before and after, and no Edge Function changes. No audit entry is
+   rewritten.
+
+Its down-script, `supabase/rollbacks/20260902100035_platform_audit_field_names.down.sql`,
+restores migration 33's function - values included - and goes before 34's
+and 33's.
 
 To roll back 31, go the other way: the website from before 31, then
 `chatbot-reply` from before 31, then `supabase/rollbacks/20260902100031_clinic_settings.down.sql`

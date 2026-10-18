@@ -234,7 +234,8 @@ export type AuditCursor = { timestamp: string; id: string }
 /**
  * One page of platform entries, newest first, starting after `before`. The
  * database decides which entries are platform ones; the request cannot ask
- * for any other kind.
+ * for any other kind. Of each entry's details it sends only the names of the
+ * fields an update changed, never a value (migration 35).
  */
 export async function fetchPlatformAudit(
   before?: AuditCursor,
