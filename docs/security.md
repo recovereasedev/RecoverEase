@@ -301,7 +301,12 @@ whether to ask for an authenticator code, about the caller only.
 - the platform audit trail: `platform` entries only - clinics, Super Admins,
   Clinic Admin provisioning and platform announcements - paged newest first.
   The filter is in the function, not the caller's request, and the table
-  itself shows a Super Admin nothing.
+  itself shows a Super Admin nothing. Of an entry's details it returns only
+  the names of the fields an update changed - strings naming a real column -
+  never a stored value: no created row, no before or after, nothing a
+  function recorded (migration 35). The database drops them, not the page;
+  `tests/db/platform-audit-field-names.test.ts` plants values in every part
+  of an entry's details and finds none in what comes back.
 
 A Super Admin has no admin, doctor or patient profile, so every existing
 policy gives them nothing: `tests/db/super-admin.test.ts` counts every table

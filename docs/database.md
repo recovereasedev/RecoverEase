@@ -171,7 +171,10 @@ author: a Clinic Admin (`admin_id`, with their clinic) or a Super Admin
 (`super_admin_id`, with no clinic - a platform announcement). `clinic_name`
 is bounded at 120 characters. The audit log's `platform` scope gains the
 Super Admin's own entities: `super_admin`, `clinic_admin_account` and
-platform announcements.
+platform announcements. From migration 35 the Super Admin's read of them,
+`super_admin_list_audit`, carries in `audit_log_details` only the names of
+the fields an update changed (`{"changed_columns": [...]}`, or NULL), never a
+stored value; the entries themselves are unchanged.
 
 ## Assumptions where the ERD was silent
 
