@@ -2,9 +2,10 @@ import { expect, IDS, test } from './support/fixtures'
 
 /**
  * Admin → System settings in the browser: QA-03's missed-dose grace period,
- * and the clinic's time zone (migration 31).
+ * the medication reminder lead time (migration 37), and the clinic's time
+ * zone (migration 31).
  *
- * What the overdue job does with the value is covered by the database suite.
+ * What the jobs do with the values is covered by the database suite.
  * Here: the administrator sees the stored value, a usable one is sent for
  * their clinic, and one the job could not use is refused before anything is
  * sent. The time zone is the clinic's: shown from the clinic, sent to its own
@@ -77,6 +78,57 @@ test.describe('missed dose grace period (QA-03)', () => {
       await expect(grace).toHaveAttribute('aria-invalid', 'true')
     }
     expect(writes).toHaveLength(1)
+  })
+})
+
+test.describe('medication reminder lead time (plan section 5)', () => {
+  test('the administrator sets it, and a lead time the job does not use is refused', async ({
+    page,
+    signInAs,
+  }) => {
+    await signInAs('admin', { system_setting: SETTINGS })
+    const writes: unknown[] = []
+    page.on('request', (request) => {
+      if (
+        request.url().includes('/rest/v1/system_setting') &&
+        ['POST', 'PATCH'].includes(request.method())
+      ) {
+        writes.push(request.postDataJSON())
+      }
+    })
+
+    await page.goto('/admin/settings')
+    const lead = page.getByLabel('Medication reminder lead time (minutes)', { exact: true })
+    const form = page.locator('form').filter({ has: lead })
+
+    // Never set: empty, and the page says what that means.
+    await expect(lead).toHaveValue('')
+    await expect(page.getByText(/Ten minutes until it is set\./)).toBeVisible()
+
+    // One the job does not use is refused, with the reason, and not sent.
+    for (const value of ['7', '60', 'ten']) {
+      await lead.fill(value)
+      await form.getByRole('button', { name: 'Save' }).click()
+      await expect(form.getByRole('alert')).toHaveText('Enter 5, 10, 15 or 30 minutes.')
+      await expect(lead).toHaveAttribute('aria-invalid', 'true')
+      await expect(lead).toBeFocused()
+    }
+    expect(writes).toEqual([])
+
+    // A usable one is sent for the clinic, and only that.
+    await lead.fill('15')
+    await form.getByRole('button', { name: 'Save' }).click()
+    await expect
+      .poll(() => writes)
+      .toEqual([
+        {
+          admin_id: IDS.admin,
+          clinic_id: 'clinic-harborview',
+          system_setting_key: 'medication.reminder_lead_minutes',
+          system_setting_value: '15',
+        },
+      ])
+    await expect(form.getByText('Saved.')).toBeVisible()
   })
 })
 

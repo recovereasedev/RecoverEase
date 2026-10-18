@@ -393,7 +393,8 @@ describe('migration 36 beside migrations 34 and 35', () => {
   it('goes in after 33 and 35 with 34 still unapplied, as production has them, keeping every row; then the same schema once 34 follows', async () => {
     const [production, repository] = await Promise.all([
       createTestDatabase({ stopAfter: '20260902100033' }),
-      createTestDatabase(),
+      // The repository's order, up to 36: what this test compares is 34 and 36.
+      createTestDatabase({ stopAfter: MIGRATION_36 }),
     ])
     try {
       await seedFixture(production)
@@ -428,7 +429,8 @@ describe('the down-script for migration 36', () => {
 
   beforeAll(async () => {
     ;[used, through35] = await Promise.all([
-      createTestDatabase(),
+      // Built through 36: 37 onwards have their own rollbacks, applied before this.
+      createTestDatabase({ stopAfter: MIGRATION_36 }),
       createTestDatabase({ stopAfter: MIGRATION_35 }),
     ])
     fx = await seedFixture(used)

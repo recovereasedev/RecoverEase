@@ -335,6 +335,7 @@ export function datasetFor(role: 'patient' | 'doctor' | 'admin'): TableRows {
         medication_log_taken_at: null,
         medication_log_status: 'pending',
         medication_log_follow_up_sent_at: null,
+        medication_log_pre_dose_sent_at: null,
         medication_schedule: {
           medication_schedule_id: IDS.scheduleA,
           medication_schedule_name: 'Paracetamol',

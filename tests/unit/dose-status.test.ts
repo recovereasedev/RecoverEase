@@ -29,6 +29,7 @@ function dose(
     medication_log_taken_at: status === 'taken' ? SCHEDULED : null,
     medication_log_status: status,
     medication_log_follow_up_sent_at: null,
+    medication_log_pre_dose_sent_at: null,
   }
 }
 

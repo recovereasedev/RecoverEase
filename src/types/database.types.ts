@@ -417,6 +417,7 @@ export type Database = {
           medication_log_taken_at: string | null
           medication_log_status: Database['public']['Enums']['medication_log_status']
           medication_log_follow_up_sent_at: string | null
+          medication_log_pre_dose_sent_at: string | null
         }
         Insert: {
           medication_log_id?: string
@@ -425,6 +426,7 @@ export type Database = {
           medication_log_taken_at?: string | null
           medication_log_status?: Database['public']['Enums']['medication_log_status']
           medication_log_follow_up_sent_at?: string | null
+          medication_log_pre_dose_sent_at?: string | null
         }
         Update: {
           medication_log_id?: string
@@ -433,6 +435,7 @@ export type Database = {
           medication_log_taken_at?: string | null
           medication_log_status?: Database['public']['Enums']['medication_log_status']
           medication_log_follow_up_sent_at?: string | null
+          medication_log_pre_dose_sent_at?: string | null
         }
         Relationships: [
           {

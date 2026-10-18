@@ -32,6 +32,22 @@ export function parseGraceHours(input: string): SettingParseResult {
 }
 
 /**
+ * Plan section 5. The reminder job sends a dose's reminder 5, 10, 15 or 30
+ * minutes before it is due, and ten minutes before on anything else
+ * (migration 20260902100037). The same rule is checked here, as the grace
+ * period's is: ASCII digits only, spaces around the number and leading zeros
+ * ignored, and stored without them.
+ */
+const LEAD_MINUTES = /^0*(5|10|15|30)$/
+
+export function parseLeadMinutes(input: string): SettingParseResult {
+  const minutes = LEAD_MINUTES.exec(input.trim())?.[1]
+  return minutes === undefined
+    ? { ok: false, message: 'Enter 5, 10, 15 or 30 minutes.' }
+    : { ok: true, value: minutes }
+}
+
+/**
  * A named zone in the shape the database lists them: UTC, GMT or Area/City.
  * Browsers also accept offsets such as "+08:00", which the database does not.
  */
@@ -91,6 +107,15 @@ export const SETTING_DEFINITIONS = [
     placeholder:
       'You support patients recovering after treatment. Do not diagnose…',
     multiline: true,
+  },
+  {
+    key: 'medication.reminder_lead_minutes',
+    label: 'Medication reminder lead time (minutes)',
+    description:
+      'How long before a dose is due its patient is reminded: 5, 10, 15 or 30 minutes. Ten minutes until it is set. No reminder is sent for a dose already marked taken.',
+    placeholder: '10',
+    multiline: false,
+    parse: parseLeadMinutes,
   },
   {
     key: 'medication.reminder_grace_hours',

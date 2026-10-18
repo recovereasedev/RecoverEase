@@ -186,6 +186,24 @@ a Clinic Admin's their clinic, and a doctor's only the patients assigned to
 that doctor now, while the doctor is active
 (`app_private.current_assigned_doctor_id()`).
 
+### 10. A reminder before each dose
+
+The ERD's `medicationLogFollowUpSentAt` records the reminder sent after an
+unrecorded dose came due. Migration 37 adds the reminder before it (plan
+section 5) and its own record beside that one:
+`medication_log.medication_log_pre_dose_sent_at`, stamped by
+`dispatch_medication_pre_dose_reminders()` when it sends the reminder, so
+each dose gets at most one. Only that job writes it: a direct client write is
+refused (`medication_log_guard_pre_dose_mark`), as migration 22 refuses one of
+the appointment reminder's mark.
+
+The lead time is each clinic's `medication.reminder_lead_minutes` setting
+when that is 5, 10, 15 or 30, and ten minutes otherwise. A dose gets the
+reminder while it is pending and not yet due, within that lead time, if its
+patient has reminders on and their preferred time of day has been reached,
+and if it is not after its course's end date. The job runs every minute. A
+dose already due when it runs is left to the follow-up, which is unchanged.
+
 ## Assumptions where the ERD was silent
 
 The ERD types every status column as `varchar` without listing values. Each

@@ -351,16 +351,19 @@ back into the global `app.timezone` row so nothing that reads it moves.
 
 ## Scheduled jobs
 
-Migration `…100009_scheduled_jobs.sql` registers three pg_cron jobs. The whole
-block is guarded on `pg_cron` being available, so it is a no-op where the
-extension is absent (including the PGlite test harness) rather than aborting
-the migration.
+Migration `…100009_scheduled_jobs.sql` registers three pg_cron jobs,
+`…100018_appointment_reminders.sql` a fourth and
+`…100037_medication_pre_dose_reminders.sql` a fifth. Each block is guarded on
+`pg_cron` being available, so it is a no-op where the extension is absent
+(including the PGlite test harness) rather than aborting the migration.
 
 | Job | Cadence | Purpose |
 | --- | --- | --- |
 | `recoverease-extend-medication-slots` | `0 1 * * *` | Extends dose slots for every live schedule |
+| `recoverease-medication-pre-dose-reminders` | `* * * * *` | Reminds patients of a dose before it is due, by the clinic's lead time (plan section 5; migration 37) |
 | `recoverease-medication-reminders` | `*/15 * * * *` | Chases doses that came due unrecorded (modules 4.2, 4.7) |
 | `recoverease-mark-overdue-doses` | `5 * * * *` | Writes off doses past the grace period |
+| `recoverease-appointment-reminders` | `0 * * * *` | Reminds patient and doctor of an appointment 24 hours ahead (migration 18) |
 
 `cron.schedule(name, …)` replaces a job of the same name, so re-running the
 migration does not accumulate duplicates.
@@ -372,14 +375,16 @@ select jobname, schedule, active from cron.job
  where jobname like 'recoverease-%';
 ```
 
-**If pg_cron is unavailable** the migration logs a notice and skips. Call the
-same three functions from any external scheduler using the service role —
-they are the entire contract, and each is idempotent:
+**If pg_cron is unavailable** the migrations log a notice and skip. Call the
+same functions from any external scheduler, at the same cadences, using the
+service role — they are the entire contract, and each is idempotent:
 
 ```sql
 select public.extend_all_medication_log_slots(30);
+select public.dispatch_medication_pre_dose_reminders();
 select public.dispatch_medication_reminders(30);
 select public.mark_overdue_medication_logs(6);
+select public.dispatch_appointment_reminders(24);
 ```
 
 The 6 is a fallback, not the grace period itself. `mark_overdue_medication_logs`
@@ -388,9 +393,40 @@ whenever it holds a whole number of hours from 1 to 24, and its argument only
 when the setting is missing or unusable. Change the grace period from
 **Admin → System settings**, not in the job.
 
+The reminder before a dose takes no argument: its lead time is each clinic's
+**Medication reminder lead time** setting (`medication.reminder_lead_minutes`)
+when that is 5, 10, 15 or 30 minutes, and ten minutes otherwise. Change it from
+**Admin → System settings**.
+
 Reminders are delivered as in-app notifications, which is what the ERD's
 `notification` table models. Email or push delivery would be a further step
 and is not implemented.
+
+### The reminder before each dose (migration 37)
+
+The settings page from migration 37 on offers the lead time, and nothing reads
+it until 37 is applied, so the release order is the usual one: apply and
+verify 37, then merge the website change. Verify with the query above - the
+new job is listed, `* * * * *`, active - and:
+
+```sql
+select count(*) from information_schema.columns
+ where table_name = 'medication_log'
+   and column_name = 'medication_log_pre_dose_sent_at';   -- 1
+```
+
+The job runs **every minute**, so there is no longer a minute without a
+scheduled run. Each run is one short statement, idempotent, with its own
+duplicate guard; a migration that changes `medication_log` waits at most for
+the run in progress. Applying migrations only between scheduled runs is
+therefore no longer possible as such, and how migrations are timed from then
+on is a decision to make before 37 is applied.
+
+To roll back: the website from before 37 first, then
+`supabase/rollbacks/20260902100037_medication_pre_dose_reminders.down.sql` as a
+new migration. It unschedules the job and removes the function, the guard and
+the column. Every dose, every reminder already sent and each clinic's lead-time
+setting stay; the follow-up reminder is untouched. Roll it back before 36's.
 
 ## Bundle budget
 
