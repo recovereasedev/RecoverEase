@@ -477,29 +477,243 @@ and is not implemented.
 
 ### The reminder before each dose (migration 37)
 
-The settings page from migration 37 on offers the lead time, and nothing reads
-it until 37 is applied, so the release order is the usual one: apply and
-verify 37, then merge the website change. Verify with the query above - the
-new job is listed, `* * * * *`, active - and:
+**Where the release stood - as of 2026-10-19** (main `5c5119c`; last
+read-only production check at about 10:43Z). This is a dated snapshot, not
+the current production state:
 
-```sql
-select count(*) from information_schema.columns
- where table_name = 'medication_log'
-   and column_name = 'medication_log_pre_dose_sent_at';   -- 1
-```
+- The website half, PR #49, was merged and deployed: Admin → System settings
+  offers the **Medication reminder lead time**. It works against the schema
+  without migration 37 - the setting is saved like any other, and nothing
+  reads it.
+- PR #50's rollback guard was merged and deployed too. It makes migration 31's
+  rollback refuse while migration 37 is installed.
+- The read-only check observed migration 37 absent - no history entry and
+  none of its objects - with migration 36, version `20261018202321`
+  (`doctor_announcements`), as the newest history entry.
 
-The job runs **every minute**, so there is no longer a minute without a
-scheduled run. Each run is one short statement, idempotent, with its own
-duplicate guard; a migration that changes `medication_log` waits at most for
-the run in progress. Applying migrations only between scheduled runs is
-therefore no longer possible as such, and how migrations are timed from then
-on is a decision to make before 37 is applied.
+Migration 37 itself is a separate database operation that has **not been
+approved**. Until it is applied no reminder is sent before a dose (the
+follow-up after an unrecorded dose is unaffected), and a lead time a Clinic
+Admin saves in the meantime takes effect the moment 37 is applied. This
+section is the procedure for when it is approved; it does not authorize
+applying it. Immediately before any application, rerun the read-only
+preflight below, and review any migration-history entry newer than
+`20261018202321` or any schema state that differs from it before going on.
 
-To roll back: the website from before 37 first, then
+Pre-dose reminders respect the patient's preferred contact time, as decided
+by the owner: a reminder whose send time falls before the patient's preferred
+time of day is not sent (`tests/db/medication-pre-dose-reminders.test.ts`, the
+preferred-time case).
+
+#### Before applying - read-only
+
+1. **The file is the reviewed one.** In a checkout of `main`:
+
+   ```bash
+   md5sum supabase/migrations/20260902100037_medication_pre_dose_reminders.sql
+   wc -c supabase/migrations/20260902100037_medication_pre_dose_reminders.sql
+   ```
+
+   The reviewed artifact is MD5 `8426de1d15eb6bf9b7e4f498dea37097`,
+   11,575 bytes. Check the file itself before relying on these values: if it
+   no longer matches, it changed after review - stop. A match confirms this is
+   the file artifact that was reviewed; it does not replace reviewing what the
+   migration contains. The text passed to `apply_migration` must have the same
+   checksum and length.
+2. **History.** On 2026-10-19, `list_migrations` ended with
+   `20261018202321 doctor_announcements` (migration 36), and no entry was named
+   `medication_pre_dose_reminders`. Check it again now: if any entry is newer,
+   review what it changed before going on; if one is named
+   `medication_pre_dose_reminders`, 37 is already applied - stop.
+3. **Schema.** 37 is absent, and what it needs is present:
+
+   ```sql
+   select
+     (select count(*) from information_schema.columns
+       where table_schema = 'public' and table_name = 'medication_log'
+         and column_name = 'medication_log_pre_dose_sent_at')                    as pre_dose_column,   -- 0
+     to_regprocedure('public.dispatch_medication_pre_dose_reminders()') is not null as dispatcher,      -- false
+     to_regprocedure('public.medication_log_guard_pre_dose_mark()') is not null     as guard_function,  -- false
+     (select count(*) from pg_trigger
+       where tgrelid = 'public.medication_log'::regclass
+         and tgname = 'medication_log_guard_pre_dose_mark')                      as guard_trigger,     -- 0
+     (select count(*) from information_schema.columns
+       where table_schema = 'public' and table_name = 'system_setting'
+         and column_name = 'clinic_id')                                          as setting_clinic_id; -- 1
+   ```
+
+4. **Scheduler.** pg_cron is installed; the four existing jobs are active,
+   owned by `postgres`, running successfully on their own cadences and not
+   failing; and there is no pre-dose job yet. `cron.job` and
+   `cron.job_run_details` show each database user only their own jobs, so run
+   these as their owner, `postgres` (as the connector's SQL does):
+
+   ```sql
+   select extversion from pg_extension where extname = 'pg_cron';  -- one row
+
+   select j.jobname, j.schedule, j.active, j.username,
+          count(*) filter (where d.status = 'succeeded')          as succeeded_24h,
+          max(d.start_time) filter (where d.status = 'succeeded') as last_succeeded,
+          count(*) filter (where d.status = 'failed')             as failed_24h
+     from cron.job j
+     left join cron.job_run_details d
+       on d.jobid = j.jobid and d.start_time > now() - interval '24 hours'
+    where j.jobname like 'recoverease-%'
+    group by 1, 2, 3, 4
+    order by 1;
+   ```
+
+   Expect four rows, none named `recoverease-medication-pre-dose-reminders`,
+   each active, owned by `postgres`, with `failed_24h` 0, and successful runs
+   that match its own cadence - not one number for all of them:
+
+   | Job | Cadence | `succeeded_24h` | `last_succeeded` |
+   | --- | --- | --- | --- |
+   | `recoverease-appointment-reminders` | `0 * * * *` | about 24 | within the last hour |
+   | `recoverease-extend-medication-slots` | `0 1 * * *` | 1 | the most recent 01:00 UTC |
+   | `recoverease-mark-overdue-doses` | `5 * * * *` | about 24 | within the last hour |
+   | `recoverease-medication-reminders` | `*/15 * * * *` | about 96 | within the last 15 minutes |
+
+   A run at the edge of the 24-hour window can add or drop one. On 2026-10-19
+   the read-only check observed 24, 1, 24 and 96 runs, all succeeded.
+
+5. **Security advisor.** Record its findings (`get_advisors`, security). The
+   baseline observed on 2026-10-19 was 19
+   `authenticated_security_definer_function_executable` warnings, all on
+   functions meant to be called by signed-in users, and
+   `auth_leaked_password_protection`.
+6. **Window.** An agreed window. 37 is applied before its job exists, so the
+   current practice still holds: away from the existing jobs' runs at :00,
+   :05, :15, :30, :45 and 01:00 UTC, with two minutes either side - the
+   windows :08-:12, :18-:27, :33-:42 and :48-:57 UTC - starting at the
+   beginning of one.
+
+#### After applying - read-only
+
+1. **History.** One entry for the migration. Its version is the time it was
+   applied, not `20260902100037`:
+
+   ```sql
+   select version, name, cardinality(statements) as statements,
+          md5(array_to_string(statements, '')) as md5,
+          octet_length(array_to_string(statements, '')) as bytes
+     from supabase_migrations.schema_migrations
+    where name = 'medication_pre_dose_reminders';
+   -- one row; with the script stored as one statement, md5 and bytes equal
+   -- the reviewed file's - anything else means a different text was applied
+   ```
+
+2. **Schema and privileges.** The column, the guard trigger and both
+   functions exist; nobody but `service_role` can execute the dispatcher,
+   and nobody calls the trigger function directly. `PUBLIC` is a
+   pseudo-role rather than a real role, so its grant is read straight from
+   each function's ACL: grantee `0` is `PUBLIC`, and a function whose ACL is
+   empty (`proacl` null) has the default one, in which `PUBLIC` may
+   execute - hence `acldefault('f', proowner)`:
+
+   ```sql
+   select
+     (select count(*) from information_schema.columns
+       where table_schema = 'public' and table_name = 'medication_log'
+         and column_name = 'medication_log_pre_dose_sent_at')                  as pre_dose_column,          -- 1
+     (select count(*) from pg_trigger
+       where tgrelid = 'public.medication_log'::regclass
+         and tgname = 'medication_log_guard_pre_dose_mark'
+         and tgenabled <> 'D')                                                 as guard_trigger,            -- 1
+     (select count(*)
+        from pg_proc p,
+             aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a
+       where p.oid = 'public.dispatch_medication_pre_dose_reminders()'::regprocedure
+         and a.grantee = 0 and a.privilege_type = 'EXECUTE')                  as dispatcher_public_grants, -- 0
+     has_function_privilege('anon',          'public.dispatch_medication_pre_dose_reminders()', 'execute') as dispatcher_anon,          -- false
+     has_function_privilege('authenticated', 'public.dispatch_medication_pre_dose_reminders()', 'execute') as dispatcher_authenticated, -- false
+     has_function_privilege('service_role',  'public.dispatch_medication_pre_dose_reminders()', 'execute') as dispatcher_service_role,  -- true
+     (select count(*)
+        from pg_proc p,
+             aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a
+       where p.oid = 'public.medication_log_guard_pre_dose_mark()'::regprocedure
+         and a.grantee = 0 and a.privilege_type = 'EXECUTE')                  as guard_public_grants,      -- 0
+     has_function_privilege('anon',          'public.medication_log_guard_pre_dose_mark()', 'execute')     as guard_anon,               -- false
+     has_function_privilege('authenticated', 'public.medication_log_guard_pre_dose_mark()', 'execute')     as guard_authenticated,      -- false
+     (select prosecdef || ' ' || array_to_string(proconfig, ',') from pg_proc
+       where oid = 'public.dispatch_medication_pre_dose_reminders()'::regprocedure) as dispatcher_definer; -- true search_path=""
+   ```
+
+3. **Job.** Scheduled every minute, active, owned by `postgres`. pg_cron
+   keeps the command exactly as written between the migration's `$job$`
+   markers, with a space either side - as the four existing jobs' commands
+   are - so compare it trimmed, as here, or go by the job's name, cadence,
+   active state and owner. Surrounding whitespace is not a mismatch:
+
+   ```sql
+   select jobname, schedule, active, username, btrim(command) as command
+     from cron.job
+    where jobname = 'recoverease-medication-pre-dose-reminders';
+   -- one row: * * * * *, true, postgres,
+   -- select public.dispatch_medication_pre_dose_reminders()
+   ```
+
+4. **Runs.** At least two minutes after applying, at least two successful
+   runs since then and no failed one - and the scheduler query above still
+   shows the other four jobs active with no failures:
+
+   ```sql
+   select d.status, count(*) as runs, min(d.start_time) as first, max(d.start_time) as last
+     from cron.job_run_details d
+     join cron.job j on j.jobid = d.jobid
+    where j.jobname = 'recoverease-medication-pre-dose-reminders'
+      and d.start_time > timestamptz '<the time 37 was applied>'
+    group by d.status;
+   -- 'succeeded' with runs >= 2, and no 'failed' row
+   ```
+
+5. **Security advisor.** The same findings as the baseline recorded before
+   applying, and none naming `dispatch_medication_pre_dose_reminders` or
+   `medication_log_guard_pre_dose_mark`.
+
+These checks show the migration is installed, locked down, scheduled and
+running without errors. They do not show a reminder reaching a patient: that
+needs a test dose on a `@smoke.invalid` account, a production write with its
+own approval.
+
+**If applying fails, or only part of it seems to have run, stop.** Gather
+read-only evidence - the error, whether a history entry exists, and which of
+the column, trigger, functions, grants and job are present - and report it.
+Do not retry, re-apply, repair the migration history or roll back without a
+separate decision. `apply_migration`'s transaction behaviour is not
+documented (see "To roll back 31" above), so a failure may leave part of the
+script applied.
+
+#### Decisions still needed before applying
+
+These are **proposals under consideration, not adopted policy**. Each needs
+the owner's approval, and none is implemented.
+
+- **How migrations are timed once the job runs every minute.** From then on
+  there is no minute without a scheduled run. The proposal: keep routine
+  maintenance windows chosen around the heavier jobs (as above), and adopt a
+  convention that future migrations taking locks on tables the jobs use start
+  with a 3-second `lock_timeout`, so a migration that cannot get its lock
+  fails quickly rather than holding the website up behind it. Pause the
+  pre-dose job (`cron.alter_job`) only for a change to its own logic or
+  schema, or a long operation on `medication_log`, and confirm it is active
+  again afterwards.
+- **How long `cron.job_run_details` keeps run history.** pg_cron never removes
+  it. The four existing jobs add about 145 rows a day; the pre-dose job adds
+  1,440 more, roughly 0.3 MB a day or 110 MB a year, against a 15 MB database
+  (observed 2026-10-19). The proposal: keep successful runs for 14 days and
+  failed runs for 90, removed by a daily purge job added in its own,
+  separately reviewed migration. No purge job exists and no scheduler setting
+  has been changed.
+
+To roll back: the website from before PR #49 first, then
 `supabase/rollbacks/20260902100037_medication_pre_dose_reminders.down.sql` as a
 new migration. It unschedules the job and removes the function, the guard and
 the column. Every dose, every reminder already sent and each clinic's lead-time
-setting stay; the follow-up reminder is untouched. Roll it back before 36's.
+setting stay; the follow-up reminder is untouched. Newest first, 37 goes
+before 36's rollback where 36 is rolled back too, and before 31's: since
+PR #50, 31's down-script refuses while 37 is installed (see "To roll back 31"
+above, including when that refusal leaves everything as it was).
 
 ## Bundle budget
 
