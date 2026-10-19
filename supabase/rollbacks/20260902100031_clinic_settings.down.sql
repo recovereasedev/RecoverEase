@@ -16,6 +16,11 @@
 -- chatbot-reply from before 31 (it reads system_setting.clinic_id), then
 -- this.
 --
+-- Not while a later migration that depends on it is installed - 37, 36 or
+-- 33, and through 33 also 34. This refuses, before changing anything, and
+-- names each one to roll back first, newest first, with its own down-script.
+-- See the first block below for what each depends on.
+--
 -- What it keeps:
 --   * every setting, with its current value; the time zone in force is
 --     written back to the global app.timezone row (created if it is
@@ -27,6 +32,69 @@
 -- Order matters: what reads the new column or helpers is restored first,
 -- then the column and helpers go.
 -- ===========================================================================
+
+-- First, before anything changes: no later migration still depends on what
+-- this removes or rewrites. Any one of a migration's markers present means it
+-- is installed; its down-script removes every one of them. Two kinds:
+--
+--   * The marker the migration's own scripts check to tell whether it is
+--     applied: 37's column `medication_log.medication_log_pre_dose_sent_at`,
+--     36's column `announcement.doc_id`, and 33's table `public.super_admin`
+--     (which 34 also checks for 33).
+--   * For 37 and 33, the dependent object itself, which those scripts do not
+--     check: `dispatch_medication_pre_dose_reminders()`, which reads
+--     system_setting.clinic_id every minute, and
+--     `super_admin_create_clinic(text, text)`, which writes it.
+--
+-- What each depends on: 37's job reads system_setting.clinic_id; 36's
+-- doctors' announcements keep their author through announcement_guard_author,
+-- which this drops; 33 writes system_setting.clinic_id, its audit functions
+-- read it, and this would rewrite them and drop its announcement author guard.
+--
+-- Migration 34 has no marker here. It refuses to run without 33, and 33's
+-- down-script refuses while 34 is applied, so 34 is covered through 33.
+-- Newest first is the order to roll them back.
+do $$
+declare
+  dependents text[] := '{}';
+  reasons    text[] := '{}';
+  n          integer;
+begin
+  if exists (
+    select 1 from information_schema.columns
+     where table_schema = 'public' and table_name = 'medication_log'
+       and column_name = 'medication_log_pre_dose_sent_at'
+  ) or to_regprocedure('public.dispatch_medication_pre_dose_reminders()') is not null then
+    dependents := dependents || '37'::text;
+    reasons := reasons || 'its pre-dose medication reminder job reads system_setting.clinic_id, which this removes'::text;
+  end if;
+
+  if exists (
+    select 1 from information_schema.columns
+     where table_schema = 'public' and table_name = 'announcement' and column_name = 'doc_id'
+  ) then
+    dependents := dependents || '36'::text;
+    reasons := reasons || 'doctors'' announcements keep their author through announcement_guard_author, which this drops'::text;
+  end if;
+
+  if to_regclass('public.super_admin') is not null
+     or to_regprocedure('public.super_admin_create_clinic(text, text)') is not null then
+    dependents := dependents || '33'::text;
+    reasons := reasons || ('super_admin_create_clinic writes system_setting.clinic_id, which this removes, '
+                           || 'and this would rewrite its audit functions and drop its announcement author guard')::text;
+  end if;
+
+  n := cardinality(dependents);
+  if n = 1 then
+    raise exception 'Roll back migration % first: %. Nothing was changed.', dependents[1], reasons[1];
+  elsif n > 1 then
+    raise exception 'Roll back migrations % and % first, newest first, each with its own down-script - %. Nothing was changed.',
+      array_to_string(dependents[1:n - 1], ', '), dependents[n],
+      (select string_agg(d || ': ' || r, '; ' order by o)
+         from unnest(dependents, reasons) with ordinality as x(d, r, o));
+  end if;
+end
+$$;
 
 do $$
 declare
