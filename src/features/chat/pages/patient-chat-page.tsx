@@ -25,6 +25,7 @@ import {
   EarlierVersionSavedError,
   fetchChatMessages,
   fetchChatSessions,
+  fetchGuidanceAssistantAvailable,
   findOwnMessage,
   MessageNotSentError,
   newChatId,
@@ -126,8 +127,14 @@ function failureMessage(failure: Failure, retriesLeft: number): string {
     case 'unavailable':
     case 'not_configured':
       return 'The guidance assistant is not available at the moment. Your message has been saved, and your care team can still see it.'
+    case 'disabled':
+      return 'The guidance assistant is turned off. Your message has been saved, and your care team can still see it.'
   }
 }
+
+/** Said where the message box would be while the assistant is switched off. */
+const ASSISTANT_OFF_MESSAGE =
+  'The guidance assistant is turned off, so new messages can’t be sent here. Your conversations are still here. For anything about your recovery, contact your care team.'
 
 /**
  * Modules 8.1 "Chat with AI for Post-Treatment Guidance" and 8.4 "View Chat
@@ -455,6 +462,24 @@ export function PatientChatPage() {
     onError: onReplyFailed,
   })
 
+  // Migration 38: the assistant can be switched off, for the platform or
+  // this patient's clinic. The server refuses it either way; this lets the
+  // page say so, and stop offering to send, instead of failing each send.
+  // Unknown (null) behaves as before.
+  const assistantQuery = useQuery({
+    queryKey: queryKeys.chat.assistant(),
+    queryFn: fetchGuidanceAssistantAvailable,
+    staleTime: 60_000,
+  })
+  const assistantOff = assistantQuery.data === false || shownFailure === 'disabled'
+  // A refusal as switched off, before the page knew: ask again, so the rest
+  // of the page - the message box, the openers - follows.
+  useEffect(() => {
+    if (shownFailure === 'disabled' && assistantQuery.data !== false) {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.chat.assistant() })
+    }
+  }, [shownFailure, assistantQuery.data, queryClient])
+
   const isBusy = sendMessage.isPending || retryReply.isPending
   // The conversation ends on the patient's own message and nothing is on
   // its way: after a refresh, say, following a reply that never came.
@@ -464,7 +489,8 @@ export function PatientChatPage() {
     !awaitingReply &&
     !isBusy &&
     shownFailure === null &&
-    !messagesQuery.isFetching
+    !messagesQuery.isFetching &&
+    !assistantOff
 
   useEffect(() => {
     // On a desktop screen tall enough (`chat-fit`), the transcript is its own
@@ -605,7 +631,9 @@ export function PatientChatPage() {
     shownFailure === 'sent_after_all' || shownFailure === 'sent_earlier_version'
   const status = awaitingReply
     ? { short: 'Preparing a response…', long: 'Preparing a response…' }
-    : isUnavailable
+    : assistantOff
+      ? { short: 'Turned off', long: 'Turned off' }
+      : isUnavailable
       ? { short: 'Not available right now', long: 'Not available right now' }
       : {
           short: 'Available',
@@ -751,6 +779,7 @@ export function PatientChatPage() {
 
             {!activeSessionId ? (
               <NewConversation
+                assistantOff={assistantOff}
                 onChoose={(suggestion) => {
                   setDraft(suggestion)
                   draftRef.current?.focus()
@@ -920,51 +949,61 @@ export function PatientChatPage() {
 
           {/* --- Composer ------------------------------------------------ */}
           <div className="shrink-0 border-t border-[var(--color-border)] px-3 py-2.5 lg:px-6 lg:pb-3.5 lg:pt-4">
-            <form onSubmit={onSubmit} className="flex items-end gap-2 lg:gap-3">
-              <label htmlFor="chat-draft" className="sr-only">
-                Your message
-              </label>
-              {/* `scroll-mb-24` below `md` clears the bottom bar - the same
-                  6rem the page keeps under its content - whenever the
-                  composer is scrolled to, by focus or after sending. */}
-              <textarea
-                ref={draftRef}
-                id="chat-draft"
-                rows={1}
-                value={draft}
-                onChange={(event) => setDraft(event.target.value)}
-                onKeyDown={(event) => {
-                  // Enter sends, Shift+Enter makes a new line — the convention
-                  // people already have from every other messaging interface.
-                  if (event.key === 'Enter' && !event.shiftKey) {
-                    event.preventDefault()
-                    onSubmit(event)
-                  }
-                }}
-                placeholder="Ask a question about your recovery..."
-                // 16px keeps iOS from zooming the viewport on focus, which
-                // would push the composer out of view the moment the keyboard
-                // opens. Two lines at 320px, where the prompt wraps.
-                className="h-12 min-w-0 flex-1 resize-none rounded-[var(--radius-lg)] border border-[var(--color-border-strong)] bg-surface px-3.5 py-3 text-base leading-snug text-heading placeholder:text-muted max-md:scroll-mb-24 max-[359px]:h-[4.375rem] lg:h-14 lg:px-4 lg:py-4"
-              />
-              <Button
-                type="submit"
-                disabled={!draft.trim()}
-                isLoading={isBusy}
-                loadingLabel="Sending…"
-                aria-label="Send message"
-                className="size-12 shrink-0 rounded-[var(--radius-lg)] bg-brand-700 px-0 text-[15px] hover:bg-brand-800 lg:h-14 lg:w-auto lg:px-5 [&_svg]:size-5"
-              >
-                {/* The button shows its own spinner while sending. */}
-                {sendMessage.isPending ? null : <Send aria-hidden="true" />}
-                <span className="max-lg:hidden">Send</span>
-              </Button>
-            </form>
-            <p className="mt-2.5 text-center text-xs text-muted max-lg:hidden">
-              {awaitingReply
-                ? 'You can send your next message once this response is ready'
-                : 'General guidance only · Your care team makes decisions about your treatment'}
-            </p>
+            {assistantOff ? (
+              // No message box to type into and be refused: what can be done
+              // instead, and that nothing already written is lost.
+              <Notice tone="info" live="polite">
+                <p>{ASSISTANT_OFF_MESSAGE}</p>
+              </Notice>
+            ) : (
+              <>
+                <form onSubmit={onSubmit} className="flex items-end gap-2 lg:gap-3">
+                  <label htmlFor="chat-draft" className="sr-only">
+                    Your message
+                  </label>
+                  {/* `scroll-mb-24` below `md` clears the bottom bar - the same
+                      6rem the page keeps under its content - whenever the
+                      composer is scrolled to, by focus or after sending. */}
+                  <textarea
+                    ref={draftRef}
+                    id="chat-draft"
+                    rows={1}
+                    value={draft}
+                    onChange={(event) => setDraft(event.target.value)}
+                    onKeyDown={(event) => {
+                      // Enter sends, Shift+Enter makes a new line — the convention
+                      // people already have from every other messaging interface.
+                      if (event.key === 'Enter' && !event.shiftKey) {
+                        event.preventDefault()
+                        onSubmit(event)
+                      }
+                    }}
+                    placeholder="Ask a question about your recovery..."
+                    // 16px keeps iOS from zooming the viewport on focus, which
+                    // would push the composer out of view the moment the keyboard
+                    // opens. Two lines at 320px, where the prompt wraps.
+                    className="h-12 min-w-0 flex-1 resize-none rounded-[var(--radius-lg)] border border-[var(--color-border-strong)] bg-surface px-3.5 py-3 text-base leading-snug text-heading placeholder:text-muted max-md:scroll-mb-24 max-[359px]:h-[4.375rem] lg:h-14 lg:px-4 lg:py-4"
+                  />
+                  <Button
+                    type="submit"
+                    disabled={!draft.trim()}
+                    isLoading={isBusy}
+                    loadingLabel="Sending…"
+                    aria-label="Send message"
+                    className="size-12 shrink-0 rounded-[var(--radius-lg)] bg-brand-700 px-0 text-[15px] hover:bg-brand-800 lg:h-14 lg:w-auto lg:px-5 [&_svg]:size-5"
+                  >
+                    {/* The button shows its own spinner while sending. */}
+                    {sendMessage.isPending ? null : <Send aria-hidden="true" />}
+                    <span className="max-lg:hidden">Send</span>
+                  </Button>
+                </form>
+                <p className="mt-2.5 text-center text-xs text-muted max-lg:hidden">
+                  {awaitingReply
+                    ? 'You can send your next message once this response is ready'
+                    : 'General guidance only · Your care team makes decisions about your treatment'}
+                </p>
+              </>
+            )}
           </div>
         </section>
 
@@ -1103,7 +1142,33 @@ export function PatientChatPage() {
  * three ways to begin. Choosing one fills the composer; nothing is sent until
  * the patient sends it.
  */
-function NewConversation({ onChoose }: { onChoose: (text: string) => void }) {
+function NewConversation({
+  onChoose,
+  assistantOff = false,
+}: {
+  onChoose: (text: string) => void
+  /** Switched off (migration 38): no openers to fill a message box that is not there. */
+  assistantOff?: boolean
+}) {
+  if (assistantOff) {
+    return (
+      <div className="flex flex-col items-center gap-3 text-center lg:py-6 chat-fit:min-h-full chat-fit:justify-center">
+        <AssistantAvatar size="lg" />
+        <div>
+          <p className="text-sm font-semibold text-accent-800">{ASSISTANT}</p>
+          <p className="mt-0.5 text-[13px] leading-[18px] text-muted">Turned off</p>
+        </div>
+        <h2 className="mt-1 text-balance text-[22px] font-bold leading-[29px] tracking-[-0.01em] text-heading lg:text-[28px] lg:leading-9">
+          The guidance assistant is turned off
+        </h2>
+        <p className="max-w-[32.5rem] text-body">
+          Your past conversations are still here. For anything about your
+          recovery, contact your care team.
+        </p>
+      </div>
+    )
+  }
+
   return (
     <div className="flex flex-col gap-6 lg:items-center lg:gap-9 lg:py-6 chat-fit:min-h-full chat-fit:justify-center">
       <div className="flex flex-col items-center gap-3 text-center lg:max-w-[32.5rem]">

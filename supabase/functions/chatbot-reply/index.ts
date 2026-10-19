@@ -12,6 +12,10 @@ import {
   raisesCriticalConcern,
   toInteractionInput,
 } from '../_shared/assistant.ts'
+import {
+  ASSISTANT_SWITCH_FUNCTION,
+  readAssistantSwitch,
+} from '../_shared/assistant-switch.ts'
 import { AuthError, requireCaller, serviceClient } from '../_shared/auth.ts'
 import { loadClinicPrompt, PROMPT_KEY, type PromptStore } from '../_shared/clinic-prompt.ts'
 import { handlePreflight, jsonResponse } from '../_shared/cors.ts'
@@ -65,6 +69,12 @@ import {
  * `system_setting.clinic_id`; deployed earlier, every conversation gets the
  * built-in guidance. And before any second clinic exists: the version before
  * this one reads the prompt by key alone.
+ *
+ * The assistant can be switched off for the platform or for a clinic
+ * (migration 38): asked right after the conversation is proved the caller's,
+ * and refused with `disabled` before any of it is read. Deploy only once
+ * migration 38 is applied - deployed earlier, the check cannot be answered
+ * and every reply is refused as unavailable.
  *
  * Deploy:
  *   supabase functions deploy chatbot-reply
@@ -227,6 +237,24 @@ Deno.serve(async (request) => {
 
     if (patient.user_id !== caller.userId) {
       throw new AuthError('This conversation is not yours', 403)
+    }
+
+    // 2b. Is the assistant switched on - for the platform, and for this
+    //     patient's clinic (migration 38). Asked before anything of the
+    //     conversation is read, and so before the provider is called: a
+    //     switched-off assistant never sees the transcript. Only an explicit
+    //     yes goes ahead; an answer that cannot be read is treated as no.
+    //     The patient's message stays saved and their care team still sees
+    //     it; no review is requested, since the clinic or the platform chose
+    //     to have no assistant rather than the assistant failing.
+    const assistantSwitch = readAssistantSwitch(
+      await admin.rpc(ASSISTANT_SWITCH_FUNCTION, { target_doc_id: patient.doc_id }),
+    )
+    if (assistantSwitch === 'off') {
+      throw new ReplyError('The guidance assistant is turned off.', 403, 'disabled')
+    }
+    if (assistantSwitch === 'unknown') {
+      throw new ReplyError('The guidance assistant is unavailable.', 503, 'unavailable')
     }
 
     // 3. Only now is any content read, and only this conversation's: its

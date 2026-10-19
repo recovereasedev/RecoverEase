@@ -30,6 +30,11 @@ export type ReplyErrorCode =
   | 'invalid_reply'
   /** The reply could not be saved. */
   | 'save_failed'
+  /**
+   * The guidance assistant is switched off, for the platform or for the
+   * patient's clinic (migration 38). Trying again cannot help.
+   */
+  | 'disabled'
 
 /** The code for a refusal known only by its status, such as from `requireCaller`. */
 export function codeForStatus(status: number): ReplyErrorCode {

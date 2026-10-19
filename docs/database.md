@@ -204,6 +204,29 @@ patient has reminders on and their preferred time of day has been reached,
 and if it is not after its course's end date. The job runs every minute. A
 dose already due when it runs is left to the follow-up, which is unchanged.
 
+### 11. The guidance assistant can be switched off
+
+Migration 38 adds the adviser's "AI Chatbot On/Off" as two switches, and the
+assistant answers only where both are on:
+
+- **The platform's**: `app_private.platform_setting`, key
+  `guidance_assistant.enabled`, value `true` or `false`. It is in
+  `app_private`, which the Data API does not expose, with row level security
+  on, no policy and no grant to the API's roles: it is read and written only
+  through `super_admin_get_guidance_assistant()` and
+  `super_admin_set_guidance_assistant(boolean)`, which an assured Super Admin
+  alone may call. Each change is audited as a platform entry (entity
+  `platform_setting`).
+- **Each clinic's**: the `system_setting` key `chatbot.enabled`, written by its
+  Clinic Admin like any other clinic setting.
+
+A switch never set counts as on, so nothing changed when the migration went
+in; any value but `true` counts as off. The rule is one function,
+`app_private.guidance_assistant_on(clinic_id)`, read by
+`guidance_assistant_available()` (the signed-in user's own clinic, for the
+patient's screen) and `guidance_assistant_on_for_doctor(doc_id)` (the service
+role's only, for `chatbot-reply`).
+
 ## Assumptions where the ERD was silent
 
 The ERD types every status column as `varchar` without listing values. Each

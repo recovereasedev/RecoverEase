@@ -371,23 +371,26 @@ To roll back 31, go the other way, newest first. Each later migration is
 rolled back with its own down-script, applied as a new migration, and where
 deployed code depends on it, that code goes back first:
 
-1. **37**: the website from before PR #49, then
+1. **38**: `chatbot-reply` and the website from before migration 38, then
+   `supabase/rollbacks/20260902100038_guidance_assistant_switch.down.sql`.
+   33's down-script refuses while 38 is installed.
+2. **37**: the website from before PR #49, then
    `supabase/rollbacks/20260902100037_medication_pre_dose_reminders.down.sql`.
-2. **36**: the website from before PR #47, then
+3. **36**: the website from before PR #47, then
    `supabase/rollbacks/20260902100036_doctor_announcements.down.sql`, which
    refuses while any doctor's announcement exists.
-3. **35**: `supabase/rollbacks/20260902100035_platform_audit_field_names.down.sql`.
+4. **35**: `supabase/rollbacks/20260902100035_platform_audit_field_names.down.sql`.
    No code goes back: the website and the Edge Functions work with either
    version.
-4. **34**, where it is applied:
+5. **34**, where it is applied:
    `supabase/rollbacks/20260902100034_lift_single_clinic_gate.down.sql`,
    which refuses once a second clinic exists. No code goes back.
-5. **33**: `supabase/rollbacks/20260902100033_super_admin_platform.down.sql`,
+6. **33**: `supabase/rollbacks/20260902100033_super_admin_platform.down.sql`,
    which refuses while 34 is applied or a Super Admin or platform announcement
    exists. No code goes back: with no Super Admin nothing reaches the
    console, and `create-account` refuses Clinic Admin provisioning before any
    login is created.
-6. **31**: the website from before 31, then `chatbot-reply` from before 31
+7. **31**: the website from before 31, then `chatbot-reply` from before 31
    (it reads `system_setting.clinic_id`), then
    `supabase/rollbacks/20260902100031_clinic_settings.down.sql`. It refuses
    while there is more than one clinic - two clinics' settings cannot be
@@ -408,6 +411,9 @@ check cannot do:
 - **It has no marker for 34.** 34 is covered through 33: 34 refuses to run
   without 33, and 33's down-script refuses while 34 is applied, so 34 cannot
   be installed once 33 is gone.
+- **It has no marker for 38 either.** 38 is covered through 33 the same way:
+  38 refuses to run without 33, and 33's down-script refuses while 38 is
+  installed.
 - **Its refusal leaves everything as it was only if execution stops at the
   error.** The check runs first and changes nothing itself; whether the
   statements after it run is up to the runner. The runner documented for
@@ -714,6 +720,38 @@ setting stay; the follow-up reminder is untouched. Newest first, 37 goes
 before 36's rollback where 36 is rolled back too, and before 31's: since
 PR #50, 31's down-script refuses while 37 is installed (see "To roll back 31"
 above, including when that refusal leaves everything as it was).
+
+### The guidance assistant switch (migration 38)
+
+The adviser's "AI Chatbot On/Off": a platform switch for the Super Admin and
+a `chatbot.enabled` setting for each clinic, both enforced by `chatbot-reply`
+before anything reaches Gemini. It needs migrations 33 and 31 and refuses to
+run without them; it is independent of 34 (`tests/db/guidance-assistant-switch.test.ts`
+applies it after 37 with 34 unapplied, as production has them). Every switch
+starts unset, which is on, so applying it changes nothing anyone sees.
+
+The release order, each step its own approval:
+
+1. **Apply migration 38**, with the read-only checks before and after that
+   37 had: history, the objects it adds, and the security advisor - expect
+   three more `authenticated_security_definer_function_executable` warnings,
+   for `guidance_assistant_available`, `super_admin_get_guidance_assistant`
+   and `super_admin_set_guidance_assistant` (`docs/security.md`).
+2. **Deploy `chatbot-reply`.** It asks `guidance_assistant_on_for_doctor()`
+   before every reply and refuses when it cannot get an answer, so deployed
+   before step 1 every reply is refused as unavailable.
+3. **Merge the website.** It reads `guidance_assistant_available()` and treats
+   an unreadable answer as unknown, behaving as it did before - so it is also
+   safe before step 1 - and offers the Clinic Admin's and the Super Admin's
+   switches, which save only once step 1 is in.
+
+Its down-script, `supabase/rollbacks/20260902100038_guidance_assistant_switch.down.sql`,
+removes both readers and the platform's table and puts back migration 33's
+audit classifier; each clinic's `chatbot.enabled` row stays, read by
+nothing. Roll `chatbot-reply` and the website back first. 38 goes before 37's
+and before 33's: since this change, 33's down-script refuses while 38 is
+installed, because 38's switch is changed only through the Super Admin checks
+33 removes.
 
 ## Bundle budget
 

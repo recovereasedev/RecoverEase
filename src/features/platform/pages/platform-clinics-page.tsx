@@ -12,6 +12,7 @@ import { Card } from '@/components/ui/card'
 import { Dialog } from '@/components/ui/dialog'
 import { Field, Input } from '@/components/ui/field'
 import { AddClinicAdminDialog } from '@/features/platform/components/add-clinic-admin-dialog'
+import { GuidanceAssistantSwitch } from '@/features/platform/components/guidance-assistant-switch'
 import {
   createClinic,
   fetchClinics,
@@ -137,6 +138,11 @@ export function PlatformClinicsPage() {
             </Button>
           }
         />
+
+        {/* The platform's half of the adviser's AI Chatbot On/Off. */}
+        <div className="mb-6">
+          <GuidanceAssistantSwitch />
+        </div>
 
         <StateView
           isPending={clinicsQuery.isPending}

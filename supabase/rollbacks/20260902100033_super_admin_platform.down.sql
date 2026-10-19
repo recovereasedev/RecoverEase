@@ -3,7 +3,8 @@
 -- ===========================================================================
 -- Returns the schema to exactly what migration 32 left, catalog entry by
 -- catalog entry (tests/db/super-admin-rollback.test.ts). Applied as a new
--- migration, with approval, and only once migration 34 has been rolled back.
+-- migration, with approval, and only once migrations 38 and 34 have been
+-- rolled back.
 --
 -- It refuses, changing nothing, while any of these exists - each would be
 -- left without the rules that make it safe:
@@ -22,6 +23,12 @@ do $$
 begin
   if to_regclass('public.super_admin') is null then
     raise exception 'Migration 33 is not applied. Nothing was changed.';
+  end if;
+
+  -- Migration 38's switch is changed only through the Super Admin's checks
+  -- removed below; left installed, its functions would be broken, not gone.
+  if to_regclass('app_private.platform_setting') is not null then
+    raise exception 'Roll back migration 38 first: its guidance assistant switch relies on the Super Admin checks this removes. Nothing was changed.';
   end if;
 
   if to_regclass('public.clinic_single_clinic_gate') is null then

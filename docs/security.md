@@ -517,6 +517,37 @@ the handler, so an unconfigured deployment still answers "this conversation is
 not yours" to a caller reaching for another patient's session. Authorisation
 should not depend on whether a provider key happens to be set.
 
+### The assistant can be switched off
+
+The adviser's "AI Chatbot On/Off" is enforced by the server, not by hiding a
+button (migration 38). Right after proving the conversation the caller's, and
+before reading any of it or calling Gemini, `chatbot-reply` asks
+`guidance_assistant_on_for_doctor()` - the platform's switch and the patient's
+clinic's both on. Only an explicit yes goes ahead. An explicit no is refused
+with `disabled`; an answer it cannot read is refused as `unavailable`, so a
+switch meant to stop the assistant fails closed. No review is requested for
+a refusal of this kind: the clinic or the platform chose to have no
+assistant, rather than the assistant failing. The patient's history is
+untouched and their care team still sees it.
+
+Who may change each switch is the database's decision: the platform's only
+an assured Super Admin, through its own functions, audited as a platform
+entry; a clinic's only that clinic's Clinic Admin, through the settings
+policies every clinic setting has. A Super Admin gains no access to any
+clinic's data through it. What a patient's screen learns -
+`guidance_assistant_available()` - is one boolean about their own clinic.
+
+What the switch does not stop: a patient can still write a message into
+their own conversation through the Data API while it is off. Nothing answers
+it, and their care team sees it, as with any message.
+
+The security advisor's `authenticated_security_definer_function_executable`
+count rises by three with this migration -
+`guidance_assistant_available`, `super_admin_get_guidance_assistant` and
+`super_admin_set_guidance_assistant` - each meant to be called by a signed-in
+user and each deciding inside what that user may know or do.
+`guidance_assistant_on_for_doctor` is granted to `service_role` only.
+
 ### Data minimisation
 
 `toInteractionInput()` is the boundary, and it is a function rather than a

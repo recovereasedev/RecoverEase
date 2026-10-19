@@ -96,6 +96,29 @@ export async function setClinicStatus(
   return updated
 }
 
+// --- The guidance assistant's platform switch --------------------------------
+
+export type GuidanceAssistantSwitch = { enabled: boolean; updatedAt: string | null }
+
+/**
+ * The adviser's "AI Chatbot On/Off" for the whole platform (migration 38).
+ * Each clinic has its own switch as well, set by its Clinic Admin; the
+ * assistant answers only where both are on.
+ */
+export async function fetchGuidanceAssistantSwitch(): Promise<GuidanceAssistantSwitch> {
+  const { data, error } = await supabase.rpc('super_admin_get_guidance_assistant')
+  if (error) throw error
+  const row = data?.[0]
+  return { enabled: row?.enabled ?? true, updatedAt: row?.updated_at ?? null }
+}
+
+/** Turns the guidance assistant on or off for every clinic. Audited. */
+export async function setGuidanceAssistantSwitch(enabled: boolean): Promise<boolean> {
+  const { data, error } = await supabase.rpc('super_admin_set_guidance_assistant', { enabled })
+  if (error) throw error
+  return data
+}
+
 // --- Clinic Admins -------------------------------------------------------------
 
 export type NewClinicAdminInput = {

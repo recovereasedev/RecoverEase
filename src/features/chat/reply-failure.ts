@@ -25,6 +25,11 @@ export type ReplyFailure =
   | 'not_configured'
   /** The request was refused - session expired, or not this patient's conversation. */
   | 'not_allowed'
+  /**
+   * The guidance assistant is switched off, for the platform or the
+   * patient's clinic (migration 38). Trying again cannot help.
+   */
+  | 'disabled'
 
 /**
  * How long the browser waits for a reply before giving up.
@@ -109,6 +114,8 @@ export async function classifyReplyError(
         return 'busy'
       case 'not_allowed':
         return 'not_allowed'
+      case 'disabled':
+        return 'disabled'
       case null:
         break
       default:

@@ -1005,6 +1005,10 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: string
       }
+      guidance_assistant_available: {
+        Args: Record<PropertyKey, never>
+        Returns: boolean
+      }
       super_admin_assured: {
         Args: Record<PropertyKey, never>
         Returns: boolean
@@ -1052,6 +1056,14 @@ export type Database = {
       super_admin_list_audit: {
         Args: { page_size?: number; before_timestamp?: string; before_id?: string }
         Returns: { audit_log_id: string; audit_log_timestamp: string; audit_log_action: string; audit_log_entity: string; audit_log_entity_id: string | null; clinic_id: string | null; actor_user_id: string | null; audit_log_details: Json | null }[]
+      }
+      super_admin_get_guidance_assistant: {
+        Args: Record<PropertyKey, never>
+        Returns: { enabled: boolean; updated_at: string | null }[]
+      }
+      super_admin_set_guidance_assistant: {
+        Args: { enabled: boolean }
+        Returns: boolean
       }
     }
     Enums: {
