@@ -75,6 +75,7 @@ function dose(id: string, name: string, status: string, scheduled: Date) {
     medication_log_taken_at: status === 'taken' ? scheduled.toISOString() : null,
     medication_log_status: status,
     medication_log_follow_up_sent_at: null,
+    medication_log_pre_dose_sent_at: null,
     medication_schedule: {
       medication_schedule_id: 'ms-1',
       medication_schedule_name: name,

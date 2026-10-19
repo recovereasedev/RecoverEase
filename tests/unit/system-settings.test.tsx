@@ -4,12 +4,15 @@ import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 /**
- * Admin → System settings: QA-03's missed-dose grace period, and the
- * clinic's own settings and time zone (migration 31).
+ * Admin → System settings: QA-03's missed-dose grace period, the medication
+ * reminder lead time (plan section 5, migration 37), and the clinic's own
+ * settings and time zone (migration 31).
  *
  * The overdue job uses a whole number of hours from 1 to 24 and ignores
  * anything else, so the form refuses anything else before it is saved: the
  * administrator is told why, nothing is sent, and the stored value stands.
+ * The reminder job uses a lead time of 5, 10, 15 or 30 minutes, and the form
+ * holds the lead time to the same rule.
  * The chatbot guidance saves exactly what was typed. The time zone is the
  * clinic's: shown from the clinic, saved through its own function, and
  * refused before sending when it is not a zone at all.
@@ -38,13 +41,18 @@ vi.mock('@/features/auth/auth-context', () => ({
   }),
 }))
 
-const { parseGraceHours, parseTimezone } = await import('@/features/system-settings/api')
+const { parseGraceHours, parseLeadMinutes, parseTimezone } = await import(
+  '@/features/system-settings/api'
+)
 const { SystemSettingsPage } = await import(
   '@/features/system-settings/pages/system-settings-page'
 )
 
 const GRACE = 'medication.reminder_grace_hours'
 const MESSAGE = 'Enter a whole number of hours from 1 to 24.'
+const LEAD = 'medication.reminder_lead_minutes'
+const LEAD_LABEL = 'Medication reminder lead time (minutes)'
+const LEAD_MESSAGE = 'Enter 5, 10, 15 or 30 minutes.'
 
 const VALID: [string, string][] = [
   ['1', '1'],
@@ -85,13 +93,14 @@ function stored(key: string, value: string) {
   }
 }
 
-async function renderSettings(graceHours = '8') {
+async function renderSettings(graceHours = '8', leadMinutes?: string) {
   // The time zone alias the website before migration 31 used is still a row;
   // this page ignores it and reads the clinic.
   api.fetchSystemSettings.mockResolvedValue([
     stored('app.timezone', 'Asia/Tokyo'),
     stored('chatbot.system_prompt', 'Be kind.'),
     stored(GRACE, graceHours),
+    ...(leadMinutes === undefined ? [] : [stored(LEAD, leadMinutes)]),
   ])
   api.fetchClinicSettings.mockResolvedValue({
     clinic_id: 'clinic-1',
@@ -203,6 +212,89 @@ describe('the grace period on the settings page', () => {
       }),
     )
     expect(api.saveSystemSetting).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('reading a reminder lead time', () => {
+  it.each([
+    ['5', '5'],
+    ['10', '10'],
+    ['15', '15'],
+    ['30', '30'],
+    [' 15 ', '15'],
+    ['05', '5'],
+    ['010', '10'],
+  ])('accepts %j as %j', (input, value) => {
+    expect(parseLeadMinutes(input)).toEqual({ ok: true, value })
+  })
+
+  it.each(['', '   ', '0', '1', '7', '20', '45', '60', '-10', '+15', '10.5', '1e1', 'ten', '15 minutes', '１０'])(
+    'refuses %j',
+    (input) => {
+      expect(parseLeadMinutes(input)).toEqual({ ok: false, message: LEAD_MESSAGE })
+    },
+  )
+})
+
+describe('the reminder lead time on the settings page', () => {
+  it('is empty until set, says it is ten minutes until then, and what it accepts', async () => {
+    await renderSettings()
+    const lead = await field(LEAD_LABEL)
+
+    expect(lead.control).toHaveValue('')
+    expect(lead.control).toHaveAttribute('placeholder', '10')
+    expect(screen.getByText(/5, 10, 15 or 30 minutes\. Ten minutes until it is set\./)).toBeInTheDocument()
+  })
+
+  it('shows the stored value', async () => {
+    await renderSettings('8', '15')
+
+    expect((await field(LEAD_LABEL)).control).toHaveValue('15')
+  })
+
+  it('saves a value the job uses, for the administrator’s clinic, as the job reads it', async () => {
+    await renderSettings()
+    const lead = await field(LEAD_LABEL)
+
+    lead.type(' 05 ')
+    lead.save()
+
+    await waitFor(() => expect(api.saveSystemSetting).toHaveBeenCalledTimes(1))
+    expect(api.saveSystemSetting).toHaveBeenCalledWith({
+      adminId: 'admin-1',
+      clinicId: 'clinic-1',
+      key: LEAD,
+      value: '5',
+    })
+    expect(lead.alert()).toBeNull()
+  })
+
+  it.each(['7', '60', 'ten', '0'])('refuses %j: says why, and sends nothing', async (input) => {
+    await renderSettings()
+    const lead = await field(LEAD_LABEL)
+
+    lead.type(input)
+    lead.save()
+    await settle()
+
+    expect(lead.alert()).toHaveTextContent(LEAD_MESSAGE)
+    expect(lead.control).toHaveAttribute('aria-invalid', 'true')
+    expect(lead.control).toHaveValue(input)
+    expect(api.saveSystemSetting).not.toHaveBeenCalled()
+  })
+
+  it('says so when the database refuses the save, and keeps the value typed', async () => {
+    // Row Level Security admits a Clinic Admin to their own clinic's settings only.
+    api.saveSystemSetting.mockRejectedValueOnce(new Error('new row violates row-level security policy'))
+    await renderSettings()
+    const lead = await field(LEAD_LABEL)
+
+    lead.type('30')
+    lead.save()
+
+    expect(await screen.findByText('You do not have access to this')).toBeInTheDocument()
+    expect(screen.queryByText('Saved.')).toBeNull()
+    expect(lead.control).toHaveValue('30')
   })
 })
 

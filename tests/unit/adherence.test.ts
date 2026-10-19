@@ -21,6 +21,7 @@ function dose(
     medication_log_taken_at: status === 'taken' ? '2026-09-02T08:05:00Z' : null,
     medication_log_status: status,
     medication_log_follow_up_sent_at: null,
+    medication_log_pre_dose_sent_at: null,
   }
 }
 
