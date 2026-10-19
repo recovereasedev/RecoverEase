@@ -542,25 +542,40 @@ preferred-time case).
          and column_name = 'clinic_id')                                          as setting_clinic_id; -- 1
    ```
 
-4. **Scheduler.** pg_cron is installed, the four existing jobs are active and
-   not failing, and there is no pre-dose job yet. `cron.job` and
+4. **Scheduler.** pg_cron is installed; the four existing jobs are active,
+   owned by `postgres`, running successfully on their own cadences and not
+   failing; and there is no pre-dose job yet. `cron.job` and
    `cron.job_run_details` show each database user only their own jobs, so run
    these as their owner, `postgres` (as the connector's SQL does):
 
    ```sql
    select extversion from pg_extension where extname = 'pg_cron';  -- one row
 
-   select j.jobname, j.schedule, j.active,
-          count(d.runid) filter (where d.status = 'failed') as failed_24h
+   select j.jobname, j.schedule, j.active, j.username,
+          count(*) filter (where d.status = 'succeeded')          as succeeded_24h,
+          max(d.start_time) filter (where d.status = 'succeeded') as last_succeeded,
+          count(*) filter (where d.status = 'failed')             as failed_24h
      from cron.job j
      left join cron.job_run_details d
        on d.jobid = j.jobid and d.start_time > now() - interval '24 hours'
     where j.jobname like 'recoverease-%'
-    group by 1, 2, 3
+    group by 1, 2, 3, 4
     order by 1;
-   -- four rows, all active, failed_24h 0, none named
-   -- recoverease-medication-pre-dose-reminders
    ```
+
+   Expect four rows, none named `recoverease-medication-pre-dose-reminders`,
+   each active, owned by `postgres`, with `failed_24h` 0, and successful runs
+   that match its own cadence - not one number for all of them:
+
+   | Job | Cadence | `succeeded_24h` | `last_succeeded` |
+   | --- | --- | --- | --- |
+   | `recoverease-appointment-reminders` | `0 * * * *` | about 24 | within the last hour |
+   | `recoverease-extend-medication-slots` | `0 1 * * *` | 1 | the most recent 01:00 UTC |
+   | `recoverease-mark-overdue-doses` | `5 * * * *` | about 24 | within the last hour |
+   | `recoverease-medication-reminders` | `*/15 * * * *` | about 96 | within the last 15 minutes |
+
+   A run at the edge of the 24-hour window can add or drop one. On 2026-10-19
+   the read-only check observed 24, 1, 24 and 96 runs, all succeeded.
 
 5. **Security advisor.** Record its findings (`get_advisors`, security). The
    baseline observed on 2026-10-19 was 19
@@ -590,7 +605,11 @@ preferred-time case).
 
 2. **Schema and privileges.** The column, the guard trigger and both
    functions exist; nobody but `service_role` can execute the dispatcher,
-   and nobody calls the trigger function directly:
+   and nobody calls the trigger function directly. `PUBLIC` is a
+   pseudo-role rather than a real role, so its grant is read straight from
+   each function's ACL: grantee `0` is `PUBLIC`, and a function whose ACL is
+   empty (`proacl` null) has the default one, in which `PUBLIC` may
+   execute - hence `acldefault('f', proowner)`:
 
    ```sql
    select
@@ -601,11 +620,19 @@ preferred-time case).
        where tgrelid = 'public.medication_log'::regclass
          and tgname = 'medication_log_guard_pre_dose_mark'
          and tgenabled <> 'D')                                                 as guard_trigger,            -- 1
-     has_function_privilege('public',        'public.dispatch_medication_pre_dose_reminders()', 'execute') as dispatcher_public,        -- false
+     (select count(*)
+        from pg_proc p,
+             aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a
+       where p.oid = 'public.dispatch_medication_pre_dose_reminders()'::regprocedure
+         and a.grantee = 0 and a.privilege_type = 'EXECUTE')                  as dispatcher_public_grants, -- 0
      has_function_privilege('anon',          'public.dispatch_medication_pre_dose_reminders()', 'execute') as dispatcher_anon,          -- false
      has_function_privilege('authenticated', 'public.dispatch_medication_pre_dose_reminders()', 'execute') as dispatcher_authenticated, -- false
      has_function_privilege('service_role',  'public.dispatch_medication_pre_dose_reminders()', 'execute') as dispatcher_service_role,  -- true
-     has_function_privilege('public',        'public.medication_log_guard_pre_dose_mark()', 'execute')     as guard_public,             -- false
+     (select count(*)
+        from pg_proc p,
+             aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a
+       where p.oid = 'public.medication_log_guard_pre_dose_mark()'::regprocedure
+         and a.grantee = 0 and a.privilege_type = 'EXECUTE')                  as guard_public_grants,      -- 0
      has_function_privilege('anon',          'public.medication_log_guard_pre_dose_mark()', 'execute')     as guard_anon,               -- false
      has_function_privilege('authenticated', 'public.medication_log_guard_pre_dose_mark()', 'execute')     as guard_authenticated,      -- false
      (select prosecdef || ' ' || array_to_string(proconfig, ',') from pg_proc
