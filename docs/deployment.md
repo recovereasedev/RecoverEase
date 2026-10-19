@@ -728,22 +728,55 @@ a `chatbot.enabled` setting for each clinic, both enforced by `chatbot-reply`
 before anything reaches Gemini. It needs migrations 33 and 31 and refuses to
 run without them; it is independent of 34 (`tests/db/guidance-assistant-switch.test.ts`
 applies it after 37 with 34 unapplied, as production has them). Every switch
-starts unset, which is on, so applying it changes nothing anyone sees.
+starts unset, which is on, so applying it changes nothing anyone sees -
+unless a clinic's `chatbot.enabled` was saved before it, below.
 
-The release order, each step its own approval:
+The two switches do not depend on 38 in the same way:
 
-1. **Apply migration 38**, with the read-only checks before and after that
-   37 had: history, the objects it adds, and the security advisor - expect
-   three more `authenticated_security_definer_function_executable` warnings,
-   for `guidance_assistant_available`, `super_admin_get_guidance_assistant`
-   and `super_admin_set_guidance_assistant` (`docs/security.md`).
+- The Super Admin's switch exists only in 38. It is read and changed through
+  `super_admin_get_guidance_assistant()` and
+  `super_admin_set_guidance_assistant()`, which check for a Super Admin;
+  before 38 its card on the Clinics page shows an error and saves nothing.
+- The Clinic Admin's is an ordinary clinic setting, saved through
+  `system_setting` like every other, and that table takes any key. It saves
+  before 38, and the card shows the saved choice, but nothing reads it: the
+  `chatbot-reply` deployed before this change ignores it.
+- Only once 38 and this `chatbot-reply` are both live does the server
+  enforce either switch. A clinic's Off saved before then takes effect at
+  that moment, without anyone changing it.
+
+The release order, each step its own approval, with the website last:
+
+1. **Apply migration 38 and verify it**, with the read-only checks before
+   and after that 37 had: history, the objects it adds, and the security
+   advisor - expect three more
+   `authenticated_security_definer_function_executable` warnings, for
+   `guidance_assistant_available`, `super_admin_get_guidance_assistant` and
+   `super_admin_set_guidance_assistant` (`docs/security.md`).
 2. **Deploy `chatbot-reply`.** It asks `guidance_assistant_on_for_doctor()`
-   before every reply and refuses when it cannot get an answer, so deployed
-   before step 1 every reply is refused as unavailable.
-3. **Merge the website.** It reads `guidance_assistant_available()` and treats
-   an unreadable answer as unknown, behaving as it did before - so it is also
-   safe before step 1 - and offers the Clinic Admin's and the Super Admin's
-   switches, which save only once step 1 is in.
+   before every reply and refuses when it cannot get an answer.
+3. **Merge the website.** It adds both switches and the patient's "turned
+   off" notice. It reads `guidance_assistant_available()` and treats an
+   unreadable answer as unknown, so where 38 is missing patients' chat works
+   as it did before.
+
+Out of order, patients see the difference:
+
+- **`chatbot-reply` before 38:** it cannot read the switches, so every
+  guidance reply, in every clinic, is refused as unavailable until 38 is
+  applied. The patient's message is saved; no answer comes.
+- **The website before 38:** patients' chat is unchanged, but a Clinic Admin
+  can turn the assistant Off, see it saved, and the assistant keeps
+  answering their patients; when 38 and the function arrive, that Off takes
+  effect unannounced. The Super Admin's switch cannot be used.
+- **The website after 38 but before the function:** a patient's page hides
+  the message box once a switch is off, but the server does not enforce it,
+  so a page that has not yet re-read the switch, or any direct request,
+  still gets an answer.
+- **The function without the website:** with every switch unset nothing
+  changes. A switch turned off some other way reaches patients as the
+  assistant being unavailable, with an offer to try again, rather than as
+  turned off.
 
 Its down-script, `supabase/rollbacks/20260902100038_guidance_assistant_switch.down.sql`,
 removes both readers and the platform's table and puts back migration 33's
