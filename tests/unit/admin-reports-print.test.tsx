@@ -30,6 +30,11 @@ vi.mock('@/features/auth/auth-context', () => ({
   }),
 }))
 
+import { strFromU8, unzipSync } from 'fflate'
+
+import { captureDownloads } from './support/capture-download'
+import { pdfLines } from './support/pdf-text'
+
 const { AdminReportsPage } = await import('@/features/reports/pages/admin-reports-page')
 
 const STATS = {
@@ -193,5 +198,68 @@ describe('printing the system-wide report', () => {
       .filter((button) => !leftOffPaper(button))
       .map((button) => button.textContent)
     expect(onPaper).toEqual([])
+  })
+})
+
+describe('exporting the system-wide report (module 9.4)', () => {
+  it('saves the figures shown as a PDF, and records no generated report', async () => {
+    const capture = captureDownloads()
+    try {
+      renderPage()
+      const button = await screen.findByRole('button', { name: 'Download PDF' })
+      await waitFor(() => expect(button).toBeEnabled())
+      fireEvent.click(button)
+
+      await waitFor(() => expect(capture.files).toHaveLength(1))
+      const [file] = capture.files
+      expect(file!.type).toBe('application/pdf')
+      expect(file!.name).toMatch(/^recoverease-system-wide-report-\d{4}-\d{2}-\d{2}\.pdf$/)
+      expect(await pdfLines(await file!.bytes())).toEqual(
+        expect.arrayContaining([
+          'System-wide report',
+          'Ada Reyes',
+          'Patients on record', '7', '6',
+          'Doctor accounts', '3', '2',
+          'Upcoming appointments', '5',
+          'Clinic Admins',
+        ]),
+      )
+      expect(api.recordGeneratedReport).not.toHaveBeenCalled()
+      expect(window.print).not.toHaveBeenCalled()
+    } finally {
+      capture.release()
+    }
+  })
+
+  it('saves the same figures as an Excel workbook', async () => {
+    const capture = captureDownloads()
+    try {
+      renderPage()
+      const button = await screen.findByRole('button', { name: 'Download Excel' })
+      await waitFor(() => expect(button).toBeEnabled())
+      fireEvent.click(button)
+
+      await waitFor(() => expect(capture.files).toHaveLength(1))
+      const [file] = capture.files
+      expect(file!.type).toBe(
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      )
+      expect(file!.name).toMatch(/^recoverease-system-wide-report-\d{4}-\d{2}-\d{2}\.xlsx$/)
+      const parts = unzipSync(await file!.bytes())
+      const summary = strFromU8(parts['xl/worksheets/sheet1.xml']!)
+      expect(summary).toContain('Patients on record')
+      expect(summary).toMatch(/<v>7<\/v><\/c><c r="C\d+"><v>6<\/v>/)
+      expect(strFromU8(parts['xl/worksheets/sheet3.xml']!)).toContain('System-wide report')
+      expect(api.recordGeneratedReport).not.toHaveBeenCalled()
+    } finally {
+      capture.release()
+    }
+  })
+
+  it('keeps both export controls off the paper', async () => {
+    renderPage()
+    for (const name of ['Download PDF', 'Download Excel']) {
+      expect(leftOffPaper(await screen.findByRole('button', { name }))).toBe(true)
+    }
   })
 })

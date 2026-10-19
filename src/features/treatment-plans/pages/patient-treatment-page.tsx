@@ -1,5 +1,6 @@
-import { CalendarDays, Printer } from 'lucide-react'
+import { CalendarDays, Download, Printer } from 'lucide-react'
 
+import { FormError } from '@/components/feedback/form-error'
 import { StateView } from '@/components/feedback/state-view'
 import { PageHeader } from '@/components/layout/page-header'
 import { StatusBadge } from '@/components/ui/badge'
@@ -8,12 +9,13 @@ import { Button } from '@/components/ui/button'
 import { Card, CardBody } from '@/components/ui/card'
 import { useCurrentUser } from '@/features/auth/auth-context'
 import {
+  byTargetDate,
   summariseGoals,
-  type TreatmentGoal,
   type TreatmentGoalStatus,
 } from '@/features/treatment-plans/api'
 import { useTreatmentPlans } from '@/features/treatment-plans/hooks'
 import { useDocumentTitle } from '@/hooks/use-document-title'
+import { useFileDownload } from '@/lib/documents/download'
 import { formatDate } from '@/lib/format'
 import { treatmentGoalStatus, treatmentPlanStatus } from '@/lib/status'
 import { cn } from '@/lib/utils'
@@ -28,22 +30,14 @@ const MARKER: Record<TreatmentGoalStatus, string> = {
   missed: 'border-warning-600 bg-warning-50 text-warning-700',
 }
 
-// Goals in the order they are due. A goal with no target date goes last,
-// after everything that has one, in the order the doctor added it.
-function byTargetDate(a: TreatmentGoal, b: TreatmentGoal): number {
-  return (a.treatment_goal_target_date ?? '9999-12-31').localeCompare(
-    b.treatment_goal_target_date ?? '9999-12-31',
-  )
-}
-
 /**
  * Modules 3.4 "View Treatment Plan", 3.5 "Download Treatment Plan as PDF",
  * 5.7 "View Recovery Roadmap" and 5.8 "View Treatment Goals".
  *
- * Module 3.5 is served by the browser's own print pipeline, which produces a
- * real PDF through "Save as PDF" on every platform. The alternative — a
- * button that calls a server that does not exist yet — would be a download
- * that never arrives.
+ * Module 3.5 is a real file: "Download plan (PDF)" builds the PDF in the
+ * browser from the plans this page has loaded and saves it, with nothing
+ * sent anywhere (`treatment-plan-document.ts`). Printing stays beside it -
+ * the browser's own "Save as PDF" also produces a tagged, accessible PDF.
  *
  * RecoverEase 2.0 draws the plan as a roadmap rather than a form. The summary
  * - what the plan is, when it runs, how far through it the patient is - sits
@@ -59,6 +53,19 @@ export function PatientTreatmentPage() {
     user.profile.kind === 'patient' ? user.profile.patient.pat_id : ''
 
   const plansQuery = useTreatmentPlans(patientId)
+  const planFile = useFileDownload()
+  const patient = user.profile.kind === 'patient' ? user.profile.patient : null
+
+  const downloadPlan = () => {
+    const plans = plansQuery.data
+    if (!patient || !plans) return
+    void planFile.download(async () => {
+      const { buildTreatmentPlanPdf } = await import(
+        '@/features/treatment-plans/treatment-plan-document'
+      )
+      return buildTreatmentPlanPdf({ patient, plans, generatedAt: new Date() })
+    })
+  }
 
   return (
     <>
@@ -66,17 +73,36 @@ export function PatientTreatmentPage() {
         title="Treatment plan"
         description="The programme your doctor has set, and the goals along the way."
         actions={
-          <Button
-            variant="outline"
-            // A control, so on screen only: the printout is the plan.
-            className="max-sm:w-full print:hidden"
-            onClick={() => window.print()}
-          >
-            <Printer aria-hidden="true" />
-            Print or save as PDF
-          </Button>
+          <>
+            <Button
+              variant="outline"
+              // Controls, so on screen only: the printout is the plan.
+              className="max-sm:w-full print:hidden"
+              onClick={downloadPlan}
+              disabled={!plansQuery.data}
+              isLoading={planFile.isPending}
+              loadingLabel="Preparing…"
+            >
+              <Download aria-hidden="true" />
+              Download plan (PDF)
+            </Button>
+            <Button
+              variant="outline"
+              className="max-sm:w-full print:hidden"
+              onClick={() => window.print()}
+            >
+              <Printer aria-hidden="true" />
+              Print or save as PDF
+            </Button>
+          </>
         }
       />
+
+      {planFile.error ? (
+        <div className="mb-6 print:hidden">
+          <FormError error={planFile.error} title="The plan was not downloaded" />
+        </div>
+      ) : null}
 
       <StateView
         isPending={plansQuery.isPending}

@@ -1,7 +1,8 @@
 import { addDays, endOfToday, startOfToday, subDays } from 'date-fns'
-import { AlarmClock, Pill, Printer } from 'lucide-react'
+import { AlarmClock, Download, Pill, Printer } from 'lucide-react'
 import { useState } from 'react'
 
+import { FormError } from '@/components/feedback/form-error'
 import { InlineEmpty, StateView } from '@/components/feedback/state-view'
 import { PageHeader } from '@/components/layout/page-header'
 import { StatusBadge } from '@/components/ui/badge'
@@ -22,6 +23,7 @@ import {
 import { useMyDoctor } from '@/features/patients/hooks'
 import { useDocumentTitle } from '@/hooks/use-document-title'
 import { useNow } from '@/hooks/use-now'
+import { useFileDownload } from '@/lib/documents/download'
 import {
   formatDate,
   formatDateRelative,
@@ -78,6 +80,29 @@ export function PatientMedicationsPage() {
   const now = useNow()
   // The dose just marked taken: only its badge animates in.
   const [confirmedId, setConfirmedId] = useState<string | null>(null)
+  const prescriptionFile = useFileDownload()
+
+  // Module 4.10 as a file: the printed prescription, built from what this
+  // page has loaded. Offered once the prescriptions are here and the doctor
+  // has either loaded or will not (no assigned doctor), so the file never
+  // says "Not available" only because it was asked for too soon.
+  const canDownloadPrescription =
+    Boolean(patient) && Boolean(schedulesQuery.data) && !doctorQuery.isLoading
+  const downloadPrescription = () => {
+    if (!patient || !schedulesQuery.data) return
+    const schedules = schedulesQuery.data
+    void prescriptionFile.download(async () => {
+      const { buildPrescriptionPdf } = await import(
+        '@/features/medications/prescription-document'
+      )
+      return buildPrescriptionPdf({
+        patient,
+        doctor: doctorQuery.data,
+        schedules,
+        generatedAt: new Date(),
+      })
+    })
+  }
 
   const adherence = weekDoses.data
     ? summariseAdherence(weekDoses.data)
@@ -111,16 +136,38 @@ export function PatientMedicationsPage() {
         title="Medications"
         description="What is due, what you have taken, and what your doctor has prescribed."
         actions={
-          <Button
-            variant="outline"
-            className="max-sm:w-full"
-            onClick={() => window.print()}
-          >
-            <Printer aria-hidden="true" />
-            Print prescriptions
-          </Button>
+          <>
+            <Button
+              variant="outline"
+              className="max-sm:w-full"
+              onClick={downloadPrescription}
+              disabled={!canDownloadPrescription}
+              isLoading={prescriptionFile.isPending}
+              loadingLabel="Preparing…"
+            >
+              <Download aria-hidden="true" />
+              Download prescription (PDF)
+            </Button>
+            <Button
+              variant="outline"
+              className="max-sm:w-full"
+              onClick={() => window.print()}
+            >
+              <Printer aria-hidden="true" />
+              Print prescriptions
+            </Button>
+          </>
         }
       />
+
+      {prescriptionFile.error ? (
+        <div className="mb-6 print:hidden">
+          <FormError
+            error={prescriptionFile.error}
+            title="The prescription was not downloaded"
+          />
+        </div>
+      ) : null}
 
       <div className="grid gap-section lg:grid-cols-3 lg:gap-8">
         <div className="space-y-section lg:col-span-2">

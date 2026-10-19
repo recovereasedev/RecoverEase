@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   ClipboardPlus,
+  Download,
   KeyRound,
   Pencil,
   Pill,
@@ -58,6 +59,7 @@ import type { RecoveryLog } from '@/features/recovery-logs/api'
 import { useDocumentTitle } from '@/hooks/use-document-title'
 import { useFocusRecovery } from '@/hooks/use-focus-recovery'
 import { useNow } from '@/hooks/use-now'
+import { useFileDownload } from '@/lib/documents/download'
 import {
   calculateAge,
   formatDate,
@@ -210,6 +212,26 @@ export function DoctorPatientDetailPage() {
   })
 
   const adherence = weekDoses.data ? summariseAdherence(weekDoses.data) : null
+
+  // Module 4.10 as a file, from the record this page has loaded. The doctor
+  // is named as prescriber only when they are the patient's assigned doctor,
+  // exactly as on the printed prescription.
+  const prescriptionFile = useFileDownload()
+  const downloadPrescription = (patient: NonNullable<typeof patientQuery.data>) => {
+    const schedules = schedulesQuery.data
+    if (!schedules) return
+    void prescriptionFile.download(async () => {
+      const { buildPrescriptionPdf } = await import(
+        '@/features/medications/prescription-document'
+      )
+      return buildPrescriptionPdf({
+        patient,
+        doctor: doctor?.doc_id === patient.doc_id ? doctor : null,
+        schedules,
+        generatedAt: new Date(),
+      })
+    })
+  }
 
   // The record's summary strip (RecoverEase 2.0). Both are queries the app
   // already makes: the patient's appointments, and the chat sessions the
@@ -794,17 +816,39 @@ export function DoctorPatientDetailPage() {
                     action={
                       // QA 9/12: printing belongs here, as the patient's
                       // prescription. Reports prints the rest of the record.
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="print:hidden"
-                        onClick={() => window.print()}
-                      >
-                        <Printer aria-hidden="true" />
-                        Print prescription
-                      </Button>
+                      // Stacked on a phone: side by side the two are wider
+                      // than the card, and the header's action cannot shrink.
+                      <div className="flex flex-col gap-2 sm:flex-row print:hidden">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => downloadPrescription(patient)}
+                          disabled={!schedulesQuery.data}
+                          isLoading={prescriptionFile.isPending}
+                          loadingLabel="Preparing…"
+                        >
+                          <Download aria-hidden="true" />
+                          Download prescription (PDF)
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => window.print()}
+                        >
+                          <Printer aria-hidden="true" />
+                          Print prescription
+                        </Button>
+                      </div>
                     }
                   />
+                  {prescriptionFile.error ? (
+                    <div className="px-4 pb-2 sm:px-5 print:hidden">
+                      <FormError
+                        error={prescriptionFile.error}
+                        title="The prescription was not downloaded"
+                      />
+                    </div>
+                  ) : null}
                   <CardBody className="p-0">
                     <div ref={medicationFocusRecovery}>
                       <StateView

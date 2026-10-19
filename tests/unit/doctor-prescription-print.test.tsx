@@ -1,8 +1,11 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { AppUser } from '@/features/auth/types'
+
+import { captureDownloads } from './support/capture-download'
+import { pdfLines } from './support/pdf-text'
 
 /**
  * QA 9/12 — "Remove ni for all tabs (overview, recovery, treatment, notes kay
@@ -240,5 +243,60 @@ describe('the printed prescription', () => {
         expect.arrayContaining(['hidden', 'print:block']),
       )
     }
+  })
+})
+
+describe('downloading the prescription from the record (module 4.10)', () => {
+  it('offers it on the medication tab, beside Print', () => {
+    openRecord('medication')
+    expect(screen.getByRole('button', { name: 'Download prescription (PDF)' })).toBeInTheDocument()
+  })
+
+  it('saves the prescription as a PDF, naming the assigned doctor, and writes nothing', async () => {
+    const capture = captureDownloads()
+    try {
+      openRecord('medication')
+      fireEvent.click(screen.getByRole('button', { name: 'Download prescription (PDF)' }))
+
+      await waitFor(() => expect(capture.files).toHaveLength(1))
+      const [file] = capture.files
+      expect(file!.type).toBe('application/pdf')
+      expect(file!.name).toMatch(/^recoverease-prescription-maria-reyes-/)
+      expect(await pdfLines(await file!.bytes())).toEqual(
+        expect.arrayContaining([
+          'Maria Reyes',
+          'Dr. Lorna Villanueva',
+          'Amoxicillin',
+          'From 1 Sep 2026, ongoing',
+          'Finish the full course.',
+        ]),
+      )
+      expect(noop.mutate).not.toHaveBeenCalled()
+      expect(window.print).not.toHaveBeenCalled()
+    } finally {
+      capture.release()
+    }
+  })
+
+  it('names no prescriber when the clinician is not the assigned doctor', async () => {
+    mockUser.current = doctorSession('doc-2')
+    const capture = captureDownloads()
+    try {
+      openRecord('medication')
+      fireEvent.click(screen.getByRole('button', { name: 'Download prescription (PDF)' }))
+      await waitFor(() => expect(capture.files).toHaveLength(1))
+      const lines = await pdfLines(await capture.files[0]!.bytes())
+      expect(lines).toContain('Not available')
+      expect(lines).not.toContain('Dr. Lorna Villanueva')
+    } finally {
+      capture.release()
+    }
+  })
+
+  it('keeps the control off the paper', () => {
+    openRecord('medication')
+    expect(
+      leftOffPaper(screen.getByRole('button', { name: 'Download prescription (PDF)' })),
+    ).toBe(true)
   })
 })
