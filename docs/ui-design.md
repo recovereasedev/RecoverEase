@@ -109,9 +109,11 @@ decoration and stops meaning anything.
 The 2nd-half plan, section 8. The theme control sits at the foot of the
 sidebar and the phone drawer: Light, Dark or System, which follows the
 device's own setting and keeps following it. The choice is remembered on
-the device (`localStorage`, `src/lib/theme.ts`) and applied before the first
-render, so no page flashes the other theme. Until someone chooses, it is
-Light.
+the device (`localStorage`, `src/lib/theme.ts`) and applied by the startup
+module before the first render. That module runs once the page has been
+parsed, so with Dark chosen, or System on a dark device, a page can briefly
+show the default light theme before the chosen one is applied. Until
+someone chooses, it is Light.
 
 Dark mode is the same tokens with other values (`src/index.css`, under
 `:root[data-theme='dark']`), not a filter. Each scale is turned over - text

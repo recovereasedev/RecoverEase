@@ -12,8 +12,9 @@ import './index.css'
 // src/lib/pwa-install.ts.
 installPromptStore.start()
 
-// Before the first render too: the chosen theme, so the page never flashes
-// the other one first. See src/lib/theme.ts.
+// Before the first render too: the chosen theme. This module runs once the
+// page has been parsed, so a dark choice can still follow a brief frame of
+// the default light theme. See src/lib/theme.ts.
 startTheme()
 
 const rootElement = document.getElementById('root')

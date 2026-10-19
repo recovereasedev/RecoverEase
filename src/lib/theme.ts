@@ -6,11 +6,15 @@ import { useSyncExternalStore } from 'react'
  * The choice is remembered on this device (`localStorage`), as RecoverEase
  * keeps its other per-device conveniences in web storage; it is not part of
  * anyone's record. `startTheme()` applies it before the first render
- * (main.tsx), so the page never flashes the other theme first, by setting
- * `data-theme` on the root element to the theme that results: `system`
- * follows the device's own setting, and keeps following it while the page is
- * open. One store, so every control on the page shows the same choice, and a
- * choice made in another tab arrives here too.
+ * (main.tsx) by setting `data-theme` on the root element to the theme that
+ * results: `system` follows the device's own setting, and keeps following it
+ * while the page is open. One store, so every control on the page shows the
+ * same choice, and a choice made in another tab arrives here too.
+ *
+ * Before the first render is not before the first paint. main.tsx is a
+ * module script, which runs only once the page has been parsed, so with Dark
+ * chosen, or System on a dark device, a page can show a brief frame of the
+ * default light theme before this applies the other.
  *
  * Until someone chooses, the theme is Light: what everyone saw before, and
  * the theme every screen was audited in first.
