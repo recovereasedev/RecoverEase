@@ -367,11 +367,60 @@ added. It refuses while any doctor's announcement exists, and goes before
 break the announcement lists in the same way, so the website goes back
 first.
 
-To roll back 31, go the other way: the website from before 31, then
-`chatbot-reply` from before 31, then `supabase/rollbacks/20260902100031_clinic_settings.down.sql`
-as a new migration. It refuses while there is more than one clinic - two
-clinics' settings cannot be folded into one - and writes the clinic's zone
-back into the global `app.timezone` row so nothing that reads it moves.
+To roll back 31, go the other way, newest first. Each later migration is
+rolled back with its own down-script, applied as a new migration, and where
+deployed code depends on it, that code goes back first:
+
+1. **37**: the website from before PR #49, then
+   `supabase/rollbacks/20260902100037_medication_pre_dose_reminders.down.sql`.
+2. **36**: the website from before PR #47, then
+   `supabase/rollbacks/20260902100036_doctor_announcements.down.sql`, which
+   refuses while any doctor's announcement exists.
+3. **35**: `supabase/rollbacks/20260902100035_platform_audit_field_names.down.sql`.
+   No code goes back: the website and the Edge Functions work with either
+   version.
+4. **34**, where it is applied:
+   `supabase/rollbacks/20260902100034_lift_single_clinic_gate.down.sql`,
+   which refuses once a second clinic exists. No code goes back.
+5. **33**: `supabase/rollbacks/20260902100033_super_admin_platform.down.sql`,
+   which refuses while 34 is applied or a Super Admin or platform announcement
+   exists. No code goes back: with no Super Admin nothing reaches the
+   console, and `create-account` refuses Clinic Admin provisioning before any
+   login is created.
+6. **31**: the website from before 31, then `chatbot-reply` from before 31
+   (it reads `system_setting.clinic_id`), then
+   `supabase/rollbacks/20260902100031_clinic_settings.down.sql`. It refuses
+   while there is more than one clinic - two clinics' settings cannot be
+   folded into one - and writes the clinic's zone back into the global
+   `app.timezone` row so nothing that reads it moves.
+
+31's down-script also refuses, naming each one to roll back, while 37, 36 or
+33 is still installed: 37's reminder job reads `system_setting.clinic_id`,
+which 31's rollback removes; 36's doctors' announcements keep their author
+through `announcement_guard_author`, which it drops; and 33's
+`super_admin_create_clinic` writes `system_setting.clinic_id`, while 33's
+audit functions and author guard would be rewritten or dropped. What that
+check cannot do:
+
+- **It reads only the database's schema markers.** It cannot tell which
+  website or `chatbot-reply` version is deployed, so the code steps above
+  are the operator's to do and verify.
+- **It has no marker for 34.** 34 is covered through 33: 34 refuses to run
+  without 33, and 33's down-script refuses while 34 is applied, so 34 cannot
+  be installed once 33 is gone.
+- **Its refusal leaves everything as it was only if execution stops at the
+  error.** The check runs first and changes nothing itself; whether the
+  statements after it run is up to the runner. The runner documented for
+  this project, the Supabase connector's `apply_migration`, sends the script
+  to Supabase's Management API in one request, and neither documents whether
+  that request runs as one transaction or stops at the first error. After a
+  refusal, confirm read-only that `system_setting.clinic_id` is still there
+  and that no new migration was recorded. No other runner is documented
+  here. With `psql`, the script must run as
+  `psql -v ON_ERROR_STOP=1 --single-transaction -f <file>`: without
+  `ON_ERROR_STOP`, psql reports the refusal and goes on to run the statements
+  after it, and `--single-transaction` undoes the whole script if a later
+  statement fails.
 
 ## Scheduled jobs
 

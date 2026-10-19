@@ -16,12 +16,42 @@ import { seedFixture, type Fixture } from './helpers/fixtures'
  * that has been used - accounts, settings, a time zone change, announcements,
  * reports, a D8 move with an appointment - and the result is compared,
  * catalog entry by catalog entry, with a database built only up to the
- * migration before. Every row must survive all three.
+ * migration before. Every row must survive all three. 31's also refuses,
+ * changing nothing, while a later migration that depends on it - 33, 36 or
+ * 37 - is still installed.
  */
 
+const ROLLBACK_37 = 'supabase/rollbacks/20260902100037_medication_pre_dose_reminders.down.sql'
 const ROLLBACK_31 = 'supabase/rollbacks/20260902100031_clinic_settings.down.sql'
 const ROLLBACK_30 = 'supabase/rollbacks/20260902100030_clinic_admin_scope.down.sql'
 const ROLLBACK_29 = 'supabase/rollbacks/20260902100029_initial_clinic.down.sql'
+
+const MIGRATION_30 = '20260902100030'
+const MIGRATION_31 = '20260902100031'
+const MIGRATION_33 = '20260902100033'
+const MIGRATION_35 = '20260902100035'
+const MIGRATION_36 = '20260902100036'
+const MIGRATION_37 = '20260902100037'
+
+const REFUSED_FOR_37 = /Roll back migration 37 first: its pre-dose medication reminder job reads system_setting\.clinic_id/
+const REFUSED_FOR_33 = /Roll back migration 33 first: super_admin_create_clinic writes system_setting\.clinic_id/
+const REFUSED_FOR_37_36_33 =
+  /Roll back migrations 37, 36 and 33 first, newest first, each with its own down-script - 37: .+; 36: .+; 33: .+\. Nothing was changed\./
+const REFUSED_FOR_36_33 = /Roll back migrations 36 and 33 first, newest first, each with its own down-script - 36: .+; 33: .+\./
+
+const ROLLBACK_36 = 'supabase/rollbacks/20260902100036_doctor_announcements.down.sql'
+const ROLLBACK_35 = 'supabase/rollbacks/20260902100035_platform_audit_field_names.down.sql'
+const ROLLBACK_33 = 'supabase/rollbacks/20260902100033_super_admin_platform.down.sql'
+
+const script = (path: string) => readFile(join(process.cwd(), path), 'utf8')
+
+/** Whether migration 34's single-clinic gate is still in place. */
+const gateCount = async (database: TestDatabase) =>
+  (
+    await database.asService<{ n: number }>(
+      `select count(*)::int as n from pg_indexes where indexname = 'clinic_single_clinic_gate'`,
+    )
+  )[0]!.n
 
 /** The rows a rollback must leave alone. */
 const rows = async (database: TestDatabase) => ({
@@ -166,6 +196,155 @@ describe('rolling back migration 31 once there are two clinics', () => {
       ).toEqual([{ n: 2 }])
     } finally {
       await database.close()
+    }
+  })
+})
+
+describe('rolling back migration 31 while a migration that depends on it is installed', () => {
+  // 31's down-script drops system_setting.clinic_id and announcement_guard_author
+  // and rewrites the audit functions. Migration 37's reminder job reads the
+  // column every minute; 36's doctors' announcements keep their author through
+  // the guard; 33's super_admin_create_clinic writes the column, and 33
+  // redefines the guard and the audit functions. Run out of order, each of
+  // them would be left broken or unprotected.
+
+  it('is refused, and changes nothing, in production’s order: 33, 35, 36 and 37, with 34 never applied', async () => {
+    const database = await createTestDatabase({ stopAfter: MIGRATION_33 })
+    try {
+      const fx = await seedFixture(database)
+      await database.applyMigration(MIGRATION_35)
+      await database.applyMigration(MIGRATION_36)
+      await database.applyMigration(MIGRATION_37)
+      // A lead time, which the job reads through the clinic.
+      await database.asUser(
+        fx.adminUserId,
+        `insert into public.system_setting (admin_id, system_setting_key, system_setting_value)
+         values ($1, 'medication.reminder_lead_minutes', '15')`,
+        [fx.adminId],
+      )
+      const before = await catalog(database)
+      const rowsBefore = await rows(database)
+      expect(await gateCount(database)).toBe(1)
+
+      // Every dependent is named, newest first, in one refusal.
+      await expect(database.db.exec(await script(ROLLBACK_31))).rejects.toThrow(REFUSED_FOR_37_36_33)
+
+      expect(await catalog(database)).toEqual(before)
+      expect(await rows(database)).toEqual(rowsBefore)
+      expect(await gateCount(database)).toBe(1)
+      // What the job needs is still there, and it still runs.
+      expect(
+        await database.asService(
+          `select count(*)::int as n from information_schema.columns
+            where table_schema = 'public' and table_name = 'system_setting' and column_name = 'clinic_id'`,
+        ),
+      ).toEqual([{ n: 1 }])
+      await expect(
+        database.asService('select public.dispatch_medication_pre_dose_reminders() as sent'),
+      ).resolves.toEqual([{ sent: expect.any(Number) }])
+    } finally {
+      await database.close()
+    }
+  })
+
+  it('goes ahead in the right order: 37’s down-script, then 31’s, return the schema to what 30 left', async () => {
+    // 37 needs only what 31 left, so here it sits directly above 31. The
+    // migrations between have their own rollbacks (super-admin-rollback.test.ts).
+    const [database, through30, through31] = await Promise.all([
+      createTestDatabase({ stopAfter: MIGRATION_31 }),
+      createTestDatabase({ stopAfter: MIGRATION_30 }),
+      createTestDatabase({ stopAfter: MIGRATION_31 }),
+    ])
+    try {
+      await seedFixture(database)
+      await database.applyMigration(MIGRATION_37)
+      const before = await catalog(database)
+
+      await expect(database.db.exec(await script(ROLLBACK_31))).rejects.toThrow(REFUSED_FOR_37)
+      expect(await catalog(database)).toEqual(before)
+
+      await database.db.exec(await script(ROLLBACK_37))
+      expect(await catalog(database)).toEqual(await catalog(through31))
+
+      await database.db.exec(await script(ROLLBACK_31))
+      expect(await catalog(database)).toEqual(await catalog(through30))
+      expect(await gateCount(database)).toBe(1)
+    } finally {
+      await Promise.all([database.close(), through30.close(), through31.close()])
+    }
+  })
+
+  it('is refused, and changes nothing, with migration 33 installed and nothing after it', async () => {
+    const database = await createTestDatabase({ stopAfter: MIGRATION_33 })
+    try {
+      const fx = await seedFixture(database)
+      await database.asUser(
+        fx.adminUserId,
+        `insert into public.system_setting (admin_id, system_setting_key, system_setting_value)
+         values ($1, 'medication.reminder_grace_hours', '4')`,
+        [fx.adminId],
+      )
+      const before = await catalog(database)
+      const rowsBefore = await rows(database)
+
+      await expect(database.db.exec(await script(ROLLBACK_31))).rejects.toThrow(REFUSED_FOR_33)
+
+      expect(await catalog(database)).toEqual(before)
+      expect(await rows(database)).toEqual(rowsBefore)
+      expect(await gateCount(database)).toBe(1)
+      // What 33 depends on is all still there.
+      expect(
+        await database.asService(
+          `select (select count(*)::int from information_schema.columns
+                    where table_schema = 'public' and table_name = 'system_setting' and column_name = 'clinic_id') as setting_clinic,
+                  (select count(*)::int from pg_trigger where tgname = 'announcement_author_is_fixed') as author_guard`,
+        ),
+      ).toEqual([{ setting_clinic: 1, author_guard: 1 }])
+    } finally {
+      await database.close()
+    }
+  })
+
+  it('goes ahead in production’s reverse order - 37, 36, 35 and 33, then 31 - each refusal naming what is left', async () => {
+    const [database, through30] = await Promise.all([
+      createTestDatabase({ stopAfter: MIGRATION_33 }),
+      createTestDatabase({ stopAfter: MIGRATION_30 }),
+    ])
+    try {
+      await seedFixture(database)
+      await database.applyMigration(MIGRATION_35)
+      await database.applyMigration(MIGRATION_36)
+      await database.applyMigration(MIGRATION_37)
+
+      /** 31's down-script is refused, with `refusal`, and changes nothing. */
+      const refused = async (refusal: RegExp) => {
+        const before = await catalog(database)
+        await expect(database.db.exec(await script(ROLLBACK_31))).rejects.toThrow(refusal)
+        expect(await catalog(database)).toEqual(before)
+      }
+
+      await refused(REFUSED_FOR_37_36_33)
+      await database.db.exec(await script(ROLLBACK_37))
+      await refused(REFUSED_FOR_36_33)
+      await database.db.exec(await script(ROLLBACK_36))
+      await refused(REFUSED_FOR_33)
+      await database.db.exec(await script(ROLLBACK_35))
+      await refused(REFUSED_FOR_33)
+      await database.db.exec(await script(ROLLBACK_33))
+
+      await database.db.exec(await script(ROLLBACK_31))
+
+      // What 30 left - and migration 32's enum value, which PostgreSQL cannot
+      // drop (super-admin-rollback.test.ts), and nothing else.
+      const expected = (await catalog(through30)).map((entry) =>
+        entry.kind === 'enum' && entry.name === 'user_role'
+          ? { ...entry, detail: `${entry.detail},super_admin` }
+          : entry,
+      )
+      expect(await catalog(database)).toEqual(expected)
+      expect(await gateCount(database)).toBe(1)
+    } finally {
+      await Promise.all([database.close(), through30.close()])
     }
   })
 })
