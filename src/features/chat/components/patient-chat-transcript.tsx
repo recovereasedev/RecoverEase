@@ -126,7 +126,7 @@ export function PatientChatTranscript({
                             className={cn(
                               'min-w-0 max-w-[88%] rounded-[var(--radius-lg)] px-3.5 py-2.5 sm:max-w-[85%] sm:px-4',
                               isPatient
-                                ? 'bg-brand-600 text-white'
+                                ? 'bg-fill-brand-600 text-white'
                                 : 'bg-surface-sunken text-body',
                             )}
                           >
