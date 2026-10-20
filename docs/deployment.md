@@ -781,6 +781,11 @@ page:
 Role screens load on demand — a patient never downloads the administrator's
 audit-log page.
 
+The document downloads (prescription, treatment plan, system-wide report)
+load their libraries only when a file is asked for: pdf-lib is a chunk of its
+own, about 177 kB gzipped, and the Excel writer with fflate about 7 kB. Neither
+is referenced by `index.html`.
+
 Two findings worth keeping in mind when changing `vite.config.ts`:
 
 1. **Naming a chunk in `manualChunks` pins it into the entry's preload

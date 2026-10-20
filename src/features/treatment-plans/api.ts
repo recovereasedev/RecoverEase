@@ -116,6 +116,17 @@ export async function updateTreatmentGoalStatus(
   if (error) throw error
 }
 
+/**
+ * Goals in the order they are due. A goal with no target date goes last,
+ * after everything that has one, in the order the doctor added it. Shared by
+ * the roadmap and the downloaded plan, so both list the goals alike.
+ */
+export function byTargetDate(a: TreatmentGoal, b: TreatmentGoal): number {
+  return (a.treatment_goal_target_date ?? '9999-12-31').localeCompare(
+    b.treatment_goal_target_date ?? '9999-12-31',
+  )
+}
+
 /** Progress across a plan's goals, for the roadmap summary. */
 export function summariseGoals(goals: TreatmentGoal[]): {
   total: number

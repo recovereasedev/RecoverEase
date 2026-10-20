@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { FileBarChart, Printer } from 'lucide-react'
+import { Download, FileBarChart, FileSpreadsheet, Printer } from 'lucide-react'
 
 import { FormError } from '@/components/feedback/form-error'
 import { ErrorState, EmptyState, StateView } from '@/components/feedback/state-view'
@@ -18,6 +18,7 @@ import { ReportLetterhead } from '@/features/reports/components/report-document'
 import { reportDateTime } from '@/features/reports/report-format'
 import { useDocumentTitle } from '@/hooks/use-document-title'
 import { useNow } from '@/hooks/use-now'
+import { useFileDownload } from '@/lib/documents/download'
 import { formatDateTime } from '@/lib/format'
 import { queryKeys } from '@/lib/query-keys'
 import { fullName } from '@/lib/utils'
@@ -59,6 +60,7 @@ export function AdminReportsPage() {
   })
 
   const stats = statsQuery.data
+  const reportFile = useFileDownload()
 
   // Named on paper as the report names its preparer.
   const preparer =
@@ -68,6 +70,22 @@ export function AdminReportsPage() {
           user.profile.admin.admin_last_name,
         )
       : null
+
+  // Module 9.4 as files: the same figures and list this page shows, as a PDF
+  // or an Excel workbook, built here and saved - never stored, and never
+  // recorded as a generated report (that is what Generate report does).
+  const exportReport = (format: 'pdf' | 'xlsx') => {
+    const reports = reportsQuery.data
+    if (!stats || !reports) return
+    void reportFile.download(async () => {
+      const exports = await import('@/features/reports/system-report-export')
+      const input = { stats, reports, preparer, generatedAt: new Date() }
+      return format === 'pdf'
+        ? exports.buildSystemReportPdf(input)
+        : exports.buildSystemReportXlsx(input)
+    })
+  }
+  const canExport = Boolean(stats && reportsQuery.data)
 
   return (
     <>
@@ -80,6 +98,26 @@ export function AdminReportsPage() {
         actions={
           <>
             {/* Controls, so on screen only: the printout is the report. */}
+            <Button
+              variant="outline"
+              className="max-sm:w-full print:hidden"
+              onClick={() => exportReport('pdf')}
+              disabled={!canExport}
+              isLoading={reportFile.isPending}
+              loadingLabel="Preparing…"
+            >
+              <Download aria-hidden="true" />
+              Download PDF
+            </Button>
+            <Button
+              variant="outline"
+              className="max-sm:w-full print:hidden"
+              onClick={() => exportReport('xlsx')}
+              disabled={!canExport || reportFile.isPending}
+            >
+              <FileSpreadsheet aria-hidden="true" />
+              Download Excel
+            </Button>
             <Button
               variant="outline"
               className="max-sm:w-full print:hidden"
@@ -101,6 +139,12 @@ export function AdminReportsPage() {
           </>
         }
       />
+
+      {reportFile.error ? (
+        <div className="print:hidden">
+          <FormError error={reportFile.error} title="The report was not downloaded" />
+        </div>
+      ) : null}
 
       {generate.isError ? (
         // The outcome of an action on screen, not part of the report.
