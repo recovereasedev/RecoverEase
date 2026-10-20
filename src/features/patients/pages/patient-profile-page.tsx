@@ -166,9 +166,14 @@ export function PatientProfilePage() {
                     </span>
                   </label>
 
+                  {/* What the reminder jobs do with it: neither the reminder
+                      before a dose nor the follow-up after one is sent
+                      before this time of day (migrations 08 and 37). It is
+                      not a daily reminder of its own, and saying so matters:
+                      a late time silences every earlier dose's reminder. */}
                   <Field
                     label="Preferred reminder time"
-                    description="The time of day that suits you best for a daily reminder."
+                    description="No medication reminder is sent before this time of day. Leave it empty to be reminded about every dose."
                   >
                     <Input
                       type="time"
