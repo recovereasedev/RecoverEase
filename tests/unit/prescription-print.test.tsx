@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 /**
@@ -46,6 +46,9 @@ vi.mock('@/features/auth/auth-context', () => ({
     },
   }),
 }))
+
+import { captureDownloads } from './support/capture-download'
+import { pdfLines } from './support/pdf-text'
 
 const { PrescriptionPrintHeader } = await import(
   '@/features/medications/components/prescription-print-header'
@@ -208,5 +211,58 @@ describe('printing prescriptions from the medication page', () => {
     fireEvent.click(screen.getByRole('button', { name: /print prescriptions/i }))
 
     expect(window.print).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('downloading the prescription (module 4.10)', () => {
+  it('saves a PDF of the same prescription, naming the patient and their doctor', async () => {
+    const capture = captureDownloads()
+    try {
+      render(<PatientMedicationsPage />)
+      fireEvent.click(screen.getByRole('button', { name: 'Download prescription (PDF)' }))
+
+      await waitFor(() => expect(capture.files).toHaveLength(1))
+      const [file] = capture.files
+      expect(file!.type).toBe('application/pdf')
+      expect(file!.name).toMatch(/^recoverease-prescription-maria-reyes-\d{4}-\d{2}-\d{2}\.pdf$/)
+      expect(await pdfLines(await file!.bytes())).toEqual(
+        expect.arrayContaining([
+          'Prescription',
+          'Maria Reyes',
+          'Dr. Lorna Villanueva',
+          'Amoxicillin',
+          '500mg · 3 times a day at 08:00, 14:00, 20:00',
+          'From 1 Sep 2026 until 10 Sep 2026',
+          'Finish the full course.',
+        ]),
+      )
+      // A download, not a print; and the object URL is let go afterwards.
+      expect(window.print).not.toHaveBeenCalled()
+      await waitFor(() => expect(capture.revoked).toHaveLength(1))
+    } finally {
+      capture.release()
+    }
+  })
+
+  it('names no doctor when the assigned doctor could not be read', async () => {
+    doctor.data = null
+    const capture = captureDownloads()
+    try {
+      render(<PatientMedicationsPage />)
+      fireEvent.click(screen.getByRole('button', { name: 'Download prescription (PDF)' }))
+      await waitFor(() => expect(capture.files).toHaveLength(1))
+      const lines = await pdfLines(await capture.files[0]!.bytes())
+      expect(lines).toContain('Not available')
+      expect(lines.some((line) => line.startsWith('Dr.'))).toBe(false)
+    } finally {
+      capture.release()
+    }
+  })
+
+  it('is a control: on screen, off the paper', () => {
+    render(<PatientMedicationsPage />)
+    expect(
+      leftOffPaper(screen.getByRole('button', { name: 'Download prescription (PDF)' })),
+    ).toBe(true)
   })
 })

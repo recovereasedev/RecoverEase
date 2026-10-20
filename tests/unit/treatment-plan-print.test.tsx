@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 /**
@@ -13,7 +13,10 @@ vi.mock('@/features/auth/auth-context', () => ({
   useCurrentUser: () => ({
     userId: 'u-1',
     role: 'patient',
-    profile: { kind: 'patient', patient: { pat_id: 'p-1' } },
+    profile: {
+      kind: 'patient',
+      patient: { pat_id: 'p-1', pat_first_name: 'Maria', pat_last_name: 'Reyes' },
+    },
   }),
 }))
 
@@ -25,6 +28,9 @@ vi.mock('@/features/treatment-plans/hooks', () => ({
     refetch: vi.fn(),
   }),
 }))
+
+import { captureDownloads } from './support/capture-download'
+import { pdfLines } from './support/pdf-text'
 
 const { PatientTreatmentPage } = await import(
   '@/features/treatment-plans/pages/patient-treatment-page'
@@ -122,5 +128,41 @@ describe('printing the treatment plan', () => {
 
     expect(leftOffPaper(printButton())).toBe(true)
     expect(leftOffPaper(screen.getByText('No treatment plan yet'))).toBe(false)
+  })
+})
+
+describe('downloading the treatment plan (module 3.5)', () => {
+  it('saves the plan as a PDF with its goals and their states in words', async () => {
+    const capture = captureDownloads()
+    try {
+      render(<PatientTreatmentPage />)
+      fireEvent.click(screen.getByRole('button', { name: 'Download plan (PDF)' }))
+
+      await waitFor(() => expect(capture.files).toHaveLength(1))
+      const [file] = capture.files
+      expect(file!.type).toBe('application/pdf')
+      expect(file!.name).toMatch(/^recoverease-treatment-plan-maria-reyes-\d{4}-\d{2}-\d{2}\.pdf$/)
+      expect(await pdfLines(await file!.bytes())).toEqual(
+        expect.arrayContaining([
+          'Treatment plan',
+          'Maria Reyes',
+          'Shoulder rehabilitation',
+          'Active',
+          'Six week programme.',
+          'Raise arm above shoulder',
+          'By 1 Oct 2026 · Achieved',
+          'Carry a shopping bag',
+          'No target date · In progress',
+        ]),
+      )
+      expect(window.print).not.toHaveBeenCalled()
+    } finally {
+      capture.release()
+    }
+  })
+
+  it('keeps the control off the paper', () => {
+    render(<PatientTreatmentPage />)
+    expect(leftOffPaper(screen.getByRole('button', { name: 'Download plan (PDF)' }))).toBe(true)
   })
 })

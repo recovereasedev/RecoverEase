@@ -700,10 +700,16 @@ Recorded honestly rather than left for someone to discover:
    recorded with a reason — never silenced by weakening a policy.
 2. **Rate limiting relies on Supabase defaults.** No additional throttling is
    applied to the Edge Functions.
-3. **`report_file_path` is never populated.** Documents are produced through
-   the browser's print pipeline; writing a rendered file to Supabase Storage
-   is the documented extension point, deliberately not faked with a URL that
-   would 404.
+3. **`report_file_path` is never populated, and no document is stored.**
+   The prescription, the treatment plan and the system-wide report download
+   as files built in the browser - PDF with pdf-lib, the report also as an
+   Excel workbook - from data the signed-in user's own access already
+   returned, and are handed straight to the browser's download
+   (`src/lib/documents/`). Nothing is uploaded, so a downloaded document can
+   hold nothing its reader could not already see. Printing, through the
+   browser's own pipeline, stays beside each download. Writing a rendered
+   file to Supabase Storage remains the documented extension point,
+   deliberately not faked with a URL that would 404.
 4. **Reminder delivery is in-app only.** Medication reminders are dispatched
    on a pg_cron schedule and written to the `notification` table, which is
    what the ERD models. Email and push delivery are not implemented.
