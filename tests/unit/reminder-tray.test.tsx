@@ -306,3 +306,114 @@ describe('the reminder card', () => {
     expect(tray()).toBeNull()
   })
 })
+
+/**
+ * What a screen reader is told. The announcer is a live region: it speaks
+ * when its text changes, so these record each change rather than only the
+ * text it ends with.
+ */
+describe('reading reminders out', () => {
+  const PARACETAMOL = {
+    medication_log_id: 'log-2',
+    medication_schedule_id: 'ms-2',
+    medication_log_scheduled_at: at(12),
+    medication_schedule: {
+      medication_schedule_id: 'ms-2',
+      medication_schedule_name: 'Paracetamol',
+      medication_schedule_dosage: '1 tablet',
+    },
+  }
+
+  /** Every change of the announcer's text from now on, in order. */
+  function listenToAnnouncer() {
+    const announcer = document.querySelector('[data-reminder-announcer]')!
+    const said: string[] = []
+    const observer = new MutationObserver(() => said.push(announcer.textContent ?? ''))
+    observer.observe(announcer, { childList: true, characterData: true, subtree: true })
+    return { said, spoken: () => said.filter(Boolean), stop: () => observer.disconnect() }
+  }
+
+  async function wait(ms: number) {
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(ms)
+    })
+  }
+
+  it('reads a snoozed reminder out again when it comes back, and only once', async () => {
+    renderTray()
+    await settle()
+    const announcer = document.querySelector('[data-reminder-announcer]')
+    expect(announcer).toHaveTextContent('Medication due in 10 minutes. Amoxicillin 500 mg at 08:00.')
+
+    const listener = listenToAnnouncer()
+    fireEvent.click(within(tray()!).getByRole('button', { name: 'Remind me in 5 min: Amoxicillin' }))
+    await wait(4 * MIN)
+    expect(tray()).toBeNull()
+    expect(listener.spoken()).toEqual([])
+
+    await wait(MIN + 30_000)
+    expect(within(tray()!).getByText('Medication due in 5 minutes')).toBeInTheDocument()
+    expect(announcer).toHaveTextContent('Medication due in 5 minutes. Amoxicillin 500 mg at 08:00.')
+    expect(listener.spoken()).toEqual(['Medication due in 5 minutes. Amoxicillin 500 mg at 08:00.'])
+
+    // While it stays on screen, the minutes count down on the card but
+    // nothing is read out again.
+    await wait(2 * MIN)
+    expect(within(tray()!).getByText('Medication due in 3 minutes')).toBeInTheDocument()
+    expect(listener.spoken()).toHaveLength(1)
+    listener.stop()
+  })
+
+  it('reads it out again even when its words have not changed', async () => {
+    // Due now before the snooze and still due now after it.
+    hooks.doses = [dose({ medication_log_scheduled_at: at(0) })]
+    renderTray()
+    await settle()
+    const announcer = document.querySelector('[data-reminder-announcer]')
+    expect(announcer).toHaveTextContent('Medication due now. Amoxicillin 500 mg at 07:50.')
+
+    const listener = listenToAnnouncer()
+    fireEvent.click(within(tray()!).getByRole('button', { name: 'Remind me in 5 min: Amoxicillin' }))
+    await wait(5 * MIN + 30_000)
+
+    expect(within(tray()!).getByText('Medication due now')).toBeInTheDocument()
+    expect(listener.spoken()).toEqual(['Medication due now. Amoxicillin 500 mg at 07:50.'])
+    listener.stop()
+  })
+
+  it('reads out only the reminder that comes back, not one still on screen', async () => {
+    hooks.doses = [dose(), dose(PARACETAMOL)]
+    renderTray()
+    await settle()
+    expect(document.querySelector('[data-reminder-announcer]')).toHaveTextContent(
+      'Medication due in 10 minutes. Amoxicillin 500 mg at 08:00. ' +
+        'Medication due in 12 minutes. Paracetamol 1 tablet at 08:02.',
+    )
+
+    const listener = listenToAnnouncer()
+    fireEvent.click(within(tray()!).getByRole('button', { name: 'Remind me in 5 min: Amoxicillin' }))
+    await wait(5 * MIN + 30_000)
+
+    const card = within(tray()!)
+    expect(card.getByText('Medication due in 5 minutes')).toBeInTheDocument()
+    expect(card.getByText('Medication due in 7 minutes')).toBeInTheDocument()
+    expect(listener.spoken()).toEqual(['Medication due in 5 minutes. Amoxicillin 500 mg at 08:00.'])
+    listener.stop()
+  })
+
+  it('reads nothing out when a reminder is dismissed, and it does not come back', async () => {
+    hooks.doses = [dose(), dose(PARACETAMOL)]
+    renderTray()
+    await settle()
+
+    const listener = listenToAnnouncer()
+    fireEvent.click(within(tray()!).getByRole('button', { name: 'Dismiss reminder: Paracetamol' }))
+    await wait(10 * MIN)
+
+    const card = within(tray()!)
+    expect(card.queryByText(/Paracetamol/)).toBeNull()
+    expect(card.getByText('Medication due now')).toBeInTheDocument()
+    expect(listener.spoken()).toEqual([])
+    listener.stop()
+  })
+})

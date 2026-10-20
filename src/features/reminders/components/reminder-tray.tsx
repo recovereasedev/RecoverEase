@@ -215,6 +215,16 @@ function Tray({
     run()
   }
 
+  // A snoozed reminder comes back after five minutes and is read out again
+  // then, as when it first appeared. The region is emptied too: unemptied,
+  // a reminder whose words have not changed - still "Medication due now" -
+  // would come back without anything for a screen reader to announce.
+  const snooze = (id: string) => {
+    announced.current.delete(id)
+    setAnnouncement('')
+    state.snooze(id)
+  }
+
   return (
     <>
       {/* Always rendered, so a new reminder is read out by every screen reader.
@@ -290,7 +300,7 @@ function Tray({
                           size="sm"
                           variant="outline"
                           aria-label={`Remind me in 5 min: ${item.medicine}`}
-                          onClick={(event) => act(event, () => state.snooze(item.id))}
+                          onClick={(event) => act(event, () => snooze(item.id))}
                         >
                           Remind me in 5 min
                         </Button>
