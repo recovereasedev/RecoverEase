@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+
 import {
   FunctionsFetchError,
   FunctionsHttpError,
@@ -117,8 +120,26 @@ describe('retrying', () => {
   })
 
   it('gives the server time to answer before the browser gives up', () => {
-    // chatbot-reply stops waiting for Gemini after 25 s; the browser waits
-    // longer, so a reply still being prepared is not abandoned.
+    // The browser's limit runs from just before `functions.invoke` sends the
+    // request until the response is read. chatbot-reply's limit is only its
+    // wait for Gemini, so the browser's must also cover everything else - the
+    // session token, the CORS preflight, the checks before the Gemini call,
+    // the review request after a timeout, the network. That measured 4.7 s on
+    // the slowest request in production (2026-10-20, a cold start).
+    //
+    // This compares the configured limits with that one measurement; it does
+    // not measure the overhead, which a slower cold start or network can
+    // raise. What it keeps is at least 5 s spare beyond what was measured.
+    const MEASURED_OVERHEAD_MS = 4_700
+    const source = readFileSync(
+      join(process.cwd(), 'supabase/functions/chatbot-reply/index.ts'),
+      'utf8',
+    )
+    const declared = source.match(/const REQUEST_TIMEOUT_MS = ([\d_]+)/)?.[1]
+    expect(declared).toBeDefined()
+    const serverTimeout = Number(declared!.replaceAll('_', ''))
+    const spare = REPLY_TIMEOUT_MS - serverTimeout - MEASURED_OVERHEAD_MS
+    expect(spare).toBeGreaterThanOrEqual(5_000)
     expect(REPLY_TIMEOUT_MS).toBeGreaterThan(30_000)
     expect(REPLY_TIMEOUT_MS).toBeLessThanOrEqual(60_000)
   })
