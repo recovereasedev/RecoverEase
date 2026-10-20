@@ -477,9 +477,55 @@ and is not implemented.
 
 ### The reminder before each dose (migration 37)
 
-**Where the release stood - as of 2026-10-19** (main `5c5119c`; last
-read-only production check at about 10:43Z). This is a dated snapshot, not
-the current production state:
+**Applied on 2026-10-19 at 14:25:02Z** (`medication_pre_dose_reminders`,
+history version `20261019142502`). The points below are the results the
+operator's report gave for that day. They are historical evidence, not a
+fresh check of the current production state: check that read-only before
+relying on it.
+
+- **The application.** Applied once, inside the agreed window
+  (14:18-14:27Z), after a fresh read-only preflight passed, with the reviewed
+  SQL: MD5 `8426de1d15eb6bf9b7e4f498dea37097`, 11,575 bytes.
+- **History.** One entry, `20261019142502 medication_pre_dose_reminders`:
+  one statement whose MD5 and length equal the reviewed file's.
+- **Schema and privileges.** The column and the enabled guard trigger on
+  `medication_log`. No `PUBLIC`, `anon` or `authenticated` EXECUTE on either
+  function; `service_role` can execute the dispatcher, which is
+  `SECURITY DEFINER` with an empty `search_path`.
+- **Job.** `recoverease-medication-pre-dose-reminders`: `* * * * *`, active,
+  owned by `postgres`, running the dispatcher.
+- **Runs.** The first two, at 14:26Z and 14:27Z, succeeded. By 14:45Z the
+  job had run 20 times, all successfully, and none of the five jobs had a
+  failed run since the application.
+- **Security advisor.** The same findings as the baseline recorded before
+  applying, none naming either new function.
+
+No lead time had been set, so the ten-minute default applied.
+
+**Smoke test, 2026-10-19** (same report; a production write the owner
+approved). On the demonstration doctor and patient accounts (see
+"Demonstration accounts"), the doctor added a clearly fictional test
+medicine, "Reminder test tablet", for that day only, with one dose at 22:50
+Asia/Manila (14:50Z):
+
+- At about 22:40 Manila (14:40:00Z), ten minutes before the dose, the job
+  stamped it and created one in-app notification: "Your Reminder test tablet
+  (1 tablet) is due at 22:50."
+- The patient's Notifications page showed it after a reload.
+- Three further runs, at 22:41, 22:42 and 22:43 Manila, created no second
+  reminder for that dose.
+- The test dose was then marked taken, and that notification marked read.
+- The test schedule, its dose and the notification remain in production.
+  They were not deleted.
+
+This covers the in-app notification on that one test account, which is the
+only delivery there is (see "Scheduled jobs"). It says nothing about any
+other patient.
+
+**Historical snapshot: before applying, as of 2026-10-19** (main `5c5119c`;
+read-only production check at about 10:43Z). Recorded before migration 37
+was applied and kept as the record of that check; it is not the current
+production state:
 
 - The website half, PR #49, was merged and deployed: Admin → System settings
   offers the **Medication reminder lead time**. It works against the schema
@@ -491,14 +537,16 @@ the current production state:
   none of its objects - with migration 36, version `20261018202321`
   (`doctor_announcements`), as the newest history entry.
 
-Migration 37 itself is a separate database operation that has **not been
-approved**. Until it is applied no reminder is sent before a dose (the
-follow-up after an unrecorded dose is unaffected), and a lead time a Clinic
-Admin saves in the meantime takes effect the moment 37 is applied. This
-section is the procedure for when it is approved; it does not authorize
-applying it. Immediately before any application, rerun the read-only
-preflight below, and review any migration-history entry newer than
-`20261018202321` or any schema state that differs from it before going on.
+At that point migration 37 was a separate database operation that had **not
+been approved**. Until it was applied no reminder was sent before a dose (the
+follow-up after an unrecorded dose was unaffected), and a lead time a Clinic
+Admin saved in the meantime would take effect the moment 37 was applied.
+
+The procedure below is the one followed on 2026-10-19. It does not authorize
+applying 37 anywhere: any further application - to another project, or again
+after a rollback - needs its own approval. Immediately before it, rerun the
+read-only preflight below, and review any migration-history entry or schema
+state that differs from what the preflight expects before going on.
 
 Pre-dose reminders respect the patient's preferred contact time, as decided
 by the owner: a reminder whose send time falls before the patient's preferred
@@ -684,27 +732,28 @@ separate decision. `apply_migration`'s transaction behaviour is not
 documented (see "To roll back 31" above), so a failure may leave part of the
 script applied.
 
-#### Decisions still needed before applying
+#### Migration timing and run history
 
-These are **proposals under consideration, not adopted policy**. Each needs
-the owner's approval, and none is implemented.
-
-- **How migrations are timed once the job runs every minute.** From then on
-  there is no minute without a scheduled run. The proposal: keep routine
-  maintenance windows chosen around the heavier jobs (as above), and adopt a
-  convention that future migrations taking locks on tables the jobs use start
-  with a 3-second `lock_timeout`, so a migration that cannot get its lock
-  fails quickly rather than holding the website up behind it. Pause the
-  pre-dose job (`cron.alter_job`) only for a change to its own logic or
-  schema, or a long operation on `medication_log`, and confirm it is active
-  again afterwards.
-- **How long `cron.job_run_details` keeps run history.** pg_cron never removes
-  it. The four existing jobs add about 145 rows a day; the pre-dose job adds
-  1,440 more, roughly 0.3 MB a day or 110 MB a year, against a 15 MB database
-  (observed 2026-10-19). The proposal: keep successful runs for 14 days and
-  failed runs for 90, removed by a daily purge job added in its own,
-  separately reviewed migration. No purge job exists and no scheduler setting
-  has been changed.
+- **How migrations are timed now that the job runs every minute: accepted by
+  the owner on 2026-10-19.** There is no minute without a scheduled run. Keep
+  routine maintenance windows chosen around the heavier jobs (as above), and
+  start future migrations that take locks on tables the jobs use with a
+  3-second `lock_timeout`, so a migration that cannot get its lock fails
+  quickly rather than holding the website up behind it. Pause the pre-dose
+  job (`cron.alter_job`) only for a change to its own logic or schema, or a
+  long operation on `medication_log`, and confirm it is active again
+  afterwards. This is the operator's convention for applicable migrations
+  from here on; nothing in the repository enforces it. Migration 37 itself
+  was applied exactly as reviewed, without a `lock_timeout`, and its file,
+  checksum and length are unchanged.
+- **How long `cron.job_run_details` keeps run history: deferred by the
+  owner.** pg_cron never removes it. The four existing jobs add about 145
+  rows a day; the pre-dose job adds 1,440 more, roughly 0.3 MB a day or
+  110 MB a year, against a 15 MB database (observed 2026-10-19). The
+  proposal: keep successful runs for 14 days and failed runs for 90, removed
+  by a daily purge job added in its own, separately reviewed migration. No
+  purge job exists and no scheduler setting has been changed. The proposal
+  stays deferred: it is not adopted policy and is not implemented.
 
 To roll back: the website from before PR #49 first, then
 `supabase/rollbacks/20260902100037_medication_pre_dose_reminders.down.sql` as a
