@@ -81,8 +81,18 @@ import {
  *   supabase secrets set GEMINI_API_KEY=...
  */
 
-/** Beyond this the patient is better served by an honest failure. */
-const REQUEST_TIMEOUT_MS = 25_000
+/**
+ * Beyond this the patient is better served by an honest failure.
+ *
+ * Only part of what the browser waits for. Its own limit (`REPLY_TIMEOUT_MS`,
+ * 40 s) runs from just before the request until the response is read, so it
+ * also covers the session token, the CORS preflight, the checks before this
+ * call, the review request after a timeout and the network. Those measured
+ * 4.7 s on the slowest request in production (a cold start), which leaves
+ * about 5 s to spare at 30 s - not a guarantee: a slower cold start or
+ * network can use it up.
+ */
+const REQUEST_TIMEOUT_MS = 30_000
 
 /** A row of `chat_message`, as `select('*')` returns it. */
 type ChatMessageRow = {
