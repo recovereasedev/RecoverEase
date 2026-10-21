@@ -100,9 +100,14 @@ test.describe('the patient, when the guidance assistant is off', () => {
     await page.getByLabel(/your message/i).fill('Is mild swelling normal?')
     await page.getByRole('button', { name: /send message/i }).click()
 
+    // No review is asked for while it is off, so nothing suggests anyone will
+    // follow the message up.
     await expect(
-      page.getByText('The guidance assistant is turned off. Your message has been saved, and your care team can still see it.'),
+      page.getByText(
+        'The guidance assistant is turned off. Your message has been saved, but no one has been alerted to it. For anything about your recovery, contact your care team.',
+      ),
     ).toBeVisible()
+    await expect(page.getByText(/care team can still see it/)).toHaveCount(0)
     await expect(page.getByRole('button', { name: 'Try again' })).toHaveCount(0)
     await expect(page.getByText(OFF_MESSAGE)).toBeVisible()
     await expect(page.getByLabel(/your message/i)).toHaveCount(0)
@@ -176,5 +181,31 @@ test.describe('the Super Admin', () => {
     await expect(dialog).toBeHidden()
     await expect(page.getByText('Off for every clinic', { exact: true })).toBeVisible()
     await expect(page.getByRole('button', { name: 'Turn on for every clinic' })).toBeVisible()
+  })
+
+  test('says it was not turned off when turning it off fails, also once the dialog is closed', async ({ page, signInAs }) => {
+    const stub = await signInAs('super_admin', {}, { mfa: { verifiedFactor: true, aal: 'aal2' } })
+    stub.setRpcResult('super_admin_get_guidance_assistant', [{ enabled: true, updated_at: null }])
+    await page.route('**/rest/v1/rpc/super_admin_set_guidance_assistant', (route: Route) =>
+      route.fulfill({
+        status: 500,
+        contentType: 'application/json',
+        body: JSON.stringify({ code: 'XX000', message: 'could not save', details: null, hint: null }),
+      }),
+    )
+
+    await page.goto('/platform')
+    await page.getByRole('button', { name: 'Turn off for every clinic' }).click()
+    const dialog = page.getByRole('dialog', { name: 'Turn the guidance assistant off for every clinic?' })
+    await dialog.getByRole('button', { name: 'Turn off for every clinic' }).click()
+    await expect(dialog).toContainText('The guidance assistant was not turned off')
+
+    await dialog.getByRole('button', { name: 'Keep it on' }).click()
+    await expect(dialog).toBeHidden()
+    // The closed dialog keeps its own copy in the page, hidden; roles skip it.
+    const alerts = page.getByRole('alert')
+    await expect(alerts.filter({ hasText: 'The guidance assistant was not turned off' })).toBeVisible()
+    await expect(alerts.filter({ hasText: 'was not turned on' })).toHaveCount(0)
+    await expect(page.getByText('On for every clinic', { exact: true })).toBeVisible()
   })
 })
