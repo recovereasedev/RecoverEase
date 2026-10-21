@@ -67,6 +67,12 @@ export const APPOINTMENT_LEAD_MS = 10 * 60_000
 /** The follow-up reminder's delay (migration 09): the dose is its from then. */
 export const FOLLOW_UP_AFTER_MS = 30 * 60_000
 export const SNOOZE_MS = 5 * 60_000
+/**
+ * How much more than the snooze must be left for it to be offered: the
+ * card's clock ticks every 30 s, so `now` can be that old when the button is
+ * pressed, and a card that comes back should stay long enough to act on.
+ */
+export const SNOOZE_MARGIN_MS = 60_000
 
 /** Whole minutes to go, rounded up, so "in 10 minutes" means at most ten. */
 export function minutesUntil(at: number, now: number): number {
@@ -115,7 +121,7 @@ export function doseReminders(
       detail: `${medicine}${dosage ? ` ${dosage}` : ''} at ${formatTime(dose.medication_log_scheduled_at)}`,
       medicine,
       dueAt,
-      canSnooze: dueAt + FOLLOW_UP_AFTER_MS - now >= SNOOZE_MS,
+      canSnooze: dueAt + FOLLOW_UP_AFTER_MS - now > SNOOZE_MS + SNOOZE_MARGIN_MS,
     })
   }
   return items.sort((a, b) => a.dueAt - b.dueAt)

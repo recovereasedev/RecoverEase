@@ -95,11 +95,13 @@ describe('which doses to remind of', () => {
     expect(doseReminders([dose()], NOW + 5 * MIN, snoozed)).toHaveLength(1)
   })
 
-  it('offers a snooze only while the card would still come back after it', () => {
+  it('offers a snooze only while the card would still come back after it, with a minute to spare', () => {
+    // The card goes 30 minutes after the dose. Five minutes of snooze, plus
+    // a minute for the card's 30-second clock, must still fit before then.
     const due = dose({ medication_log_scheduled_at: at(0) })
     expect(doseReminders([due], NOW, EMPTY)[0]).toMatchObject({ canSnooze: true })
-    expect(doseReminders([due], NOW + 25 * MIN, EMPTY)[0]).toMatchObject({ canSnooze: true })
-    expect(doseReminders([due], NOW + 25 * MIN + 1, EMPTY)[0]).toMatchObject({ canSnooze: false })
+    expect(doseReminders([due], NOW + 24 * MIN - 1, EMPTY)[0]).toMatchObject({ canSnooze: true })
+    expect(doseReminders([due], NOW + 24 * MIN, EMPTY)[0]).toMatchObject({ canSnooze: false })
     expect(doseReminders([due], NOW + 29 * MIN, EMPTY)[0]).toMatchObject({ canSnooze: false })
   })
 
@@ -153,7 +155,6 @@ const hooks = vi.hoisted(() => ({
   user: null as unknown,
   doses: [] as unknown[],
   appointments: [] as unknown[],
-  appointmentQueries: [] as unknown[][],
   mutate: vi.fn(),
   saveFailed: false,
 }))
@@ -171,11 +172,9 @@ vi.mock('@/features/medications/hooks', () => ({
     variables: hooks.saveFailed ? { doseId: 'log-1', status: 'taken' } : undefined,
   }),
 }))
-vi.mock('@/features/appointments/hooks', () => ({
-  useAppointments: (...args: unknown[]) => {
-    hooks.appointmentQueries.push(args)
-    return { data: hooks.appointments, isPending: false, error: null }
-  },
+vi.mock('@/features/appointments/api', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/features/appointments/api')>()),
+  fetchAppointments: async () => hooks.appointments,
 }))
 vi.mock('@/features/patients/hooks', () => ({
   useMyDoctor: () => ({ data: { doc_first_name: 'Alan', doc_last_name: 'Cruz' } }),
@@ -189,8 +188,10 @@ const PATIENT = {
   profile: { kind: 'patient', patient: { pat_id: 'p-alice', doc_id: 'd-alan' } },
 }
 
+let client: QueryClient
+
 function renderTray() {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter>
@@ -219,7 +220,6 @@ beforeEach(() => {
   hooks.user = PATIENT
   hooks.doses = [dose()]
   hooks.appointments = []
-  hooks.appointmentQueries = []
   hooks.mutate.mockReset()
   hooks.saveFailed = false
 })
@@ -318,26 +318,57 @@ describe('the reminder card', () => {
     expect(card.queryByRole('button', { name: /mark taken/i })).toBeNull()
   })
 
-  it('keeps the appointments fresh, so a cancelled or moved one is not announced for its old time', async () => {
+  it('drops an appointment cancelled while the page stays open, within a minute', async () => {
+    hooks.doses = []
+    hooks.appointments = [appointment()]
     renderTray()
     await settle()
-    expect(hooks.appointmentQueries.at(-1)).toEqual(['p-alice', { refetchInterval: 60_000 }])
+    expect(within(tray()!).getByText('Appointment in 8 minutes')).toBeInTheDocument()
 
-    hooks.user = { userId: 'u-alan', role: 'doctor', profile: { kind: 'doctor', doctor: { doc_id: 'd-alan' } } }
-    renderTray()
-    await settle()
-    expect(hooks.appointmentQueries.at(-1)).toEqual([undefined, { refetchInterval: 60_000 }])
+    hooks.appointments = [appointment({ appointment_status: 'cancelled' })]
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(61_000)
+    })
+    expect(tray()).toBeNull()
   })
 
-  it('does not offer a snooze it cannot keep, in the last five minutes before the follow-up', async () => {
+  it('keeps its own copy of the appointments, so its refetch cannot fail a page’s list', async () => {
+    renderTray()
+    await settle()
+    const keys = client.getQueryCache().getAll().map((query) => JSON.stringify(query.queryKey))
+    expect(keys).toContain(JSON.stringify(['appointments', 'reminders', 'patient', 'p-alice']))
+    expect(keys).not.toContain(JSON.stringify(['appointments', 'patient', 'p-alice']))
+  })
+
+  it('does not offer a snooze it cannot keep, in the last minutes before the follow-up', async () => {
     // Due 26 minutes ago: the card goes at 30, before five more minutes.
     hooks.doses = [dose({ medication_log_scheduled_at: at(-26) })]
     renderTray()
     await settle()
     const card = within(tray()!)
     expect(card.getByText('Medication due now')).toBeInTheDocument()
-    expect(card.getByRole('button', { name: 'Mark taken: Amoxicillin' })).toBeInTheDocument()
-    expect(card.queryByRole('button', { name: /remind me in 5 min/i })).toBeNull()
+    const snooze = card.getByRole('button', { name: 'Remind me in 5 min: Amoxicillin' })
+    expect(snooze).toHaveAttribute('aria-disabled', 'true')
+    expect(snooze).toHaveAccessibleDescription(/not available/i)
+
+    fireEvent.click(snooze)
+    expect(within(tray()!).getByText('Medication due now')).toBeInTheDocument()
+  })
+
+  it('keeps focus on the snooze button when it stops being available', async () => {
+    // Seven minutes to spare: available now, not a minute later.
+    hooks.doses = [dose({ medication_log_scheduled_at: at(-23) })]
+    renderTray()
+    await settle()
+    const snooze = within(tray()!).getByRole('button', { name: 'Remind me in 5 min: Amoxicillin' })
+    expect(snooze).not.toHaveAttribute('aria-disabled')
+    snooze.focus()
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(90_000)
+    })
+    expect(snooze).toHaveAttribute('aria-disabled', 'true')
+    expect(document.activeElement).toBe(snooze)
   })
 
   it('leaves focus where the patient moved it, when a dose marked taken leaves later', async () => {
@@ -361,6 +392,29 @@ describe('the reminder card', () => {
     expect(document.activeElement).toBe(pageButton)
   })
 
+  it('hands focus on when a dose marked taken leaves, even if other reminders came meanwhile', async () => {
+    renderTray()
+    await settle()
+    const markTaken = within(tray()!).getByRole('button', { name: 'Mark taken: Amoxicillin' })
+    markTaken.focus()
+    fireEvent.click(markTaken)
+
+    // Another dose comes while the save is out; focus is still on the card.
+    hooks.doses = [dose(), dose({ medication_log_id: 'log-2', medication_log_scheduled_at: at(12) })]
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(61_000)
+    })
+    expect(document.activeElement).toBe(markTaken)
+
+    // Then the saved one drops out, and focus goes to the card that is left.
+    hooks.doses = [dose({ medication_log_id: 'log-2', medication_log_scheduled_at: at(12) })]
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(61_000)
+    })
+    expect(within(tray()!).queryByText(/Amoxicillin 500 mg at 08:00/)).toBeNull()
+    expect(tray()!.contains(document.activeElement)).toBe(true)
+  })
+
   it('keeps the card, with its message, when marking it taken fails, and later changes take no focus', async () => {
     renderTray()
     await settle()
@@ -368,19 +422,41 @@ describe('the reminder card', () => {
     markTaken.focus()
     fireEvent.click(markTaken)
     hooks.saveFailed = true
+    // The card's next tick shows the failure.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000)
+    })
+    expect(within(tray()!).getByRole('alert')).toHaveTextContent('That was not saved.')
+
+    // Focus then leaves the page, and a reminder comes: nothing takes it.
+    markTaken.blur()
+    expect(document.activeElement).toBe(document.body)
+    hooks.doses = [dose(), dose({ medication_log_id: 'log-2', medication_log_scheduled_at: at(12) })]
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(31_000)
+    })
+    expect(within(tray()!).getAllByRole('listitem')).toHaveLength(2)
+    expect(document.activeElement).toBe(document.body)
+  })
+
+  it('takes at most half the screen, and scrolls only once the cards need more', async () => {
+    renderTray()
+    await settle()
+    // jsdom lays nothing out: the cards fit, so the list does not scroll.
+    const list = () => tray()!.querySelector('ul')!
+    expect(list()).toHaveClass('max-h-[50dvh]')
+    expect(list()).not.toHaveClass('overflow-y-auto')
+
+    // Taller than it may be: now it scrolls.
+    const scrollHeight = vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockReturnValue(600)
+    const clientHeight = vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(300)
     hooks.doses = [dose(), dose({ medication_log_id: 'log-2', medication_log_scheduled_at: at(12) })]
     await act(async () => {
       await vi.advanceTimersByTimeAsync(61_000)
     })
-
-    expect(within(tray()!).getByRole('alert')).toHaveTextContent('That was not saved.')
-    expect(document.activeElement).toBe(markTaken)
-  })
-
-  it('takes at most half the screen, and scrolls beyond it', async () => {
-    renderTray()
-    await settle()
-    expect(tray()!.querySelector('ul')).toHaveClass('max-h-[50dvh]', 'overflow-y-auto')
+    expect(list()).toHaveClass('overflow-y-auto')
+    scrollHeight.mockRestore()
+    clientHeight.mockRestore()
   })
 
   it('shows an administrator nothing', async () => {

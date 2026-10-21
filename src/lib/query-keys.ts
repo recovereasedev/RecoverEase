@@ -28,6 +28,15 @@ export const queryKeys = {
     forPatient: (patientId: string) =>
       [...queryKeys.appointments.all, 'patient', patientId] as const,
     forDoctor: () => [...queryKeys.appointments.all, 'doctor'] as const,
+    /**
+     * The reminder card's own copy, refetched each minute. Its own key, so
+     * a refetch that fails marks only the card's copy as failed, never the
+     * list a page has on screen; under `all`, so every change refreshes it.
+     */
+    forReminders: (patientId?: string) =>
+      patientId
+        ? ([...queryKeys.appointments.all, 'reminders', 'patient', patientId] as const)
+        : ([...queryKeys.appointments.all, 'reminders', 'doctor'] as const),
     rescheduleRequests: () =>
       [...queryKeys.appointments.all, 'reschedule-requests'] as const,
   },
