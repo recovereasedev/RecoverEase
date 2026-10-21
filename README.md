@@ -265,6 +265,7 @@ Conventions:
 | [`security.md`](./docs/security.md) | RLS model, access matrix, column guards, PHI handling, limitations |
 | [`testing.md`](./docs/testing.md) | Test strategy, the RLS harness, what is not covered |
 | [`deployment.md`](./docs/deployment.md) | Setup, secrets, scheduled jobs, bundle budget, checklist |
+| [`critical-alert-escalation.md`](./docs/critical-alert-escalation.md) | Where a critical chat alert goes while the patient's doctor is deactivated: options and decision |
 | [`ui-design.md`](./docs/ui-design.md) | Design tokens, contrast ratios, accessibility, responsive rules |
 
 ## Licence

@@ -138,6 +138,22 @@ export async function fetchReassignmentCounts(doctorId: string): Promise<Reassig
 }
 
 /**
+ * Critical alerts from the guidance chat waiting on each doctor's patients
+ * for a clinician who can open them (migration 40), by doctor id. Only
+ * doctors with at least one are present.
+ *
+ * Counts, never a conversation: the administrator's part is to reassign the
+ * patients or reactivate the doctor, which delivers them. The database
+ * function refuses anyone but a Clinic Admin, and counts only their clinic.
+ */
+export async function fetchHeldChatAlertCounts(): Promise<Record<string, number>> {
+  const { data, error } = await supabase.rpc('admin_held_chat_alert_counts')
+
+  if (error) throw error
+  return Object.fromEntries((data ?? []).map((row) => [row.doc_id, row.held_alerts]))
+}
+
+/**
  * Decision D8: moves every patient of a deactivated doctor, with their
  * upcoming appointments, to an active doctor in the same clinic. The counts
  * are the ones the administrator was shown; if either has changed since, or

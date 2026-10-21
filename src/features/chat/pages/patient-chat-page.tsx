@@ -34,6 +34,10 @@ import {
 } from '@/features/chat/api'
 import { AssistantAvatar } from '@/features/chat/components/assistant-avatar'
 import {
+  FLAGGED_CONVERSATION_BADGE,
+  FLAGGED_CONVERSATION_NOTICE,
+} from '@/features/chat/flag-notice'
+import {
   forgetPendingSend,
   loadPendingSends,
   type PendingSend,
@@ -775,10 +779,11 @@ export function PatientChatPage() {
             aria-label="Conversation"
             className="px-4 py-5 chat-fit:min-h-0 chat-fit:flex-1 chat-fit:overflow-y-auto lg:px-8 lg:py-6"
           >
+            {/* What the flag means, and no more: whether the alert reached
+                anyone is not something this page knows (flag-notice.ts). */}
             {activeSession?.chat_session_has_critical_flag ? (
               <Notice tone="warning" className="mb-5">
-                Something you raised in this conversation was flagged for your
-                doctor, and they have been notified.
+                {FLAGGED_CONVERSATION_NOTICE}
               </Notice>
             ) : null}
 
@@ -1121,7 +1126,7 @@ export function PatientChatPage() {
                           {session.chat_session_has_critical_flag ? (
                             <span className="mt-2 inline-flex items-center gap-1.5 rounded-[var(--radius-sm)] bg-warning-50 px-2 py-0.5 text-xs font-semibold text-warning-800">
                               <AlertTriangle className="size-3.5" aria-hidden="true" />
-                              Flagged for your doctor
+                              {FLAGGED_CONVERSATION_BADGE}
                             </span>
                           ) : null}
                         </span>

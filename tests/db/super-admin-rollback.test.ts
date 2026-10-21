@@ -9,8 +9,8 @@ import { seedFixture, type Fixture } from './helpers/fixtures'
 import { assuredSuperAdmin, createSignIn, type Claims } from './helpers/super-admin'
 
 /**
- * The down-scripts for migrations 34 and 33 (supabase/rollbacks), after 37's,
- * 36's and 35's, which go first.
+ * The down-scripts for migrations 34 and 33 (supabase/rollbacks), after 40's,
+ * 39's, 38's, 37's, 36's and 35's, which go first.
  *
  * Run against a database that has been used - a Super Admin, a clinic's
  * status changed back and forth, a platform announcement written and
@@ -20,6 +20,8 @@ import { assuredSuperAdmin, createSignIn, type Claims } from './helpers/super-ad
  * the comparison includes the enum, so it shows that is all that remains.
  */
 
+const ROLLBACK_40 = 'supabase/rollbacks/20260902100040_held_chat_alerts.down.sql'
+const ROLLBACK_39 = 'supabase/rollbacks/20260902100039_platform_setting_audit_field_names.down.sql'
 const ROLLBACK_38 = 'supabase/rollbacks/20260902100038_guidance_assistant_switch.down.sql'
 const ROLLBACK_37 = 'supabase/rollbacks/20260902100037_medication_pre_dose_reminders.down.sql'
 const ROLLBACK_36 = 'supabase/rollbacks/20260902100036_doctor_announcements.down.sql'
@@ -46,7 +48,7 @@ const rows = async (database: TestDatabase) => ({
   ),
 })
 
-describe('rolling back migrations 38, 37, 36, 35, 34 and 33 with their down-scripts', () => {
+describe('rolling back migrations 40, 39, 38, 37, 36, 35, 34 and 33 with their down-scripts', () => {
   let used: TestDatabase
   let through32: TestDatabase
   let fx: Fixture
@@ -90,6 +92,8 @@ describe('rolling back migrations 38, 37, 36, 35, 34 and 33 with their down-scri
   it('returns the schema to exactly what 32 left, and keeps every row', async () => {
     const before = await rows(used)
 
+    await used.db.exec(await script(ROLLBACK_40))
+    await used.db.exec(await script(ROLLBACK_39))
     await used.db.exec(await script(ROLLBACK_38))
     await used.db.exec(await script(ROLLBACK_37))
     await used.db.exec(await script(ROLLBACK_36))

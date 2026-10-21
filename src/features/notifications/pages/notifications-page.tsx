@@ -136,6 +136,12 @@ export function NotificationsPage() {
                     conversationPatientId && notification.chat_session_id
                       ? `/doctor/patients/${conversationPatientId}?tab=chat&session=${notification.chat_session_id}`
                       : null
+                  // A Clinic Admin's chat alert is about a deactivated
+                  // doctor's patient, held until a clinician can open it
+                  // (migration 40). It names no conversation; what they can
+                  // do is on Doctor accounts.
+                  const doctorsPath =
+                    role === 'admin' && isCritical ? '/admin/doctors' : null
 
                   return (
                     <li
@@ -209,7 +215,7 @@ export function NotificationsPage() {
                         </div>
                       </div>
 
-                      {isUnread || conversationPath ? (
+                      {isUnread || conversationPath || doctorsPath ? (
                         <div className="flex gap-2 max-sm:self-end sm:shrink-0">
                           {conversationPath ? (
                             <Link
@@ -220,6 +226,20 @@ export function NotificationsPage() {
                               })}
                             >
                               View conversation
+                              <span className="sr-only">
+                                : {notification.notification_message}
+                              </span>
+                            </Link>
+                          ) : null}
+                          {doctorsPath ? (
+                            <Link
+                              to={doctorsPath}
+                              className={buttonVariants({
+                                size: 'sm',
+                                variant: 'outline',
+                              })}
+                            >
+                              Open doctor accounts
                               <span className="sr-only">
                                 : {notification.notification_message}
                               </span>

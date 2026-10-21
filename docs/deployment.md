@@ -371,29 +371,33 @@ To roll back 31, go the other way, newest first. Each later migration is
 rolled back with its own down-script, applied as a new migration, and where
 deployed code depends on it, that code goes back first:
 
-1. **39**: `supabase/rollbacks/20260902100039_platform_setting_audit_field_names.down.sql`.
+1. **40**, where it is applied:
+   `supabase/rollbacks/20260902100040_held_chat_alerts.down.sql`, which
+   refuses while any critical alert is still held. No code has to go back
+   first (see [below](#critical-alerts-held-for-a-clinician-migration-40)).
+2. **39**: `supabase/rollbacks/20260902100039_platform_setting_audit_field_names.down.sql`.
    No code goes back: the website and the Edge Functions work with either
    version.
-2. **38**: `chatbot-reply` and the website from before migration 38, then
+3. **38**: `chatbot-reply` and the website from before migration 38, then
    `supabase/rollbacks/20260902100038_guidance_assistant_switch.down.sql`.
    33's down-script refuses while 38 is installed.
-3. **37**: the website from before PR #49, then
+4. **37**: the website from before PR #49, then
    `supabase/rollbacks/20260902100037_medication_pre_dose_reminders.down.sql`.
-4. **36**: the website from before PR #47, then
+5. **36**: the website from before PR #47, then
    `supabase/rollbacks/20260902100036_doctor_announcements.down.sql`, which
    refuses while any doctor's announcement exists.
-5. **35**: `supabase/rollbacks/20260902100035_platform_audit_field_names.down.sql`.
+6. **35**: `supabase/rollbacks/20260902100035_platform_audit_field_names.down.sql`.
    No code goes back: the website and the Edge Functions work with either
    version.
-6. **34**, where it is applied:
+7. **34**, where it is applied:
    `supabase/rollbacks/20260902100034_lift_single_clinic_gate.down.sql`,
    which refuses once a second clinic exists. No code goes back.
-7. **33**: `supabase/rollbacks/20260902100033_super_admin_platform.down.sql`,
+8. **33**: `supabase/rollbacks/20260902100033_super_admin_platform.down.sql`,
    which refuses while 34 is applied or a Super Admin or platform announcement
    exists. No code goes back: with no Super Admin nothing reaches the
    console, and `create-account` refuses Clinic Admin provisioning before any
    login is created.
-8. **31**: the website from before 31, then `chatbot-reply` from before 31
+9. **31**: the website from before 31, then `chatbot-reply` from before 31
    (it reads `system_setting.clinic_id`), then
    `supabase/rollbacks/20260902100031_clinic_settings.down.sql`. It refuses
    while there is more than one clinic - two clinics' settings cannot be
@@ -1045,6 +1049,62 @@ No code goes back. It refuses where 39 is not applied. It goes before 38's
 and 35's. 35's down-script drops the helper, taking 39 with it, and 38's
 leaves 39's helper naming a table that is gone. That does no harm, but the
 schema is then not exactly what 37 left.
+
+### Critical alerts held for a clinician (migration 40)
+
+**Not in the coming release, not applied and not deployed.** On 2026-10-21
+the product owner kept it out of the release: option C is not confirmed, and
+the three open questions in
+[`critical-alert-escalation.md`](./critical-alert-escalation.md) are release
+blockers. Migration 40 and the `chatbot-reply` change that goes with it are
+on a branch for review.
+
+Migration 40 adds `chat_session.chat_session_alert_held_since`, its guard,
+`hold_chat_alert` (service role only), delivery on hand-over (two statement
+triggers) and `admin_held_chat_alert_counts`. It needs migration 29 and
+refuses to run without it. It is independent of 34, 38 and 39, and numbered
+after them only so that the repository has one order:
+`tests/db/held-chat-alerts.test.ts` applies it after 33, 35, 36, 37 and 38
+with 34 unapplied, as production has them, and before 39. No existing row
+changes, and the column starts empty.
+
+The release order, each step its own approval:
+
+1. **Confirm the decision** (option C), decide the three open questions,
+   and review the branch.
+2. **Approve migration 40**, then apply it and verify it: its history entry,
+   the column, the three functions and the three triggers. Read-only after
+   applying:
+
+   ```sql
+   select count(*) from public.chat_session
+    where chat_session_alert_held_since is not null;   -- 0
+   select tgname from pg_trigger
+    where tgname in ('chat_session_guard_held_alert',
+                     'patient_deliver_held_chat_alerts',
+                     'doctor_deliver_held_chat_alerts');  -- 3 rows
+   ```
+
+3. **Approve deploying `chatbot-reply`**, separately:
+   `supabase functions deploy chatbot-reply`. This branch's function is the
+   switch's (`3a39b06`, production's v17) with this change; it does not
+   carry `repair/chatbot-reply-hardening`, so whichever of the two goes out
+   second must include the other. If it is deployed before 40,
+   the alert still reaches the Clinic Admins, but nothing is held, nothing is
+   delivered on hand-over, and they are told on every such reply.
+4. **Approve merging the website.** Until 40 is applied, Doctor accounts says
+   it could not check for waiting alerts, and nothing else changes.
+
+There is no production smoke test of the alert path that leaves no trace. A
+real check needs a deactivated doctor with an assigned patient whose
+conversation raises a concern. That means Gemini, and real notifications to
+real administrators. Do it only with a test clinic and with approval.
+
+Rolling back: the down-script refuses while any alert is held. Deliver them
+first (reassign the patients, or reactivate the doctor). It goes first,
+before 39's and 38's. The `chatbot-reply` that holds alerts keeps working
+after the rollback: when it cannot hold an alert, it tells the Clinic Admins
+anyway. Neither the website nor the function has to go back first.
 
 ## Bundle budget
 
