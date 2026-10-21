@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { queryKeys } from '@/lib/query-keys'
+import { useQueryKeys } from '@/features/auth/use-query-keys'
 
 import {
   fetchNotifications,
@@ -11,6 +11,7 @@ import {
 } from './api'
 
 export function useNotifications() {
+  const queryKeys = useQueryKeys()
   return useQuery({
     queryKey: queryKeys.notifications.list(),
     queryFn: () => fetchNotifications(),
@@ -18,6 +19,7 @@ export function useNotifications() {
 }
 
 export function useUnreadNotificationCount() {
+  const queryKeys = useQueryKeys()
   return useQuery({
     queryKey: queryKeys.notifications.unreadCount(),
     queryFn: fetchUnreadCount,
@@ -31,6 +33,7 @@ export function useUnreadNotificationCount() {
 }
 
 export function useMarkNotificationRead() {
+  const queryKeys = useQueryKeys()
   const queryClient = useQueryClient()
 
   return useMutation({
@@ -44,6 +47,7 @@ export function useMarkNotificationRead() {
 }
 
 export function useMarkAllNotificationsRead() {
+  const queryKeys = useQueryKeys()
   const queryClient = useQueryClient()
 
   return useMutation({

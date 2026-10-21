@@ -5,9 +5,9 @@ import { useState } from 'react'
 import { EmptyState, StateView } from '@/components/feedback/state-view'
 import { Card, CardBody, CardHeader } from '@/components/ui/card'
 import { Notice } from '@/components/ui/notice'
+import { useQueryKeys } from '@/features/auth/use-query-keys'
 import { fetchChatMessages, fetchChatSessions } from '@/features/chat/api'
 import { formatDateTime } from '@/lib/format'
-import { queryKeys } from '@/lib/query-keys'
 import { cn } from '@/lib/utils'
 
 /**
@@ -32,6 +32,7 @@ export function PatientChatTranscript({
   patientId: string
   initialSessionId?: string | null
 }) {
+  const queryKeys = useQueryKeys()
   const sessionsQuery = useQuery({
     queryKey: queryKeys.chat.sessionsFor(patientId),
     queryFn: () => fetchChatSessions(patientId),
