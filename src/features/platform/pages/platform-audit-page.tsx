@@ -11,6 +11,7 @@ import { DataTable, TBody, TD, TH, THead, TR } from '@/components/ui/data-table'
 import { Notice } from '@/components/ui/notice'
 import { toneForAuditAction } from '@/features/audit-logs/api'
 import { useCurrentUser } from '@/features/auth/auth-context'
+import { useQueryKeys } from '@/features/auth/use-query-keys'
 import {
   fetchClinics,
   fetchPlatformAudit,
@@ -20,7 +21,6 @@ import {
 } from '@/features/platform/api'
 import { useDocumentTitle } from '@/hooks/use-document-title'
 import { formatDateTime } from '@/lib/format'
-import { queryKeys } from '@/lib/query-keys'
 
 const ACTION_LABEL: Record<string, string> = {
   insert: 'Created',
@@ -72,6 +72,7 @@ function changedFields(entry: PlatformAuditEntry): string[] {
  * page at a time, continuing from the last one shown.
  */
 export function PlatformAuditPage() {
+  const queryKeys = useQueryKeys()
   useDocumentTitle('Platform Audit Log')
   const user = useCurrentUser()
 

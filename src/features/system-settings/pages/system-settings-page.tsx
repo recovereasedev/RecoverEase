@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { ErrorState, LoadingState } from '@/components/feedback/state-view'
 import { PageHeader } from '@/components/layout/page-header'
 import { useCurrentUser } from '@/features/auth/auth-context'
+import { useQueryKeys } from '@/features/auth/use-query-keys'
 import {
   fetchClinicSettings,
   fetchSystemSettings,
@@ -14,7 +15,6 @@ import {
 } from '@/features/system-settings/api'
 import { SettingForm } from '@/features/system-settings/components/setting-form'
 import { useDocumentTitle } from '@/hooks/use-document-title'
-import { queryKeys } from '@/lib/query-keys'
 
 /**
  * Modules 14.1 "Configure System Settings" and 8.7 "Configure Chatbot System
@@ -29,6 +29,7 @@ import { queryKeys } from '@/lib/query-keys'
  * belongs to the clinic itself, the others are stored settings of the clinic.
  */
 export function SystemSettingsPage() {
+  const queryKeys = useQueryKeys()
   useDocumentTitle('System Settings')
   const user = useCurrentUser()
   const adminId = user.profile.kind === 'admin' ? user.profile.admin.admin_id : ''

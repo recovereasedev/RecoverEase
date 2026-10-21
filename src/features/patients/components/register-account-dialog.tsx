@@ -8,13 +8,13 @@ import { Button } from '@/components/ui/button'
 import { Dialog } from '@/components/ui/dialog'
 import { Field, Input } from '@/components/ui/field'
 import { Notice } from '@/components/ui/notice'
+import { useQueryKeys } from '@/features/auth/use-query-keys'
 import {
   createDoctorAccount,
   createPatientAccount,
 } from '@/features/patients/account-api'
 import { TemporaryCredential } from '@/features/patients/components/temporary-credential'
 import { focusFirstInvalid } from '@/lib/form-focus'
-import { queryKeys } from '@/lib/query-keys'
 
 type Mode = 'patient' | 'doctor'
 
@@ -60,6 +60,7 @@ export function RegisterAccountDialog({
   isOpen: boolean
   onClose: () => void
 }) {
+  const queryKeys = useQueryKeys()
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const copy = COPY[mode]

@@ -15,6 +15,10 @@ const api = vi.hoisted(() => ({
 
 vi.mock('@/features/chat/api', () => api)
 
+vi.mock('@/features/auth/auth-context', () => ({
+  useCurrentUser: () => ({ userId: 'u-doctor', role: 'doctor' }),
+}))
+
 const { PatientChatTranscript } = await import(
   '@/features/chat/components/patient-chat-transcript'
 )
