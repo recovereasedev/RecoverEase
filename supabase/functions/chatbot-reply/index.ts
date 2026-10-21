@@ -18,7 +18,11 @@ import {
 import { AuthError, requireCaller, serviceClient } from '../_shared/auth.ts'
 import { loadClinicPrompt, PROMPT_KEY, type PromptStore } from '../_shared/clinic-prompt.ts'
 import { handlePreflight, jsonResponse } from '../_shared/cors.ts'
-import { GEMINI_CLIENT_OPTIONS, geminiRequestInit } from '../_shared/gemini-transport.ts'
+import {
+  geminiClientOptions,
+  geminiRequestInit,
+  providerClientOnce,
+} from '../_shared/gemini-transport.ts'
 import {
   ReplyIdConflictError,
   replyIdFor,
@@ -98,15 +102,15 @@ const REQUEST_TIMEOUT_MS = 30_000
 /**
  * The HTTP/1.1 client Gemini is reached with (_shared/gemini-transport.ts).
  *
- * One for as long as this worker lives, created on the first request that
- * calls the provider, so its connections are pooled and reused like the
- * default client's; it goes when the worker does. One per request would open
- * a new TLS connection every time and would have to be closed once the body
- * is read. Created inside the provider call's `try`, so a runtime that cannot
- * make one fails that request as unavailable rather than the whole function.
+ * One for as long as this worker lives, made on the first request that calls
+ * the provider and released with the worker; it keeps no idle connection, so
+ * there is nothing to close between requests. Where the runtime cannot make
+ * one, the request goes out on the default transport, as it did before.
  */
-let geminiClient: Deno.HttpClient | undefined
-const providerClient = () => (geminiClient ??= Deno.createHttpClient(GEMINI_CLIENT_OPTIONS))
+const providerClient = providerClientOnce(
+  () => Deno.createHttpClient(geminiClientOptions()),
+  (line) => console.log(line),
+)
 
 /** A row of `chat_message`, as `select('*')` returns it. */
 type ChatMessageRow = {

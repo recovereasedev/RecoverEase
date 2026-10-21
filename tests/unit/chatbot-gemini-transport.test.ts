@@ -4,7 +4,7 @@ import { createServer, type IncomingMessage, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { join } from 'node:path'
 
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
   buildInteractionRequest,
@@ -15,20 +15,22 @@ import {
   toInteractionInput,
 } from '../../supabase/functions/_shared/assistant'
 import {
-  GEMINI_CLIENT_OPTIONS,
   GEMINI_USER_AGENT,
+  geminiClientOptions,
   geminiRequestInit,
+  providerClientOnce,
 } from '../../supabase/functions/_shared/gemini-transport'
 import { isProviderTimeout } from '../../supabase/functions/_shared/reply-outcome'
 
 /**
- * How chatbot-reply reaches Gemini: HTTP/1.1 only, as `node`
- * (_shared/gemini-transport.ts). A candidate for the timeouts, not a proven
- * fix, so what is pinned is that the request is otherwise the one it was.
+ * How chatbot-reply reaches Gemini: HTTP/1.1 only, a connection per request,
+ * as `node` (_shared/gemini-transport.ts). An experiment for the timeouts,
+ * not a proven fix, so what is pinned is that the request is otherwise the
+ * one it was, and that a runtime without the client falls back to it.
  *
- * The local server is reached with Node's fetch. What only Deno can show -
- * the protocol it negotiates, the Accept-Encoding it adds and what it decodes
- * - is not tested here: there is no Deno here.
+ * Node's fetch ignores `client`, so nothing here shows what Deno or the
+ * hosted runtime negotiates, which Accept-Encoding it adds or what it
+ * decodes - there is no Deno here, and none of it is claimed.
  */
 
 const body = buildInteractionRequest({
@@ -41,8 +43,57 @@ const body = buildInteractionRequest({
 const client = { kind: 'stand-in for Deno.HttpClient' }
 
 describe('the client Gemini is reached with', () => {
-  it('speaks HTTP/1.1 only, never HTTP/2', () => {
-    expect(GEMINI_CLIENT_OPTIONS).toEqual({ http1: true, http2: false })
+  it('speaks HTTP/1.1 only, never HTTP/2, and keeps no idle connection', () => {
+    expect(geminiClientOptions()).toEqual({ http1: true, http2: false, poolMaxIdlePerHost: 0 })
+  })
+
+  it('is described by a new, writable object each time', () => {
+    // Deno 2.1.4's createHttpClient adds `caCerts` to the options it is
+    // given and throws on frozen ones; a shared object would carry that on.
+    const first = geminiClientOptions()
+    Object.assign(first, { caCerts: [] })
+    expect(Object.isFrozen(first)).toBe(false)
+    expect(geminiClientOptions()).not.toBe(first)
+    expect(geminiClientOptions()).not.toHaveProperty('caCerts')
+  })
+})
+
+describe('making the client', () => {
+  it('makes it once, on first use, and says so once', () => {
+    const create = vi.fn(() => client)
+    const log = vi.fn()
+    const providerClient = providerClientOnce(create, log)
+
+    expect(create).not.toHaveBeenCalled()
+    expect(providerClient()).toBe(client)
+    expect(providerClient()).toBe(client)
+    expect(create).toHaveBeenCalledTimes(1)
+    expect(log.mock.calls).toEqual([['{"event":"gemini_transport","transport":"http1"}']])
+  })
+
+  it('falls back to the default transport when the runtime cannot make it, and does not try again', () => {
+    const create = vi.fn((): typeof client => {
+      throw new TypeError('Deno.createHttpClient is not a function: GEMINI_API_KEY=…')
+    })
+    const log = vi.fn()
+    const providerClient = providerClientOnce(create, log)
+
+    expect(providerClient()).toBeUndefined()
+    expect(providerClient()).toBeUndefined()
+    expect(create).toHaveBeenCalledTimes(1)
+    expect(log.mock.calls).toEqual([
+      ['{"event":"gemini_transport","transport":"default","reason":"TypeError"}'],
+    ])
+  })
+
+  it('logs nothing of an error but its kind', () => {
+    const log = vi.fn()
+    providerClientOnce(() => {
+      throw 'not an Error'
+    }, log)()
+    expect(log.mock.calls).toEqual([
+      ['{"event":"gemini_transport","transport":"default","reason":"unknown"}'],
+    ])
   })
 })
 
@@ -76,6 +127,13 @@ describe('the provider request', () => {
   it('passes the time limit and the client through as given', () => {
     expect(init.signal).toBe(signal)
     expect(init.client).toBe(client)
+  })
+
+  it('names no client at all when there is none, so the runtime uses its default', () => {
+    const fallback = geminiRequestInit({ apiKey: 'test-gemini-key', body, signal, client: undefined })
+    expect(fallback).not.toHaveProperty('client')
+    expect(fallback.headers).toEqual(init.headers)
+    expect(fallback.body).toBe(init.body)
   })
 
   it('leaves Accept-Encoding to the runtime, and never advertises deflate', () => {
@@ -121,16 +179,17 @@ describe('against a local server', () => {
 
     const response = await fetch(
       `${url}/interactions`,
-      geminiRequestInit({ apiKey: 'test-gemini-key', body, signal: AbortSignal.timeout(5_000), client }),
+      geminiRequestInit({ apiKey: 'test-gemini-key', body, signal: AbortSignal.timeout(5_000), client: undefined }),
     )
 
     expect(response.status).toBe(200)
     expect(received!.request.method).toBe('POST')
+    // No User-Agent here: Node's fetch sends `node` of its own accord, so
+    // seeing it would prove nothing. The header is pinned above.
     expect(received!.request.headers).toMatchObject({
       'content-type': 'application/json',
       'x-goog-api-key': 'test-gemini-key',
       'api-revision': GEMINI_API_REVISION,
-      'user-agent': 'node',
     })
     expect(received!.raw).toBe(JSON.stringify(body))
   })
@@ -140,7 +199,7 @@ describe('against a local server', () => {
 
     const cause = await fetch(
       `${url}/hang`,
-      geminiRequestInit({ apiKey: 'test-gemini-key', body, signal: AbortSignal.timeout(50), client }),
+      geminiRequestInit({ apiKey: 'test-gemini-key', body, signal: AbortSignal.timeout(50), client: undefined }),
     ).then(
       () => undefined,
       (error: unknown) => error,
@@ -162,10 +221,10 @@ describe('chatbot-reply', () => {
     handler.indexOf('} catch (cause) {'),
   )
 
-  it('makes one client for the worker, not one per request', () => {
+  it('makes one client for the worker, from fresh options, falling back to the default', () => {
     expect(source.split('Deno.createHttpClient(').length - 1).toBe(1)
-    expect(source).toContain(
-      'const providerClient = () => (geminiClient ??= Deno.createHttpClient(GEMINI_CLIENT_OPTIONS))',
+    expect(source).toMatch(
+      /const providerClient = providerClientOnce\(\s*\(\) => Deno\.createHttpClient\(geminiClientOptions\(\)\),\s*\(line\) => console\.log\(line\),\s*\)/,
     )
     expect(source.indexOf('Deno.createHttpClient(')).toBeLessThan(source.indexOf('Deno.serve('))
     expect(handler).not.toContain('createHttpClient')

@@ -183,6 +183,30 @@ Until it is set, `chatbot-reply` returns 503 after authenticating and
 authorising the caller, and the UI says the assistant is unavailable. Every
 other module works. That is a supported configuration, not a broken one.
 
+### The HTTP/1.1 transport to Gemini (an unverified experiment)
+
+`supabase/functions/_shared/gemini-transport.ts` sends the Gemini request over
+HTTP/1.1, on a new connection each time, as `node`, in case Deno's default
+transport is why replies run into the 30 s limit. Nothing has shown that it
+is, or that the hosted Edge Runtime honours the client: it was checked only
+with the Deno 2.1.4 CLI against a local server. Deploying it is its own
+approval, and there is no staging function, so a deploy replaces
+`chatbot-reply` for every patient. Before deploying, keep the function files
+of the version it replaces, to deploy them again if replies get worse.
+
+What a test after deploying can and cannot show, with the demonstration
+patient only (see "Demonstration accounts"), a few messages, and no retries:
+
+- Each worker logs once which transport it uses:
+  `{"event":"gemini_transport","transport":"http1"}`, or `"default"` with the
+  error's kind if the runtime cannot make the client - then the request is
+  the one that ran before, and the test says nothing about HTTP/1.1.
+- Each request logs its `chatbot_reply` line with `outcome` and
+  `duration_ms`; compare them with the same lines from before.
+- Neither shows which protocol reached Google: `fetch` does not expose it. A
+  reply that arrives shows the request works with this client, not that
+  HTTP/1.1 was the reason.
+
 ## 6. Deploy the frontend
 
 ```bash
