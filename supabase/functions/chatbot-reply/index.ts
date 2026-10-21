@@ -27,6 +27,7 @@ import {
 import {
   codeForStatus,
   isProviderTimeout,
+  providerErrorSummary,
   type ReplyErrorCode,
   replyLogLine,
 } from '../_shared/reply-outcome.ts'
@@ -362,17 +363,14 @@ Deno.serve(async (request) => {
         }
 
         if (!response.ok) {
-          // Logged for operators, never forwarded: provider error bodies can
-          // carry request detail and, on some providers, the key itself.
-          // Reading it here is what made the `model_output` turn-type failure
+          // Logged for operators, never forwarded - and only its
+          // machine-readable parts: provider error bodies can carry request
+          // detail and, on some providers, the key itself. The field paths it
+          // keeps are what made the `model_output` turn-type failure
           // diagnosable at all, since the platform log pipeline was
-          // unavailable.
+          // unavailable (_shared/reply-outcome.ts).
           const detail = await response.text().catch(() => '')
-          console.error(
-            'gemini returned an error status',
-            response.status,
-            detail.slice(0, 500),
-          )
+          console.error(providerErrorSummary(response.status, detail))
           // A 5xx from the provider is transient far more often than not - the
           // documented response to "high demand" is to retry - so it is
           // reported as busy rather than broken. Telling a patient the
@@ -393,7 +391,14 @@ Deno.serve(async (request) => {
         let payload: unknown
         try {
           payload = await response.json()
-        } catch {
+        } catch (cause) {
+          // The time limit covers the body as well as the headers: a provider
+          // that answers 200 and then stalls is too slow, not malformed, and
+          // the patient hears "took too long" either way.
+          if (isProviderTimeout(cause)) {
+            console.error('gemini response body did not arrive in time')
+            throw new ReplyError('The guidance assistant took too long to respond.', 504, 'timeout')
+          }
           throw new AssistantReplyError('The assistant returned malformed output')
         }
         const parsed = parseAssistantReply(extractOutputText(payload))

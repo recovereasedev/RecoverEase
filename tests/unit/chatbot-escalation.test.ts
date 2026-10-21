@@ -196,9 +196,12 @@ describe('chatbot-reply', () => {
     )
   })
 
-  it('treats a body that is not JSON as an unusable reply', () => {
+  it('treats a body that is not JSON as an unusable reply, unless it stopped arriving in time', () => {
+    // A timeout during the body read is reported as one
+    // (tests/unit/chatbot-provider-errors.test.ts); every other failure to
+    // read it is the same as a reply that fails the schema.
     expect(answerStep).toMatch(
-      /payload = await response\.json\(\)\s*\} catch \{\s*throw new AssistantReplyError/,
+      /payload = await response\.json\(\)\s*\} catch \(cause\) \{\s*(\/\/[^\n]*\n\s*)*if \(isProviderTimeout\(cause\)\) \{[^}]*\}\s*throw new AssistantReplyError/,
     )
   })
 
