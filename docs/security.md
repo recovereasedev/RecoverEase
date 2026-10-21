@@ -538,15 +538,21 @@ clinic's data through it. What a patient's screen learns -
 `guidance_assistant_available()` - is one boolean about their own clinic.
 
 What the switch does not stop: a patient can still write a message into
-their own conversation through the Data API while it is off. Nothing answers
-it, and their care team sees it, as with any message.
+their own conversation through the Data API while it is off - or from a page
+that loaded before it went off. Nothing answers it, and nobody is alerted to
+it: no review is requested while the assistant is off, so the patient's page
+tells them as much and to contact their care team. Their care team can read
+it in the conversation, as any message.
 
 The security advisor's `authenticated_security_definer_function_executable`
 count rises by three with this migration -
 `guidance_assistant_available`, `super_admin_get_guidance_assistant` and
 `super_admin_set_guidance_assistant` - each meant to be called by a signed-in
 user and each deciding inside what that user may know or do.
-`guidance_assistant_on_for_doctor` is granted to `service_role` only.
+`guidance_assistant_on_for_doctor` is granted to `service_role` only. The
+advisor also reports, at INFO level, `rls_enabled_no_policy` for
+`app_private.platform_setting`: intended, since the table is reached only
+through those functions, with no policy and no grant.
 
 ### Data minimisation
 
