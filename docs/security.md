@@ -229,6 +229,17 @@ Clinic.
   any would clash with another booking. The patient and the new doctor are
   notified, reminders already sent are not repeated, and each moved
   appointment gets a clinical audit entry naming only the changed field.
+- **A critical alert is never addressed to a deactivated doctor**
+  (migration 40, [`critical-alert-escalation.md`](./critical-alert-escalation.md)).
+  While D8 leaves a patient with a deactivated doctor, `chatbot-reply` holds
+  the alert against the conversation, and tells the clinic's Clinic Admins
+  once per conversation. That notification names no patient, links to no
+  conversation, and says nothing about the concern. The database delivers
+  the held alert to whichever doctor can open the conversation next: the one
+  the patients move to, or the same doctor reactivated. The Clinic Admin sees
+  only a count against the doctor (`admin_held_chat_alert_counts`). Only the
+  service key can hold an alert (`hold_chat_alert`), and only the server sets
+  or clears a hold.
 - **Settings and the time zone are the clinic's** from migration 31
   (decision D3). A Clinic Admin reads and writes only their own clinic's; the
   clinic comes from who is writing, never from the request, and cannot be

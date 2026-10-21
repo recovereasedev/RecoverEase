@@ -20,6 +20,14 @@ import { AuthError, requireCaller, serviceClient } from '../_shared/auth.ts'
 import { loadClinicPrompt, PROMPT_KEY, type PromptStore } from '../_shared/clinic-prompt.ts'
 import { handlePreflight, jsonResponse } from '../_shared/cors.ts'
 import {
+  CRITICAL_ALERT_MESSAGE,
+  type CriticalAlertStore,
+  criticalAlertLogLine,
+  HELD_ALERT_ADMIN_MESSAGE,
+  raiseCriticalAlert,
+  toHoldOutcome,
+} from '../_shared/critical-alert.ts'
+import {
   ReplyIdConflictError,
   replyIdFor,
   saveReplyOnce,
@@ -75,6 +83,12 @@ import {
  * and refused with `disabled` before any of it is read. Deploy only once
  * migration 38 is applied - deployed earlier, the check cannot be answered
  * and every reply is refused as unavailable.
+ *
+ * A critical alert whose doctor is deactivated is held until a clinician can
+ * open the conversation, and the clinic's administrators are told
+ * (_shared/critical-alert.ts). Deploy only once migration 40 is applied:
+ * deployed earlier, nothing can be held, so the administrators are told on
+ * every such reply and nothing is delivered when the patients move.
  *
  * Deploy:
  *   supabase functions deploy chatbot-reply
@@ -141,6 +155,76 @@ function promptStore(admin: ReturnType<typeof serviceClient>): PromptStore {
         .maybeSingle()
       if (error) throw new Error(error.message)
       return (data?.system_setting_value as string | null | undefined) ?? null
+    },
+  }
+}
+
+/**
+ * The database side of a critical alert (_shared/critical-alert.ts), for one
+ * conversation and the patient's assigned doctor. Nothing here reads or
+ * writes what the patient or the assistant said: every row it writes says
+ * only that an alert exists.
+ */
+function criticalAlertStore(
+  admin: ReturnType<typeof serviceClient>,
+  docId: string,
+  chatSessionId: string,
+): CriticalAlertStore {
+  return {
+    async assignedDoctor() {
+      const { data, error } = await admin
+        .from('doctor')
+        .select('user_id, doc_is_active, clinic_id')
+        .eq('doc_id', docId)
+        .maybeSingle()
+      if (error) throw error
+      if (!data) return null
+      return {
+        userId: data.user_id as string,
+        isActive: data.doc_is_active === true,
+        clinicId: data.clinic_id as string,
+      }
+    },
+    async notifyDoctor(doctorUserId) {
+      const { error } = await admin.from('notification').insert({
+        user_id: doctorUserId,
+        chat_session_id: chatSessionId,
+        notification_type: 'chat_critical',
+        notification_message: CRITICAL_ALERT_MESSAGE,
+      })
+      if (error) throw error
+    },
+    async holdAlert() {
+      // Migration 40. Held once per conversation, and delivered by the
+      // database to whichever clinician can open it next.
+      const { data, error } = await admin.rpc('hold_chat_alert', {
+        target_chat_session_id: chatSessionId,
+      })
+      if (error) throw error
+      return toHoldOutcome(data)
+    },
+    async clinicAdminUserIds(clinicId) {
+      // The clinic's Clinic Admins, as `app_private.admin_clinic_id()`
+      // counts them: an admin profile in this clinic, on an admin account.
+      const { data, error } = await admin
+        .from('admin')
+        .select('user_id, user_account!inner ( user_role )')
+        .eq('clinic_id', clinicId)
+        .eq('user_account.user_role', 'admin')
+      if (error) throw error
+      return (data ?? []).map((row) => row.user_id as string)
+    },
+    async notifyClinicAdmins(adminUserIds) {
+      // No conversation on the row: an administrator cannot open one, and
+      // the notification must not point at a patient.
+      const { error } = await admin.from('notification').insert(
+        adminUserIds.map((userId) => ({
+          user_id: userId,
+          notification_type: 'chat_critical',
+          notification_message: HELD_ALERT_ADMIN_MESSAGE,
+        })),
+      )
+      if (error) throw error
     },
   }
 }
@@ -492,27 +576,19 @@ Deno.serve(async (request) => {
         console.error('critical flag could not be set', flagError.message)
       }
 
-      // Module 8.3: the doctor receives the alert. The notification carries no
-      // clinical detail - the doctor can open the conversation, and an
+      // Module 8.3: the alert goes to a doctor who can open the conversation,
+      // or waits for one while the Clinic Admins are told
+      // (_shared/critical-alert.ts). No notification carries clinical
+      // detail - the doctor opens the conversation to read it, and an
       // administrator must not learn anything from a notification row.
-      const { data: doctor } = await admin
-        .from('doctor')
-        .select('user_id')
-        .eq('doc_id', patient.doc_id)
-        .maybeSingle()
-
-      if (doctor?.user_id) {
-        const { error: alertError } = await admin.from('notification').insert({
-          user_id: doctor.user_id,
-          chat_session_id: chatSessionId,
-          notification_type: 'chat_critical',
-          notification_message:
-            'A patient raised a concern in the guidance chat that may need your attention.',
-        })
-
-        if (alertError) {
-          console.error('critical alert could not be written', alertError.message)
-        }
+      try {
+        const outcome = await raiseCriticalAlert(
+          criticalAlertStore(admin, patient.doc_id, chatSessionId),
+          (error) => console.error('critical alert could not be held', error),
+        )
+        console.log(criticalAlertLogLine({ requestId, outcome }))
+      } catch (error) {
+        console.error('critical alert could not be written', error)
       }
     }
 

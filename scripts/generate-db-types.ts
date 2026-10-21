@@ -290,6 +290,12 @@ async function main(): Promise<void> {
     lines.push('        Args: { target_doc_id: string }')
     lines.push('        Returns: number')
     lines.push('      }')
+    // Migration 40. hold_chat_alert is left out: only chatbot-reply calls it,
+    // with the service key, and the browser is refused it.
+    lines.push('      admin_held_chat_alert_counts: {')
+    lines.push('        Args: Record<PropertyKey, never>')
+    lines.push('        Returns: { doc_id: string; held_alerts: number }[]')
+    lines.push('      }')
     lines.push('      admin_reassign_doctor_patients: {')
     lines.push(
       '        Args: { from_doc_id: string; to_doc_id: string; expected_count: number; expected_appointment_count?: number }',

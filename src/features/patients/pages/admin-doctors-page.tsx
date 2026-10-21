@@ -1,4 +1,4 @@
-import { KeyRound, Stethoscope, UserPlus, Users } from 'lucide-react'
+import { AlertTriangle, KeyRound, Stethoscope, UserPlus, Users } from 'lucide-react'
 import { useState } from 'react'
 
 import { EmptyState, StateView } from '@/components/feedback/state-view'
@@ -10,7 +10,11 @@ import { Notice } from '@/components/ui/notice'
 import { ReassignPatientsDialog } from '@/features/patients/components/reassign-patients-dialog'
 import { RegisterAccountDialog } from '@/features/patients/components/register-account-dialog'
 import { ResetCredentialDialog } from '@/features/patients/components/reset-credential-dialog'
-import { useAllDoctors, useSetDoctorActive } from '@/features/patients/hooks'
+import {
+  useAllDoctors,
+  useHeldChatAlertCounts,
+  useSetDoctorActive,
+} from '@/features/patients/hooks'
 import { useDocumentTitle } from '@/hooks/use-document-title'
 import { formatDate } from '@/lib/format'
 import { doctorAccountStatus } from '@/lib/status'
@@ -28,7 +32,21 @@ import { fullName } from '@/lib/utils'
  * There is no delete. Removing a clinician who authored treatment plans and
  * prescriptions would orphan the clinical record, and the foreign keys refuse
  * it.
+ *
+ * A critical alert from the guidance chat about a deactivated doctor's
+ * patient waits until a clinician can open the conversation (migration 40).
+ * The count shows against that doctor, beside "Reassign patients", because
+ * reassigning - or reactivating - is what delivers it. A count, never which
+ * patient or what they wrote.
  */
+
+/** The line beside a doctor whose patients' alerts are waiting. */
+export function heldAlertsLine(count: number): string {
+  return count === 1
+    ? '1 alert from the guidance chat is waiting for a clinician. Reassign these patients or reactivate the account to deliver it.'
+    : `${count} alerts from the guidance chat are waiting for a clinician. Reassign these patients or reactivate the account to deliver them.`
+}
+
 export function AdminDoctorsPage() {
   useDocumentTitle('Doctor Accounts')
   // Holds the doctor whose credential is being reissued. Null closes the
@@ -44,6 +62,8 @@ export function AdminDoctorsPage() {
     name: string
   } | null>(null)
   const doctorsQuery = useAllDoctors()
+  const heldQuery = useHeldChatAlertCounts()
+  const heldAlerts = heldQuery.data ?? {}
   const setActive = useSetDoctorActive()
   const [isRegisterOpen, setRegisterOpen] = useState(false)
 
@@ -93,6 +113,23 @@ export function AdminDoctorsPage() {
           from={reassigning}
           doctors={doctorsQuery.data ?? []}
         />
+      ) : null}
+
+      {/* Said, not left blank: an alert waiting for a clinician is the one
+          thing on this page that cannot wait. */}
+      {heldQuery.isError ? (
+        <Notice
+          tone="warning"
+          className="mb-4"
+          action={
+            <Button size="sm" variant="ghost" onClick={() => void heldQuery.refetch()}>
+              Try again
+            </Button>
+          }
+        >
+          Alerts from the guidance chat waiting for a clinician could not be
+          checked.
+        </Notice>
       ) : null}
 
       <Card>
@@ -145,6 +182,15 @@ export function AdminDoctorsPage() {
                         <p className="text-sm text-muted">
                           Registered {formatDate(doctor.doc_created_at)}
                         </p>
+                        {heldAlerts[doctor.doc_id] ? (
+                          <p className="mt-1 flex items-start gap-1.5 text-sm font-medium text-warning-800">
+                            <AlertTriangle
+                              className="mt-0.5 size-4 shrink-0 text-warning-700"
+                              aria-hidden="true"
+                            />
+                            <span>{heldAlertsLine(heldAlerts[doctor.doc_id]!)}</span>
+                          </p>
+                        ) : null}
                       </div>
 
                       <div className="flex flex-wrap items-center gap-2 sm:shrink-0 sm:justify-end">
@@ -256,6 +302,8 @@ export function AdminDoctorsPage() {
         Deactivating a clinician immediately withdraws their access to all
         patient records. Their patients keep their history and remain assigned
         to them until you reassign them to an active doctor in your clinic.
+        Alerts from the guidance chat about those patients wait until then,
+        and go to the doctor who takes them over.
       </Notice>
     </>
   )

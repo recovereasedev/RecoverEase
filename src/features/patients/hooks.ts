@@ -5,6 +5,7 @@ import type { TablesUpdate } from '@/types/database.types'
 
 import {
   fetchAllDoctors,
+  fetchHeldChatAlertCounts,
   fetchMyDoctor,
   fetchMyPatients,
   fetchPatient,
@@ -78,6 +79,13 @@ export function useUpdateDoctor(doctorId: string) {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.doctors.all })
     },
+  })
+}
+
+export function useHeldChatAlertCounts() {
+  return useQuery({
+    queryKey: queryKeys.doctors.heldChatAlerts(),
+    queryFn: fetchHeldChatAlertCounts,
   })
 }
 
