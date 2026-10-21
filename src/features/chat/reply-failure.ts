@@ -25,13 +25,19 @@ export type ReplyFailure =
   | 'not_configured'
   /** The request was refused - session expired, or not this patient's conversation. */
   | 'not_allowed'
+  /**
+   * The guidance assistant is switched off, for the platform or the
+   * patient's clinic (migration 38). Trying again cannot help.
+   */
+  | 'disabled'
 
 /**
  * How long the browser waits for a reply before giving up.
  *
  * Longer than the server's own budget - `chatbot-reply` stops waiting for
- * Gemini after 25 s, and answers within a few seconds of that - so a reply
- * the server is still preparing is never abandoned by the browser. Without
+ * Gemini after 30 s, and the rest of the request took up to 4.7 s in
+ * production - so a reply the server is still preparing is not abandoned by
+ * the browser, with about 5 s to spare on the slowest request measured. Without
  * any limit, a request that is never answered (a dropped connection, a phone
  * that suspended the tab) left the page waiting indefinitely.
  */
@@ -109,6 +115,8 @@ export async function classifyReplyError(
         return 'busy'
       case 'not_allowed':
         return 'not_allowed'
+      case 'disabled':
+        return 'disabled'
       case null:
         break
       default:

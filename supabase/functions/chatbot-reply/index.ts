@@ -4,7 +4,6 @@ import {
   buildSystemInstruction,
   chronologicalWindow,
   extractOutputText,
-  GEMINI_API_REVISION,
   GEMINI_ENDPOINT,
   hasUnansweredPatientMessage,
   HISTORY_LIMIT,
@@ -12,9 +11,14 @@ import {
   raisesCriticalConcern,
   toInteractionInput,
 } from '../_shared/assistant.ts'
+import {
+  ASSISTANT_SWITCH_FUNCTION,
+  readAssistantSwitch,
+} from '../_shared/assistant-switch.ts'
 import { AuthError, requireCaller, serviceClient } from '../_shared/auth.ts'
 import { loadClinicPrompt, PROMPT_KEY, type PromptStore } from '../_shared/clinic-prompt.ts'
 import { handlePreflight, jsonResponse } from '../_shared/cors.ts'
+import { GEMINI_CLIENT_OPTIONS, geminiRequestInit } from '../_shared/gemini-transport.ts'
 import {
   ReplyIdConflictError,
   replyIdFor,
@@ -66,13 +70,42 @@ import {
  * built-in guidance. And before any second clinic exists: the version before
  * this one reads the prompt by key alone.
  *
+ * The assistant can be switched off for the platform or for a clinic
+ * (migration 38): asked right after the conversation is proved the caller's,
+ * and refused with `disabled` before any of it is read. Deploy only once
+ * migration 38 is applied - deployed earlier, the check cannot be answered
+ * and every reply is refused as unavailable.
+ *
  * Deploy:
  *   supabase functions deploy chatbot-reply
  *   supabase secrets set GEMINI_API_KEY=...
  */
 
-/** Beyond this the patient is better served by an honest failure. */
-const REQUEST_TIMEOUT_MS = 25_000
+/**
+ * Beyond this the patient is better served by an honest failure.
+ *
+ * Only part of what the browser waits for. Its own limit (`REPLY_TIMEOUT_MS`,
+ * 40 s) runs from just before the request until the response is read, so it
+ * also covers the session token, the CORS preflight, the checks before this
+ * call, the review request after a timeout and the network. Those measured
+ * 4.7 s on the slowest request in production (a cold start), which leaves
+ * about 5 s to spare at 30 s - not a guarantee: a slower cold start or
+ * network can use it up.
+ */
+const REQUEST_TIMEOUT_MS = 30_000
+
+/**
+ * The HTTP/1.1 client Gemini is reached with (_shared/gemini-transport.ts).
+ *
+ * One for as long as this worker lives, created on the first request that
+ * calls the provider, so its connections are pooled and reused like the
+ * default client's; it goes when the worker does. One per request would open
+ * a new TLS connection every time and would have to be closed once the body
+ * is read. Created inside the provider call's `try`, so a runtime that cannot
+ * make one fails that request as unavailable rather than the whole function.
+ */
+let geminiClient: Deno.HttpClient | undefined
+const providerClient = () => (geminiClient ??= Deno.createHttpClient(GEMINI_CLIENT_OPTIONS))
 
 /** A row of `chat_message`, as `select('*')` returns it. */
 type ChatMessageRow = {
@@ -229,6 +262,24 @@ Deno.serve(async (request) => {
       throw new AuthError('This conversation is not yours', 403)
     }
 
+    // 2b. Is the assistant switched on - for the platform, and for this
+    //     patient's clinic (migration 38). Asked before anything of the
+    //     conversation is read, and so before the provider is called: a
+    //     switched-off assistant never sees the transcript. Only an explicit
+    //     yes goes ahead; an answer that cannot be read is treated as no.
+    //     The patient's message stays saved and their care team still sees
+    //     it; no review is requested, since the clinic or the platform chose
+    //     to have no assistant rather than the assistant failing.
+    const assistantSwitch = readAssistantSwitch(
+      await admin.rpc(ASSISTANT_SWITCH_FUNCTION, { target_doc_id: patient.doc_id }),
+    )
+    if (assistantSwitch === 'off') {
+      throw new ReplyError('The guidance assistant is turned off.', 403, 'disabled')
+    }
+    if (assistantSwitch === 'unknown') {
+      throw new ReplyError('The guidance assistant is unavailable.', 503, 'unavailable')
+    }
+
     // 3. Only now is any content read, and only this conversation's: its
     //    newest HISTORY_LIMIT messages. They are fetched newest first so the
     //    limit keeps the end of the conversation - fetched oldest first, a
@@ -302,16 +353,12 @@ Deno.serve(async (request) => {
 
         let response: Response
         try {
-          response = await fetch(GEMINI_ENDPOINT, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'x-goog-api-key': apiKey,
-              'Api-Revision': GEMINI_API_REVISION,
-            },
-            body: JSON.stringify(body),
+          response = await fetch(GEMINI_ENDPOINT, geminiRequestInit({
+            apiKey,
+            body,
             signal: abort,
-          })
+            client: providerClient(),
+          }))
         } catch (cause) {
           // Timeout, DNS, TLS, connection reset. Deliberately not surfaced to
           // the patient in detail; the log is where an operator looks.
