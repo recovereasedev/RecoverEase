@@ -804,6 +804,40 @@ applies it after 37 with 34 unapplied, as production has them). Every switch
 starts unset, which is on, so applying it changes nothing anyone sees -
 unless a clinic's `chatbot.enabled` was saved before it, below.
 
+**Where it stood on 2026-10-21** (read-only checks of production that day;
+a dated snapshot, not the current state - check again before relying on it):
+
+- **Step 1 is done.** Migration 38 is in the history as version
+  `20261020154726` (`guidance_assistant_switch`). What it adds is there, and
+  the bodies of its six functions, `audit_scope_for` included, match this
+  file byte for byte (MD5 and length). `app_private.platform_setting` has row
+  level security on, no grant to `anon` or `authenticated`, and both
+  triggers. `guidance_assistant_on` is executable by its owner only and
+  `guidance_assistant_on_for_doctor` by `service_role` only;
+  `guidance_assistant_available` and the two `super_admin_*_guidance_assistant`
+  functions by `authenticated` and `service_role`. All are
+  `SECURITY DEFINER` with an empty `search_path`.
+- **The security advisor** shows 22
+  `authenticated_security_definer_function_executable` warnings - the 19 of
+  the 2026-10-19 baseline and this migration's three - and
+  `auth_leaked_password_protection`. It also shows, at INFO level,
+  `rls_enabled_no_policy` for `app_private.platform_setting`. That is
+  intended: the table is reached only through the functions above, so it
+  has no policy and no grant. Do not "fix" it by adding a policy.
+- **Every switch is unset, so on:** no row in `app_private.platform_setting`
+  and no clinic `chatbot.enabled` row.
+- **Step 2 is deployed, not smoke-tested.** `chatbot-reply` v17
+  (2026-10-20 18:04Z) is this branch's function, byte for byte: commit
+  `3a39b06`, the switch check and the 30 s limit to Gemini. No smoke test of
+  the switch on it is recorded - turning a switch off and seeing `disabled`
+  is a production write and needs its own approval - and replies were
+  reported running into the 30 s limit against Gemini.
+- **Step 3 is not done:** `main` does not have this change, so its website
+  has no switches and its `reply-failure.ts` knows no `disabled` code. Until
+  it does, turning a switch off reaches patients as "not available" with
+  Try again, and the rollbacks for 33 and 31 must be taken from this branch,
+  whose 33 refuses while 38 is installed.
+
 The two switches do not depend on 38 in the same way:
 
 - The Super Admin's switch exists only in 38. It is read and changed through
