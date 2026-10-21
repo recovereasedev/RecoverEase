@@ -193,7 +193,12 @@ for (const theme of ['light', 'dark'] as const) {
       await page.goto('/platform')
       await settled(page)
       await page.getByRole('button', { name: 'Turn off for every clinic' }).click()
-      await expect(page.getByRole('dialog')).toBeVisible()
+      const dialog = page.getByRole('dialog')
+      await expect(dialog).toBeVisible()
+      // Measured once it has finished opening, not mid-fade.
+      await dialog.evaluate((element) =>
+        Promise.all(element.getAnimations({ subtree: true }).map((animation) => animation.finished)),
+      )
       expect(await contrastFailures(page)).toEqual([])
     })
   })
