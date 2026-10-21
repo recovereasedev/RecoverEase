@@ -8,12 +8,12 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardBody } from '@/components/ui/card'
 import { Dialog } from '@/components/ui/dialog'
+import { useQueryKeys } from '@/features/auth/use-query-keys'
 import {
   fetchGuidanceAssistantSwitch,
   setGuidanceAssistantSwitch,
 } from '@/features/platform/api'
 import { formatDateTime } from '@/lib/format'
-import { queryKeys } from '@/lib/query-keys'
 
 /**
  * The adviser's "AI Chatbot On/Off" for the whole platform (migration 38):
@@ -26,6 +26,7 @@ import { queryKeys } from '@/lib/query-keys'
  * switch is its Clinic Admin's, and is not shown here.
  */
 export function GuidanceAssistantSwitch() {
+  const queryKeys = useQueryKeys()
   const queryClient = useQueryClient()
   const [confirmingOff, setConfirmingOff] = useState(false)
 

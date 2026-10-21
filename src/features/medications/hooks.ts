@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { queryKeys } from '@/lib/query-keys'
+import { useQueryKeys } from '@/features/auth/use-query-keys'
 
 import {
   createMedicationSchedule,
@@ -13,6 +13,7 @@ import {
 } from './api'
 
 export function useMedicationSchedules(patientId: string) {
+  const queryKeys = useQueryKeys()
   return useQuery({
     queryKey: queryKeys.medications.schedulesFor(patientId),
     queryFn: () => fetchSchedules(patientId),
@@ -21,6 +22,7 @@ export function useMedicationSchedules(patientId: string) {
 }
 
 export function useDoses(patientId: string, from: string, to: string) {
+  const queryKeys = useQueryKeys()
   return useQuery({
     queryKey: queryKeys.medications.dosesFor(patientId, from, to),
     queryFn: () => fetchDoses({ patientId, from, to }),
@@ -29,6 +31,7 @@ export function useDoses(patientId: string, from: string, to: string) {
 }
 
 export function useSetDoseStatus(patientId: string) {
+  const queryKeys = useQueryKeys()
   const queryClient = useQueryClient()
 
   return useMutation({
@@ -49,6 +52,7 @@ export function useSetDoseStatus(patientId: string) {
 }
 
 export function useCreatePrescription(patientId: string, doctorId: string) {
+  const queryKeys = useQueryKeys()
   const queryClient = useQueryClient()
 
   return useMutation({
@@ -63,6 +67,7 @@ export function useCreatePrescription(patientId: string, doctorId: string) {
 }
 
 export function useEndMedicationSchedule(patientId: string) {
+  const queryKeys = useQueryKeys()
   const queryClient = useQueryClient()
 
   return useMutation({
@@ -81,6 +86,7 @@ export function useEndMedicationSchedule(patientId: string) {
 }
 
 export function useCreateMedicationSchedule(patientId: string) {
+  const queryKeys = useQueryKeys()
   const queryClient = useQueryClient()
 
   return useMutation({

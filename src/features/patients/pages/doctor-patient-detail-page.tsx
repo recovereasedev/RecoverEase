@@ -23,6 +23,7 @@ import { PageHeader } from '@/components/layout/page-header'
 import { StatusBadge } from '@/components/ui/badge'
 import type { Appointment } from '@/features/appointments/api'
 import { useAppointments } from '@/features/appointments/hooks'
+import { useQueryKeys } from '@/features/auth/use-query-keys'
 import { fetchChatSessions, type ChatSession } from '@/features/chat/api'
 import { Button } from '@/components/ui/button'
 import { Card, CardBody, CardHeader } from '@/components/ui/card'
@@ -72,7 +73,6 @@ import {
   focusFirstInvalid,
   refocusAfterKeyboardSubmit,
 } from '@/lib/form-focus'
-import { queryKeys } from '@/lib/query-keys'
 import {
   patientStatus,
   treatmentGoalStatus,
@@ -115,6 +115,7 @@ const TABS = [
  * past four other sections.
  */
 export function DoctorPatientDetailPage() {
+  const queryKeys = useQueryKeys()
   useDocumentTitle('Patient Record')
   const { patientId = '' } = useParams()
   const user = useCurrentUser()

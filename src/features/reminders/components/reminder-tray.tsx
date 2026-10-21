@@ -7,6 +7,7 @@ import { Link } from 'react-router-dom'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { fetchAppointments } from '@/features/appointments/api'
 import { useCurrentUser } from '@/features/auth/auth-context'
+import { useQueryKeys } from '@/features/auth/use-query-keys'
 import { fetchDoses } from '@/features/medications/api'
 import { useSetDoseStatus } from '@/features/medications/hooks'
 import type { Patient } from '@/features/patients/api'
@@ -19,7 +20,6 @@ import {
   type ReminderState,
 } from '@/features/reminders/reminder-items'
 import { useNow } from '@/hooks/use-now'
-import { queryKeys } from '@/lib/query-keys'
 import { cn, fullName } from '@/lib/utils'
 
 /**
@@ -48,6 +48,7 @@ export function ReminderTray() {
 }
 
 function PatientReminders({ patient }: { patient: Patient }) {
+  const queryKeys = useQueryKeys()
   const now = useNow(30_000)
   const [from] = useState(() => startOfToday().toISOString())
   const [to] = useState(() => endOfTomorrow().toISOString())
@@ -101,6 +102,7 @@ function DoctorReminders() {
  * that fails here never turns a page's list into an error.
  */
 function useReminderAppointments(patientId?: string) {
+  const queryKeys = useQueryKeys()
   return useQuery({
     queryKey: queryKeys.appointments.forReminders(patientId),
     queryFn: () => fetchAppointments(patientId),

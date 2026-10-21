@@ -336,8 +336,9 @@ describe('the reminder card', () => {
     renderTray()
     await settle()
     const keys = client.getQueryCache().getAll().map((query) => JSON.stringify(query.queryKey))
-    expect(keys).toContain(JSON.stringify(['appointments', 'reminders', 'patient', 'p-alice']))
-    expect(keys).not.toContain(JSON.stringify(['appointments', 'patient', 'p-alice']))
+    // Filed under the signed-in account, like every key (queryKeysFor).
+    expect(keys).toContain(JSON.stringify(['u-alice', 'appointments', 'reminders', 'patient', 'p-alice']))
+    expect(keys).not.toContain(JSON.stringify(['u-alice', 'appointments', 'patient', 'p-alice']))
   })
 
   it('does not offer a snooze it cannot keep, in the last minutes before the follow-up', async () => {

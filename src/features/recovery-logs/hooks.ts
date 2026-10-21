@@ -1,10 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { queryKeys } from '@/lib/query-keys'
+import { useQueryKeys } from '@/features/auth/use-query-keys'
 
 import { fetchRecoveryLogs, saveRecoveryLog } from './api'
 
 export function useRecoveryLogs(patientId: string) {
+  const queryKeys = useQueryKeys()
   return useQuery({
     queryKey: queryKeys.recoveryLogs.forPatient(patientId),
     queryFn: () => fetchRecoveryLogs(patientId),
@@ -13,6 +14,7 @@ export function useRecoveryLogs(patientId: string) {
 }
 
 export function useSaveRecoveryLog(patientId: string) {
+  const queryKeys = useQueryKeys()
   const queryClient = useQueryClient()
 
   return useMutation({

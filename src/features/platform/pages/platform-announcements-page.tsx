@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Dialog } from '@/components/ui/dialog'
 import { Field, Input, Textarea } from '@/components/ui/field'
+import { useQueryKeys } from '@/features/auth/use-query-keys'
 import {
   createPlatformAnnouncement,
   deletePlatformAnnouncement,
@@ -23,7 +24,6 @@ import { useDocumentTitle } from '@/hooks/use-document-title'
 import { useFocusRecovery } from '@/hooks/use-focus-recovery'
 import { formatDateTime } from '@/lib/format'
 import { focusFirstInvalid } from '@/lib/form-focus'
-import { queryKeys } from '@/lib/query-keys'
 
 /** The composer writes a new announcement, or edits one already written. */
 type Composing = { mode: 'new' } | { mode: 'edit'; announcement: PlatformAnnouncement }
@@ -37,6 +37,7 @@ type Composing = { mode: 'new' } | { mode: 'edit'; announcement: PlatformAnnounc
  * asks first and cannot be undone; withdrawing keeps the text.
  */
 export function PlatformAnnouncementsPage() {
+  const queryKeys = useQueryKeys()
   useDocumentTitle('Platform Announcements')
   const queryClient = useQueryClient()
   const focusRecovery = useFocusRecovery()

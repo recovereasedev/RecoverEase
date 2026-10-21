@@ -17,6 +17,7 @@ import { PageHeader } from '@/components/layout/page-header'
 import { Button } from '@/components/ui/button'
 import { Notice } from '@/components/ui/notice'
 import { useCurrentUser } from '@/features/auth/auth-context'
+import { useQueryKeys } from '@/features/auth/use-query-keys'
 import {
   appendPatientMessage,
   ChatbotUnavailableError,
@@ -49,7 +50,6 @@ import {
 import { useDocumentTitle } from '@/hooks/use-document-title'
 import { formatDateRelative, formatDateTime, formatTime } from '@/lib/format'
 import { refocusAfterKeyboardSubmit } from '@/lib/form-focus'
-import { queryKeys } from '@/lib/query-keys'
 import { cn } from '@/lib/utils'
 
 const ASSISTANT = 'Recovery Guidance Assistant'
@@ -154,6 +154,7 @@ const ASSISTANT_OFF_MESSAGE =
  * post-treatment symptoms is worse than no answer at all.
  */
 export function PatientChatPage() {
+  const queryKeys = useQueryKeys()
   useDocumentTitle('Guidance Chat')
   const user = useCurrentUser()
   const patientId =
@@ -478,12 +479,15 @@ export function PatientChatPage() {
   })
   const assistantOff = assistantQuery.data === false || shownFailure === 'disabled'
   // A refusal as switched off, before the page knew: ask again, so the rest
-  // of the page - the message box, the openers - follows.
+  // of the page - the message box, the openers - follows. Through the
+  // query's own refetch, which keeps its identity across renders; the
+  // account's keys are a new object on each one.
+  const { refetch: refetchAssistant } = assistantQuery
   useEffect(() => {
     if (shownFailure === 'disabled' && assistantQuery.data !== false) {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.chat.assistant() })
+      void refetchAssistant()
     }
-  }, [shownFailure, assistantQuery.data, queryClient])
+  }, [shownFailure, assistantQuery.data, refetchAssistant])
 
   const isBusy = sendMessage.isPending || retryReply.isPending
   // The conversation ends on the patient's own message and nothing is on
