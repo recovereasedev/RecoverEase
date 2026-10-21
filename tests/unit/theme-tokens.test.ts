@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { describe, expect, it } from 'vitest'
@@ -140,5 +140,46 @@ describe('the dark theme’s tokens', () => {
     const block = css.indexOf(":root[data-theme='dark'] {")
     expect(css.lastIndexOf('@media screen {', block)).toBeGreaterThan(-1)
     expect(css.slice(css.lastIndexOf('@media screen {', block), block)).not.toContain('}')
+  })
+
+  it('show which theme is chosen at 3:1 against its track and its pill, in both themes', () => {
+    // The pill alone is about 1.1:1 against the track; the ring carries it.
+    const control = readFileSync(join(process.cwd(), 'src/components/layout/theme-control.tsx'), 'utf8')
+    expect(control).toContain('ring-[var(--color-brand-600)]')
+    for (const [theme, values] of [['light', LIGHT], ['dark', { ...LIGHT, ...DARK }]] as const) {
+      for (const behind of ['surface-sunken', 'surface']) {
+        expect(contrast(values['brand-600']!, values[behind]!), `${theme}: ring on ${behind}`).toBeGreaterThanOrEqual(3)
+      }
+    }
+  })
+
+  it('keep the brand mark’s white cross and pulse readable, in both themes', () => {
+    const brand = readFileSync(join(process.cwd(), 'src/components/layout/brand.tsx'), 'utf8')
+    const stops = [...brand.matchAll(/stopColor="var\(--color-([a-z0-9-]+)\)"/g)].map((m) => m[1]!)
+    expect(stops).toEqual(['fill-brand-800', 'fill-accent-600'])
+    for (const [theme, values] of [['light', LIGHT], ['dark', { ...LIGHT, ...DARK }]] as const) {
+      for (const stop of stops) {
+        expect(contrast('#ffffff', values[stop]!), `${theme}: white on ${stop}`).toBeGreaterThanOrEqual(4.5)
+      }
+    }
+  })
+
+  it('reach every floating layer: no shadow utility that bakes in the light value', () => {
+    // Tailwind copies a theme shadow into the utility at build time, so a bare
+    // `shadow-lg` keeps the light shadow in the dark theme; the token form
+    // `shadow-[var(--shadow-lg)]` follows it.
+    const bare: string[] = []
+    const walk = (dir: string) => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const path = join(dir, entry.name)
+        if (entry.isDirectory()) walk(path)
+        else if (/\.tsx?$/.test(entry.name)) {
+          const found = readFileSync(path, 'utf8').match(/(?<![\w-[])shadow-(?:2xs|xs|sm|md|lg|xl|2xl)\b/g)
+          if (found) bare.push(`${path}: ${found.join(', ')}`)
+        }
+      }
+    }
+    walk(join(process.cwd(), 'src'))
+    expect(bare).toEqual([])
   })
 })

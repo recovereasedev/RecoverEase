@@ -103,6 +103,11 @@ describe('the theme control', () => {
       'system',
     ])
     expect(within(group).getByRole('radio', { name: 'Light' })).toBeChecked()
+    // The radios are hidden; the chosen option's ring is what shows it.
+    const labelOf = (name: string) => within(group).getByRole('radio', { name }).closest('label')
+    expect(labelOf('Light')).toHaveClass('ring-2', 'ring-[var(--color-brand-600)]')
+    expect(labelOf('Dark')).not.toHaveClass('ring-2')
+    expect(labelOf('System')).not.toHaveClass('ring-2')
   })
 
   it('applies and remembers a choice, and every control on the page shows it', () => {

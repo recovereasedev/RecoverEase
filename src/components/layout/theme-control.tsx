@@ -31,7 +31,10 @@ export function ThemeControl({ className }: { className?: string }) {
             className={cn(
               'flex min-h-11 cursor-pointer items-center justify-center gap-1.5 rounded-[var(--radius-sm)] px-1.5 text-sm font-medium text-body',
               'has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-1 has-[:focus-visible]:outline-[var(--color-brand-600)]',
-              preference === value && 'bg-surface font-semibold text-heading shadow-[var(--shadow-sm)]',
+              // The ring is what shows the choice: the pill alone is barely
+              // lighter than the track (1.1:1), and the radio itself is hidden.
+              preference === value &&
+                'bg-surface font-semibold text-heading shadow-[var(--shadow-sm)] ring-2 ring-inset ring-[var(--color-brand-600)]',
             )}
           >
             <input

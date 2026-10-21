@@ -26,9 +26,11 @@ export function BrandMark({ className }: { className?: string | undefined }) {
       aria-label="RecoverEase"
     >
       <defs>
+        {/* Fill tokens, like `.brand-gradient`: the text tokens turn pale in
+            the dark theme, and the white cross and pulse would wash out. */}
         <linearGradient id={gradientId} x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="var(--color-brand-800)" />
-          <stop offset="100%" stopColor="var(--color-accent-600)" />
+          <stop offset="0%" stopColor="var(--color-fill-brand-800)" />
+          <stop offset="100%" stopColor="var(--color-fill-accent-600)" />
         </linearGradient>
       </defs>
       <rect width="32" height="32" rx="8" fill={`url(#${gradientId})`} />

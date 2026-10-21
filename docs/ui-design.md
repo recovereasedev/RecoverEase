@@ -122,16 +122,21 @@ its contrast: `brand-700` text on `brand-50`, `muted` on `neutral-100`. A
 solid fill with white text on it cannot follow the same step, so fills are
 tokens of their own (`fill-brand-800`, `fill-danger-600`, `fill-brand-deep`
 for the chat header and the rest): in light mode exactly the colours they
-replaced, in dark mode tones white text still clears 4.5:1 on.
+replaced, in dark mode tones white text still clears 4.5:1 on. The brand
+mark's gradient uses them too. Shadows follow the theme only in their token
+form, `shadow-[var(--shadow-lg)]`: Tailwind copies a bare `shadow-lg`'s light
+value into the utility when it builds.
 
 Two places stay light in either theme: a report sheet, which stands for
 paper on screen (`data-theme-scope="light"`), and everything printed.
 
 Checked twice: `tests/unit/theme-tokens.test.ts` measures every pairing
 from the token values, including states a page check cannot see, such as a
-hovered button's translucent tint; `e2e/contrast-audit.spec.ts` runs axe's
-contrast rule over every role's main screens in both themes, in a real
-browser.
+hovered button's translucent tint or the ring that marks the chosen theme;
+`e2e/contrast-audit.spec.ts` runs axe's contrast rule over every role's main
+screens in both themes, in a real browser, and over the states the default
+data does not reach: a reminder card on screen, the assistant turned off,
+and the Super Admin's switch off or being turned off.
 
 ## Typography
 

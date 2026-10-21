@@ -276,7 +276,7 @@ function Tray({
                       act(event, () => state.dismiss(item.id))
                     }
                   }}
-                  className="rounded-[var(--radius-lg)] border border-[var(--color-border-strong)] bg-surface p-3 shadow-lg"
+                  className="rounded-[var(--radius-lg)] border border-[var(--color-border-strong)] bg-surface p-3 shadow-[var(--shadow-lg)]"
                 >
                   <div className="flex items-start gap-3">
                     <Icon className="mt-0.5 size-5 shrink-0 text-role" aria-hidden="true" />
