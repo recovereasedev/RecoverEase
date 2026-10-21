@@ -5,7 +5,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { Link } from 'react-router-dom'
 
 import { Button, buttonVariants } from '@/components/ui/button'
-import { useAppointments } from '@/features/appointments/hooks'
+import { fetchAppointments } from '@/features/appointments/api'
 import { useCurrentUser } from '@/features/auth/auth-context'
 import { fetchDoses } from '@/features/medications/api'
 import { useSetDoseStatus } from '@/features/medications/hooks'
@@ -60,9 +60,7 @@ function PatientReminders({ patient }: { patient: Patient }) {
     queryFn: () => fetchDoses({ patientId: patient.pat_id, from, to }),
     refetchInterval: 60_000,
   })
-  // Refetched each minute too, so an appointment cancelled or moved while
-  // the page stays open is not announced for its old time.
-  const appointments = useAppointments(patient.pat_id, { refetchInterval: 60_000 })
+  const appointments = useReminderAppointments(patient.pat_id)
   const doctor = useMyDoctor(patient.doc_id)
   const setDoseStatus = useSetDoseStatus(patient.pat_id)
 
@@ -91,9 +89,23 @@ function PatientReminders({ patient }: { patient: Patient }) {
 function DoctorReminders() {
   const now = useNow(30_000)
   const state = useReminderState()
-  const appointments = useAppointments(undefined, { refetchInterval: 60_000 })
+  const appointments = useReminderAppointments()
   const items = appointmentReminders(appointments.data ?? [], now, state.current, { role: 'doctor' })
   return <Tray items={items} state={state} />
+}
+
+/**
+ * The appointments the card reminds of, refetched each minute like the
+ * doses, so one cancelled or moved while the page stays open is not
+ * announced for its old time. Its own copy (`forReminders`), so a refetch
+ * that fails here never turns a page's list into an error.
+ */
+function useReminderAppointments(patientId?: string) {
+  return useQuery({
+    queryKey: queryKeys.appointments.forReminders(patientId),
+    queryFn: () => fetchAppointments(patientId),
+    refetchInterval: 60_000,
+  })
 }
 
 // --- Dismissed and snoozed, for this browser session ---------------------------
@@ -205,12 +217,16 @@ function Tray({
 
   useEffect(() => {
     if (!restoreFocus.current) return
-    restoreFocus.current = false
     // Only when focus went with the reminder. Marking a dose taken removes
-    // it only once the save is back; by then the patient may be typing
-    // somewhere else, and focus stays there.
+    // it only once the save is back: while focus is still on the card it
+    // keeps waiting, and if the patient has gone to type somewhere else,
+    // focus stays there.
     const active = document.activeElement
-    if (active && active !== document.body && active.isConnected) return
+    if (active && active !== document.body && active.isConnected) {
+      if (!trayRef.current?.contains(active)) restoreFocus.current = false
+      return
+    }
+    restoreFocus.current = false
     const next = trayRef.current?.querySelector<HTMLElement>('li button, li a')
     ;(next ?? document.getElementById('main-content'))?.focus()
   }, [ids])
@@ -219,6 +235,20 @@ function Tray({
   useEffect(() => {
     if (failedDoseId) restoreFocus.current = false
   }, [failedDoseId])
+
+  // The list scrolls only once the cards are taller than it may be: a
+  // scrolling list clips each card's shadow, so one or two cards keep theirs.
+  const listRef = useRef<HTMLUListElement>(null)
+  const [scrolls, setScrolls] = useState(false)
+  useLayoutEffect(() => {
+    const list = listRef.current
+    if (!list) return
+    const check = () => setScrolls(list.scrollHeight > list.clientHeight + 1)
+    check()
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(check)
+    observer?.observe(list)
+    return () => observer?.disconnect()
+  }, [ids])
 
   const act = (event: { currentTarget: Element }, run: () => void) => {
     if (event.currentTarget.closest('li')?.contains(document.activeElement)) {
@@ -262,7 +292,13 @@ function Tray({
           {/* At most half the screen, scrolling beyond it: several doses at
               once is common after an operation, and the soonest - first in
               the list - must stay reachable rather than pushed off the top. */}
-          <ul className="-m-1 flex max-h-[50dvh] flex-col gap-2 overflow-y-auto overscroll-contain p-1">
+          <ul
+            ref={listRef}
+            className={cn(
+              '-m-1 flex max-h-[50dvh] flex-col gap-2 p-1',
+              scrolls && 'overflow-y-auto overscroll-contain',
+            )}
+          >
             {items.map((item) => {
               const isDose = item.kind === 'dose'
               const Icon = isDose ? Pill : CalendarClock
@@ -311,18 +347,27 @@ function Tray({
                         >
                           Mark taken
                         </Button>
-                        {/* Not offered when the card would be gone before the
-                            five minutes are up: the follow-up takes over. */}
-                        {item.canSnooze ? (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            aria-label={`Remind me in 5 min: ${item.medicine}`}
-                            onClick={(event) => act(event, () => snooze(item.id))}
-                          >
-                            Remind me in 5 min
-                          </Button>
-                        ) : null}
+                        {/* Unavailable once the card would be gone before the
+                            five minutes are up - the follow-up takes over -
+                            but still there, so focus on it is not lost. */}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          aria-label={`Remind me in 5 min: ${item.medicine}`}
+                          aria-disabled={item.canSnooze ? undefined : true}
+                          aria-describedby={item.canSnooze ? undefined : `${item.id}-no-snooze`}
+                          className={cn(!item.canSnooze && 'cursor-not-allowed opacity-50 focus-visible:opacity-100')}
+                          onClick={(event) => {
+                            if (item.canSnooze) act(event, () => snooze(item.id))
+                          }}
+                        >
+                          Remind me in 5 min
+                        </Button>
+                        {item.canSnooze ? null : (
+                          <span id={`${item.id}-no-snooze`} className="sr-only">
+                            Not available: the follow-up reminder comes in a few minutes.
+                          </span>
+                        )}
                       </>
                     ) : (
                       <Link to={item.href} className={buttonVariants({ size: 'sm', variant: 'outline' })}>
