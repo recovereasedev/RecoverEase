@@ -14,6 +14,11 @@ import { expect, IDS, test } from './support/fixtures'
  * asked first. The record is served by the browser-only stub.
  */
 
+// The conversation's times below (02:00Z, shown as "5 March at 10:00") are
+// written for the first clinic's time zone, Asia/Manila (migration 29), so the
+// browser is put there rather than in whatever zone runs the suite.
+test.use({ timezoneId: 'Asia/Manila' })
+
 const SESSION = 'c3333333-3333-4333-8333-333333333333'
 const EARLIER = 'Can I shower with the dressing on?'
 
