@@ -129,11 +129,17 @@ describe('the provider request', () => {
     expect(init.client).toBe(client)
   })
 
-  it('names no client at all when there is none, so the runtime uses its default', () => {
+  it('without a client, is exactly the request that ran before: no client, no User-Agent', () => {
     const fallback = geminiRequestInit({ apiKey: 'test-gemini-key', body, signal, client: undefined })
     expect(fallback).not.toHaveProperty('client')
-    expect(fallback.headers).toEqual(init.headers)
+    expect(fallback.headers).toEqual({
+      'Content-Type': 'application/json',
+      'x-goog-api-key': 'test-gemini-key',
+      'Api-Revision': GEMINI_API_REVISION,
+    })
+    expect(fallback.method).toBe('POST')
     expect(fallback.body).toBe(init.body)
+    expect(fallback.signal).toBe(signal)
   })
 
   it('leaves Accept-Encoding to the runtime, and never advertises deflate', () => {

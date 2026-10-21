@@ -105,7 +105,7 @@ const REQUEST_TIMEOUT_MS = 30_000
  * One for as long as this worker lives, made on the first request that calls
  * the provider and released with the worker; it keeps no idle connection, so
  * there is nothing to close between requests. Where the runtime cannot make
- * one, the request goes out on the default transport, as it did before.
+ * one, the request goes out exactly as it did before (gemini-transport.ts).
  */
 const providerClient = providerClientOnce(
   () => Deno.createHttpClient(geminiClientOptions()),

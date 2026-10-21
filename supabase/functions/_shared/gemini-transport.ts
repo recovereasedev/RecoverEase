@@ -17,9 +17,9 @@
  * as a request is written to it fails that request, and Deno 2.1.4 does not
  * retry it. A new TLS connection costs far less than a reply takes.
  *
- * If the runtime cannot make the client, the request goes out on the default
- * transport instead - the request as it was before this experiment - and the
- * worker says which it uses, once, in the log.
+ * If the runtime cannot make the client, the request goes out exactly as it
+ * did before this experiment - the default transport and the runtime's own
+ * User-Agent - and the worker says which it uses, once, in the log.
  *
  * Accept-Encoding is left to the runtime. Deno 2.1.4 sends `gzip,br` - what
  * the HTTP/1.1 request that answered 200 sent - and decodes both. It does not
@@ -81,8 +81,8 @@ export function providerClientOnce<Client>(
 
 /**
  * The provider request's options: the same method, headers and body as
- * before, plus the User-Agent and, when there is one, the client to send it
- * with.
+ * before. With a client, the experiment: that client, and `node` as the
+ * User-Agent. Without one, nothing more - the request that ran before.
  */
 export function geminiRequestInit<Client>(input: {
   apiKey: string
@@ -90,16 +90,19 @@ export function geminiRequestInit<Client>(input: {
   signal: AbortSignal
   client: Client | undefined
 }): RequestInit & { client?: Client } {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'x-goog-api-key': input.apiKey,
+    'Api-Revision': GEMINI_API_REVISION,
+  }
+  if (input.client === undefined) {
+    return { method: 'POST', headers, body: JSON.stringify(input.body), signal: input.signal }
+  }
   return {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-goog-api-key': input.apiKey,
-      'Api-Revision': GEMINI_API_REVISION,
-      'User-Agent': GEMINI_USER_AGENT,
-    },
+    headers: { ...headers, 'User-Agent': GEMINI_USER_AGENT },
     body: JSON.stringify(input.body),
     signal: input.signal,
-    ...(input.client === undefined ? {} : { client: input.client }),
+    client: input.client,
   }
 }
