@@ -539,10 +539,10 @@ clinic's data through it. What a patient's screen learns -
 
 What the switch does not stop: a patient can still write a message into
 their own conversation through the Data API while it is off - or from a page
-that loaded before it went off. Nothing answers it, and nobody is alerted to
-it: no review is requested while the assistant is off, so the patient's page
-tells them as much and to contact their care team. Their care team can read
-it in the conversation, as any message.
+that loaded before it went off. Nothing answers it, and no review is
+requested for it, so the patient's page says it won't be answered and tells
+them to contact their care team, rather than suggesting anyone will follow it
+up. Their care team can read it in the conversation, as any message.
 
 The security advisor's `authenticated_security_definer_function_executable`
 count rises by three with this migration -
@@ -616,9 +616,11 @@ name, `ErrorInfo` reasons and the request field paths a `BadRequest` names
 (`providerErrorSummary` in `supabase/functions/_shared/reply-outcome.ts`) -
 never its message or descriptions, since error bodies can quote the request,
 which is the patient's conversation, and on some providers carry the key
-itself. A body that stops arriving within the time limit is reported as a
-timeout, like one whose headers never came. The patient's own message is
-persisted before the provider is called and survives every failure path.
+itself. A successful response whose body stops arriving within the time
+limit is reported as a timeout, like one whose headers never came; an error
+response is reported by its status even if its body never finishes, and then
+nothing of the body is logged. The patient's own message is persisted before
+the provider is called and survives every failure path.
 
 ## Secrets
 
