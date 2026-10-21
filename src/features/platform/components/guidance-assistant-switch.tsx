@@ -104,9 +104,18 @@ export function GuidanceAssistantSwitch() {
             )
           ) : null}
         </CardBody>
+        {/* Still shown once the confirmation is closed, so it names the
+            change that failed rather than assuming it was turning on. */}
         {change.isError && !confirmingOff ? (
           <CardBody className="pt-0">
-            <FormError error={change.error} title="The guidance assistant was not turned on" />
+            <FormError
+              error={change.error}
+              title={
+                change.variables === false
+                  ? 'The guidance assistant was not turned off'
+                  : 'The guidance assistant was not turned on'
+              }
+            />
           </CardBody>
         ) : null}
       </Card>
