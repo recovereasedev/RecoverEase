@@ -17,6 +17,7 @@ import { PageHeader } from '@/components/layout/page-header'
 import { Button } from '@/components/ui/button'
 import { Notice } from '@/components/ui/notice'
 import { useCurrentUser } from '@/features/auth/auth-context'
+import { useQueryKeys } from '@/features/auth/use-query-keys'
 import {
   appendPatientMessage,
   ChatbotUnavailableError,
@@ -49,7 +50,6 @@ import {
 import { useDocumentTitle } from '@/hooks/use-document-title'
 import { formatDateRelative, formatDateTime, formatTime } from '@/lib/format'
 import { refocusAfterKeyboardSubmit } from '@/lib/form-focus'
-import { queryKeys } from '@/lib/query-keys'
 import { cn } from '@/lib/utils'
 
 const ASSISTANT = 'Recovery Guidance Assistant'
@@ -154,6 +154,7 @@ const ASSISTANT_OFF_MESSAGE =
  * post-treatment symptoms is worse than no answer at all.
  */
 export function PatientChatPage() {
+  const queryKeys = useQueryKeys()
   useDocumentTitle('Guidance Chat')
   const user = useCurrentUser()
   const patientId =

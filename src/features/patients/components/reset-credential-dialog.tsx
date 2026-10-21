@@ -6,12 +6,12 @@ import { FormError } from '@/components/feedback/form-error'
 import { Button } from '@/components/ui/button'
 import { Dialog } from '@/components/ui/dialog'
 import { Notice } from '@/components/ui/notice'
+import { useQueryKeys } from '@/features/auth/use-query-keys'
 import {
   resetDoctorPassword,
   resetPatientPassword,
 } from '@/features/patients/account-api'
 import { TemporaryCredential } from '@/features/patients/components/temporary-credential'
-import { queryKeys } from '@/lib/query-keys'
 
 /**
  * Reissues a lost temporary credential.
@@ -37,6 +37,7 @@ export function ResetCredentialDialog({
     | { kind: 'doctor'; doctorId: string; name: string }
     | { kind: 'patient'; patientId: string; name: string }
 }) {
+  const queryKeys = useQueryKeys()
   const queryClient = useQueryClient()
   const [issued, setIssued] = useState<string | null>(null)
 

@@ -110,7 +110,7 @@ feature's exported hooks.
 
 ```
 Component
-  └─ useQuery(queryKeys.x.y, fetchX)   ← hooks.ts
+  └─ useQuery(useQueryKeys().x.y, fetchX)   ← hooks.ts
        └─ supabase.from('table').select()   ← api.ts
             └─ PostgREST → RLS policy → rows
 ```
@@ -119,6 +119,21 @@ Query keys are declared centrally in `src/lib/query-keys.ts`. Keys written ad
 hoc at each call site are how cache invalidation quietly stops working: one
 file writes `['patients']`, another `['patient','list']`, and a mutation
 invalidates half the screens showing that data.
+
+**The cache belongs to one account at a time.** A tab keeps one query cache
+for its whole life, and on a shared clinic computer one person signs out and
+the next signs in on the same page. RLS answers `patients.list()` with the
+asking doctor's patients, so a list cached for one doctor must never be shown
+to the next. Two independent defences:
+
+- `AuthProvider` empties the cache before it commits any status naming a
+  different account, or none: on sign-out, on sign-in, and when another tab
+  signs in as someone else. A switch straight from one account to another
+  passes through `loading` first, so every signed-in screen unmounts.
+- Every key starts with the id of the account it was fetched for
+  (`queryKeysFor(userId)`, read through `useQueryKeys()`). Anything that
+  reached the cache late for the previous account is filed under that
+  account's id, and the next account's screens cannot read it.
 
 **Queries do not repeat the authorization filter.** `fetchMyPatients` has no
 `.eq('doc_id', me)` because the RLS policy already scopes the rows. Repeating

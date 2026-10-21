@@ -22,7 +22,8 @@ import { ErrorState, LoadingState } from '@/components/feedback/state-view'
 import { Button } from '@/components/ui/button'
 import { Field, Input } from '@/components/ui/field'
 import { Notice } from '@/components/ui/notice'
-import { useAuth, useCurrentUser } from '@/features/auth/auth-context'
+import { useAuth } from '@/features/auth/auth-context'
+import { useQueryKeys } from '@/features/auth/use-query-keys'
 import {
   describeMfaFailure,
   parseAuthenticatorCode,
@@ -34,7 +35,6 @@ import {
 import { useDocumentTitle } from '@/hooks/use-document-title'
 import { copyToClipboard } from '@/lib/clipboard'
 import { focusFirstInvalid } from '@/lib/form-focus'
-import { queryKeys } from '@/lib/query-keys'
 
 /**
  * The platform console's second step: an authenticator-app code, in every
@@ -51,9 +51,9 @@ import { queryKeys } from '@/lib/query-keys'
  * to fail closed when the answer cannot be read.
  */
 export function SuperAdminAssuranceGate({ children }: { children: ReactNode }) {
-  const user = useCurrentUser()
+  const queryKeys = useQueryKeys()
   const queryClient = useQueryClient()
-  const queryKey = queryKeys.platform.assurance(user.userId)
+  const queryKey = queryKeys.platform.assurance()
 
   const assurance = useQuery({
     queryKey,

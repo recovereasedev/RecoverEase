@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { queryKeys } from '@/lib/query-keys'
+import { useQueryKeys } from '@/features/auth/use-query-keys'
 import type { TablesUpdate } from '@/types/database.types'
 
 import {
@@ -16,6 +16,7 @@ import {
 } from './api'
 
 export function useMyPatients() {
+  const queryKeys = useQueryKeys()
   return useQuery({
     queryKey: queryKeys.patients.list(),
     queryFn: fetchMyPatients,
@@ -23,6 +24,7 @@ export function useMyPatients() {
 }
 
 export function usePatient(patientId: string) {
+  const queryKeys = useQueryKeys()
   return useQuery({
     queryKey: queryKeys.patients.detail(patientId),
     queryFn: () => fetchPatient(patientId),
@@ -31,6 +33,7 @@ export function usePatient(patientId: string) {
 }
 
 export function useMyDoctor(doctorId: string | undefined) {
+  const queryKeys = useQueryKeys()
   return useQuery({
     queryKey: queryKeys.doctors.mine(),
     queryFn: () => fetchMyDoctor(doctorId as string),
@@ -39,6 +42,7 @@ export function useMyDoctor(doctorId: string | undefined) {
 }
 
 export function useUpdatePatient(patientId: string) {
+  const queryKeys = useQueryKeys()
   const queryClient = useQueryClient()
 
   return useMutation({
@@ -51,6 +55,7 @@ export function useUpdatePatient(patientId: string) {
 }
 
 export function useAllDoctors() {
+  const queryKeys = useQueryKeys()
   return useQuery({
     queryKey: queryKeys.doctors.list(),
     queryFn: fetchAllDoctors,
@@ -58,6 +63,7 @@ export function useAllDoctors() {
 }
 
 export function useSetDoctorActive() {
+  const queryKeys = useQueryKeys()
   const queryClient = useQueryClient()
 
   return useMutation({
@@ -70,6 +76,7 @@ export function useSetDoctorActive() {
 }
 
 export function useUpdateDoctor(doctorId: string) {
+  const queryKeys = useQueryKeys()
   const queryClient = useQueryClient()
 
   return useMutation({
@@ -82,6 +89,7 @@ export function useUpdateDoctor(doctorId: string) {
 }
 
 export function useReassignmentCounts(doctorId: string) {
+  const queryKeys = useQueryKeys()
   return useQuery({
     queryKey: queryKeys.doctors.reassignmentCounts(doctorId),
     queryFn: () => fetchReassignmentCounts(doctorId),
@@ -89,6 +97,7 @@ export function useReassignmentCounts(doctorId: string) {
 }
 
 export function useReassignDoctorPatients() {
+  const queryKeys = useQueryKeys()
   const queryClient = useQueryClient()
 
   return useMutation({

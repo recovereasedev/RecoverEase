@@ -19,10 +19,10 @@ import {
   toneForAuditAction,
 } from '@/features/audit-logs/api'
 import { StatBand } from '@/components/ui/stat-card'
+import { useQueryKeys } from '@/features/auth/use-query-keys'
 import { fetchAdminDashboardStats, fetchChatbotUsage } from '@/features/reports/api'
 import { useDocumentTitle } from '@/hooks/use-document-title'
 import { formatDateTime } from '@/lib/format'
-import { queryKeys } from '@/lib/query-keys'
 
 /**
  * Modules 10.1 "View Doctor/Patient Count Overview", 10.2 "View System Usage
@@ -45,6 +45,7 @@ import { queryKeys } from '@/lib/query-keys'
  * the audit trigger's design, not a filter applied here.
  */
 export function AdminDashboard() {
+  const queryKeys = useQueryKeys()
   useDocumentTitle('Dashboard')
   const statsQuery = useQuery({
     queryKey: queryKeys.admin.dashboard(),
