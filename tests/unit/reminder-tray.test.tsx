@@ -95,6 +95,14 @@ describe('which doses to remind of', () => {
     expect(doseReminders([dose()], NOW + 5 * MIN, snoozed)).toHaveLength(1)
   })
 
+  it('offers a snooze only while the card would still come back after it', () => {
+    const due = dose({ medication_log_scheduled_at: at(0) })
+    expect(doseReminders([due], NOW, EMPTY)[0]).toMatchObject({ canSnooze: true })
+    expect(doseReminders([due], NOW + 25 * MIN, EMPTY)[0]).toMatchObject({ canSnooze: true })
+    expect(doseReminders([due], NOW + 25 * MIN + 1, EMPTY)[0]).toMatchObject({ canSnooze: false })
+    expect(doseReminders([due], NOW + 29 * MIN, EMPTY)[0]).toMatchObject({ canSnooze: false })
+  })
+
   it('lists the soonest first', () => {
     const items = doseReminders(
       [dose({ medication_log_id: 'late', medication_log_scheduled_at: at(9) }), dose({ medication_log_id: 'soon', medication_log_scheduled_at: at(3) })],
@@ -145,7 +153,9 @@ const hooks = vi.hoisted(() => ({
   user: null as unknown,
   doses: [] as unknown[],
   appointments: [] as unknown[],
+  appointmentQueries: [] as unknown[][],
   mutate: vi.fn(),
+  saveFailed: false,
 }))
 
 vi.mock('@/features/auth/auth-context', () => ({ useCurrentUser: () => hooks.user }))
@@ -154,10 +164,18 @@ vi.mock('@/features/medications/api', async (importOriginal) => ({
   fetchDoses: async () => hooks.doses,
 }))
 vi.mock('@/features/medications/hooks', () => ({
-  useSetDoseStatus: () => ({ mutate: hooks.mutate, isPending: false, isError: false, variables: undefined }),
+  useSetDoseStatus: () => ({
+    mutate: hooks.mutate,
+    isPending: false,
+    isError: hooks.saveFailed,
+    variables: hooks.saveFailed ? { doseId: 'log-1', status: 'taken' } : undefined,
+  }),
 }))
 vi.mock('@/features/appointments/hooks', () => ({
-  useAppointments: () => ({ data: hooks.appointments, isPending: false, error: null }),
+  useAppointments: (...args: unknown[]) => {
+    hooks.appointmentQueries.push(args)
+    return { data: hooks.appointments, isPending: false, error: null }
+  },
 }))
 vi.mock('@/features/patients/hooks', () => ({
   useMyDoctor: () => ({ data: { doc_first_name: 'Alan', doc_last_name: 'Cruz' } }),
@@ -201,7 +219,9 @@ beforeEach(() => {
   hooks.user = PATIENT
   hooks.doses = [dose()]
   hooks.appointments = []
+  hooks.appointmentQueries = []
   hooks.mutate.mockReset()
+  hooks.saveFailed = false
 })
 
 afterEach(() => {
@@ -296,6 +316,71 @@ describe('the reminder card', () => {
     expect(card.getByText('Alice Santos · 07:58')).toBeInTheDocument()
     expect(card.getByRole('link', { name: 'Open record' })).toHaveAttribute('href', '/doctor/patients/p-alice')
     expect(card.queryByRole('button', { name: /mark taken/i })).toBeNull()
+  })
+
+  it('keeps the appointments fresh, so a cancelled or moved one is not announced for its old time', async () => {
+    renderTray()
+    await settle()
+    expect(hooks.appointmentQueries.at(-1)).toEqual(['p-alice', { refetchInterval: 60_000 }])
+
+    hooks.user = { userId: 'u-alan', role: 'doctor', profile: { kind: 'doctor', doctor: { doc_id: 'd-alan' } } }
+    renderTray()
+    await settle()
+    expect(hooks.appointmentQueries.at(-1)).toEqual([undefined, { refetchInterval: 60_000 }])
+  })
+
+  it('does not offer a snooze it cannot keep, in the last five minutes before the follow-up', async () => {
+    // Due 26 minutes ago: the card goes at 30, before five more minutes.
+    hooks.doses = [dose({ medication_log_scheduled_at: at(-26) })]
+    renderTray()
+    await settle()
+    const card = within(tray()!)
+    expect(card.getByText('Medication due now')).toBeInTheDocument()
+    expect(card.getByRole('button', { name: 'Mark taken: Amoxicillin' })).toBeInTheDocument()
+    expect(card.queryByRole('button', { name: /remind me in 5 min/i })).toBeNull()
+  })
+
+  it('leaves focus where the patient moved it, when a dose marked taken leaves later', async () => {
+    renderTray()
+    await settle()
+    const markTaken = within(tray()!).getByRole('button', { name: 'Mark taken: Amoxicillin' })
+    markTaken.focus()
+    fireEvent.click(markTaken)
+    expect(hooks.mutate).toHaveBeenCalledWith({ doseId: 'log-1', status: 'taken' })
+
+    // While the save is on its way, the patient goes back to the page.
+    const pageButton = screen.getByRole('button', { name: 'Something on the page' })
+    pageButton.focus()
+    // The saved dose drops out at the next refetch.
+    hooks.doses = []
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(61_000)
+    })
+
+    expect(tray()).toBeNull()
+    expect(document.activeElement).toBe(pageButton)
+  })
+
+  it('keeps the card, with its message, when marking it taken fails, and later changes take no focus', async () => {
+    renderTray()
+    await settle()
+    const markTaken = within(tray()!).getByRole('button', { name: 'Mark taken: Amoxicillin' })
+    markTaken.focus()
+    fireEvent.click(markTaken)
+    hooks.saveFailed = true
+    hooks.doses = [dose(), dose({ medication_log_id: 'log-2', medication_log_scheduled_at: at(12) })]
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(61_000)
+    })
+
+    expect(within(tray()!).getByRole('alert')).toHaveTextContent('That was not saved.')
+    expect(document.activeElement).toBe(markTaken)
+  })
+
+  it('takes at most half the screen, and scrolls beyond it', async () => {
+    renderTray()
+    await settle()
+    expect(tray()!.querySelector('ul')).toHaveClass('max-h-[50dvh]', 'overflow-y-auto')
   })
 
   it('shows an administrator nothing', async () => {

@@ -105,6 +105,37 @@ test.describe('the reminder card', () => {
     expect(contentEnd).toBeLessThanOrEqual(trayAfterScroll.y + 1)
   })
 
+  test('on a phone, several doses at once take at most half the screen, and each stays reachable', async ({ page, signInAs }) => {
+    // Five medicines due within minutes of each other: usual after an operation.
+    await page.setViewportSize({ width: 375, height: 667 })
+    const medicines = ['Amoxicillin', 'Paracetamol', 'Ibuprofen', 'Omeprazole', 'Cefalexin']
+    const now = Date.now()
+    await signInAs('patient', {
+      medication_log: medicines.map((name, index) => {
+        const dose = remindedDose()
+        return {
+          ...dose,
+          medication_log_id: `dose-${index}`,
+          medication_log_scheduled_at: new Date(now + (3 + index) * MIN).toISOString(),
+          medication_schedule: { ...dose.medication_schedule, medication_schedule_name: name },
+        }
+      }),
+    })
+    await page.goto('/patient')
+    await expect(card(page).getByRole('listitem')).toHaveCount(5)
+
+    const tray = (await card(page).boundingBox())!
+    expect(tray.height).toBeLessThanOrEqual(667 / 2 + 1)
+    expect(tray.y).toBeGreaterThanOrEqual(0)
+
+    // The soonest is first; it and the last can both be brought into view.
+    for (const name of [medicines[0], medicines.at(-1)]) {
+      const markTaken = card(page).getByRole('button', { name: `Mark taken: ${name}` })
+      await markTaken.scrollIntoViewIfNeeded()
+      await expect(markTaken).toBeInViewport({ ratio: 1 })
+    }
+  })
+
   test('keeps clear of the chat’s message box', async ({ page, signInAs }) => {
     await page.setViewportSize({ width: 1280, height: 900 })
     await signInAs('patient', { medication_log: [remindedDose()] })

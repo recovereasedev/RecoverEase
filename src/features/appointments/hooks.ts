@@ -12,12 +12,16 @@ import {
   type AppointmentStatus,
 } from './api'
 
-export function useAppointments(patientId?: string) {
+export function useAppointments(
+  patientId?: string,
+  options: { refetchInterval?: number } = {},
+) {
   return useQuery({
     queryKey: patientId
       ? queryKeys.appointments.forPatient(patientId)
       : queryKeys.appointments.forDoctor(),
     queryFn: () => fetchAppointments(patientId),
+    refetchInterval: options.refetchInterval ?? false,
   })
 }
 
