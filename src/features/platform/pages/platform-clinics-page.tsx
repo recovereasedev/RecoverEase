@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Dialog } from '@/components/ui/dialog'
 import { Field, Input } from '@/components/ui/field'
+import { useQueryKeys } from '@/features/auth/use-query-keys'
 import { AddClinicAdminDialog } from '@/features/platform/components/add-clinic-admin-dialog'
 import {
   createClinic,
@@ -23,7 +24,6 @@ import { useDocumentTitle } from '@/hooks/use-document-title'
 import { useFocusRecovery } from '@/hooks/use-focus-recovery'
 import { formatDate } from '@/lib/format'
 import { focusFirstInvalid } from '@/lib/form-focus'
-import { queryKeys } from '@/lib/query-keys'
 
 function adminCount(count: number): string {
   if (count === 0) return 'No Clinic Admin yet'
@@ -40,6 +40,7 @@ function adminCount(count: number): string {
  * and it still asks first because every clinic's staff notice it.
  */
 export function PlatformClinicsPage() {
+  const queryKeys = useQueryKeys()
   useDocumentTitle('Clinics')
   const queryClient = useQueryClient()
   const focusRecovery = useFocusRecovery()

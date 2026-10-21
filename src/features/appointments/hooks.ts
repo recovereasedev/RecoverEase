@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { queryKeys } from '@/lib/query-keys'
+import { useQueryKeys } from '@/features/auth/use-query-keys'
 
 import {
   createAppointment,
@@ -13,6 +13,7 @@ import {
 } from './api'
 
 export function useAppointments(patientId?: string) {
+  const queryKeys = useQueryKeys()
   return useQuery({
     queryKey: patientId
       ? queryKeys.appointments.forPatient(patientId)
@@ -22,6 +23,7 @@ export function useAppointments(patientId?: string) {
 }
 
 export function useRescheduleRequests() {
+  const queryKeys = useQueryKeys()
   return useQuery({
     queryKey: queryKeys.appointments.rescheduleRequests(),
     queryFn: fetchRescheduleRequests,
@@ -29,6 +31,7 @@ export function useRescheduleRequests() {
 }
 
 export function useCreateAppointment() {
+  const queryKeys = useQueryKeys()
   const queryClient = useQueryClient()
 
   return useMutation({
@@ -42,6 +45,7 @@ export function useCreateAppointment() {
 }
 
 export function useSetAppointmentStatus() {
+  const queryKeys = useQueryKeys()
   const queryClient = useQueryClient()
 
   return useMutation({
@@ -66,6 +70,7 @@ export function useSetAppointmentStatus() {
 }
 
 export function useCreateRescheduleRequest() {
+  const queryKeys = useQueryKeys()
   const queryClient = useQueryClient()
 
   return useMutation({
@@ -79,6 +84,7 @@ export function useCreateRescheduleRequest() {
 }
 
 export function useDecideRescheduleRequest() {
+  const queryKeys = useQueryKeys()
   const queryClient = useQueryClient()
 
   return useMutation({

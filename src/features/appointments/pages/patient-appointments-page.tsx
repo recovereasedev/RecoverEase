@@ -25,6 +25,7 @@ import {
   useSetAppointmentStatus,
 } from '@/features/appointments/hooks'
 import { useCurrentUser } from '@/features/auth/auth-context'
+import { useQueryKeys } from '@/features/auth/use-query-keys'
 import { useDocumentTitle } from '@/hooks/use-document-title'
 import { useFocusRecovery } from '@/hooks/use-focus-recovery'
 import { formatDateTime, formatRelative } from '@/lib/format'
@@ -33,7 +34,6 @@ import { appointmentStatus, rescheduleRequestStatus } from '@/lib/status'
 import { supabase } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 import { useQuery } from '@tanstack/react-query'
-import { queryKeys } from '@/lib/query-keys'
 
 /** The earliest value the datetime picker accepts: now, rounded to a minute. */
 function minimumBookingValue(): string {
@@ -53,6 +53,7 @@ function minimumBookingValue(): string {
  * choice would only produce rejected bookings.
  */
 export function PatientAppointmentsPage() {
+  const queryKeys = useQueryKeys()
   useDocumentTitle('Appointments')
   // "Confirm" leaves once the appointment is confirmed, as does "Cancel" once
   // its dialog has handed focus back to it: keyboard focus moves to the next

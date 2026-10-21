@@ -14,9 +14,9 @@ import {
   toneForAuditAction,
   type AuditLogEntry,
 } from '@/features/audit-logs/api'
+import { useQueryKeys } from '@/features/auth/use-query-keys'
 import { useDocumentTitle } from '@/hooks/use-document-title'
 import { formatDateTime } from '@/lib/format'
-import { queryKeys } from '@/lib/query-keys'
 
 function changedColumns(entry: AuditLogEntry): string[] {
   const details = entry.audit_log_details
@@ -45,6 +45,7 @@ function changedColumns(entry: AuditLogEntry): string[] {
  * action, the entity, the timestamp, and the list of column names.
  */
 export function AuditLogPage() {
+  const queryKeys = useQueryKeys()
   useDocumentTitle('Audit Log')
   const [entityFilter, setEntityFilter] = useState('')
   const [actionFilter, setActionFilter] = useState('')

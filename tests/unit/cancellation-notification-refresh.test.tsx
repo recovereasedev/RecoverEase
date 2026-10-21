@@ -3,7 +3,7 @@ import { renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
-import { queryKeys } from '@/lib/query-keys'
+import { queryKeysFor } from '@/lib/query-keys'
 
 /**
  * F-02 — the notice a cancellation writes shows up straight away.
@@ -23,7 +23,12 @@ vi.mock('@/features/appointments/api', () => ({
   fetchRescheduleRequests: vi.fn(),
 }))
 
+vi.mock('@/features/auth/auth-context', () => ({
+  useCurrentUser: () => ({ userId: 'u-1' }),
+}))
+
 const { useSetAppointmentStatus } = await import('@/features/appointments/hooks')
+const queryKeys = queryKeysFor('u-1')
 
 function renderMutation() {
   const client = new QueryClient({

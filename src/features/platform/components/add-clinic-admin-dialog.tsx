@@ -8,13 +8,13 @@ import { Button } from '@/components/ui/button'
 import { Dialog } from '@/components/ui/dialog'
 import { Field, Input } from '@/components/ui/field'
 import { Notice } from '@/components/ui/notice'
+import { useQueryKeys } from '@/features/auth/use-query-keys'
 import {
   createClinicAdmin,
   type ClinicAdminCreated,
   type PlatformClinic,
 } from '@/features/platform/api'
 import { focusFirstInvalid } from '@/lib/form-focus'
-import { queryKeys } from '@/lib/query-keys'
 
 type Problems = {
   firstName?: string
@@ -38,6 +38,7 @@ export function AddClinicAdminDialog({
   clinic: PlatformClinic | null
   onClose: () => void
 }) {
+  const queryKeys = useQueryKeys()
   const queryClient = useQueryClient()
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')

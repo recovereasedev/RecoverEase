@@ -9,6 +9,7 @@ import { Card, CardBody } from '@/components/ui/card'
 import { ListRow, ListRows } from '@/components/ui/list-row'
 import { PageSection } from '@/components/ui/section-heading'
 import { useCurrentUser } from '@/features/auth/auth-context'
+import { useQueryKeys } from '@/features/auth/use-query-keys'
 import {
   fetchAdminDashboardStats,
   fetchReports,
@@ -20,7 +21,6 @@ import { useDocumentTitle } from '@/hooks/use-document-title'
 import { useNow } from '@/hooks/use-now'
 import { useFileDownload } from '@/lib/documents/download'
 import { formatDateTime } from '@/lib/format'
-import { queryKeys } from '@/lib/query-keys'
 import { fullName } from '@/lib/utils'
 
 /**
@@ -33,6 +33,7 @@ import { fullName } from '@/lib/utils'
  * return none to this role.
  */
 export function AdminReportsPage() {
+  const queryKeys = useQueryKeys()
   useDocumentTitle('Reports')
   const user = useCurrentUser()
   const queryClient = useQueryClient()
