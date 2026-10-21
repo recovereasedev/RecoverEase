@@ -104,7 +104,7 @@ test.describe('the patient, when the guidance assistant is off', () => {
     // follow the message up.
     await expect(
       page.getByText(
-        'The guidance assistant is turned off. Your message has been saved, but no one has been alerted to it. For anything about your recovery, contact your care team.',
+        'The guidance assistant is turned off, so it won’t answer this message. Your message has been saved. For anything about your recovery, contact your care team.',
       ),
     ).toBeVisible()
     await expect(page.getByText(/care team can still see it/)).toHaveCount(0)

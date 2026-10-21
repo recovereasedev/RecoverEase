@@ -811,8 +811,10 @@ a dated snapshot, not the current state - check again before relying on it):
 - **Step 3 is not done:** `main` does not have this change, so its website
   has no switches and its `reply-failure.ts` knows no `disabled` code. Until
   it does, turning a switch off reaches patients as "not available" with
-  Try again, and the rollbacks for 33 and 31 must be taken from this branch,
-  whose 33 refuses while 38 is installed.
+  Try again, and 33's rollback must be taken from this branch: this one
+  refuses while 38 is installed, and `main`'s does not. 31's is the same on
+  both and has no check for 38 of its own; it relies on 33's and 37's
+  refusing first.
 
 The two switches do not depend on 38 in the same way:
 

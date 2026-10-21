@@ -128,10 +128,12 @@ function failureMessage(failure: Failure, retriesLeft: number): string {
     case 'not_configured':
       return 'The guidance assistant is not available at the moment. Your message has been saved, and your care team can still see it.'
     case 'disabled':
-      // Unlike the failures above, nobody is asked to review it: the clinic
-      // or the platform chose to have no assistant (chatbot-reply), so the
-      // patient is told to reach their care team rather than wait.
-      return 'The guidance assistant is turned off. Your message has been saved, but no one has been alerted to it. For anything about your recovery, contact your care team.'
+      // This refusal never asks for a review - chatbot-reply refuses before
+      // the step that does - so nothing here suggests anyone will follow the
+      // message up: the patient is told to reach their care team instead.
+      // Nor does it say no one was alerted: an earlier failed attempt at the
+      // same message may have asked for a review.
+      return 'The guidance assistant is turned off, so it won’t answer this message. Your message has been saved. For anything about your recovery, contact your care team.'
   }
 }
 
