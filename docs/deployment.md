@@ -371,23 +371,27 @@ To roll back 31, go the other way, newest first. Each later migration is
 rolled back with its own down-script, applied as a new migration, and where
 deployed code depends on it, that code goes back first:
 
-1. **37**: the website from before PR #49, then
+1. **38**, where it is applied:
+   `supabase/rollbacks/20260902100038_held_chat_alerts.down.sql`, which
+   refuses while any critical alert is still held. No code has to go back
+   first (see [below](#critical-alerts-held-for-a-clinician-migration-38)).
+2. **37**: the website from before PR #49, then
    `supabase/rollbacks/20260902100037_medication_pre_dose_reminders.down.sql`.
-2. **36**: the website from before PR #47, then
+3. **36**: the website from before PR #47, then
    `supabase/rollbacks/20260902100036_doctor_announcements.down.sql`, which
    refuses while any doctor's announcement exists.
-3. **35**: `supabase/rollbacks/20260902100035_platform_audit_field_names.down.sql`.
+4. **35**: `supabase/rollbacks/20260902100035_platform_audit_field_names.down.sql`.
    No code goes back: the website and the Edge Functions work with either
    version.
-4. **34**, where it is applied:
+5. **34**, where it is applied:
    `supabase/rollbacks/20260902100034_lift_single_clinic_gate.down.sql`,
    which refuses once a second clinic exists. No code goes back.
-5. **33**: `supabase/rollbacks/20260902100033_super_admin_platform.down.sql`,
+6. **33**: `supabase/rollbacks/20260902100033_super_admin_platform.down.sql`,
    which refuses while 34 is applied or a Super Admin or platform announcement
    exists. No code goes back: with no Super Admin nothing reaches the
    console, and `create-account` refuses Clinic Admin provisioning before any
    login is created.
-6. **31**: the website from before 31, then `chatbot-reply` from before 31
+7. **31**: the website from before 31, then `chatbot-reply` from before 31
    (it reads `system_setting.clinic_id`), then
    `supabase/rollbacks/20260902100031_clinic_settings.down.sql`. It refuses
    while there is more than one clinic - two clinics' settings cannot be
@@ -421,6 +425,53 @@ check cannot do:
   `ON_ERROR_STOP`, psql reports the refusal and goes on to run the statements
   after it, and `--single-transaction` undoes the whole script if a later
   statement fails.
+
+### Critical alerts held for a clinician (migration 38)
+
+**Not applied, and not deployed.** Migration 38 and the `chatbot-reply`
+change that goes with it are on a branch for review. The options and the
+decision are in [`critical-alert-escalation.md`](./critical-alert-escalation.md).
+
+Migration 38 adds `chat_session.chat_session_alert_held_since`, its guard,
+`hold_chat_alert` (service role only), delivery on hand-over (two statement
+triggers) and `admin_held_chat_alert_counts`. It needs migration 29 and is
+independent of 34. `tests/db/held-chat-alerts.test.ts` applies it after 33,
+35, 36 and 37 with 34 unapplied, as production has them. No existing row
+changes, and the column starts empty.
+
+The release order, each step its own approval:
+
+1. **Confirm the decision** (option C) and review the branch.
+2. **Approve migration 38**, then apply it and verify it: its history entry,
+   the column, the three functions and the three triggers. Read-only after
+   applying:
+
+   ```sql
+   select count(*) from public.chat_session
+    where chat_session_alert_held_since is not null;   -- 0
+   select tgname from pg_trigger
+    where tgname in ('chat_session_guard_held_alert',
+                     'patient_deliver_held_chat_alerts',
+                     'doctor_deliver_held_chat_alerts');  -- 3 rows
+   ```
+
+3. **Approve deploying `chatbot-reply`**, separately:
+   `supabase functions deploy chatbot-reply`. If it is deployed before 38,
+   the alert still reaches the Clinic Admins, but nothing is held, nothing is
+   delivered on hand-over, and they are told on every such reply.
+4. **Approve merging the website.** Until 38 is applied, Doctor accounts says
+   it could not check for waiting alerts, and nothing else changes.
+
+There is no production smoke test of the alert path that leaves no trace. A
+real check needs a deactivated doctor with an assigned patient whose
+conversation raises a concern. That means Gemini, and real notifications to
+real administrators. Do it only with a test clinic and with approval.
+
+Rolling back: the down-script refuses while any alert is held. Deliver them
+first (reassign the patients, or reactivate the doctor). `chatbot-reply` from
+38 on keeps working after the rollback: when it cannot hold an alert, it
+tells the Clinic Admins anyway. Neither the website nor the function has to
+go back first.
 
 ## Scheduled jobs
 

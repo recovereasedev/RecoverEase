@@ -260,6 +260,7 @@ export type Database = {
           chat_session_ended_at: string | null
           chat_session_has_critical_flag: boolean
           chat_session_summary: string | null
+          chat_session_alert_held_since: string | null
         }
         Insert: {
           chat_session_id?: string
@@ -269,6 +270,7 @@ export type Database = {
           chat_session_ended_at?: string | null
           chat_session_has_critical_flag?: boolean
           chat_session_summary?: string | null
+          chat_session_alert_held_since?: string | null
         }
         Update: {
           chat_session_id?: string
@@ -278,6 +280,7 @@ export type Database = {
           chat_session_ended_at?: string | null
           chat_session_has_critical_flag?: boolean
           chat_session_summary?: string | null
+          chat_session_alert_held_since?: string | null
         }
         Relationships: [
           {
@@ -992,6 +995,10 @@ export type Database = {
       admin_doctor_patient_count: {
         Args: { target_doc_id: string }
         Returns: number
+      }
+      admin_held_chat_alert_counts: {
+        Args: Record<PropertyKey, never>
+        Returns: { doc_id: string; held_alerts: number }[]
       }
       admin_reassign_doctor_patients: {
         Args: { from_doc_id: string; to_doc_id: string; expected_count: number; expected_appointment_count?: number }

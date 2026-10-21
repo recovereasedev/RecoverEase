@@ -21,6 +21,9 @@ export const queryKeys = {
     mine: () => [...queryKeys.doctors.all, 'mine'] as const,
     reassignmentCounts: (doctorId: string) =>
       [...queryKeys.doctors.all, 'reassignment-counts', doctorId] as const,
+    // Under `doctors`, so reassigning or reactivating - which delivers
+    // them - refreshes these with everything else on the page.
+    heldChatAlerts: () => [...queryKeys.doctors.all, 'held-chat-alerts'] as const,
   },
 
   appointments: {

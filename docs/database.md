@@ -204,6 +204,20 @@ patient has reminders on and their preferred time of day has been reached,
 and if it is not after its course's end date. The job runs every minute. A
 dose already due when it runs is left to the follow-up, which is unchanged.
 
+### 11. A critical alert can be held
+
+The ERD's `chatSession` raises the doctor alert of module 8.2 through its
+critical flag. Migration 38 adds
+`chat_session.chat_session_alert_held_since` for one case. The patient's
+doctor is deactivated, and under decision D8 the patients stay assigned to
+them until moved, so the alert has no clinician who can open it. The column
+is set while the alert waits and emptied once it is delivered. Delivery
+happens when a patient's doctor changes or a doctor is reactivated
+(statement triggers on `patient.doc_id` and `doctor.doc_is_active`). Only
+`hold_chat_alert` and that delivery write it; a direct client write is
+refused (`chat_session_guard_held_alert`), as migration 26 refuses one of
+the flag. See [`critical-alert-escalation.md`](./critical-alert-escalation.md).
+
 ## Assumptions where the ERD was silent
 
 The ERD types every status column as `varchar` without listing values. Each

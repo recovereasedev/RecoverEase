@@ -244,7 +244,11 @@ export type ChatReply = {
    * is refetched to show it.
    */
   message: ChatMessage | null
-  /** True when module 8.2 flagged a critical concern and alerted the doctor. */
+  /**
+   * True when module 8.2 flagged a critical concern. Not that a doctor was
+   * told: the alert may be waiting for a clinician, or have failed to be
+   * written (docs/critical-alert-escalation.md).
+   */
   raisedCriticalConcern: boolean
 }
 

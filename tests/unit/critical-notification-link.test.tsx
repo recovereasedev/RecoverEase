@@ -2,9 +2,13 @@ import { render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { HELD_ALERT_ADMIN_MESSAGE } from '../../supabase/functions/_shared/critical-alert'
+
 /**
- * Module 8.5: a critical-chat alert opens the conversation it is about. Every
- * other notification is left exactly as it was.
+ * Module 8.5: a critical-chat alert opens the conversation it is about. A
+ * Clinic Admin's, about an alert held for a deactivated doctor's patient,
+ * opens Doctor accounts instead. Every other notification is left exactly as
+ * it was.
  */
 
 const state = vi.hoisted(() => ({ notifications: [] as unknown[], markRead: vi.fn() }))
@@ -40,9 +44,9 @@ function notification(overrides: Record<string, unknown>) {
 
 const row = (text: string) => within(screen.getByText(text).closest('li') as HTMLElement)
 
-function renderPage() {
+function renderPage(path = '/doctor/notifications') {
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[path]}>
       <NotificationsPage />
     </MemoryRouter>,
   )
@@ -84,6 +88,39 @@ describe('a critical-chat alert', () => {
     renderPage()
 
     expect(screen.queryByRole('link', { name: /View conversation/ })).not.toBeInTheDocument()
+  })
+})
+
+describe('a Clinic Admin’s held-alert notification (migration 38)', () => {
+  const HELD_TEXT = HELD_ALERT_ADMIN_MESSAGE
+
+  it('links to Doctor accounts, where reassigning delivers it, and never to a conversation', () => {
+    state.notifications = [
+      notification({
+        notification_id: 'n-held',
+        user_id: 'admin-user',
+        notification_type: 'chat_critical',
+        notification_message: HELD_TEXT,
+      }),
+    ]
+    renderPage('/admin/notifications')
+
+    expect(
+      row(HELD_TEXT).getByRole('link', { name: /^Open doctor accounts/ }),
+    ).toHaveAttribute('href', '/admin/doctors')
+    expect(screen.queryByRole('link', { name: /View conversation/ })).not.toBeInTheDocument()
+    expect(row(HELD_TEXT).getByRole('button', { name: /^Mark read/ })).toBeInTheDocument()
+  })
+
+  it('is not offered to a doctor or a patient', () => {
+    for (const path of ['/doctor/notifications', '/patient/notifications']) {
+      state.notifications = [
+        notification({ notification_type: 'chat_critical', notification_message: ALERT_TEXT }),
+      ]
+      const { unmount } = renderPage(path)
+      expect(screen.queryByRole('link', { name: /Open doctor accounts/ })).not.toBeInTheDocument()
+      unmount()
+    }
   })
 })
 
