@@ -41,6 +41,12 @@ export type ReminderItem =
       detail: string
       medicine: string
       dueAt: number
+      /**
+       * Whether "Remind me in 5 min" can keep its word: false in the last
+       * five minutes before the follow-up takes over, when a snoozed card
+       * would never come back.
+       */
+      canSnooze: boolean
     }
   | {
       kind: 'appointment'
@@ -109,6 +115,7 @@ export function doseReminders(
       detail: `${medicine}${dosage ? ` ${dosage}` : ''} at ${formatTime(dose.medication_log_scheduled_at)}`,
       medicine,
       dueAt,
+      canSnooze: dueAt + FOLLOW_UP_AFTER_MS - now >= SNOOZE_MS,
     })
   }
   return items.sort((a, b) => a.dueAt - b.dueAt)

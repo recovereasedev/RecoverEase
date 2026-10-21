@@ -60,7 +60,9 @@ function PatientReminders({ patient }: { patient: Patient }) {
     queryFn: () => fetchDoses({ patientId: patient.pat_id, from, to }),
     refetchInterval: 60_000,
   })
-  const appointments = useAppointments(patient.pat_id)
+  // Refetched each minute too, so an appointment cancelled or moved while
+  // the page stays open is not announced for its old time.
+  const appointments = useAppointments(patient.pat_id, { refetchInterval: 60_000 })
   const doctor = useMyDoctor(patient.doc_id)
   const setDoseStatus = useSetDoseStatus(patient.pat_id)
 
@@ -89,7 +91,7 @@ function PatientReminders({ patient }: { patient: Patient }) {
 function DoctorReminders() {
   const now = useNow(30_000)
   const state = useReminderState()
-  const appointments = useAppointments()
+  const appointments = useAppointments(undefined, { refetchInterval: 60_000 })
   const items = appointmentReminders(appointments.data ?? [], now, state.current, { role: 'doctor' })
   return <Tray items={items} state={state} />
 }
@@ -204,9 +206,19 @@ function Tray({
   useEffect(() => {
     if (!restoreFocus.current) return
     restoreFocus.current = false
+    // Only when focus went with the reminder. Marking a dose taken removes
+    // it only once the save is back; by then the patient may be typing
+    // somewhere else, and focus stays there.
+    const active = document.activeElement
+    if (active && active !== document.body && active.isConnected) return
     const next = trayRef.current?.querySelector<HTMLElement>('li button, li a')
     ;(next ?? document.getElementById('main-content'))?.focus()
   }, [ids])
+
+  // A save that failed removes nothing, so nothing later is owed focus.
+  useEffect(() => {
+    if (failedDoseId) restoreFocus.current = false
+  }, [failedDoseId])
 
   const act = (event: { currentTarget: Element }, run: () => void) => {
     if (event.currentTarget.closest('li')?.contains(document.activeElement)) {
@@ -247,7 +259,10 @@ function Tray({
             'md:inset-x-auto md:bottom-6 md:right-6 md:w-[22rem]',
           )}
         >
-          <ul className="flex flex-col gap-2">
+          {/* At most half the screen, scrolling beyond it: several doses at
+              once is common after an operation, and the soonest - first in
+              the list - must stay reachable rather than pushed off the top. */}
+          <ul className="-m-1 flex max-h-[50dvh] flex-col gap-2 overflow-y-auto overscroll-contain p-1">
             {items.map((item) => {
               const isDose = item.kind === 'dose'
               const Icon = isDose ? Pill : CalendarClock
@@ -296,14 +311,18 @@ function Tray({
                         >
                           Mark taken
                         </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          aria-label={`Remind me in 5 min: ${item.medicine}`}
-                          onClick={(event) => act(event, () => snooze(item.id))}
-                        >
-                          Remind me in 5 min
-                        </Button>
+                        {/* Not offered when the card would be gone before the
+                            five minutes are up: the follow-up takes over. */}
+                        {item.canSnooze ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            aria-label={`Remind me in 5 min: ${item.medicine}`}
+                            onClick={(event) => act(event, () => snooze(item.id))}
+                          >
+                            Remind me in 5 min
+                          </Button>
+                        ) : null}
                       </>
                     ) : (
                       <Link to={item.href} className={buttonVariants({ size: 'sm', variant: 'outline' })}>
