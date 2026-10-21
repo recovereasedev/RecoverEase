@@ -616,9 +616,11 @@ name, `ErrorInfo` reasons and the request field paths a `BadRequest` names
 (`providerErrorSummary` in `supabase/functions/_shared/reply-outcome.ts`) -
 never its message or descriptions, since error bodies can quote the request,
 which is the patient's conversation, and on some providers carry the key
-itself. A body that stops arriving within the time limit is reported as a
-timeout, like one whose headers never came. The patient's own message is
-persisted before the provider is called and survives every failure path.
+itself. A successful response whose body stops arriving within the time
+limit is reported as a timeout, like one whose headers never came; an error
+response is reported by its status even if its body never finishes, and then
+nothing of the body is logged. The patient's own message is persisted before
+the provider is called and survives every failure path.
 
 ## Secrets
 
