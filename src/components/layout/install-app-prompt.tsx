@@ -463,7 +463,7 @@ function NumberedSteps({ steps }: { steps: ReactNode[] }) {
         <li key={index} className="flex items-start gap-3">
           <span
             aria-hidden="true"
-            className="flex size-8 shrink-0 items-center justify-center rounded-full bg-brand-800 text-base font-semibold text-white"
+            className="flex size-8 shrink-0 items-center justify-center rounded-full bg-fill-brand-800 text-base font-semibold text-white"
           >
             {index + 1}
           </span>

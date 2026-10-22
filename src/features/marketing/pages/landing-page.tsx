@@ -278,7 +278,7 @@ export function LandingPage() {
     <div className="min-h-dvh bg-canvas">
       <a
         href="#main-content"
-        className="sr-only-focusable absolute left-4 top-4 z-50 rounded-[var(--radius-md)] bg-brand-800 px-4 py-2 text-sm font-medium text-white"
+        className="sr-only-focusable absolute left-4 top-4 z-50 rounded-[var(--radius-md)] bg-fill-brand-800 px-4 py-2 text-sm font-medium text-white"
       >
         Skip to main content
       </a>
@@ -466,7 +466,7 @@ export function LandingPage() {
                   ) : null}
                   <span
                     aria-hidden="true"
-                    className="relative flex size-9 items-center justify-center rounded-full bg-brand-800 text-sm font-semibold text-white"
+                    className="relative flex size-9 items-center justify-center rounded-full bg-fill-brand-800 text-sm font-semibold text-white"
                   >
                     {index + 1}
                   </span>

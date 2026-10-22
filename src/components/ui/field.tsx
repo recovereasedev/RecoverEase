@@ -523,7 +523,7 @@ export function Combobox({
           id={listId}
           role="listbox"
           style={{ maxHeight: listMaxHeight ?? DEFAULT_LIST_MAX_HEIGHT }}
-          className="absolute z-10 mt-1 w-full overflow-auto rounded-[var(--radius-md)] border border-[var(--color-border)] bg-surface py-1 shadow-lg"
+          className="absolute z-10 mt-1 w-full overflow-auto rounded-[var(--radius-md)] border border-[var(--color-border)] bg-surface py-1 shadow-[var(--shadow-lg)]"
         >
           {matches.length === 0 ? (
             <li className="px-3 py-2 text-sm text-muted">{emptyLabel}</li>
