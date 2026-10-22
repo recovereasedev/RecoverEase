@@ -899,10 +899,10 @@ switch off and on through `super_admin_set_guidance_assistant` and looks for
 them in what the Super Admin's read returns.
 
 **Not applied.** Applying 39 to production is a separate, approved step. It
-also has no code half. The website from the switch's branch already labels
-the field; `main`'s website, which has no label for it, shows it as
-"platform setting value". No Edge Function changes, so 39 can go in before
-or after the switch's website is merged.
+also has no code half. The website already labels the field "on or off"
+(it came with the switch, #59), but until 39 is applied the label never
+shows, because the field's name never comes back. No Edge Function changes,
+so 39 can go in at any time.
 
 The release order, each step its own approval:
 
