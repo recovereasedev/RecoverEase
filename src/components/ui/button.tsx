@@ -32,16 +32,16 @@ const buttonVariants = cva(
     variants: {
       variant: {
         primary:
-          'bg-brand-800 text-white hover:bg-brand-700 active:bg-brand-900',
+          'bg-fill-brand-800 text-white hover:bg-fill-brand-700 active:bg-fill-brand-900',
         secondary:
           'bg-surface text-accent-800 border border-accent-600 hover:bg-accent-50 active:bg-accent-100',
         accent:
-          'bg-accent-700 text-white hover:bg-accent-800 active:bg-accent-900',
+          'bg-fill-accent-700 text-white hover:bg-fill-accent-800 active:bg-fill-accent-900',
         outline:
           'bg-surface text-heading border border-[var(--color-border-strong)] hover:bg-neutral-100 active:bg-neutral-200',
         ghost: 'text-body hover:bg-neutral-100 active:bg-neutral-200',
         danger:
-          'bg-danger-600 text-white hover:bg-danger-700 active:bg-danger-800',
+          'bg-fill-danger-600 text-white hover:bg-fill-danger-700 active:bg-fill-danger-800',
         link: 'text-brand-700 underline underline-offset-4 hover:text-brand-800',
       },
       size: {

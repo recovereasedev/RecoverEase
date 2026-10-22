@@ -9,6 +9,7 @@ import {
   type NavItem,
 } from '@/app/routes/navigation'
 import { BrandLockup, BrandWordmark } from '@/components/layout/brand'
+import { ThemeControl } from '@/components/layout/theme-control'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/features/auth/auth-context'
 import { useUnreadNotificationCount } from '@/features/notifications/hooks'
@@ -126,7 +127,7 @@ function NotificationBell({ to }: { to: string }) {
         <span
           aria-hidden="true"
           // 12px, the smallest text anywhere in the application.
-          className="absolute right-0.5 top-0.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-danger-600 px-1 text-xs font-semibold leading-5 text-white"
+          className="absolute right-0.5 top-0.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-fill-danger-600 px-1 text-xs font-semibold leading-5 text-white"
         >
           {unread > 9 ? '9+' : unread}
         </span>
@@ -163,7 +164,7 @@ function UserIdentity({
       </span>
       <span
         aria-hidden="true"
-        className="flex size-9 shrink-0 items-center justify-center rounded-full bg-brand-800 text-xs font-semibold text-white"
+        className="flex size-9 shrink-0 items-center justify-center rounded-full bg-fill-brand-800 text-xs font-semibold text-white"
       >
         {initialsFromName(name)}
       </span>
@@ -215,7 +216,7 @@ function MobileDrawer({
         type="button"
         aria-label="Close menu"
         onClick={onClose}
-        className="drawer-scrim absolute inset-0 bg-neutral-950/40"
+        className="drawer-scrim absolute inset-0 bg-scrim/40"
       />
       <div
         ref={panelRef}
@@ -241,7 +242,8 @@ function MobileDrawer({
         <div className="flex-1 overflow-y-auto p-3">
           <SidebarNav onNavigate={onClose} />
         </div>
-        <div className="border-t border-[var(--color-border)] p-3">
+        <div className="space-y-3 border-t border-[var(--color-border)] p-3">
+          <ThemeControl />
           <Button
             variant="ghost"
             block
@@ -347,7 +349,7 @@ export function AppShell() {
     >
       <a
         href="#main-content"
-        className="sr-only-focusable absolute left-4 top-4 z-[60] rounded-[var(--radius-md)] bg-brand-800 px-4 py-2 text-sm font-medium text-white print:hidden!"
+        className="sr-only-focusable absolute left-4 top-4 z-[60] rounded-[var(--radius-md)] bg-fill-brand-800 px-4 py-2 text-sm font-medium text-white print:hidden!"
       >
         Skip to main content
       </a>
@@ -367,7 +369,8 @@ export function AppShell() {
           <SidebarNav />
         </div>
 
-        <div className="border-t border-[var(--color-border)] p-3">
+        <div className="space-y-3 border-t border-[var(--color-border)] p-3">
+          <ThemeControl />
           <Button
             variant="ghost"
             block
