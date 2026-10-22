@@ -695,3 +695,38 @@
     border-width: 0;
   }
 }
+
+/* The reminder card (features/reminders/components/reminder-tray.tsx).
+   While it is on screen it publishes the space it takes as
+   --reminder-tray-space, and the page keeps that space clear: the end of the
+   content can always be scrolled above it, a focused control is brought into
+   view above it, and the chat's fitted layout ends above it, so it never sits
+   on the message box. Unlayered, so it outranks the padding utilities; screen
+   only, as the card is never printed. */
+@media screen {
+  html[data-reminder-tray] #main-content {
+    padding-bottom: calc(6rem + var(--reminder-tray-space, 0px));
+  }
+
+  html[data-reminder-tray] {
+    scroll-padding-bottom: var(--reminder-tray-space, 0px);
+  }
+
+  @media (width < 48rem) {
+    html[data-reminder-tray]:has([data-bottom-nav]) {
+      scroll-padding-bottom: calc(6rem + env(safe-area-inset-bottom) + var(--reminder-tray-space, 0px));
+    }
+  }
+
+  @media (width >= 48rem) {
+    html[data-reminder-tray] #main-content {
+      padding-bottom: calc(2.5rem + var(--reminder-tray-space, 0px));
+    }
+  }
+
+  @media (min-width: 64rem) and (min-height: 50rem) {
+    html[data-reminder-tray] [data-chat-layout] {
+      height: calc(100dvh - 14rem - var(--reminder-tray-space, 0px));
+    }
+  }
+}
