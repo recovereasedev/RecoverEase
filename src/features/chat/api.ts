@@ -72,6 +72,25 @@ export function saveOutcomeUnknown(status: number): boolean {
   return status === 0 || status === 408 || status >= 500
 }
 
+/**
+ * Whether the guidance assistant is switched on for the signed-in patient:
+ * the platform's switch and their clinic's both on (migration 38). The
+ * server enforces it whatever this says - `chatbot-reply` refuses a
+ * switched-off assistant before anything reaches the provider - so this only
+ * lets the page say so instead of offering a message box that would be
+ * refused.
+ *
+ * `null` when it cannot be told: the page then behaves as it always has, and
+ * the server still decides.
+ */
+export async function fetchGuidanceAssistantAvailable(): Promise<boolean | null> {
+  const { data, error } = await supabase
+    .rpc('guidance_assistant_available')
+    .abortSignal(dataTimeout())
+  if (error) return null
+  return typeof data === 'boolean' ? data : null
+}
+
 /** Module 8.4 "View Chat History / Past Conversations". */
 export async function fetchChatSessions(
   patientId: string,

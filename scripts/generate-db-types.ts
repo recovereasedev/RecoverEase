@@ -304,6 +304,13 @@ async function main(): Promise<void> {
     lines.push('        Args: Record<PropertyKey, never>')
     lines.push('        Returns: string')
     lines.push('      }')
+    // Migration 38: whether the guidance assistant is on for the caller's
+    // clinic. (`guidance_assistant_on_for_doctor` is the service role's,
+    // called by chatbot-reply alone, so it is not listed for the website.)
+    lines.push('      guidance_assistant_available: {')
+    lines.push('        Args: Record<PropertyKey, never>')
+    lines.push('        Returns: boolean')
+    lines.push('      }')
 
     // The Super Admin's operations (migration 33). Each refuses anyone but a
     // Super Admin in a session verified with their authenticator app.
@@ -338,6 +345,13 @@ async function main(): Promise<void> {
           'audit_log_entity_id: string | null; clinic_id: string | null; actor_user_id: string | null; ' +
           'audit_log_details: Json | null }[]',
       ],
+      // Migration 38: the platform's guidance assistant switch.
+      [
+        'super_admin_get_guidance_assistant',
+        'Record<PropertyKey, never>',
+        '{ enabled: boolean; updated_at: string | null }[]',
+      ],
+      ['super_admin_set_guidance_assistant', '{ enabled: boolean }', 'boolean'],
     ]
     for (const [name, args, returns] of superAdminFunctions) {
       lines.push(`      ${name}: {`)

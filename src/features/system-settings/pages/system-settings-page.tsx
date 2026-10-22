@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 
 import { ErrorState, LoadingState } from '@/components/feedback/state-view'
 import { PageHeader } from '@/components/layout/page-header'
@@ -14,6 +14,10 @@ import {
   TIMEZONE_DEFINITION,
 } from '@/features/system-settings/api'
 import { SettingForm } from '@/features/system-settings/components/setting-form'
+import {
+  GUIDANCE_CHAT_KEY,
+  GuidanceChatSetting,
+} from '@/features/system-settings/components/guidance-chat-setting'
 import { useDocumentTitle } from '@/hooks/use-document-title'
 
 /**
@@ -111,6 +115,28 @@ export function SystemSettingsPage() {
     }),
   ]
 
+  // The adviser's AI Chatbot On/Off for this clinic (migration 38), beside
+  // the guidance it would follow.
+  const guidanceChat = stored.find(
+    (setting) => setting.system_setting_key === GUIDANCE_CHAT_KEY,
+  )
+  const guidanceChatCard = (
+    <GuidanceChatSetting
+      key={`${GUIDANCE_CHAT_KEY}:${guidanceChat?.system_setting_updated_at ?? 'unset'}`}
+      storedValue={guidanceChat?.system_setting_value ?? null}
+      updatedAt={guidanceChat?.system_setting_updated_at ?? null}
+      isSaving={save.isPending && save.variables?.key === GUIDANCE_CHAT_KEY}
+      error={
+        save.isError && save.variables?.key === GUIDANCE_CHAT_KEY ? save.error : null
+      }
+      wasJustSaved={savedKey === GUIDANCE_CHAT_KEY}
+      onSave={(value) => {
+        setSavedKey(null)
+        save.mutate({ key: GUIDANCE_CHAT_KEY, value })
+      }}
+    />
+  )
+
   return (
     <>
       <PageHeader
@@ -120,27 +146,30 @@ export function SystemSettingsPage() {
 
       <div className="space-y-5">
         {forms.map(({ definition, savedValue, updatedAt }) => (
-          <SettingForm
-            // Remounts with the saved value as its initial state whenever
-            // the stored value changes, rather than syncing via an effect.
-            key={`${definition.key}:${updatedAt ?? 'unset'}`}
-            definition={definition}
-            savedValue={savedValue}
-            updatedAt={updatedAt}
-            isSaving={
-              save.isPending && save.variables?.key === definition.key
-            }
-            error={
-              save.isError && save.variables?.key === definition.key
-                ? save.error
-                : null
-            }
-            wasJustSaved={savedKey === definition.key}
-            onSave={(value) => {
-              setSavedKey(null)
-              save.mutate({ key: definition.key, value })
-            }}
-          />
+          <Fragment key={definition.key}>
+            {definition.key === 'chatbot.system_prompt' ? guidanceChatCard : null}
+            <SettingForm
+              // Remounts with the saved value as its initial state whenever
+              // the stored value changes, rather than syncing via an effect.
+              key={`${definition.key}:${updatedAt ?? 'unset'}`}
+              definition={definition}
+              savedValue={savedValue}
+              updatedAt={updatedAt}
+              isSaving={
+                save.isPending && save.variables?.key === definition.key
+              }
+              error={
+                save.isError && save.variables?.key === definition.key
+                  ? save.error
+                  : null
+              }
+              wasJustSaved={savedKey === definition.key}
+              onSave={(value) => {
+                setSavedKey(null)
+                save.mutate({ key: definition.key, value })
+              }}
+            />
+          </Fragment>
         ))}
       </div>
     </>

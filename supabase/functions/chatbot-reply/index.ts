@@ -12,6 +12,10 @@ import {
   raisesCriticalConcern,
   toInteractionInput,
 } from '../_shared/assistant.ts'
+import {
+  ASSISTANT_SWITCH_FUNCTION,
+  readAssistantSwitch,
+} from '../_shared/assistant-switch.ts'
 import { AuthError, requireCaller, serviceClient } from '../_shared/auth.ts'
 import { loadClinicPrompt, PROMPT_KEY, type PromptStore } from '../_shared/clinic-prompt.ts'
 import { handlePreflight, jsonResponse } from '../_shared/cors.ts'
@@ -66,13 +70,29 @@ import {
  * built-in guidance. And before any second clinic exists: the version before
  * this one reads the prompt by key alone.
  *
+ * The assistant can be switched off for the platform or for a clinic
+ * (migration 38): asked right after the conversation is proved the caller's,
+ * and refused with `disabled` before any of it is read. Deploy only once
+ * migration 38 is applied - deployed earlier, the check cannot be answered
+ * and every reply is refused as unavailable.
+ *
  * Deploy:
  *   supabase functions deploy chatbot-reply
  *   supabase secrets set GEMINI_API_KEY=...
  */
 
-/** Beyond this the patient is better served by an honest failure. */
-const REQUEST_TIMEOUT_MS = 25_000
+/**
+ * Beyond this the patient is better served by an honest failure.
+ *
+ * Only part of what the browser waits for. Its own limit (`REPLY_TIMEOUT_MS`,
+ * 40 s) runs from just before the request until the response is read, so it
+ * also covers the session token, the CORS preflight, the checks before this
+ * call, the review request after a timeout and the network. Those measured
+ * 4.7 s on the slowest request in production (a cold start), which leaves
+ * about 5 s to spare at 30 s - not a guarantee: a slower cold start or
+ * network can use it up.
+ */
+const REQUEST_TIMEOUT_MS = 30_000
 
 /** A row of `chat_message`, as `select('*')` returns it. */
 type ChatMessageRow = {
@@ -227,6 +247,24 @@ Deno.serve(async (request) => {
 
     if (patient.user_id !== caller.userId) {
       throw new AuthError('This conversation is not yours', 403)
+    }
+
+    // 2b. Is the assistant switched on - for the platform, and for this
+    //     patient's clinic (migration 38). Asked before anything of the
+    //     conversation is read, and so before the provider is called: a
+    //     switched-off assistant never sees the transcript. Only an explicit
+    //     yes goes ahead; an answer that cannot be read is treated as no.
+    //     The patient's message stays saved and their care team still sees
+    //     it; no review is requested, since the clinic or the platform chose
+    //     to have no assistant rather than the assistant failing.
+    const assistantSwitch = readAssistantSwitch(
+      await admin.rpc(ASSISTANT_SWITCH_FUNCTION, { target_doc_id: patient.doc_id }),
+    )
+    if (assistantSwitch === 'off') {
+      throw new ReplyError('The guidance assistant is turned off.', 403, 'disabled')
+    }
+    if (assistantSwitch === 'unknown') {
+      throw new ReplyError('The guidance assistant is unavailable.', 503, 'unavailable')
     }
 
     // 3. Only now is any content read, and only this conversation's: its

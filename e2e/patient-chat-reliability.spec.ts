@@ -312,9 +312,18 @@ test.describe('the guidance chat when a reply does not come back', () => {
   }) => {
     const stub = await signInAs('patient', CONVERSATION)
     let first = true
+    // Reads of the conversation that finish after the failure has been sent.
+    let readsAfterFailure = 0
+    let failed = false
+    page.on('requestfinished', (request) => {
+      if (failed && request.method() === 'GET' && request.url().includes('/rest/v1/chat_message')) {
+        readsAfterFailure += 1
+      }
+    })
     await page.route('**/functions/v1/chatbot-reply', async (route) => {
       if (first) {
         first = false
+        failed = true
         await reply(503, { error: 'The guidance assistant is unavailable.', code: 'unavailable' })(route)
         return
       }
@@ -324,9 +333,11 @@ test.describe('the guidance chat when a reply does not come back', () => {
 
     await send(page)
     await expect(tryAgain(page)).toBeVisible()
-    // Let the page's own refresh after the failure finish first: if it read
-    // the reply below, it would show it and rightly drop Try again.
-    await page.waitForLoadState('networkidle')
+    // Let the page's own refresh after the failure finish first - it reads
+    // the switch, then the conversation: if it read the reply below, it
+    // would show it and rightly drop Try again. (`networkidle` does not wait
+    // for it: that state was reached when the page first loaded.)
+    await expect.poll(() => readsAfterFailure).toBeGreaterThan(0)
     // Meanwhile an earlier, slow request saved its reply after all.
     stub.addRows('chat_message', [
       {

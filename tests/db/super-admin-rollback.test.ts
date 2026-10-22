@@ -20,6 +20,7 @@ import { assuredSuperAdmin, createSignIn, type Claims } from './helpers/super-ad
  * the comparison includes the enum, so it shows that is all that remains.
  */
 
+const ROLLBACK_38 = 'supabase/rollbacks/20260902100038_guidance_assistant_switch.down.sql'
 const ROLLBACK_37 = 'supabase/rollbacks/20260902100037_medication_pre_dose_reminders.down.sql'
 const ROLLBACK_36 = 'supabase/rollbacks/20260902100036_doctor_announcements.down.sql'
 const ROLLBACK_35 = 'supabase/rollbacks/20260902100035_platform_audit_field_names.down.sql'
@@ -45,7 +46,7 @@ const rows = async (database: TestDatabase) => ({
   ),
 })
 
-describe('rolling back migrations 37, 36, 35, 34 and 33 with their down-scripts', () => {
+describe('rolling back migrations 38, 37, 36, 35, 34 and 33 with their down-scripts', () => {
   let used: TestDatabase
   let through32: TestDatabase
   let fx: Fixture
@@ -89,6 +90,7 @@ describe('rolling back migrations 37, 36, 35, 34 and 33 with their down-scripts'
   it('returns the schema to exactly what 32 left, and keeps every row', async () => {
     const before = await rows(used)
 
+    await used.db.exec(await script(ROLLBACK_38))
     await used.db.exec(await script(ROLLBACK_37))
     await used.db.exec(await script(ROLLBACK_36))
     await used.db.exec(await script(ROLLBACK_35))
@@ -124,7 +126,12 @@ describe('the down-scripts refuse, changing nothing, when they cannot be undone 
     expect(await catalog(database)).toEqual(before)
   }
 
-  it('33’s, while 34 is still applied', async () => {
+  it('33’s, while 38 is still applied, and then while 34 is', async () => {
+    // 38's switch is changed only through the Super Admin checks 33's
+    // down-script removes; newest first, 38 goes before it.
+    await refusedUnchanged(ROLLBACK_33, /Roll back migration 38 first/)
+    // Only to let the next refusal show: the test's own database.
+    await database.db.exec(await script(ROLLBACK_38))
     await refusedUnchanged(ROLLBACK_33, /Roll back migration 34 first/)
   })
 

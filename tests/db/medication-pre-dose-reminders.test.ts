@@ -598,9 +598,11 @@ describe('migration 37 beside the others', () => {
   })
 
   it('goes in after 33, 35 and 36 with 34 still unapplied, as production has them, keeping every dose; then the same schema once 34 follows', async () => {
+    // The repository as it stood at 37: what this order has to arrive at.
+    // Later migrations are checked beside the others by their own tests.
     const [production, repository] = await Promise.all([
       createTestDatabase({ stopAfter: MIGRATION_33 }),
-      createTestDatabase(),
+      createTestDatabase({ stopAfter: MIGRATION_37 }),
     ])
     try {
       await seedFixture(production)

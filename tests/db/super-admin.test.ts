@@ -372,7 +372,9 @@ describe('every Super Admin operation needs a live session verified with the cal
         where n.nspname = 'public' and p.proname like 'super_admin\\_%' and p.prorettype <> 'trigger'::regtype
         order by 1`,
     )
-    expect(definers).toHaveLength(12)
+    // 12 from migration 33, and migration 38's two for the guidance
+    // assistant's platform switch.
+    expect(definers).toHaveLength(14)
     for (const row of definers) {
       expect(row, row.fn).toMatchObject({ definer: true, path: 'search_path=""', anon: false })
     }

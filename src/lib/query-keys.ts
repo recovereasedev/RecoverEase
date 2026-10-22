@@ -111,6 +111,8 @@ export function queryKeysFor(userId: string) {
         [...queryKeys.chat.all, 'sessions', patientId] as const,
       messagesFor: (sessionId: string) =>
         [...queryKeys.chat.all, 'messages', sessionId] as const,
+      /** Whether the guidance assistant is switched on for this user (migration 38). */
+      assistant: () => [...queryKeys.chat.all, 'assistant'] as const,
     },
 
     reports: {
@@ -140,6 +142,8 @@ export function queryKeysFor(userId: string) {
       announcements: () =>
         [...queryKeys.platform.all, 'announcements'] as const,
       audit: () => [...queryKeys.platform.all, 'audit'] as const,
+      guidanceAssistant: () =>
+        [...queryKeys.platform.all, 'guidance-assistant'] as const,
     },
   } as const
 

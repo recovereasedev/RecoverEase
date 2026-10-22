@@ -36,6 +36,7 @@ const ENTITY_LABEL: Record<string, string> = {
   announcement: 'Platform announcement',
   user_account: 'Account',
   account_password: 'Password',
+  platform_setting: 'Guidance assistant switch',
 }
 
 const COLUMN_LABEL: Record<string, string> = {
@@ -45,6 +46,7 @@ const COLUMN_LABEL: Record<string, string> = {
   announcement_title: 'title',
   announcement_content: 'message',
   announcement_published_at: 'published',
+  platform_setting_value: 'on or off',
 }
 
 /** The fields an update changed, by name only - never their values. */
