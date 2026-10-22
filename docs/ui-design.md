@@ -259,6 +259,14 @@ signals a state change; it never decorates.
 `prefers-reduced-motion: reduce` collapses every animation and transition to
 0.01ms globally. Motion is an enhancement, never a requirement.
 
+The landing page, being marketing, has the one longer motion: each section
+rises 12px into place over 480ms the first time it scrolls into view
+(`useRevealOnScroll`, an IntersectionObserver - never a scroll listener). It
+is opt-in by construction: nothing is hidden until the hook has switched it
+on, it is never switched on under reduced motion, and what is already on
+screen is never hidden at all. The hero's heading is not animated. The
+header gains a shadow once the page has scrolled under it.
+
 ## Charts
 
 The recovery progress panel (`src/features/recovery-progress`), on My
@@ -436,7 +444,13 @@ The brief asked for real healthcare software, not a generic AI dashboard:
 - **No fake data on the landing page.** The product preview shows *structure*
   — doses due, next appointment, a goal — and no invented adherence
   percentages. A health product should not teach visitors to read numbers that
-  are not real.
+  are not real. Real screens captured with a fictional patient are marked
+  "Sample data"; the two examples drawn on the page (the hero's day card and
+  the dose schedule) are marked "Illustrative example" and hold no working
+  control. The hero portrait is a clinician, not a named member of anyone's
+  staff. The Stitch landing design's copy was adopted only where the
+  application does what it says: its calendar sync, offline notifications,
+  e-mailed invitations, "cryptographic" enforcement and "24/7" were not.
 - **No glassmorphism, no decorative blobs, no gradient surfaces.**
 - **A dark theme by default.** Dark mode exists (below), but a new visitor
   starts in Light, the clinical palette the design system specifies, until

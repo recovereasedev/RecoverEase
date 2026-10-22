@@ -508,7 +508,9 @@
    - The phone's menu drawer slides in from the edge it lives on.
    - A dose marked taken: its "Taken" badge settles in, so the change the
      patient just made is seen to happen (applied only to that dose).
-   - The landing page's first screen rises into place once, on arrival.
+   - The landing page's first screen rises into place once, on arrival -
+     everything but its heading, which is there from the first frame - and
+     each section below it rises in once as it comes into view.
    - The guidance chat's three dots pulse while a reply is on its way, and
      only then: they stand for a request that is really in flight.
 
@@ -645,6 +647,41 @@
     from {
       opacity: 0;
       transform: translateY(12px);
+    }
+  }
+
+  /* Landing reveal (src/features/marketing/use-reveal-on-scroll.ts): the
+     same 12px rise, once per element, as it comes into view. Hidden only
+     inside a page the hook has marked ready, so a page without the hook's
+     script - or under reduced motion, where it never marks one - shows
+     everything at once. Members of a group are staggered through
+     --reveal-delay. */
+  /* Hidden at once, out of sight below the fold; only the arrival moves. */
+  [data-reveal-ready] [data-reveal]:not([data-revealed]) {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+
+  [data-reveal-ready] [data-reveal][data-revealed] {
+    transition:
+      opacity 480ms var(--ease-out-soft) var(--reveal-delay, 0ms),
+      transform 480ms var(--ease-out-soft) var(--reveal-delay, 0ms);
+  }
+
+  /* A line that draws across rather than rising: the dose schedule's. */
+  [data-reveal-ready] [data-reveal='line'] {
+    transform-origin: left center;
+  }
+
+  [data-reveal-ready] [data-reveal='line']:not([data-revealed]) {
+    opacity: 1;
+    transform: scaleX(0);
+  }
+
+  @media print {
+    [data-reveal] {
+      opacity: 1 !important;
+      transform: none !important;
     }
   }
 

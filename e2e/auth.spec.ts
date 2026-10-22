@@ -13,7 +13,7 @@ test.describe('public pages', () => {
     await page.goto('/')
 
     await expect(
-      page.getByRole('heading', { level: 1, name: /Recovery, followed properly/i }),
+      page.getByRole('heading', { level: 1, name: /Recovery support, beyond the clinic/i }),
     ).toBeVisible()
 
     // The single most consequential fact about this system, and the reason
