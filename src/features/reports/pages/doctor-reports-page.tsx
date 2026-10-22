@@ -16,6 +16,7 @@ import { ListRow, ListRows } from '@/components/ui/list-row'
 import { PageSection } from '@/components/ui/section-heading'
 import { Combobox, Field } from '@/components/ui/field'
 import { useCurrentUser } from '@/features/auth/auth-context'
+import { useQueryKeys } from '@/features/auth/use-query-keys'
 import { useMyPatients } from '@/features/patients/hooks'
 import { fetchReports, recordGeneratedReport } from '@/features/reports/api'
 import { ReportLetterhead } from '@/features/reports/components/report-document'
@@ -25,7 +26,6 @@ import { useDocumentTitle } from '@/hooks/use-document-title'
 import { useNow } from '@/hooks/use-now'
 import { formatDateTime } from '@/lib/format'
 import { focusFirstInvalid } from '@/lib/form-focus'
-import { queryKeys } from '@/lib/query-keys'
 import { cn, fullName } from '@/lib/utils'
 
 type PrintTarget = 'report' | 'list'
@@ -42,6 +42,7 @@ type PrintTarget = 'report' | 'list'
  * every platform.
  */
 export function DoctorReportsPage() {
+  const queryKeys = useQueryKeys()
   useDocumentTitle('Reports')
   const user = useCurrentUser()
   const queryClient = useQueryClient()

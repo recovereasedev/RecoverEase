@@ -99,7 +99,7 @@ export function ConsultationFlow({
                     className={[
                       'flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold',
                       isCurrent
-                        ? 'bg-brand-800 text-white'
+                        ? 'bg-fill-brand-800 text-white'
                         : isPast
                           ? 'bg-accent-100 text-accent-800'
                           : 'bg-neutral-100 text-muted',

@@ -104,6 +104,40 @@ Nowhere else. The `.brand-gradient` utility carries a comment saying so. Kept
 scarce, it functions as identity; applied to cards and headers it becomes
 decoration and stops meaning anything.
 
+## Light, Dark and System
+
+The 2nd-half plan, section 8. The theme control sits at the foot of the
+sidebar and the phone drawer: Light, Dark or System, which follows the
+device's own setting and keeps following it. The choice is remembered on
+the device (`localStorage`, `src/lib/theme.ts`) and applied by the startup
+module before the first render. That module runs once the page has been
+parsed, so with Dark chosen, or System on a dark device, a page can briefly
+show the default light theme before the chosen one is applied. Until
+someone chooses, it is Light.
+
+Dark mode is the same tokens with other values (`src/index.css`, under
+`:root[data-theme='dark']`), not a filter. Each scale is turned over - text
+steps light, tint steps dark - so every pairing the light theme uses keeps
+its contrast: `brand-700` text on `brand-50`, `muted` on `neutral-100`. A
+solid fill with white text on it cannot follow the same step, so fills are
+tokens of their own (`fill-brand-800`, `fill-danger-600`, `fill-brand-deep`
+for the chat header and the rest): in light mode exactly the colours they
+replaced, in dark mode tones white text still clears 4.5:1 on. The brand
+mark's gradient uses them too. Shadows follow the theme only in their token
+form, `shadow-[var(--shadow-lg)]`: Tailwind copies a bare `shadow-lg`'s light
+value into the utility when it builds.
+
+Two places stay light in either theme: a report sheet, which stands for
+paper on screen (`data-theme-scope="light"`), and everything printed.
+
+Checked twice: `tests/unit/theme-tokens.test.ts` measures every pairing
+from the token values, including states a page check cannot see, such as a
+hovered button's translucent tint or the ring that marks the chosen theme;
+`e2e/contrast-audit.spec.ts` runs axe's contrast rule over every role's main
+screens in both themes, in a real browser, and over the states the default
+data does not reach: a reminder card on screen, the assistant turned off,
+and the Super Admin's switch off or being turned off.
+
 ## Typography
 
 **Inter**, named by the design system for its legibility in data-heavy
@@ -361,9 +395,9 @@ The brief asked for real healthcare software, not a generic AI dashboard:
   percentages. A health product should not teach visitors to read numbers that
   are not real.
 - **No glassmorphism, no decorative blobs, no gradient surfaces.**
-- **Light theme only.** Dark mode was not requested and doubles the QA
-  surface; the design system specifies a light clinical palette. Tokens are
-  structured so it could be added later without touching component code.
+- **A dark theme by default.** Dark mode exists (below), but a new visitor
+  starts in Light, the clinical palette the design system specifies, until
+  they choose otherwise.
 
 ## Voice
 

@@ -10,9 +10,9 @@ import {
   isPlatformAnnouncement,
   type ListedAnnouncement,
 } from '@/features/announcements/api'
+import { useQueryKeys } from '@/features/auth/use-query-keys'
 import { useDocumentTitle } from '@/hooks/use-document-title'
 import { formatDateRelative } from '@/lib/format'
-import { queryKeys } from '@/lib/query-keys'
 
 /** Who a notice is from, as the patient knows them. */
 function sourceOf(announcement: ListedAnnouncement): string {
@@ -33,6 +33,7 @@ function sourceOf(announcement: ListedAnnouncement): string {
  * and RecoverEase itself. Each notice says which it is.
  */
 export function AnnouncementsPage() {
+  const queryKeys = useQueryKeys()
   useDocumentTitle('Announcements')
   const announcementsQuery = useQuery({
     queryKey: queryKeys.announcements.list(),
