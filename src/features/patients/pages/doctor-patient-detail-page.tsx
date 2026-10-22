@@ -45,6 +45,7 @@ import { ResetCredentialDialog } from '@/features/patients/components/reset-cred
 import { usePatient } from '@/features/patients/hooks'
 import { MoodTrend } from '@/features/recovery-logs/components/mood-trend'
 import { useRecoveryLogs } from '@/features/recovery-logs/hooks'
+import { RecoveryProgress } from '@/features/recovery-progress/components/recovery-progress'
 import { TreatmentGoalForm } from '@/features/treatment-plans/components/treatment-goal-form'
 import { TreatmentPlanForm } from '@/features/treatment-plans/components/treatment-plan-form'
 import {
@@ -437,61 +438,67 @@ export function DoctorPatientDetailPage() {
                 </div>
               ) : null}
 
-              {/* --- Recovery -------------------------------------------- */}
+              {/* --- Recovery --------------------------------------------
+                  Progress first, the entries it is drawn from below. The
+                  panel refreshes itself each minute and on focus while this
+                  tab is open (`live`), as the patient may be logging. */}
               {tab === 'recovery' ? (
-                <Card>
-                  <CardHeader
-                    title="Recovery log"
-                    description="Entries the patient has recorded."
-                  />
-                  <CardBody className="p-0">
-                    <StateView
-                      isPending={logsQuery.isPending}
-                      error={logsQuery.error}
-                      data={logsQuery.data}
-                      onRetry={() => void logsQuery.refetch()}
-                      empty={
-                        <p className="px-4 py-10 text-center text-sm text-muted sm:px-5">
-                          This patient has not recorded any entries yet.
-                        </p>
-                      }
-                    >
-                      {(logs) => (
-                        <ul className="divide-y divide-[var(--color-border)]">
-                          {logs.map((log) => (
-                            <li
-                              key={log.recovery_log_id}
-                              className="px-4 py-4 sm:px-5"
-                            >
-                              <div className="flex flex-wrap items-baseline justify-between gap-2">
-                                <p className="font-medium text-heading">
-                                  {formatDateRelative(log.recovery_log_date)}
-                                </p>
-                                {log.recovery_log_mood_rating ? (
-                                  <p
-                                    className="text-sm text-muted"
-                                    data-numeric
-                                  >
-                                    Rated {log.recovery_log_mood_rating} of 5
+                <div className="space-y-section">
+                  <RecoveryProgress patientId={patientId} live />
+                  <Card>
+                    <CardHeader
+                      title="Recovery log"
+                      description="Entries the patient has recorded."
+                    />
+                    <CardBody className="p-0">
+                      <StateView
+                        isPending={logsQuery.isPending}
+                        error={logsQuery.error}
+                        data={logsQuery.data}
+                        onRetry={() => void logsQuery.refetch()}
+                        empty={
+                          <p className="px-4 py-10 text-center text-sm text-muted sm:px-5">
+                            This patient has not recorded any entries yet.
+                          </p>
+                        }
+                      >
+                        {(logs) => (
+                          <ul className="divide-y divide-[var(--color-border)]">
+                            {logs.map((log) => (
+                              <li
+                                key={log.recovery_log_id}
+                                className="px-4 py-4 sm:px-5"
+                              >
+                                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                                  <p className="font-medium text-heading">
+                                    {formatDateRelative(log.recovery_log_date)}
                                   </p>
-                                ) : null}
-                              </div>
-                              {log.recovery_log_notes ? (
-                                <p className="mt-1.5 whitespace-pre-wrap text-sm leading-relaxed text-body">
-                                  {log.recovery_log_notes}
-                                </p>
-                              ) : (
-                                <p className="mt-1.5 text-sm italic text-muted">
-                                  No notes for this day.
-                                </p>
-                              )}
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </StateView>
-                  </CardBody>
-                </Card>
+                                  {log.recovery_log_mood_rating ? (
+                                    <p
+                                      className="text-sm text-muted"
+                                      data-numeric
+                                    >
+                                      Rated {log.recovery_log_mood_rating} of 5
+                                    </p>
+                                  ) : null}
+                                </div>
+                                {log.recovery_log_notes ? (
+                                  <p className="mt-1.5 whitespace-pre-wrap text-sm leading-relaxed text-body">
+                                    {log.recovery_log_notes}
+                                  </p>
+                                ) : (
+                                  <p className="mt-1.5 text-sm italic text-muted">
+                                    No notes for this day.
+                                  </p>
+                                )}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </StateView>
+                    </CardBody>
+                  </Card>
+                </div>
               ) : null}
 
               {/* --- Treatment ------------------------------------------- */}

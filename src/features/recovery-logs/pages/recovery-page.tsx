@@ -7,11 +7,11 @@ import { PageSection } from '@/components/ui/section-heading'
 import { useCurrentUser } from '@/features/auth/auth-context'
 import { calculateStreak } from '@/features/recovery-logs/api'
 import { DailyEntryForm } from '@/features/recovery-logs/components/daily-entry-form'
-import { MoodTrend } from '@/features/recovery-logs/components/mood-trend'
 import {
   useRecoveryLogs,
   useSaveRecoveryLog,
 } from '@/features/recovery-logs/hooks'
+import { RecoveryProgress } from '@/features/recovery-progress/components/recovery-progress'
 import { useDocumentTitle } from '@/hooks/use-document-title'
 import { formatDateRelative, toDateKey } from '@/lib/format'
 
@@ -23,6 +23,11 @@ import { formatDateRelative, toDateKey } from '@/lib/format'
  * One entry per day, which the database enforces. Re-submitting today edits
  * the existing entry rather than failing, so a patient who wants to add
  * something later in the day simply can.
+ *
+ * The trend charts (5.11) are the recovery progress panel, full width below
+ * the entry and the journal. It replaced the fortnight of mood columns that
+ * sat beside them: its mood chart covers the same entries over 7 or 30 days,
+ * alongside medication and treatment goals.
  */
 export function RecoveryPage() {
   useDocumentTitle('My Recovery')
@@ -140,11 +145,10 @@ export function RecoveryPage() {
           </PageSection>
         </div>
 
-        {/* --- Progress: module 5.12 (streak) and 5.11 (trend) --------------
-            One panel, not two cards: both answer "how is it going". */}
+        {/* --- Progress: module 5.12 (streak) ------------------------------ */}
         <PageSection title="Your progress">
           <Card>
-            <CardBody className="space-y-5">
+            <CardBody>
               <div className="flex items-center gap-3">
                 <Flame
                   className="size-6 shrink-0 text-warning-700"
@@ -157,17 +161,14 @@ export function RecoveryPage() {
                   {streak === 1 ? 'day in a row' : 'days in a row'}
                 </p>
               </div>
-              <div className="border-t border-[var(--color-border)] pt-4">
-                <h3 className="text-base font-semibold text-heading">
-                  How you have felt
-                </h3>
-                <div className="mt-3">
-                  <MoodTrend logs={logsQuery.data ?? []} />
-                </div>
-              </div>
             </CardBody>
           </Card>
         </PageSection>
+      </div>
+
+      {/* --- Trend charts: module 5.11 ------------------------------------- */}
+      <div className="mt-section lg:mt-8">
+        <RecoveryProgress patientId={patientId} />
       </div>
     </>
   )

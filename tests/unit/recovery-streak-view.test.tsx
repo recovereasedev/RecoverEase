@@ -23,6 +23,18 @@ vi.mock('@/features/recovery-logs/api', async (importOriginal) => ({
   saveRecoveryLog: api.saveRecoveryLog,
 }))
 
+// The page's recovery progress panel also reads doses and treatment plans.
+// Neither bears on the streak; answered empty so no test reaches a network.
+vi.mock('@/features/medications/api', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/features/medications/api')>()),
+  fetchAllDoses: async () => [],
+}))
+
+vi.mock('@/features/treatment-plans/api', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/features/treatment-plans/api')>()),
+  fetchTreatmentPlans: async () => [],
+}))
+
 vi.mock('@/features/auth/auth-context', () => ({
   useCurrentUser: () => ({
     userId: 'u-alice',

@@ -71,6 +71,13 @@ export function queryKeysFor(userId: string) {
         [...queryKeys.medications.all, 'schedules', patientId] as const,
       dosesFor: (patientId: string, from: string, to: string) =>
         [...queryKeys.medications.all, 'doses', patientId, from, to] as const,
+      /**
+       * The same window read in full, a page at a time (`fetchAllDoses`), for
+       * the recovery progress charts. Its own key because it is a different
+       * read; under `all`, so every dose change refreshes it too.
+       */
+      allDosesFor: (patientId: string, from: string, to: string) =>
+        [...queryKeys.medications.all, 'all-doses', patientId, from, to] as const,
       adherenceFor: (patientId: string) =>
         [...queryKeys.medications.all, 'adherence', patientId] as const,
     },
