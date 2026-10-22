@@ -119,11 +119,14 @@ for (const theme of ['light', 'dark'] as const) {
     for (const role of ['patient', 'doctor', 'admin', 'super_admin'] as const) {
       for (const path of SCREENS[role]) {
         test(`${role} ${path}`, async ({ page, signInAs }) => {
-          await signInAs(
+          const stub = await signInAs(
             role,
             {},
             role === 'super_admin' ? { mfa: { verifiedFactor: true, aal: 'aal2' } } : {},
           )
+          if (role === 'super_admin') {
+            stub.setRpcResult('super_admin_get_guidance_assistant', [{ enabled: true, updated_at: null }])
+          }
           await page.goto(path)
           await settled(page)
           expect(await page.evaluate(() => document.documentElement.dataset['theme'])).toBe(theme)
@@ -132,7 +135,9 @@ for (const theme of ['light', 'dark'] as const) {
       }
     }
 
-    // A state the default data never reaches: a reminder card on screen.
+    // States the default data never reaches: a reminder card on screen, the
+    // assistant turned off, and the Super Admin's switch off or being turned
+    // off.
     test('patient /patient with a reminder card', async ({ page, signInAs }) => {
       await signInAs('patient', { medication_log: [remindedDose()] })
       await page.goto('/patient')
@@ -159,6 +164,41 @@ for (const theme of ['light', 'dark'] as const) {
       await page.goto('/doctor')
       await settled(page)
       await expect(page.getByRole('region', { name: 'Reminders' })).toBeVisible()
+      expect(await contrastFailures(page)).toEqual([])
+    })
+
+    test('patient /patient/chat with the assistant turned off', async ({ page, signInAs }) => {
+      const stub = await signInAs('patient')
+      stub.setRpcResult('guidance_assistant_available', false)
+      await page.goto('/patient/chat')
+      await settled(page)
+      await expect(page.getByText(/new messages can’t be sent here/)).toBeVisible()
+      expect(await contrastFailures(page)).toEqual([])
+    })
+
+    test('super_admin /platform with the assistant off for every clinic', async ({ page, signInAs }) => {
+      const stub = await signInAs('super_admin', {}, { mfa: { verifiedFactor: true, aal: 'aal2' } })
+      stub.setRpcResult('super_admin_get_guidance_assistant', [
+        { enabled: false, updated_at: new Date().toISOString() },
+      ])
+      await page.goto('/platform')
+      await settled(page)
+      await expect(page.getByText('Off for every clinic', { exact: true })).toBeVisible()
+      expect(await contrastFailures(page)).toEqual([])
+    })
+
+    test('super_admin /platform confirming the assistant off', async ({ page, signInAs }) => {
+      const stub = await signInAs('super_admin', {}, { mfa: { verifiedFactor: true, aal: 'aal2' } })
+      stub.setRpcResult('super_admin_get_guidance_assistant', [{ enabled: true, updated_at: null }])
+      await page.goto('/platform')
+      await settled(page)
+      await page.getByRole('button', { name: 'Turn off for every clinic' }).click()
+      const dialog = page.getByRole('dialog')
+      await expect(dialog).toBeVisible()
+      // Measured once it has finished opening, not mid-fade.
+      await dialog.evaluate((element) =>
+        Promise.all(element.getAnimations({ subtree: true }).map((animation) => animation.finished)),
+      )
       expect(await contrastFailures(page)).toEqual([])
     })
   })
