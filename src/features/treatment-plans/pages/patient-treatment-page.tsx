@@ -24,7 +24,7 @@ import { cn } from '@/lib/utils'
 // still says the state in words; the marker is the same fact, drawn on the
 // path, so the eye can see how far along the plan is at a glance.
 const MARKER: Record<TreatmentGoalStatus, string> = {
-  achieved: 'border-success-600 bg-success-600 text-white',
+  achieved: 'border-fill-success-600 bg-fill-success-600 text-white',
   in_progress: 'border-info-600 bg-info-50 text-info-700',
   pending: 'border-[var(--color-border-strong)] bg-surface text-neutral-500',
   missed: 'border-warning-600 bg-warning-50 text-warning-700',

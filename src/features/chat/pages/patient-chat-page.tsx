@@ -649,14 +649,14 @@ export function PatientChatPage() {
           {/* --- The assistant ------------------------------------------- */}
           <header
             data-surface="dark"
-            className="flex shrink-0 items-center gap-2.5 bg-brand-800 py-2.5 pl-3.5 pr-1.5 lg:h-20 lg:gap-4 lg:py-0 lg:pl-6 lg:pr-5"
+            className="flex shrink-0 items-center gap-2.5 bg-fill-brand-deep py-2.5 pl-3.5 pr-1.5 lg:h-20 lg:gap-4 lg:py-0 lg:pl-6 lg:pr-5"
           >
             <div className="relative shrink-0">
               <AssistantAvatar size="md" />
               {isUnavailable ? null : (
                 <span
                   aria-hidden="true"
-                  className="absolute bottom-px right-0 size-3 rounded-full border-2 border-brand-800 bg-accent-400"
+                  className="absolute bottom-px right-0 size-3 rounded-full border-2 border-fill-brand-deep bg-accent-400"
                 />
               )}
             </div>
@@ -669,7 +669,7 @@ export function PatientChatPage() {
               >
                 {ASSISTANT}
               </h2>
-              <p className="mt-0.5 text-xs leading-4 text-brand-100 lg:text-[13px] lg:leading-[18px]">
+              <p className="mt-0.5 text-xs leading-4 text-on-fill-soft lg:text-[13px] lg:leading-[18px]">
                 <span className="font-semibold text-white">RecoverEase</span>
                 <span aria-hidden="true"> · </span>
                 <span className="sr-only">, </span>
@@ -811,7 +811,7 @@ export function PatientChatPage() {
                                 <span className="font-semibold text-body">You</span>
                                 <span>{time}</span>
                               </p>
-                              <p className="max-w-[min(32.5rem,88%)] whitespace-pre-wrap rounded-[16px_4px_16px_16px] bg-brand-700 px-3.5 py-2.5 text-base leading-relaxed text-white lg:px-[18px] lg:py-3">
+                              <p className="max-w-[min(32.5rem,88%)] whitespace-pre-wrap rounded-[16px_4px_16px_16px] bg-fill-brand-700 px-3.5 py-2.5 text-base leading-relaxed text-white lg:px-[18px] lg:py-3">
                                 {message.chat_message_content}
                               </p>
                               {awaitingReply &&
@@ -957,7 +957,7 @@ export function PatientChatPage() {
                 isLoading={isBusy}
                 loadingLabel="Sending…"
                 aria-label="Send message"
-                className="size-12 shrink-0 rounded-[var(--radius-lg)] bg-brand-700 px-0 text-[15px] hover:bg-brand-800 lg:h-14 lg:w-auto lg:px-5 [&_svg]:size-5"
+                className="size-12 shrink-0 rounded-[var(--radius-lg)] bg-fill-brand-700 px-0 text-[15px] hover:bg-fill-brand-800 lg:h-14 lg:w-auto lg:px-5 [&_svg]:size-5"
               >
                 {/* The button shows its own spinner while sending. */}
                 {sendMessage.isPending ? null : <Send aria-hidden="true" />}

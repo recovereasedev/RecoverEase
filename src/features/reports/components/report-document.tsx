@@ -34,8 +34,10 @@ export function ReportSheet({
   children: ReactNode
 }) {
   return (
+    // Paper, on screen as on the page: light in either theme (index.css).
     <article
       data-report-document
+      data-theme-scope="light"
       aria-label={label}
       className="report-sheet mx-auto w-full max-w-[210mm] rounded-[var(--radius-xs)] bg-white p-5 text-[12px] leading-[1.5] text-body shadow-[var(--shadow-md)] sm:p-[12mm] print:max-w-none print:rounded-none print:p-0! print:shadow-none"
     >
