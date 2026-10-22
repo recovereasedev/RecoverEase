@@ -712,4 +712,8 @@ Recorded honestly rather than left for someone to discover:
    deliberately not faked with a URL that would 404.
 4. **Reminder delivery is in-app only.** Medication reminders are dispatched
    on a pg_cron schedule and written to the `notification` table, which is
-   what the ERD models. Email and push delivery are not implemented.
+   what the ERD models. Email and push delivery are not implemented. While
+   RecoverEase is open, the plan's 10-minute reminder card
+   (`src/features/reminders/`) also shows a dose the server has just reminded
+   the patient of, and an appointment about to start; it is a surface for
+   those reminders, not a way to deliver them when the app is closed.

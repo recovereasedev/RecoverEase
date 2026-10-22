@@ -13,6 +13,7 @@ import { ThemeControl } from '@/components/layout/theme-control'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/features/auth/auth-context'
 import { useUnreadNotificationCount } from '@/features/notifications/hooks'
+import { ReminderTray } from '@/features/reminders/components/reminder-tray'
 import type { UserRole } from '@/features/auth/types'
 import { cn, initialsFromName } from '@/lib/utils'
 
@@ -449,6 +450,9 @@ export function AppShell() {
       </div>
 
       <BottomNav items={mobileItems} />
+      {/* The plan's 10-minute reminder: patients' doses and appointments,
+          doctors' appointments (features/reminders). */}
+      <ReminderTray />
     </div>
   )
 }

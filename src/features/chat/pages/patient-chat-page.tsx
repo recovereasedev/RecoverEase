@@ -619,7 +619,10 @@ export function PatientChatPage() {
           in the approved design; the page title stays for screen readers. */}
       <PageHeader title="Guidance chat" className="max-lg:sr-only" />
 
-      <div className="grid gap-6 chat-fit:h-[calc(100dvh-14rem)] lg:grid-cols-[minmax(0,1fr)_18.75rem]">
+      {/* `data-chat-layout`: while a reminder card is on screen, the fitted
+          height gives up its space, so the message box stays above it
+          (index.css). */}
+      <div data-chat-layout className="grid gap-6 chat-fit:h-[calc(100dvh-14rem)] lg:grid-cols-[minmax(0,1fr)_18.75rem]">
         {/*
           On a desktop screen tall enough (`chat-fit`, see index.css) the
           conversation is sized from the viewport, not from its contents: the
