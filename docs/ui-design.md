@@ -134,7 +134,8 @@ Checked twice: `tests/unit/theme-tokens.test.ts` measures every pairing
 from the token values, including states a page check cannot see, such as a
 hovered button's translucent tint or the ring that marks the chosen theme;
 `e2e/contrast-audit.spec.ts` runs axe's contrast rule over every role's main
-screens in both themes, in a real browser.
+screens in both themes, in a real browser, and over a state the default
+data does not reach: a reminder card on screen.
 
 ## Typography
 

@@ -66,6 +66,28 @@ async function contrastFailures(page: Page): Promise<string[]> {
   )
 }
 
+const MIN = 60_000
+
+/** A dose due in eight minutes, which the server reminded two minutes ago. */
+function remindedDose() {
+  const now = Date.now()
+  return {
+    medication_log_id: IDS.doseA,
+    medication_schedule_id: IDS.scheduleA,
+    medication_log_scheduled_at: new Date(now + 8 * MIN).toISOString(),
+    medication_log_taken_at: null,
+    medication_log_status: 'pending',
+    medication_log_follow_up_sent_at: null,
+    medication_log_pre_dose_sent_at: new Date(now - 2 * MIN).toISOString(),
+    medication_schedule: {
+      medication_schedule_id: IDS.scheduleA,
+      medication_schedule_name: 'Paracetamol',
+      medication_schedule_dosage: '500mg',
+      prescription: { pat_id: IDS.alicePat },
+    },
+  }
+}
+
 /** Waits for a screen to finish loading what it shows. */
 async function settled(page: Page) {
   await page.waitForLoadState('networkidle')
@@ -109,5 +131,35 @@ for (const theme of ['light', 'dark'] as const) {
         })
       }
     }
+
+    // A state the default data never reaches: a reminder card on screen.
+    test('patient /patient with a reminder card', async ({ page, signInAs }) => {
+      await signInAs('patient', { medication_log: [remindedDose()] })
+      await page.goto('/patient')
+      await settled(page)
+      await expect(page.getByRole('region', { name: 'Reminders' })).toBeVisible()
+      expect(await contrastFailures(page)).toEqual([])
+    })
+
+    test('doctor /doctor with a reminder card', async ({ page, signInAs }) => {
+      await signInAs('doctor', {
+        appointment: [
+          {
+            appointment_id: 'ap-soon',
+            pat_id: IDS.alicePat,
+            doc_id: IDS.doctorA,
+            appointment_date: new Date(Date.now() + 8 * MIN).toISOString(),
+            appointment_status: 'confirmed',
+            appointment_created_at: new Date(Date.now() - 86_400_000).toISOString(),
+            appointment_reminder_sent_at: null,
+            patient: { pat_id: IDS.alicePat, pat_first_name: 'Alice', pat_last_name: 'Santos' },
+          },
+        ],
+      })
+      await page.goto('/doctor')
+      await settled(page)
+      await expect(page.getByRole('region', { name: 'Reminders' })).toBeVisible()
+      expect(await contrastFailures(page)).toEqual([])
+    })
   })
 }
