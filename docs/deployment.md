@@ -371,26 +371,29 @@ To roll back 31, go the other way, newest first. Each later migration is
 rolled back with its own down-script, applied as a new migration, and where
 deployed code depends on it, that code goes back first:
 
-1. **38**: `chatbot-reply` and the website from before migration 38, then
-   `supabase/rollbacks/20260902100038_guidance_assistant_switch.down.sql`.
-   33's down-script refuses while 38 is installed.
-2. **37**: the website from before PR #49, then
-   `supabase/rollbacks/20260902100037_medication_pre_dose_reminders.down.sql`.
-3. **36**: the website from before PR #47, then
-   `supabase/rollbacks/20260902100036_doctor_announcements.down.sql`, which
-   refuses while any doctor's announcement exists.
-4. **35**: `supabase/rollbacks/20260902100035_platform_audit_field_names.down.sql`.
+1. **39**: `supabase/rollbacks/20260902100039_platform_setting_audit_field_names.down.sql`.
    No code goes back: the website and the Edge Functions work with either
    version.
-5. **34**, where it is applied:
+2. **38**: `chatbot-reply` and the website from before migration 38, then
+   `supabase/rollbacks/20260902100038_guidance_assistant_switch.down.sql`.
+   33's down-script refuses while 38 is installed.
+3. **37**: the website from before PR #49, then
+   `supabase/rollbacks/20260902100037_medication_pre_dose_reminders.down.sql`.
+4. **36**: the website from before PR #47, then
+   `supabase/rollbacks/20260902100036_doctor_announcements.down.sql`, which
+   refuses while any doctor's announcement exists.
+5. **35**: `supabase/rollbacks/20260902100035_platform_audit_field_names.down.sql`.
+   No code goes back: the website and the Edge Functions work with either
+   version.
+6. **34**, where it is applied:
    `supabase/rollbacks/20260902100034_lift_single_clinic_gate.down.sql`,
    which refuses once a second clinic exists. No code goes back.
-6. **33**: `supabase/rollbacks/20260902100033_super_admin_platform.down.sql`,
+7. **33**: `supabase/rollbacks/20260902100033_super_admin_platform.down.sql`,
    which refuses while 34 is applied or a Super Admin or platform announcement
    exists. No code goes back: with no Super Admin nothing reaches the
    console, and `create-account` refuses Clinic Admin provisioning before any
    login is created.
-7. **31**: the website from before 31, then `chatbot-reply` from before 31
+8. **31**: the website from before 31, then `chatbot-reply` from before 31
    (it reads `system_setting.clinic_id`), then
    `supabase/rollbacks/20260902100031_clinic_settings.down.sql`. It refuses
    while there is more than one clinic - two clinics' settings cannot be
@@ -870,6 +873,178 @@ nothing. Roll `chatbot-reply` and the website back first. 38 goes before 37's
 and before 33's: since this change, 33's down-script refuses while 38 is
 installed, because 38's switch is changed only through the Super Admin checks
 33 removes.
+
+### The platform switch's field names in the audit trail (migration 39)
+
+Migration 35 keeps, of an audit entry's details, only the names of changed
+fields that are columns of a table in `public`. Migration 38 put the
+platform's switch in `app_private.platform_setting`, so the Super Admin's
+audit read, `super_admin_list_audit`, returns every change of that switch
+with no field names: the entry is there, but nothing says what changed, and
+the console's label for `platform_setting_value` ("on or off") never shows.
+No value leaks; the entry is incomplete.
+
+Migration 39 changes one function, `app_private.audit_changed_field_names`,
+so that it also keeps the names of the columns of
+`app_private.platform_setting`. That table is the only `app_private` table
+it names: an explicit allow-list, not the whole schema. It needs 35 and 38
+and refuses to run without them. It is independent of 34
+(`tests/db/platform-setting-audit-field-names.test.ts` applies it after 38
+with 34 unapplied, as production has them, and ends with the repository's
+schema once 34 follows). `super_admin_list_audit`, its grants and every audit
+row stay as they are. An entry written before 39 is read through the same
+function, so the switch's earlier changes show their field names too. The
+switch's values, `true` and `false`, never come back: the test turns the
+switch off and on through `super_admin_set_guidance_assistant` and looks for
+them in what the Super Admin's read returns.
+
+**Not applied.** Applying 39 to production is a separate, approved step. It
+also has no code half. The website already labels the field "on or off"
+(it came with the switch, #59), but until 39 is applied the label never
+shows, because the field's name never comes back. No Edge Function changes,
+so 39 can go in at any time.
+
+The release order, each step its own approval:
+
+1. **Review the change**: the migration, its down-script and its test.
+2. **Approve migration 39**, separately.
+3. **Apply and verify migration 39 in production**, on its own, with
+   `apply_migration` and the read-only checks below.
+4. **Nothing else.** No website merge or Edge Function deploy depends on it.
+
+#### Before applying - read-only
+
+1. **The file is the reviewed one.** In a checkout of the reviewed commit:
+
+   ```bash
+   md5sum supabase/migrations/20260902100039_platform_setting_audit_field_names.sql
+   wc -c supabase/migrations/20260902100039_platform_setting_audit_field_names.sql
+   ```
+
+   The file as proposed for review is MD5 `2aa8a8779b4c6b002920323118f67202`,
+   5,044 bytes. If review changes it, record the new values here before
+   applying. A match confirms the file is the one that was reviewed; it does
+   not replace reviewing what the migration contains. The text passed to
+   `apply_migration` must have the same checksum and length.
+2. **History.** `list_migrations` has migration 38's entry,
+   `guidance_assistant_switch` (version `20261020154726`, above), and none
+   named `platform_setting_audit_field_names`. If there is one, 39 is
+   already applied: stop. If any entry is newer than 38's, review what it
+   changed before going on.
+3. **Schema.** 38's table is there, and both functions are migration 35's
+   as this repository replays it:
+
+   ```sql
+   select
+     to_regclass('app_private.platform_setting')::text as platform_setting,  -- app_private.platform_setting
+     (select md5(prosrc) || ' ' || octet_length(prosrc) from pg_proc
+       where oid = 'app_private.audit_changed_field_names(jsonb)'::regprocedure)
+                                                       as helper_body,       -- 734b46ad0294aeaad3a60e3328ab348a 1114
+     (select md5(prosrc) || ' ' || octet_length(prosrc) from pg_proc
+       where oid = 'public.super_admin_list_audit(integer, timestamptz, uuid)'::regprocedure)
+                                                       as list_body;         -- 62bad1035013fa2ca35c936c790dc440 901
+   ```
+
+   A different `helper_body` means the function is not 35's: stop and review
+   it before replacing it.
+4. **What the Super Admin is shown now.** The switch's entries, through the
+   function the Super Admin's read uses, so this prints field names and
+   never a value:
+
+   ```sql
+   select l.audit_log_action as action,
+          app_private.audit_changed_field_names(l.audit_log_details) as names
+     from public.audit_log l
+    where l.audit_log_entity = 'platform_setting'
+    order by l.audit_log_timestamp, l.audit_log_id;
+   -- before 39: every row's names is null; no rows if the switch was never changed
+   ```
+
+5. **Security advisor.** Record its findings (`get_advisors`, security), as
+   the baseline. 39 adds no function and changes no grant, so it should not
+   change them.
+6. **Window.** An agreed window, chosen around the heavier jobs as above.
+   39 replaces one function that no job, trigger or policy calls, and takes
+   no lock on a table, so the 3-second `lock_timeout` convention for
+   migrations that lock the jobs' tables does not apply to it.
+
+#### After applying - read-only
+
+1. **History.** One entry for the migration. Its version is the time it was
+   applied, not `20260902100039`:
+
+   ```sql
+   select version, name, cardinality(statements) as statements,
+          md5(array_to_string(statements, '')) as md5,
+          octet_length(array_to_string(statements, '')) as bytes
+     from supabase_migrations.schema_migrations
+    where name = 'platform_setting_audit_field_names';
+   -- one row; with the script stored as one statement, md5 and bytes equal
+   -- the reviewed file's - anything else means a different text was applied
+   ```
+
+2. **Schema and privileges.** The helper's body is 39's. It is still no API
+   role's to call, still `SECURITY INVOKER` with an empty `search_path`.
+   `super_admin_list_audit` is unchanged:
+
+   ```sql
+   select
+     (select md5(prosrc) || ' ' || octet_length(prosrc) from pg_proc
+       where oid = 'app_private.audit_changed_field_names(jsonb)'::regprocedure)
+                                                       as helper_body,           -- eaec81759c4ff4e250e4c2fbb98c7325 1309
+     (select prosecdef || ' ' || array_to_string(proconfig, ',') from pg_proc
+       where oid = 'app_private.audit_changed_field_names(jsonb)'::regprocedure)
+                                                       as helper_definer,        -- false search_path=""
+     (select count(*)
+        from pg_proc p,
+             aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a
+       where p.oid = 'app_private.audit_changed_field_names(jsonb)'::regprocedure
+         and a.grantee = 0 and a.privilege_type = 'EXECUTE')  as helper_public_grants,  -- 0
+     has_function_privilege('anon',          'app_private.audit_changed_field_names(jsonb)', 'execute') as helper_anon,          -- false
+     has_function_privilege('authenticated', 'app_private.audit_changed_field_names(jsonb)', 'execute') as helper_authenticated, -- false
+     has_function_privilege('service_role',  'app_private.audit_changed_field_names(jsonb)', 'execute') as helper_service_role,  -- false
+     (select md5(prosrc) || ' ' || octet_length(prosrc) from pg_proc
+       where oid = 'public.super_admin_list_audit(integer, timestamptz, uuid)'::regprocedure)
+                                                       as list_body,             -- 62bad1035013fa2ca35c936c790dc440 901
+     has_function_privilege('anon',          'public.super_admin_list_audit(integer, timestamptz, uuid)', 'execute') as list_anon,          -- false
+     has_function_privilege('authenticated', 'public.super_admin_list_audit(integer, timestamptz, uuid)', 'execute') as list_authenticated; -- true
+   ```
+
+3. **The filter, on a literal.** It changes nothing and reads no row:
+
+   ```sql
+   select app_private.audit_changed_field_names(
+     '{"changed_columns": ["platform_setting_updated_at", "platform_setting_value", "true", "false", "guidance_assistant.enabled"]}'::jsonb
+   );
+   -- {"changed_columns": ["platform_setting_updated_at", "platform_setting_value"]}
+   ```
+
+4. **What the Super Admin is shown now.** Rerun check 4 from before
+   applying: each `update` row's names include `platform_setting_value`,
+   each `insert` row's are null, and no row shows `true` or `false`. There
+   are still no rows if the switch was never changed.
+5. **Security advisor.** The same findings as the baseline recorded before
+   applying.
+
+These checks show the function is installed, locked down and returns names
+only. They do not show the Super Admin's page itself: that needs a Super
+Admin's session, and a fresh entry needs the switch changed, which is a
+production write with its own approval.
+
+**If applying fails, or only part of it seems to have run, stop.** Gather
+read-only evidence (the error, whether a history entry exists, and the
+helper's body and grants) and report it. Do not retry, re-apply, repair the
+migration history or roll back without a separate decision.
+`apply_migration`'s transaction behaviour is not documented (see "To roll
+back 31" above).
+
+To roll back: `supabase/rollbacks/20260902100039_platform_setting_audit_field_names.down.sql`
+as a new migration. It restores migration 35's function and comment, so the
+switch's changes are listed with no field names again, and changes no row.
+No code goes back. It refuses where 39 is not applied. It goes before 38's
+and 35's. 35's down-script drops the helper, taking 39 with it, and 38's
+leaves 39's helper naming a table that is gone. That does no harm, but the
+schema is then not exactly what 37 left.
 
 ## Bundle budget
 
