@@ -20,10 +20,10 @@ import {
   type AnnouncementAuthor,
   type ListedAnnouncement,
 } from '@/features/announcements/api'
+import { useQueryKeys } from '@/features/auth/use-query-keys'
 import { useFocusRecovery } from '@/hooks/use-focus-recovery'
 import { formatDateTime } from '@/lib/format'
 import { focusFirstInvalid } from '@/lib/form-focus'
-import { queryKeys } from '@/lib/query-keys'
 
 export type AnnouncementBoardProps = {
   /** Who a new announcement is written as. */
@@ -70,6 +70,7 @@ export function AnnouncementBoard({
   emptyDescription,
   composerNote = 'Save it as a draft, or publish it straight away.',
 }: AnnouncementBoardProps) {
+  const queryKeys = useQueryKeys()
   const queryClient = useQueryClient()
 
   const [isComposerOpen, setComposerOpen] = useState(false)

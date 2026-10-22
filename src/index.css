@@ -225,6 +225,32 @@
      passes. Accessibility outranks an exact hex. */
   --color-outline: #717880;
 
+  /* ---- Fills under white text (dark mode) ----------------------------
+     A solid fill with white text on it - a primary button, an avatar, the
+     chat header - must stay dark enough for that text in either theme,
+     while the same step used as text must turn light in dark mode. So the
+     fills are tokens of their own: in light mode exactly the steps they
+     replaced, in dark mode tones white text still clears 4.5:1 on. */
+  --color-fill-brand-600: #0e5a8a;
+  --color-fill-brand-700: #004a75;
+  --color-fill-brand-800: #004269;
+  --color-fill-brand-900: #00344f;
+  --color-fill-accent-600: #00806f;
+  --color-fill-accent-700: #006b5f;
+  --color-fill-accent-800: #005048;
+  --color-fill-accent-900: #00403a;
+  --color-fill-danger-600: #ba1a1a;
+  --color-fill-danger-700: #a01414;
+  --color-fill-danger-800: #93000a;
+  --color-fill-success-600: #0e7a46;
+  /* The chat header bar: in dark mode deep enough for white text even
+     under its buttons' 25% hover tint. */
+  --color-fill-brand-deep: #004269;
+  /* Quieter text on a brand fill - the chat header's status line. */
+  --color-on-fill-soft: #cde5ff;
+  /* The drawer's backdrop: dark in either theme. */
+  --color-scrim: #111c2d;
+
   --color-inverse-surface: #263143;
   --color-inverse-on-surface: #ecf1ff; /* 11.60:1 on inverse-surface */
 
@@ -660,9 +686,9 @@
   .brand-gradient {
     background-image: linear-gradient(
       135deg,
-      var(--color-brand-800) 0%,
-      var(--color-brand-600) 45%,
-      var(--color-accent-600) 100%
+      var(--color-fill-brand-800) 0%,
+      var(--color-fill-brand-600) 45%,
+      var(--color-fill-accent-600) 100%
     );
   }
 
@@ -693,5 +719,262 @@
     clip-path: inset(50%);
     white-space: nowrap;
     border-width: 0;
+  }
+}
+
+/* The reminder card (features/reminders/components/reminder-tray.tsx).
+   While it is on screen it publishes the space it takes as
+   --reminder-tray-space, and the page keeps that space clear: the end of the
+   content can always be scrolled above it, a focused control is brought into
+   view above it, and the chat's fitted layout ends above it, so it never sits
+   on the message box. Unlayered, so it outranks the padding utilities; screen
+   only, as the card is never printed. */
+@media screen {
+  html[data-reminder-tray] #main-content {
+    padding-bottom: calc(6rem + var(--reminder-tray-space, 0px));
+  }
+
+  html[data-reminder-tray] {
+    scroll-padding-bottom: var(--reminder-tray-space, 0px);
+  }
+
+  @media (width < 48rem) {
+    html[data-reminder-tray]:has([data-bottom-nav]) {
+      scroll-padding-bottom: calc(6rem + env(safe-area-inset-bottom) + var(--reminder-tray-space, 0px));
+    }
+  }
+
+  @media (width >= 48rem) {
+    html[data-reminder-tray] #main-content {
+      padding-bottom: calc(2.5rem + var(--reminder-tray-space, 0px));
+    }
+  }
+
+  @media (min-width: 64rem) and (min-height: 50rem) {
+    html[data-reminder-tray] [data-chat-layout] {
+      height: calc(100dvh - 14rem - var(--reminder-tray-space, 0px));
+    }
+  }
+}
+
+/* ===========================================================================
+   Dark theme (the 2nd-half plan, section 8)
+   ===========================================================================
+   `data-theme="dark"` on the root element (src/lib/theme.ts) swaps every
+   colour token: text steps turn light, tint steps dark, so each pairing the
+   light theme uses - brand-700 text on brand-50, muted on neutral-100 - keeps
+   its contrast, checked at 4.5:1 or better for text, before this was
+   written. tests/unit/theme-tokens.test.ts holds those checks: change a value
+   here and it says whether every pairing still clears. Fills under white
+   text have their own tokens, above. Screen only: paper is always light.
+
+   `data-theme-scope="light"` keeps a subtree light - a report sheet, which
+   stands for paper on screen too. */
+@media screen {
+  :root[data-theme='dark'] {
+    color-scheme: dark;
+    --color-brand-50: #0f2233;
+    --color-brand-100: #12304a;
+    --color-brand-200: #1a4466;
+    --color-brand-300: #2b5f8a;
+    --color-brand-400: #3f7db0;
+    --color-brand-500: #5c9ccf;
+    --color-brand-600: #7db6e3;
+    --color-brand-700: #9ccbf0;
+    --color-brand-800: #b9dbf6;
+    --color-brand-900: #d4e9fa;
+    --color-brand-950: #eaf4fd;
+    --color-accent-50: #0b2420;
+    --color-accent-100: #0e302a;
+    --color-accent-200: #12443c;
+    --color-accent-300: #166055;
+    --color-accent-400: #1f8a79;
+    --color-accent-500: #2fae99;
+    --color-accent-600: #4cc7b2;
+    --color-accent-700: #6fd8c5;
+    --color-accent-800: #94e6d7;
+    --color-accent-900: #b9f0e6;
+    --color-accent-950: #dcf8f2;
+    --color-neutral-50: #0c1420;
+    --color-neutral-100: #172232;
+    --color-neutral-200: #243246;
+    --color-neutral-300: #34445a;
+    --color-neutral-400: #5d6b80;
+    --color-neutral-500: #8592a5;
+    --color-neutral-600: #a7b3c4;
+    --color-neutral-700: #c4cedb;
+    --color-neutral-800: #d9e0ea;
+    --color-neutral-900: #e8edf4;
+    --color-neutral-950: #f4f7fc;
+    --color-success-50: #0d2419;
+    --color-success-100: #12321f;
+    --color-success-200: #1d4d33;
+    --color-success-600: #4cc28a;
+    --color-success-700: #73d3a5;
+    --color-success-800: #9be2bf;
+    --color-warning-50: #2a1d0a;
+    --color-warning-100: #3a280c;
+    --color-warning-200: #5a3d12;
+    --color-warning-600: #f0b04f;
+    --color-warning-700: #f5c26f;
+    --color-warning-800: #f8d395;
+    --color-danger-50: #2d1214;
+    --color-danger-100: #3d171a;
+    --color-danger-200: #5c2226;
+    --color-danger-600: #ff8a80;
+    --color-danger-700: #ffa49b;
+    --color-danger-800: #ffbeb7;
+    --color-info-50: #0f2233;
+    --color-info-100: #12304a;
+    --color-info-200: #1a4466;
+    --color-info-600: #7db6e3;
+    --color-info-700: #9ccbf0;
+    --color-info-800: #b9dbf6;
+    --color-canvas: #0c1420;
+    --color-surface: #131d2b;
+    --color-surface-sunken: #0f1824;
+    --color-surface-raised: #1c2838;
+    --color-border: #273548;
+    --color-border-strong: #3a4a60;
+    --color-heading: #eef3fb;
+    --color-body: #c9d3e1;
+    --color-muted: #9eacbf;
+    --color-outline: #7d8a9c;
+    --color-inverse-surface: #e3e9f3;
+    --color-inverse-on-surface: #1a2433;
+    --color-fill-brand-600: #265a86;
+    --color-fill-brand-700: #2a6fa6;
+    --color-fill-brand-800: #24659a;
+    --color-fill-brand-900: #1d5a8c;
+    --color-fill-accent-600: #0f7f6e;
+    --color-fill-accent-700: #0f7f6e;
+    --color-fill-accent-800: #0c7062;
+    --color-fill-accent-900: #0a6156;
+    --color-fill-danger-600: #c62828;
+    --color-fill-danger-700: #ae2020;
+    --color-fill-danger-800: #951a1a;
+    --color-fill-success-600: #16804e;
+    --color-scrim: #000000;
+    --color-on-fill-soft: #e6f2fc;
+    --color-fill-brand-deep: #1b4c74;
+    --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.3);
+    --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.35), 0 1px 2px -1px rgb(0 0 0 / 0.3);
+    --shadow-md: 0 4px 12px 0 rgb(0 0 0 / 0.4);
+    --shadow-lg: 0 12px 32px -8px rgb(0 0 0 / 0.55);
+  }
+
+  :root[data-theme='dark'] [data-theme-scope='light'] {
+    color-scheme: light;
+    --color-brand-50: #eaf2fb;
+    --color-brand-100: #cde5ff;
+    --color-brand-200: #a0d0ff;
+    --color-brand-300: #95ccff;
+    --color-brand-400: #5fa8d8;
+    --color-brand-500: #2b7cb0;
+    --color-brand-600: #0e5a8a;
+    --color-brand-700: #004a75;
+    --color-brand-800: #004269;
+    --color-brand-900: #00344f;
+    --color-brand-950: #001d32;
+    --color-accent-50: #e6fbf6;
+    --color-accent-100: #c6f7ec;
+    --color-accent-200: #6df5e1;
+    --color-accent-300: #4fdbc8;
+    --color-accent-400: #1fbfa8;
+    --color-accent-500: #00a08b;
+    --color-accent-600: #00806f;
+    --color-accent-700: #006b5f;
+    --color-accent-800: #005048;
+    --color-accent-900: #00403a;
+    --color-accent-950: #00201c;
+    --color-neutral-50: #f9f9ff;
+    --color-neutral-100: #f0f3ff;
+    --color-neutral-200: #dfe5f1;
+    --color-neutral-300: #c1c7d0;
+    --color-neutral-400: #9aa1ad;
+    --color-neutral-500: #717880;
+    --color-neutral-600: #5f6672;
+    --color-neutral-700: #41474f;
+    --color-neutral-800: #333942;
+    --color-neutral-900: #263143;
+    --color-neutral-950: #111c2d;
+    --color-success-50: #e8f7ee;
+    --color-success-100: #c2e9d3;
+    --color-success-200: #8fd4ae;
+    --color-success-600: #0e7a46;
+    --color-success-700: #0a5f37;
+    --color-success-800: #07492a;
+    --color-warning-50: #fff4e6;
+    --color-warning-100: #ffdcbd;
+    --color-warning-200: #ffb86f;
+    --color-warning-600: #8a5000;
+    --color-warning-700: #7e4900;
+    --color-warning-800: #693c00;
+    --color-danger-50: #ffedea;
+    --color-danger-100: #ffdad6;
+    --color-danger-200: #ffb4ab;
+    --color-danger-600: #ba1a1a;
+    --color-danger-700: #a01414;
+    --color-danger-800: #93000a;
+    --color-info-50: #eaf2fb;
+    --color-info-100: #cde5ff;
+    --color-info-200: #a0d0ff;
+    --color-info-600: #0e5a8a;
+    --color-info-700: #004a75;
+    --color-info-800: #004269;
+    --color-canvas: #f9f9ff;
+    --color-surface: #ffffff;
+    --color-surface-sunken: #f0f3ff;
+    --color-surface-raised: #e7eeff;
+    --color-border: #dfe5f1;
+    --color-border-strong: #c1c7d0;
+    --color-heading: #111c2d;
+    --color-body: #41474f;
+    --color-muted: #5f6672;
+    --color-outline: #717880;
+    --color-inverse-surface: #263143;
+    --color-inverse-on-surface: #ecf1ff;
+    --color-fill-brand-600: #0e5a8a;
+    --color-fill-brand-700: #004a75;
+    --color-fill-brand-800: #004269;
+    --color-fill-brand-900: #00344f;
+    --color-fill-accent-600: #00806f;
+    --color-fill-accent-700: #006b5f;
+    --color-fill-accent-800: #005048;
+    --color-fill-accent-900: #00403a;
+    --color-fill-danger-600: #ba1a1a;
+    --color-fill-danger-700: #a01414;
+    --color-fill-danger-800: #93000a;
+    --color-fill-success-600: #0e7a46;
+    --color-scrim: #111c2d;
+    --color-on-fill-soft: #cde5ff;
+    --color-fill-brand-deep: #004269;
+    --shadow-xs: 0 1px 2px 0 rgb(17 28 45 / 0.04);
+    --shadow-sm: 0 1px 3px 0 rgb(17 28 45 / 0.06), 0 1px 2px -1px rgb(17 28 45 / 0.04);
+    --shadow-md: 0 4px 12px 0 rgb(17 28 45 / 0.08);
+    --shadow-lg: 0 12px 32px -8px rgb(17 28 45 / 0.16);
+    --color-role: #004a75;
+    --color-role-strong: #004269;
+    --color-role-soft: #eaf2fb;
+  }
+  :root[data-theme='dark'] [data-role='patient'] [data-theme-scope='light'] {
+    --color-role: #006b5f;
+    --color-role-strong: #005048;
+    --color-role-soft: #e6fbf6;
+  }
+  :root[data-theme='dark'] [data-role='doctor'] [data-theme-scope='light'] {
+    --color-role: #004a75;
+    --color-role-strong: #004269;
+    --color-role-soft: #eaf2fb;
+  }
+  :root[data-theme='dark'] [data-role='admin'] [data-theme-scope='light'] {
+    --color-role: #333942;
+    --color-role-strong: #263143;
+    --color-role-soft: #f0f3ff;
+  }
+  :root[data-theme='dark'] [data-role='super_admin'] [data-theme-scope='light'] {
+    --color-role: #333942;
+    --color-role-strong: #263143;
+    --color-role-soft: #f0f3ff;
   }
 }

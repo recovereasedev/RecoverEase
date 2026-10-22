@@ -609,11 +609,18 @@ reply that reads convincingly, so it is excluded explicitly and tested.
 
 ### Failure never leaks
 
-On timeout, network error, non-2xx, rate limit or malformed output, the
-provider's response body is logged and never forwarded to the client: error
-bodies can carry request detail and, on some providers, the key itself. The
-patient's own message is persisted before the provider is called and survives
-every failure path.
+On timeout, network error, non-2xx, rate limit or malformed output, nothing
+the provider sent is forwarded to the client. Of a non-2xx body only the
+machine-readable parts are logged: the status, Google's error code and status
+name, `ErrorInfo` reasons and the request field paths a `BadRequest` names
+(`providerErrorSummary` in `supabase/functions/_shared/reply-outcome.ts`) -
+never its message or descriptions, since error bodies can quote the request,
+which is the patient's conversation, and on some providers carry the key
+itself. A successful response whose body stops arriving within the time
+limit is reported as a timeout, like one whose headers never came; an error
+response is reported by its status even if its body never finishes, and then
+nothing of the body is logged. The patient's own message is persisted before
+the provider is called and survives every failure path.
 
 ## Secrets
 
@@ -749,4 +756,8 @@ Recorded honestly rather than left for someone to discover:
    deliberately not faked with a URL that would 404.
 4. **Reminder delivery is in-app only.** Medication reminders are dispatched
    on a pg_cron schedule and written to the `notification` table, which is
-   what the ERD models. Email and push delivery are not implemented.
+   what the ERD models. Email and push delivery are not implemented. While
+   RecoverEase is open, the plan's 10-minute reminder card
+   (`src/features/reminders/`) also shows a dose the server has just reminded
+   the patient of, and an appointment about to start; it is a surface for
+   those reminders, not a way to deliver them when the app is closed.

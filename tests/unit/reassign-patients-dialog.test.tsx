@@ -26,6 +26,10 @@ vi.mock('@/features/patients/api', async (importOriginal) => ({
   ...api,
 }))
 
+vi.mock('@/features/auth/auth-context', () => ({
+  useCurrentUser: () => ({ userId: 'u-admin', role: 'admin' }),
+}))
+
 const { ReassignPatientsDialog } = await import(
   '@/features/patients/components/reassign-patients-dialog'
 )

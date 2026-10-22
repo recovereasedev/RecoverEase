@@ -3,6 +3,7 @@ import { endOfToday, isValid, parseISO, startOfToday, subDays } from 'date-fns'
 
 import type { Appointment } from '@/features/appointments/api'
 import { useAppointments } from '@/features/appointments/hooks'
+import { useQueryKeys } from '@/features/auth/use-query-keys'
 import { fetchDoctorNotes, type DoctorNote } from '@/features/doctor-notes/api'
 import {
   summariseAdherence,
@@ -20,7 +21,6 @@ import {
 } from '@/features/treatment-plans/api'
 import { useTreatmentPlans } from '@/features/treatment-plans/hooks'
 import { toDateKey } from '@/lib/format'
-import { queryKeys } from '@/lib/query-keys'
 
 /**
  * Everything a patient report shows.
@@ -50,6 +50,7 @@ export function usePatientReportData(patientId: string): {
   error: unknown
   retry: () => void
 } {
+  const queryKeys = useQueryKeys()
   const patient = usePatient(patientId)
   const logs = useRecoveryLogs(patientId)
   const plans = useTreatmentPlans(patientId)

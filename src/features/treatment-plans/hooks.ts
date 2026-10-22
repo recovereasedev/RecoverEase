@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { queryKeys } from '@/lib/query-keys'
+import { useQueryKeys } from '@/features/auth/use-query-keys'
 import type { TablesUpdate } from '@/types/database.types'
 
 import {
@@ -13,6 +13,7 @@ import {
 } from './api'
 
 export function useTreatmentPlans(patientId: string) {
+  const queryKeys = useQueryKeys()
   return useQuery({
     queryKey: queryKeys.treatment.plansFor(patientId),
     queryFn: () => fetchTreatmentPlans(patientId),
@@ -21,6 +22,7 @@ export function useTreatmentPlans(patientId: string) {
 }
 
 export function useCreateTreatmentPlan(patientId: string, doctorId: string) {
+  const queryKeys = useQueryKeys()
   const queryClient = useQueryClient()
 
   return useMutation({
@@ -39,6 +41,7 @@ export function useCreateTreatmentPlan(patientId: string, doctorId: string) {
 }
 
 export function useUpdateTreatmentPlan(patientId: string) {
+  const queryKeys = useQueryKeys()
   const queryClient = useQueryClient()
 
   return useMutation({
@@ -55,6 +58,7 @@ export function useUpdateTreatmentPlan(patientId: string) {
 }
 
 export function useCreateTreatmentGoal(patientId: string) {
+  const queryKeys = useQueryKeys()
   const queryClient = useQueryClient()
 
   return useMutation({
@@ -72,6 +76,7 @@ export function useCreateTreatmentGoal(patientId: string) {
 }
 
 export function useUpdateGoalStatus(patientId: string) {
+  const queryKeys = useQueryKeys()
   const queryClient = useQueryClient()
 
   return useMutation({

@@ -3,7 +3,7 @@ import { renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
-import { queryKeys } from '@/lib/query-keys'
+import { queryKeysFor } from '@/lib/query-keys'
 
 /**
  * QA-01 — after "End medication" the screens show the ended course at once:
@@ -20,7 +20,12 @@ vi.mock('@/features/medications/api', () => ({
   setDoseStatus: vi.fn(),
 }))
 
+vi.mock('@/features/auth/auth-context', () => ({
+  useCurrentUser: () => ({ userId: 'u-doctor' }),
+}))
+
 const { useEndMedicationSchedule } = await import('@/features/medications/hooks')
+const queryKeys = queryKeysFor('u-doctor')
 
 describe('refreshing after ending a medication', () => {
   it('refreshes the medication and prescription queries', async () => {
