@@ -1,6 +1,7 @@
 import AxeBuilder from '@axe-core/playwright'
 
 import { expect, IDS, test, type Page } from './support/fixtures'
+import { RECOVERY_WEEK } from './support/recovery-week'
 
 /**
  * The 2nd-half plan, section 8: contrast checked on the rendered screens, in
@@ -166,6 +167,32 @@ for (const theme of ['light', 'dark'] as const) {
       await expect(page.getByRole('region', { name: 'Reminders' })).toBeVisible()
       expect(await contrastFailures(page)).toEqual([])
     })
+
+    // The recovery progress panel with a week to show: its charts, a day's
+    // tooltip, and the data table, on both sides of the record.
+    for (const [role, path] of [
+      ['patient', '/patient/recovery'],
+      ['doctor', `/doctor/patients/${IDS.alicePat}?tab=recovery`],
+    ] as const) {
+      test(`${role} ${path} with a week of recovery progress`, async ({ page, signInAs }) => {
+        await signInAs(role, RECOVERY_WEEK)
+        await page.goto(path)
+        await settled(page)
+        const progress = page.getByRole('region', { name: 'Recovery progress', exact: true })
+        await progress.getByRole('button', { name: 'Show the data table' }).click()
+        await progress.getByRole('group', { name: /Overall recovery progress by day/ }).focus()
+        await expect(progress.getByText('Medication 100%', { exact: true })).toBeVisible()
+        expect(await contrastFailures(page)).toEqual([])
+
+        await progress.locator('label').filter({ hasText: /^Medication$/ }).click()
+        await expect(progress.getByText('Doses taken', { exact: true })).toBeVisible()
+        expect(await contrastFailures(page)).toEqual([])
+
+        await progress.locator('label').filter({ hasText: /^Treatment goals$/ }).click()
+        await expect(progress.getByRole('progressbar', { name: 'Goals achieved' })).toBeVisible()
+        expect(await contrastFailures(page)).toEqual([])
+      })
+    }
 
     test('patient /patient/chat with the assistant turned off', async ({ page, signInAs }) => {
       const stub = await signInAs('patient')

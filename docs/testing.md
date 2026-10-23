@@ -200,7 +200,8 @@ absent.
 
 | Area | Examples |
 | --- | --- |
-| Public pages | Landing states there is no public sign-up and offers no sign-up link; unknown paths reach the not-found page |
+| Public pages | Landing states there is no public sign-up and offers no sign-up link; unknown paths reach the not-found page; the landing page signs in through `/sign-in`, its anchors land clear of the sticky header, each section is revealed once and everything is shown at once under reduced motion, every picture loads, the hero portrait is within its 150KB budget, and nothing scrolls sideways at 360px |
+| Recovery progress | The patient's panel below the journal and the clinician's above the recovery log both average the seeded week to 70% on 5 of 7 days; the period and indicator are radio groups driven by the arrow keys; a chart is read a day at a time from the keyboard and announced; the 30-day table has a row a day; 360px with the tooltip held inside the chart; contrast of charts, tooltip, table and goal snapshot in both themes |
 | Sign in | Field-level validation; the failure message does not distinguish an unknown address from a wrong password; password reveal; landing on the correct role home |
 | Route guards | Four protected paths redirect a signed-out visitor; a patient on an admin route is sent home; a signed-in user is moved off the landing page |
 | Session | Survives a hard reload without bouncing to sign in; signing out locks the app again |

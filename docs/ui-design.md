@@ -259,6 +259,53 @@ signals a state change; it never decorates.
 `prefers-reduced-motion: reduce` collapses every animation and transition to
 0.01ms globally. Motion is an enhancement, never a requirement.
 
+The landing page, being marketing, has the one longer motion: each section
+rises 12px into place over 480ms the first time it scrolls into view
+(`useRevealOnScroll`, an IntersectionObserver - never a scroll listener). It
+is opt-in by construction: nothing is hidden until the hook has switched it
+on, it is never switched on under reduced motion, and what is already on
+screen is never hidden at all. The hero's heading is not animated. The
+header gains a shadow once the page has scrolled under it.
+
+## Charts
+
+The recovery progress panel (`src/features/recovery-progress`), on My
+recovery and at the top of a patient record's Recovery tab, is the
+application's one set of charts. Its rules:
+
+- **Hand-built SVG, no chart library.** Drawn at the container's measured
+  size, so axis text stays at the size it is set in. 240px tall from `sm`,
+  180px on a phone.
+- **One period scopes everything.** The 7 / 30 day control sits above all
+  of it; there is no per-chart filter. Seven days is today and the six before
+  it, in local time, as the 7-day adherence windows already are.
+- **Missing is never zero.** A line stops at a day without a value and starts
+  again after it, and is never drawn across the gap. A day with no resolved
+  dose gets a small hollow ring on the baseline instead of a bar; a genuine
+  0% is a thin cap on the baseline - a different shape, not only a different
+  colour. No value is interpolated or carried forward.
+- **Fixed axes.** Mood is always 1–5; percentages are always 0–100%. An axis
+  fitted to the data would make a flat week look like a swing.
+- **One mark colour.** Every chart draws in `brand-600`, which the dark theme
+  re-tones (7.4:1 on the light surface, 7.8:1 on the dark). The three
+  indicators are never on one chart, so they need no palette of their own -
+  and three hues from these ramps fail a colour-blind separation check.
+  Headline numbers are text in `text-heading`, never in the mark colour.
+- **Every value without a pointer.** A chart is one tab stop: the arrow keys,
+  Home and End step through the days, each announced through a polite live
+  region (deliberately not `role="status"`, so a page's own status line stays
+  unique). The tooltip shows the same reading, beside the day and inside the
+  chart. A "Show the data table" button gives every day as a table.
+- **No chart motion.** Clinicians open these many times a day, and data being
+  read should not move for style. Switching period holds the previous chart,
+  dimmed, until the new one has arrived, rather than flashing a loading state.
+- **The arithmetic lives in `progress.ts`**, and its rules are on screen
+  beside the chart: a day's overall score is the mean of whichever of mood
+  (1 → 0%, 5 → 100%) and resolved-dose adherence it has; the headline is the
+  mean of the days plotted; coverage says how many days that is. Treatment
+  goals are a current snapshot, labelled as such, because a goal stores no
+  date it was achieved.
+
 ## Accessibility, structurally
 
 These are enforced by the primitives rather than left to each page:
@@ -384,16 +431,26 @@ The brief asked for real healthcare software, not a generic AI dashboard:
   not. The shell's context strip names the portal you are signed in to — a
   fact the application actually holds — rather than the comps' "Active Post-Op
   Pathway".
-- **No decorative charts.** The two visualisations that exist —the goal
-  progress bar and the mood trend— each restate their value in text beside
-  them, and the mood trend ships a screen-reader table of the same data.
-- **Mood trend is columns, not a line.** With at most fourteen points on a
-  five-point scale, a line implies a precision and continuity the data does
-  not have: a patient does not glide from "okay" to "good" overnight.
+- **No decorative charts.** Every visualisation —the goal progress bar, the
+  overview's mood trend and the recovery progress charts (below)— restates
+  its value in text beside it, and each chart has a table of the same data.
+- **The overview's mood trend is columns, not a line.** With at most fourteen
+  points on a five-point scale, a line implies a precision and continuity the
+  data does not have: a patient does not glide from "okay" to "good"
+  overnight. The recovery progress panel's mood chart *is* a line, as the
+  2nd-half plan's reference design draws it, and answers the same objection
+  differently: it never joins two days across a day without a rating, so a
+  line only ever connects consecutive recorded days.
 - **No fake data on the landing page.** The product preview shows *structure*
   — doses due, next appointment, a goal — and no invented adherence
   percentages. A health product should not teach visitors to read numbers that
-  are not real.
+  are not real. Real screens captured with a fictional patient are marked
+  "Sample data"; the two examples drawn on the page (the hero's day card and
+  the dose schedule) are marked "Illustrative example" and hold no working
+  control. The hero portrait is a clinician, not a named member of anyone's
+  staff. The Stitch landing design's copy was adopted only where the
+  application does what it says: its calendar sync, offline notifications,
+  e-mailed invitations, "cryptographic" enforcement and "24/7" were not.
 - **No glassmorphism, no decorative blobs, no gradient surfaces.**
 - **A dark theme by default.** Dark mode exists (below), but a new visitor
   starts in Light, the clinical palette the design system specifies, until

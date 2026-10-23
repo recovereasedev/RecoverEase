@@ -42,6 +42,15 @@ export async function fetchSchedules(
   return data as unknown as ScheduleWithPrescription[]
 }
 
+/** A dose with its schedule, joined through to the patient it belongs to. */
+const DOSE_COLUMNS = `*,
+       medication_schedule!inner (
+         medication_schedule_id,
+         medication_schedule_name,
+         medication_schedule_dosage,
+         prescription!inner ( pat_id )
+       )`
+
 /**
  * Doses falling inside a window, newest first.
  *
@@ -56,15 +65,7 @@ export async function fetchDoses(input: {
 }): Promise<DoseWithSchedule[]> {
   const { data, error } = await supabase
     .from('medication_log')
-    .select(
-      `*,
-       medication_schedule!inner (
-         medication_schedule_id,
-         medication_schedule_name,
-         medication_schedule_dosage,
-         prescription!inner ( pat_id )
-       )`,
-    )
+    .select(DOSE_COLUMNS)
     .eq('medication_schedule.prescription.pat_id', input.patientId)
     .gte('medication_log_scheduled_at', input.from)
     .lte('medication_log_scheduled_at', input.to)
@@ -72,6 +73,68 @@ export async function fetchDoses(input: {
 
   if (error) throw error
   return data as unknown as DoseWithSchedule[]
+}
+
+/** Rows asked for per request by `fetchAllDoses`. */
+export const DOSE_PAGE_SIZE = 1000
+
+/**
+ * Every dose in a window, oldest first, however many there are - for the
+ * recovery progress charts, whose 30-day window can hold more doses than one
+ * response carries.
+ *
+ * The Data API caps how many rows a single response returns, and a request
+ * over the cap is not an error: the response is simply cut short. Ordered
+ * oldest first, the rows lost would be the most recent days, and a chart
+ * would show them as days with no doses at all. So this reads the window a
+ * page at a time until it has every row.
+ *
+ * The first request also asks for the exact number of matching rows, and
+ * each page starts where the rows already received end - so a server that
+ * returns fewer rows than were asked for still has the rest fetched. Without
+ * a count it falls back to stopping at the first short page. The id breaks
+ * ties between doses due at the same moment, so no row can fall between two
+ * pages or appear in both; one that did would be dropped as a repeat.
+ */
+export async function fetchAllDoses(input: {
+  patientId: string
+  from: string
+  to: string
+}): Promise<DoseWithSchedule[]> {
+  const doses: DoseWithSchedule[] = []
+  const seen = new Set<string>()
+  let total: number | null = null
+  let offset = 0
+
+  for (;;) {
+    const { data, error, count } = await supabase
+      .from('medication_log')
+      .select(DOSE_COLUMNS, offset === 0 ? { count: 'exact' } : {})
+      .eq('medication_schedule.prescription.pat_id', input.patientId)
+      .gte('medication_log_scheduled_at', input.from)
+      .lte('medication_log_scheduled_at', input.to)
+      .order('medication_log_scheduled_at', { ascending: true })
+      .order('medication_log_id', { ascending: true })
+      .range(offset, offset + DOSE_PAGE_SIZE - 1)
+
+    // A page that fails fails the whole read: a window with a missing page
+    // would chart as days without doses, which is worse than no chart.
+    if (error) throw error
+    if (offset === 0) total = count ?? null
+
+    const page = data as unknown as DoseWithSchedule[]
+    for (const dose of page) {
+      if (seen.has(dose.medication_log_id)) continue
+      seen.add(dose.medication_log_id)
+      doses.push(dose)
+    }
+    offset += page.length
+
+    if (page.length === 0) break
+    if (total === null ? page.length < DOSE_PAGE_SIZE : offset >= total) break
+  }
+
+  return doses
 }
 
 /**
