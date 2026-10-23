@@ -243,6 +243,23 @@ with the service role. The website also chooses each message's
 `notification_id`, so a repeated send is refused as a duplicate key and is
 stored once.
 
+### 13. A doctor can turn their own appointment reminders off
+
+Module 7.3, the doctor's own. `dispatch_appointment_reminders` (migration 18)
+writes two notifications the day before each appointment, one to the doctor
+and one to the patient. Migration 40 adds
+`doctor.doc_appointment_reminder_is_enabled`, on by default, so every doctor
+keeps that reminder until they turn it off on **My profile → Reminder
+settings**. The job then leaves that doctor out; the patient's reminder is
+sent as before, and the appointment is still marked reminded, so turning it
+back on never sends one late.
+
+Only the doctor may change it. Their clinic's administrator may still edit
+the rest of the row (module 11.3), but `doctor_guard_reminder_preference`
+refuses a change to this column from any signed-in user other than the
+doctor. Nothing clinic-wide changes: no setting, time zone, grace period or
+lead time, and no patient's reminder preference.
+
 ## Assumptions where the ERD was silent
 
 The ERD types every status column as `varchar` without listing values. Each

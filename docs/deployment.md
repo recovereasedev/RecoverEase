@@ -371,6 +371,8 @@ To roll back 31, go the other way, newest first. Each later migration is
 rolled back with its own down-script, applied as a new migration, and where
 deployed code depends on it, that code goes back first:
 
+1. **40**: the website from before migration 40, then
+   `supabase/rollbacks/20260902100040_doctor_appointment_reminder_setting.down.sql`.
 1. **39**: `supabase/rollbacks/20260902100039_doctor_notifications_general_only.down.sql`.
    Nothing deployed depends on it.
 1. **38**: `chatbot-reply` and the website from before migration 38, then
@@ -899,6 +901,35 @@ Its down-script, `supabase/rollbacks/20260902100039_doctor_notifications_general
 puts back migration 06's policy and refuses when 39 is not applied. No data
 changes either way, and nothing deployed depends on 39, so it can go back
 first and alone.
+
+### A doctor's own appointment reminders (migration 40)
+
+Module 7.3 for doctors: `doctor.doc_appointment_reminder_is_enabled`, on by
+default, the trigger that lets only the doctor change it, and
+`dispatch_appointment_reminders` leaving out a doctor who has turned theirs
+off. It is not applied anywhere yet; apply it only with approval, as a new
+migration.
+
+- **Order.** The migration first, then the website. The doctor's **My
+  profile** page reads and saves the column; before 40 its **Save reminder
+  settings** would fail and nothing would be saved. The page shows the
+  setting as on when the column is missing, as every doctor is before 40.
+- **What does not change.** Every doctor starts on, so the job sends what it
+  sent before until a doctor turns theirs off. The patient's appointment
+  reminder is always sent. `system_setting`, the clinic's time zone and grace
+  period, the job's 24-hour lead time and its schedule, and the patients'
+  reminder preferences are untouched
+  (`tests/db/doctor-reminder-setting.test.ts`).
+- **Verify.** Read-only: `select count(*) filter (where
+  doc_appointment_reminder_is_enabled) as on, count(*) as doctors from
+  public.doctor` shows every doctor on straight after applying, and
+  `select tgname from pg_trigger where tgname =
+  'doctor_protect_reminder_preference'` returns one row.
+
+Its down-script, `supabase/rollbacks/20260902100040_doctor_appointment_reminder_setting.down.sql`,
+puts back migration 31's reminder job, drops the trigger and the column - and
+with it every doctor's choice - and refuses when 40 is not applied. Roll the
+website back first.
 
 ## Bundle budget
 

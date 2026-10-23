@@ -435,6 +435,7 @@ the columns that decide their own privileges, so triggers close that gap:
 | --- | --- |
 | `patient_guard_protected_columns` | A patient reassigning themselves to another doctor, or resetting their own status after discharge. `user_id` is immutable for everyone — re-pointing it would transfer an entire medical history to a different login. |
 | `doctor_guard_protected_columns` | A deactivated doctor reactivating themselves, or changing their own licence number. |
+| `doctor_guard_reminder_preference` | Anyone but the doctor - their clinic's administrator included - turning a doctor's appointment reminders off or on (migration 40). |
 | `appointment_guard_patient_transitions` | A patient marking their own appointment `completed` (a clinical assertion), or moving its time instead of using the reschedule flow. |
 | `medication_log_guard_slot` | Anyone moving when a dose was due, which would make the adherence history meaningless. |
 | `user_account_guard_writes` | Any browser session writing an account — a role, a sign-in address, a login — even if a later policy allowed it; and anyone re-pointing an account at a different login. |

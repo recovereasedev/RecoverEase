@@ -9,6 +9,7 @@ import { Card, CardBody } from '@/components/ui/card'
 import { Field, Input } from '@/components/ui/field'
 import { PageSection } from '@/components/ui/section-heading'
 import { useAuth, useCurrentUser } from '@/features/auth/auth-context'
+import { DoctorReminderSettings } from '@/features/patients/components/doctor-reminder-settings'
 import { useUpdateDoctor } from '@/features/patients/hooks'
 import { useDocumentTitle } from '@/hooks/use-document-title'
 import { fullName } from '@/lib/utils'
@@ -66,75 +67,79 @@ export function DoctorProfilePage() {
         description="Your details as they appear to your patients."
       />
 
-      {/* The patient profile's structure: the form is the one card on the
-          page, and the account facts beside it sit under a heading with
+      {/* The patient profile's structure: the forms are the cards on the
+          page, and the account facts beside them sit under a heading with
           space, not in a card of their own. */}
       <div className="grid gap-section lg:grid-cols-3 lg:gap-8">
-        <PageSection title="Profile details" className="lg:col-span-2">
-          <Card>
-            <CardBody>
-              <form onSubmit={onSubmit} className="space-y-5">
-                <div className="grid gap-5 sm:grid-cols-2">
-                  <Field label="First name" required>
-                    <Input
-                      value={firstName}
-                      onChange={(event) => setFirstName(event.target.value)}
-                      autoComplete="given-name"
-                    />
-                  </Field>
-                  <Field label="Last name" required>
-                    <Input
-                      value={lastName}
-                      onChange={(event) => setLastName(event.target.value)}
-                      autoComplete="family-name"
-                    />
-                  </Field>
-                </div>
+        <div className="space-y-section lg:col-span-2">
+          <PageSection title="Profile details">
+            <Card>
+              <CardBody>
+                <form onSubmit={onSubmit} className="space-y-5">
+                  <div className="grid gap-5 sm:grid-cols-2">
+                    <Field label="First name" required>
+                      <Input
+                        value={firstName}
+                        onChange={(event) => setFirstName(event.target.value)}
+                        autoComplete="given-name"
+                      />
+                    </Field>
+                    <Field label="Last name" required>
+                      <Input
+                        value={lastName}
+                        onChange={(event) => setLastName(event.target.value)}
+                        autoComplete="family-name"
+                      />
+                    </Field>
+                  </div>
 
-                <Field
-                  label="Specialisation"
-                  description="Shown to your patients so they know who is treating them."
-                >
-                  <Input
-                    value={specialization}
-                    onChange={(event) => setSpecialization(event.target.value)}
-                    placeholder="Orthopaedic rehabilitation"
-                  />
-                </Field>
-
-                <Field label="Contact number">
-                  <Input
-                    type="tel"
-                    autoComplete="tel"
-                    value={contactNo}
-                    onChange={(event) => setContactNo(event.target.value)}
-                  />
-                </Field>
-
-                {updateDoctor.isError ? (
-                  <FormError
-                    error={updateDoctor.error}
-                    title="Your profile was not saved"
-                  />
-                ) : null}
-
-                <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-                  <Button
-                    className="max-sm:w-full"
-                    type="submit"
-                    isLoading={updateDoctor.isPending}
-                    loadingLabel="Saving…"
+                  <Field
+                    label="Specialisation"
+                    description="Shown to your patients so they know who is treating them."
                   >
-                    Save changes
-                  </Button>
-                  <SavedNotice at={updateDoctor.submittedAt}>
-                    {savedMessage}
-                  </SavedNotice>
-                </div>
-              </form>
-            </CardBody>
-          </Card>
-        </PageSection>
+                    <Input
+                      value={specialization}
+                      onChange={(event) => setSpecialization(event.target.value)}
+                      placeholder="Orthopaedic rehabilitation"
+                    />
+                  </Field>
+
+                  <Field label="Contact number">
+                    <Input
+                      type="tel"
+                      autoComplete="tel"
+                      value={contactNo}
+                      onChange={(event) => setContactNo(event.target.value)}
+                    />
+                  </Field>
+
+                  {updateDoctor.isError ? (
+                    <FormError
+                      error={updateDoctor.error}
+                      title="Your profile was not saved"
+                    />
+                  ) : null}
+
+                  <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+                    <Button
+                      className="max-sm:w-full"
+                      type="submit"
+                      isLoading={updateDoctor.isPending}
+                      loadingLabel="Saving…"
+                    >
+                      Save changes
+                    </Button>
+                    <SavedNotice at={updateDoctor.submittedAt}>
+                      {savedMessage}
+                    </SavedNotice>
+                  </div>
+                </form>
+              </CardBody>
+            </Card>
+          </PageSection>
+
+          <DoctorReminderSettings doctor={doctor} />
+        </div>
 
         <PageSection title="Account">
           {/* The label is metadata at 14px; the value is read at the 16px

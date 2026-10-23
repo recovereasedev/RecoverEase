@@ -46,6 +46,7 @@ function doctor(id: string, first: string, last: string, active: boolean): Docto
     doc_contact_no: null,
     doc_is_active: active,
     doc_created_at: '2026-01-01T00:00:00Z',
+    doc_appointment_reminder_is_enabled: true,
   }
 }
 

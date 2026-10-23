@@ -111,6 +111,7 @@ export function datasetFor(role: 'patient' | 'doctor' | 'admin'): TableRows {
     doc_license_no: 'LIC-A-001',
     doc_contact_no: '032 000 0000',
     doc_is_active: true,
+    doc_appointment_reminder_is_enabled: true,
     doc_created_at: '2026-01-01T00:00:00Z',
   }
 
