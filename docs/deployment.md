@@ -371,6 +371,8 @@ To roll back 31, go the other way, newest first. Each later migration is
 rolled back with its own down-script, applied as a new migration, and where
 deployed code depends on it, that code goes back first:
 
+1. **39**: `supabase/rollbacks/20260902100039_doctor_notifications_general_only.down.sql`.
+   Nothing deployed depends on it.
 1. **38**: `chatbot-reply` and the website from before migration 38, then
    `supabase/rollbacks/20260902100038_guidance_assistant_switch.down.sql`.
    33's down-script refuses while 38 is installed.
@@ -870,6 +872,33 @@ nothing. Roll `chatbot-reply` and the website back first. 38 goes before 37's
 and before 33's: since this change, 33's down-script refuses while 38 is
 installed, because 38's switch is changed only through the Super Admin checks
 33 removes.
+
+### Doctors' notifications are general messages (migration 39)
+
+Module 7.1's insert policy, `notification_insert_doctor_to_patient`, keeps
+its recipient rule - an active doctor's own patient - and now also requires
+what the form has always sent: type `general`, no chat link, unread, and 1 to
+1,000 characters. It is not applied anywhere yet; apply it only with
+approval, as a new migration.
+
+- **Order.** The website first, then the migration, though either order
+  works for everything the website sends: the form already sends only
+  `general`, and from this branch it stops at 1,000 characters. A website
+  from before it would have a message over 1,000 characters refused once 39
+  is in, shown as "You do not have access to this".
+- **What does not change.** Every notification the system writes - the
+  reminder jobs, cancellation and reassignment notices, and `chatbot-reply`'s
+  critical-chat alerts - is written by SECURITY DEFINER functions or the
+  service role, which this policy never governed
+  (`tests/db/doctor-notifications.test.ts`).
+- **Verify.** Read-only: `select with_check from pg_policies where tablename
+  = 'notification' and policyname = 'notification_insert_doctor_to_patient'`
+  shows the type, link, read state and length conditions.
+
+Its down-script, `supabase/rollbacks/20260902100039_doctor_notifications_general_only.down.sql`,
+puts back migration 06's policy and refuses when 39 is not applied. No data
+changes either way, and nothing deployed depends on 39, so it can go back
+first and alone.
 
 ## Bundle budget
 

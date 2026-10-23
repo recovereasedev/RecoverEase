@@ -227,6 +227,22 @@ in; any value but `true` counts as off. The rule is one function,
 patient's screen) and `guidance_assistant_on_for_doctor(doc_id)` (the service
 role's only, for `chatbot-reply`).
 
+### 12. A doctor's notification is a general message
+
+Module 7.1 lets a doctor write to their own patient. Before migration 39 the
+insert policy checked only the recipient, so a direct Data API call could
+send a doctor's words as any type - a critical-chat alert, a reminder, an
+announcement - linked to a conversation or already read. Migration 39 keeps
+the recipient rule (an active doctor's own patient) and adds what the form
+sends: `notification_type = 'general'`, no `chat_session_id`, unread, and a
+message of 1 to 1,000 characters once trimmed.
+
+The system's own notifications are not affected: every database function
+that writes one is SECURITY DEFINER, and `chatbot-reply` writes its alerts
+with the service role. The website also chooses each message's
+`notification_id`, so a repeated send is refused as a duplicate key and is
+stored once.
+
 ## Assumptions where the ERD was silent
 
 The ERD types every status column as `varchar` without listing values. Each

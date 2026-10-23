@@ -152,7 +152,7 @@ Applied to every policy, each guarding a specific failure:
 | `appointment` | r, insert, confirm/cancel | r/w | none |
 | `reschedule_request` | r, insert | r + **decide** | none |
 | `chat_session` / `chat_message` | own (r/w) | r | **none** |
-| `notification` | own (r + mark read) | own + send to own patient | own |
+| `notification` | own (r + mark read) | own + **send a general message, up to 1,000 characters, to own patient** (migration 39) | own |
 | `announcement` | published: platform, own clinic's Clinic Admin's, **own active doctor's** (migration 36) | published platform and Clinic Admin's; **writes for own patients, reads and manages only own** (migration 36) | full |
 | `report` | **none** | own | own + system-wide |
 | `audit_log` | none | none | **read only** (administration and clinical entries) |

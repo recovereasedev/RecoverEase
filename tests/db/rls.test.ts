@@ -909,11 +909,13 @@ describe('row level security', () => {
     })
 
     it('lets a doctor notify their own patient but nobody else’s', async () => {
+      // A general message: from migration 39 that is the only kind a doctor
+      // writes (tests/db/doctor-notifications.test.ts).
       await database.asUser(
         fx.doctorAUserId,
         `insert into public.notification
            (user_id, notification_type, notification_message)
-         values ($1, 'treatment', 'Please review your plan')`,
+         values ($1, 'general', 'Please review your plan')`,
         [fx.aliceUserId],
       )
 

@@ -1,3 +1,4 @@
+import { isDuplicateKey } from '@/lib/ids'
 import { supabase } from '@/lib/supabase/client'
 import type { Enums, Tables } from '@/types/database.types'
 
@@ -69,17 +70,37 @@ export async function markAllNotificationsRead(): Promise<void> {
   if (error) throw error
 }
 
-/** Module 7.1: a doctor sends a notification to one of their own patients. */
+/**
+ * The longest message a doctor may send, as the database's own policy has it
+ * from migration 39.
+ */
+export const NOTIFICATION_MESSAGE_MAX_LENGTH = 1000
+
+/**
+ * Module 7.1: a doctor sends a notification to one of their own patients.
+ *
+ * Who may be notified, and with what, is the database's to decide
+ * (`notification_insert_doctor_to_patient`): an active doctor's own patient,
+ * a `general` message of up to 1,000 characters.
+ *
+ * `notificationId` is the id the form chose for this message. Sending it
+ * again - a second press that got through, a retry after a timeout whose
+ * insert had in fact landed - is refused by the database as a duplicate key,
+ * which means the message is already there: it is answered as sent, so the
+ * patient gets it once.
+ */
 export async function sendNotificationToPatient(input: {
+  notificationId?: string
   userId: string
   type: NotificationType
   message: string
 }): Promise<void> {
   const { error } = await supabase.from('notification').insert({
+    ...(input.notificationId ? { notification_id: input.notificationId } : {}),
     user_id: input.userId,
     notification_type: input.type,
     notification_message: input.message,
   })
 
-  if (error) throw error
+  if (error && !(input.notificationId && isDuplicateKey(error))) throw error
 }
