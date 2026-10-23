@@ -15,11 +15,13 @@ import { summariseAdherence } from '@/features/medications/api'
 import { AdherenceSummary } from '@/features/medications/components/adherence-summary'
 import { PrescriptionPrintHeader } from '@/features/medications/components/prescription-print-header'
 import { patientDoseState } from '@/features/medications/dose-status'
+import { prescribedBy } from '@/features/medications/prescriber'
 import {
   useDoses,
   useMedicationSchedules,
   useSetDoseStatus,
 } from '@/features/medications/hooks'
+import { fetchOwnClinicName } from '@/features/patients/api'
 import { useMyDoctor } from '@/features/patients/hooks'
 import { useDocumentTitle } from '@/hooks/use-document-title'
 import { useNow } from '@/hooks/use-now'
@@ -82,22 +84,33 @@ export function PatientMedicationsPage() {
   const [confirmedId, setConfirmedId] = useState<string | null>(null)
   const prescriptionFile = useFileDownload()
 
-  // Module 4.10 as a file: the printed prescription, built from what this
-  // page has loaded. Offered once the prescriptions are here and the doctor
-  // has either loaded or will not (no assigned doctor), so the file never
-  // says "Not available" only because it was asked for too soon.
+  // Module 4.10 as a file: one prescription sheet per prescription, built
+  // from what this page has loaded. Offered once the prescriptions are here
+  // and the doctor has either loaded or will not (no assigned doctor), so a
+  // sheet never says "Not available" only because it was asked for too soon -
+  // and not at all while there is no prescription to put on it.
+  const hasNoPrescriptions = schedulesQuery.data?.length === 0
   const canDownloadPrescription =
-    Boolean(patient) && Boolean(schedulesQuery.data) && !doctorQuery.isLoading
+    Boolean(patient) &&
+    Boolean(schedulesQuery.data) &&
+    !hasNoPrescriptions &&
+    !doctorQuery.isLoading
   const downloadPrescription = () => {
     if (!patient || !schedulesQuery.data) return
     const schedules = schedulesQuery.data
     void prescriptionFile.download(async () => {
-      const { buildPrescriptionPdf } = await import(
-        '@/features/medications/prescription-document'
-      )
+      const [{ buildPrescriptionPdf }, clinicName] = await Promise.all([
+        import('@/features/medications/prescription-document'),
+        // The letterhead's clinic name is a courtesy: without it the sheet
+        // is still the prescription, so a failed read leaves it off.
+        fetchOwnClinicName().catch(() => null),
+      ])
       return buildPrescriptionPdf({
         patient,
-        doctor: doctorQuery.data,
+        // The only doctor a patient may read is their current one, so a
+        // prescription an earlier doctor issued names no prescriber.
+        doctors: [doctorQuery.data],
+        clinicName,
         schedules,
         generatedAt: new Date(),
       })
@@ -144,6 +157,9 @@ export function PatientMedicationsPage() {
               disabled={!canDownloadPrescription}
               isLoading={prescriptionFile.isPending}
               loadingLabel="Preparing…"
+              {...(hasNoPrescriptions
+                ? { 'aria-describedby': 'prescription-download-unavailable' }
+                : {})}
             >
               <Download aria-hidden="true" />
               Download prescription (PDF)
@@ -159,6 +175,18 @@ export function PatientMedicationsPage() {
           </>
         }
       />
+
+      {/* Why the download is unavailable, beside it rather than in a
+          tooltip a disabled button could never show. */}
+      {hasNoPrescriptions ? (
+        <p
+          id="prescription-download-unavailable"
+          className="-mt-2 mb-6 text-sm text-muted print:hidden"
+        >
+          There is no prescription to download yet: your doctor has not
+          prescribed anything.
+        </p>
+      ) : null}
 
       {prescriptionFile.error ? (
         <div className="mb-6 print:hidden">
@@ -403,6 +431,17 @@ export function PatientMedicationsPage() {
                               {schedule.medication_schedule_end_date
                                 ? ` until ${formatDate(schedule.medication_schedule_end_date)}`
                                 : ', ongoing'}
+                            </span>
+                            {/* Who issued it and when: the prescription's own
+                                doctor, who is named only while they are this
+                                patient's doctor - the one doctor a patient's
+                                account may read. */}
+                            <span className="mt-0.5 block">
+                              Issued{' '}
+                              {formatDate(
+                                schedule.prescription?.prescription_issued_date,
+                              )}{' '}
+                              · {prescribedBy(schedule, doctorQuery.data)}
                             </span>
                           </>
                         }

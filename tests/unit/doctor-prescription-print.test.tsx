@@ -29,6 +29,13 @@ vi.mock('@/features/auth/auth-context', () => ({
   useAuth: () => ({ user: mockUser.current, signOut: vi.fn(), refresh: vi.fn() }),
 }))
 
+// The letterhead's clinic name, read when the file is made; never a network
+// call from a test.
+vi.mock('@/features/patients/api', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/features/patients/api')>()),
+  fetchOwnClinicName: async () => 'Harbor Clinic',
+}))
+
 vi.mock('@/features/patients/hooks', () => ({
   usePatient: () => ({
     isPending: false,
@@ -107,6 +114,8 @@ const amoxicillin = {
     prescription_id: 'rx-1',
     prescription_issued_date: '2026-09-01',
     prescription_notes: 'Finish the full course.',
+    // Issued by doc-1, the patient's assigned doctor.
+    doc_id: 'doc-1',
   },
 }
 
@@ -119,7 +128,14 @@ function doctorSession(docId: string): AppUser {
     mustChangePassword: false,
     profile: {
       kind: 'doctor',
-      doctor: { doc_id: docId, doc_first_name: 'Lorna', doc_last_name: 'Villanueva' },
+      doctor: {
+        doc_id: docId,
+        doc_first_name: 'Lorna',
+        doc_last_name: 'Villanueva',
+        doc_specialization: 'Orthopaedics',
+        doc_license_no: 'LIC-7',
+        doc_contact_no: '032 111 2222',
+      },
     } as never,
   }
 }
@@ -252,7 +268,7 @@ describe('downloading the prescription from the record (module 4.10)', () => {
     expect(screen.getByRole('button', { name: 'Download prescription (PDF)' })).toBeInTheDocument()
   })
 
-  it('saves the prescription as a PDF, naming the assigned doctor, and writes nothing', async () => {
+  it('saves the prescription as a PDF, naming the doctor who issued it, and writes nothing', async () => {
     const capture = captureDownloads()
     try {
       openRecord('medication')
@@ -262,15 +278,19 @@ describe('downloading the prescription from the record (module 4.10)', () => {
       const [file] = capture.files
       expect(file!.type).toBe('application/pdf')
       expect(file!.name).toMatch(/^recoverease-prescription-maria-reyes-/)
-      expect(await pdfLines(await file!.bytes())).toEqual(
-        expect.arrayContaining([
-          'Maria Reyes',
-          'Dr. Lorna Villanueva',
-          'Amoxicillin',
-          'From 1 Sep 2026, ongoing',
-          'Finish the full course.',
-        ]),
-      )
+      const text = (await pdfLines(await file!.bytes())).join(' ')
+      for (const expected of [
+        'Harbor Clinic Prescription',
+        'Maria Reyes',
+        'Dr. Lorna Villanueva',
+        'Licence no.: LIC-7',
+        'Contact no. 032 111 2222',
+        'Amoxicillin',
+        'From 1 Sep 2026, ongoing',
+        'Finish the full course.',
+      ]) {
+        expect(text, expected).toContain(expected)
+      }
       expect(noop.mutate).not.toHaveBeenCalled()
       expect(window.print).not.toHaveBeenCalled()
     } finally {
@@ -278,7 +298,7 @@ describe('downloading the prescription from the record (module 4.10)', () => {
     }
   })
 
-  it('names no prescriber when the clinician is not the assigned doctor', async () => {
+  it('names no prescriber when the clinician did not issue the prescription', async () => {
     mockUser.current = doctorSession('doc-2')
     const capture = captureDownloads()
     try {

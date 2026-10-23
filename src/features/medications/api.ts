@@ -9,7 +9,7 @@ export type MedicationLogStatus = Enums<'medication_log_status'>
 export type ScheduleWithPrescription = MedicationSchedule & {
   prescription: Pick<
     Prescription,
-    'prescription_id' | 'prescription_issued_date' | 'prescription_notes'
+    'prescription_id' | 'prescription_issued_date' | 'prescription_notes' | 'doc_id'
   > | null
 }
 
@@ -20,7 +20,14 @@ export type DoseWithSchedule = MedicationLog & {
   > | null
 }
 
-/** Module 4.5 "View Medication Schedule". */
+/**
+ * Module 4.5 "View Medication Schedule".
+ *
+ * Each schedule comes with its prescription, including the doctor who
+ * issued it (`doc_id`). That is who a prescription names as its prescriber -
+ * not the patient's current doctor, who may have taken over the patient
+ * since.
+ */
 export async function fetchSchedules(
   patientId: string,
 ): Promise<ScheduleWithPrescription[]> {
@@ -32,6 +39,7 @@ export async function fetchSchedules(
          prescription_id,
          prescription_issued_date,
          prescription_notes,
+         doc_id,
          pat_id
        )`,
     )

@@ -323,6 +323,8 @@ export function datasetFor(role: 'patient' | 'doctor' | 'admin'): TableRows {
           prescription_id: IDS.prescriptionA,
           prescription_issued_date: '2026-02-01',
           prescription_notes: 'Take with food.',
+          // Issued by her assigned doctor, as the schedule query now asks.
+          doc_id: IDS.doctorA,
           pat_id: IDS.alicePat,
         },
       },

@@ -75,6 +75,26 @@ export async function fetchMyDoctor(doctorId: string): Promise<Doctor | null> {
   return data
 }
 
+/**
+ * The name of the clinic the signed-in patient or doctor belongs to, for the
+ * letterhead of a downloaded prescription.
+ *
+ * No filter is given: `clinic_select_member` returns only the caller's own
+ * clinic, and nothing at all to anyone without one, which is answered as
+ * null so the letterhead simply leaves the name out. Read as a list of at
+ * most one rather than as a single object, so "no clinic" is an empty answer
+ * and not a 406 the browser reports as an error.
+ */
+export async function fetchOwnClinicName(): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('clinic')
+    .select('clinic_name')
+    .limit(1)
+
+  if (error) throw error
+  return data[0]?.clinic_name ?? null
+}
+
 /** Module 2.6 "View and Update Doctor Profile". */
 export async function updateDoctor(
   doctorId: string,
