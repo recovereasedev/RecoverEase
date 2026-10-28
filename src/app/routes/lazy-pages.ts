@@ -54,6 +54,16 @@ export const PatientTreatmentPage = lazy(() =>
     default: m.PatientTreatmentPage,
   })),
 )
+export const PatientCalendarPage = lazy(() =>
+  import('@/features/calendar/pages/patient-calendar-page').then((m) => ({
+    default: m.PatientCalendarPage,
+  })),
+)
+export const DoctorCalendarPage = lazy(() =>
+  import('@/features/calendar/pages/doctor-calendar-page').then((m) => ({
+    default: m.DoctorCalendarPage,
+  })),
+)
 export const PatientMedicationsPage = lazy(() =>
   import('@/features/medications/pages/patient-medications-page').then((m) => ({
     default: m.PatientMedicationsPage,

@@ -92,6 +92,13 @@ export function queryKeysFor(userId: string) {
       all: [userId, 'recovery-logs'] as const,
       forPatient: (patientId: string) =>
         [...queryKeys.recoveryLogs.all, patientId] as const,
+      /** Under `forPatient`, so saving a check-in refreshes the calendar too. */
+      between: (patientId: string, from: string, to: string) =>
+        [...queryKeys.recoveryLogs.forPatient(patientId), 'between', from, to] as const,
+    },
+
+    ownClinic: {
+      timeZone: () => [userId, 'own-clinic', 'time-zone'] as const,
     },
 
     doctorNotes: {

@@ -23,6 +23,27 @@ export async function fetchRecoveryLogs(
 }
 
 /**
+ * The check-ins recorded between two dates, inclusive (`YYYY-MM-DD`), for
+ * the calendar. Only what was recorded: a day without an entry has none.
+ */
+export async function fetchRecoveryLogsBetween(
+  patientId: string,
+  from: string,
+  to: string,
+): Promise<RecoveryLog[]> {
+  const { data, error } = await supabase
+    .from('recovery_log')
+    .select('*')
+    .eq('pat_id', patientId)
+    .gte('recovery_log_date', from)
+    .lte('recovery_log_date', to)
+    .order('recovery_log_date', { ascending: true })
+
+  if (error) throw error
+  return data
+}
+
+/**
  * Module 5.9 "Log Daily Recovery Progress".
  *
  * Upsert rather than insert: the database allows one entry per patient per

@@ -95,6 +95,21 @@ export async function fetchOwnClinicName(): Promise<string | null> {
   return data[0]?.clinic_name ?? null
 }
 
+/**
+ * The time zone of the signed-in patient's or doctor's clinic - the zone the
+ * clinic's schedules and reminders are kept in - for the calendar's days and
+ * times. Null where there is no clinic to read, as for the name above.
+ */
+export async function fetchOwnClinicTimeZone(): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('clinic')
+    .select('clinic_timezone')
+    .limit(1)
+
+  if (error) throw error
+  return data[0]?.clinic_timezone ?? null
+}
+
 /** Module 2.6 "View and Update Doctor Profile". */
 export async function updateDoctor(
   doctorId: string,
