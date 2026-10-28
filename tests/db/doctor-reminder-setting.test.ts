@@ -28,6 +28,14 @@ const codeLines = (sql: string) =>
     .map((line) => line.trim())
     .filter((line) => line !== '' && !line.startsWith('--'))
 
+/** The connection's `lock_timeout`, as its next statement would run under. */
+async function lockTimeout(database: TestDatabase): Promise<string> {
+  const [row] = await database.asService<{ lock_timeout: string }>(
+    `select current_setting('lock_timeout') as lock_timeout`,
+  )
+  return row!.lock_timeout
+}
+
 const GUARD = /Only the doctor can change their own reminder settings/
 
 async function reminderSetting(database: TestDatabase, doctorId: string): Promise<boolean> {
@@ -345,10 +353,7 @@ describe('migration 42, before and after', () => {
     try {
       const fx = await seedFixture(database)
       await database.applyMigration(MIGRATION_42)
-      const [after] = await database.asService<{ lock_timeout: string }>(
-        `select current_setting('lock_timeout') as lock_timeout`,
-      )
-      expect(after!.lock_timeout).toBe('0')
+      expect(await lockTimeout(database)).toBe('0')
 
       // Stopped by a lock it could not get, it runs again from the top - and
       // keeps a choice a doctor has already made.
@@ -423,6 +428,33 @@ describe('migration 42, before and after', () => {
         'select doc_appointment_reminder_is_enabled as on from public.doctor',
       )
       expect(rows.every((row) => row.on)).toBe(true)
+    } finally {
+      await database.close()
+    }
+  })
+
+  it('rolls back waiting at most 3 seconds for its locks, set only once it has decided to run, and puts the setting back', async () => {
+    // The check comes first and locks nothing. The timeout is set on the line
+    // after it, before `doctor` is touched, and the server's default is back
+    // after the last statement.
+    const lines = codeLines(await script(ROLLBACK_42))
+    const checked = lines.indexOf('$$;')
+    expect(lines.slice(0, checked + 1).some((line) => /^(drop|create|alter)\b/.test(line))).toBe(false)
+    expect(lines[checked + 1]).toBe("set lock_timeout = '3s';")
+    expect(lines.filter((line) => line.includes('lock_timeout'))).toHaveLength(2)
+    expect(lines.at(-1)).toBe('reset lock_timeout;')
+
+    const database = await createTestDatabase()
+    try {
+      await database.db.exec(await script(ROLLBACK_42))
+      expect(await lockTimeout(database)).toBe('0')
+
+      // Refused, it leaves the connection's own setting as it found it.
+      await database.db.exec(`set lock_timeout = '5s'`)
+      await expect(database.db.exec(await script(ROLLBACK_42))).rejects.toThrow(
+        /Migration 42 is not applied/,
+      )
+      expect(await lockTimeout(database)).toBe('5s')
     } finally {
       await database.close()
     }

@@ -25,8 +25,20 @@ begin
 end
 $$;
 
+-- Putting the policy back locks `notification`, which the reminder jobs
+-- write - the pre-dose job every minute. Waiting at most 3 seconds for that
+-- lock, the rollback fails rather than holding the website up behind it
+-- (docs/deployment.md, "Migration timing and run history"). A plain SET, not
+-- SET LOCAL, so it holds whether or not the runner wraps this file in one
+-- transaction. It comes after the check, so a refusal changes no setting,
+-- and it is reset at the end.
+set lock_timeout = '3s';
+
 drop policy notification_insert_doctor_to_patient on public.notification;
 
 create policy notification_insert_doctor_to_patient
   on public.notification for insert to authenticated
   with check ((select app_private.is_user_my_patient(user_id)));
+
+-- Back to the server's default for anything else this connection runs.
+reset lock_timeout;

@@ -965,7 +965,13 @@ approval, as a new migration.
 Its down-script, `supabase/rollbacks/20260902100041_doctor_notifications_general_only.down.sql`,
 puts back migration 06's policy and refuses when 41 is not applied. No data
 changes either way, and nothing deployed depends on 41, so it can go back
-first and alone.
+first and alone. Like the migration, it waits at most 3 seconds for its lock
+and resets the setting at the end; the timeout is set only after its check,
+so a refusal changes no setting. If it stops on the timeout between dropping
+the policy and putting it back - possible only where the runner does not run
+the file as one transaction - no doctor can send a notification, and its
+check refuses a second run. Apply migration 41's file again, which puts 41's
+policy back, then the rollback, each with its own decision.
 
 #### A doctor's own appointment reminders (migration 42)
 
@@ -1000,7 +1006,9 @@ migration.
 Its down-script, `supabase/rollbacks/20260902100042_doctor_appointment_reminder_setting.down.sql`,
 puts back migration 31's reminder job, drops the trigger and the column - and
 with it every doctor's choice - and refuses when 42 is not applied. Roll the
-website back first.
+website back first. Like the migration, it waits at most 3 seconds for its
+locks and resets the setting at the end; the timeout is set only after its
+check, so a refusal changes no setting.
 
 ## Bundle budget
 

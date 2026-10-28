@@ -27,6 +27,15 @@ begin
 end
 $$;
 
+-- Dropping the trigger and the column locks `doctor`, which the reminder
+-- jobs read - the pre-dose job every minute. Waiting at most 3 seconds for
+-- that lock, the rollback fails rather than holding the website up behind it
+-- (docs/deployment.md, "Migration timing and run history"). A plain SET, not
+-- SET LOCAL, so it holds whether or not the runner wraps this file in one
+-- transaction. It comes after the check, so a refusal changes no setting,
+-- and it is reset at the end.
+set lock_timeout = '3s';
+
 -- Migration 31's reminder job, which sends every doctor theirs.
 create or replace function public.dispatch_appointment_reminders(
   lead_hours integer default 24
@@ -111,3 +120,6 @@ drop trigger if exists doctor_protect_reminder_preference on public.doctor;
 drop function if exists public.doctor_guard_reminder_preference();
 
 alter table public.doctor drop column doc_appointment_reminder_is_enabled;
+
+-- Back to the server's default for anything else this connection runs.
+reset lock_timeout;

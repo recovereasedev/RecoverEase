@@ -28,6 +28,14 @@ const codeLines = (sql: string) =>
     .map((line) => line.trim())
     .filter((line) => line !== '' && !line.startsWith('--'))
 
+/** The connection's `lock_timeout`, as its next statement would run under. */
+async function lockTimeout(database: TestDatabase): Promise<string> {
+  const [row] = await database.asService<{ lock_timeout: string }>(
+    `select current_setting('lock_timeout') as lock_timeout`,
+  )
+  return row!.lock_timeout
+}
+
 const RLS = /row-level security/
 
 /**
@@ -236,10 +244,7 @@ describe('migration 41, before and after', () => {
     const database = await createTestDatabase({ stopAfter: MIGRATION_38 })
     try {
       await database.applyMigration(MIGRATION_41)
-      const [after] = await database.asService<{ lock_timeout: string }>(
-        `select current_setting('lock_timeout') as lock_timeout`,
-      )
-      expect(after!.lock_timeout).toBe('0')
+      expect(await lockTimeout(database)).toBe('0')
 
       // Stopped by a lock it could not get, it runs again from the top.
       await database.applyMigration(MIGRATION_41)
@@ -271,6 +276,61 @@ describe('migration 41, before and after', () => {
       await expect(database.db.exec(await script(ROLLBACK_41))).rejects.toThrow(
         /Migration 41 is not applied/,
       )
+    } finally {
+      await database.close()
+    }
+  })
+
+  it('rolls back waiting at most 3 seconds for its lock, set only once it has decided to run, and puts the setting back', async () => {
+    // The check comes first and locks nothing. The timeout is set on the line
+    // after it, before the policy is touched, and the server's default is back
+    // after the last statement.
+    const lines = codeLines(await script(ROLLBACK_41))
+    const checked = lines.indexOf('$$;')
+    expect(lines.slice(0, checked + 1).some((line) => /^(drop|create|alter)\b/.test(line))).toBe(false)
+    expect(lines[checked + 1]).toBe("set lock_timeout = '3s';")
+    expect(lines.filter((line) => line.includes('lock_timeout'))).toHaveLength(2)
+    expect(lines.at(-1)).toBe('reset lock_timeout;')
+
+    const database = await createTestDatabase()
+    try {
+      await database.db.exec(await script(ROLLBACK_41))
+      expect(await lockTimeout(database)).toBe('0')
+
+      // Refused, it leaves the connection's own setting as it found it.
+      await database.db.exec(`set lock_timeout = '5s'`)
+      await expect(database.db.exec(await script(ROLLBACK_41))).rejects.toThrow(
+        /Migration 41 is not applied/,
+      )
+      expect(await lockTimeout(database)).toBe('5s')
+    } finally {
+      await database.close()
+    }
+  })
+
+  it('stopped between dropping the policy and putting it back, recovers through migration 41 and then the rollback', async () => {
+    // Where the runner does not run the file as one transaction, a lock
+    // timeout on its `create policy` leaves no doctor policy at all, and the
+    // rollback's check then refuses a second run.
+    const database = await createTestDatabase()
+    try {
+      const fx = await seedFixture(database)
+      await database.db.exec(
+        'drop policy notification_insert_doctor_to_patient on public.notification',
+      )
+      await expect(
+        notifyAs(database, fx.doctorAUserId, { to: fx.aliceUserId }),
+      ).rejects.toThrow(RLS)
+      await expect(database.db.exec(await script(ROLLBACK_41))).rejects.toThrow(
+        /Migration 41 is not applied/,
+      )
+
+      // Migration 41 again puts its policy back; the rollback then runs.
+      await database.applyMigration(MIGRATION_41)
+      await database.db.exec(await script(ROLLBACK_41))
+      await expect(
+        notifyAs(database, fx.doctorAUserId, { to: fx.aliceUserId, type: 'treatment' }),
+      ).resolves.toEqual([])
     } finally {
       await database.close()
     }
