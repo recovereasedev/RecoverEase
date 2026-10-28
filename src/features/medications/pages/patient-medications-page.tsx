@@ -14,6 +14,7 @@ import { PageSection } from '@/components/ui/section-heading'
 import { useCurrentUser } from '@/features/auth/auth-context'
 import { summariseAdherence } from '@/features/medications/api'
 import { AdherenceSummary } from '@/features/medications/components/adherence-summary'
+import { PhoneReminders } from '@/features/medications/components/phone-reminders'
 import { PrescriptionPrintHeader } from '@/features/medications/components/prescription-print-header'
 import { patientDoseState } from '@/features/medications/dose-status'
 import { prescribedBy } from '@/features/medications/prescriber'
@@ -489,18 +490,23 @@ export function PatientMedicationsPage() {
           </PageSection>
         </div>
 
-        {/* --- Adherence --------------------------------------------------- */}
-        <PageSection className="print:hidden" title="This week">
-          <Card>
-            <CardBody>
-              {adherence ? (
-                <AdherenceSummary adherence={adherence} />
-              ) : (
-                <p className="text-sm text-muted">Loading…</p>
-              )}
-            </CardBody>
-          </Card>
-        </PageSection>
+        <div className="space-y-section">
+          {/* --- Adherence ------------------------------------------------- */}
+          <PageSection className="print:hidden" title="This week">
+            <Card>
+              <CardBody>
+                {adherence ? (
+                  <AdherenceSummary adherence={adherence} />
+                ) : (
+                  <p className="text-sm text-muted">Loading…</p>
+                )}
+              </CardBody>
+            </Card>
+          </PageSection>
+
+          {/* --- Offline reminders, on the phone's own calendar ------------ */}
+          {patient ? <PhoneReminders patient={patient} /> : null}
+        </div>
       </div>
     </>
   )

@@ -151,6 +151,50 @@ test.describe('downloading documents', () => {
     expect(errors).toEqual([])
   })
 
+  test('the patient saves their next doses to their phone’s calendar, for reminders offline', async ({
+    page,
+    signInAs,
+  }) => {
+    const errors = watchForErrors(page)
+    const writes = watchForWrites(page)
+    const tomorrow = new Date()
+    tomorrow.setDate(tomorrow.getDate() + 1)
+    tomorrow.setHours(8, 0, 0, 0)
+    await signInAs('patient', {
+      clinic: [CLINIC],
+      medication_log: [
+        {
+          medication_log_id: 'd2b22222-2222-4222-8222-222222222222',
+          medication_schedule_id: IDS.scheduleA,
+          medication_log_scheduled_at: tomorrow.toISOString(),
+          medication_log_taken_at: null,
+          medication_log_status: 'pending',
+          medication_log_follow_up_sent_at: null,
+          medication_log_pre_dose_sent_at: null,
+          medication_schedule: {
+            medication_schedule_id: IDS.scheduleA,
+            medication_schedule_name: 'Paracetamol',
+            medication_schedule_dosage: '500mg',
+            prescription: { pat_id: IDS.alicePat },
+          },
+        },
+      ],
+    })
+    await page.goto('/patient/medications')
+    await expect(page.getByRole('heading', { name: 'Reminders on your phone' })).toBeVisible()
+
+    const { file, bytes } = await downloadFrom(page, 'Download reminders (.ics)')
+
+    expect(file.suggestedFilename()).toMatch(/^recoverease-medicine-reminders-alice-santos-\d{4}-\d{2}-\d{2}\.ics$/)
+    const calendar = new TextDecoder().decode(bytes)
+    expect(calendar.startsWith('BEGIN:VCALENDAR\r\n')).toBe(true)
+    expect(calendar).toContain('SUMMARY:Take Paracetamol 500mg')
+    expect(calendar).toContain('TRIGGER:-PT10M')
+    await expect(page.getByText(/^Saved 1 dose time for the next 30 days/)).toBeVisible()
+    expect(writes).toEqual([])
+    expect(errors).toEqual([])
+  })
+
   test('the patient downloads their treatment plan as a PDF', async ({ page, signInAs }) => {
     const errors = watchForErrors(page)
     const writes = watchForWrites(page)
