@@ -31,6 +31,14 @@
 -- Rollback: supabase/rollbacks/20260902100041_doctor_notifications_general_only.down.sql
 -- ===========================================================================
 
+-- Replacing the policy locks `notification`, which the reminder jobs write -
+-- the pre-dose job every minute. Waiting at most 3 seconds for that lock, the
+-- migration fails rather than holding the website up behind it
+-- (docs/deployment.md, "Migration timing and run history"). A plain SET, not
+-- SET LOCAL, so it holds whether or not the runner wraps this file in one
+-- transaction; it is reset at the end.
+set lock_timeout = '3s';
+
 drop policy if exists notification_insert_doctor_to_patient on public.notification;
 
 create policy notification_insert_doctor_to_patient
@@ -47,3 +55,6 @@ comment on policy notification_insert_doctor_to_patient on public.notification i
   'Module 7.1: an active doctor may send their own patient a general, unread '
   'message of up to 1,000 characters. Every other notification is written by '
   'SECURITY DEFINER functions or the service role (migration 41).';
+
+-- Back to the server's default for anything else this connection runs.
+reset lock_timeout;

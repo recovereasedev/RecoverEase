@@ -31,6 +31,14 @@
 -- Rollback: supabase/rollbacks/20260902100042_doctor_appointment_reminder_setting.down.sql
 -- ===========================================================================
 
+-- The new column and the trigger lock `doctor`, which the reminder jobs read -
+-- the pre-dose job every minute. Waiting at most 3 seconds for that lock, the
+-- migration fails rather than holding the website up behind it
+-- (docs/deployment.md, "Migration timing and run history"). A plain SET, not
+-- SET LOCAL, so it holds whether or not the runner wraps this file in one
+-- transaction; it is reset at the end.
+set lock_timeout = '3s';
+
 alter table public.doctor
   add column if not exists doc_appointment_reminder_is_enabled boolean not null default true;
 
@@ -161,3 +169,6 @@ comment on function public.dispatch_appointment_reminders(integer) is
   'within lead_hours. Returns the number of notifications created. '
   'Idempotent: appointment_reminder_sent_at keeps each appointment to a '
   'single reminder however often this runs.';
+
+-- Back to the server's default for anything else this connection runs.
+reset lock_timeout;

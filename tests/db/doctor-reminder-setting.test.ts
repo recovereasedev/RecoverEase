@@ -16,9 +16,17 @@ import { seedFixture, type Fixture } from './helpers/fixtures'
 
 const MIGRATION_41 = '20260902100041'
 const MIGRATION_42 = '20260902100042'
+const MIGRATION_42_FILE = 'supabase/migrations/20260902100042_doctor_appointment_reminder_setting.sql'
 const ROLLBACK_42 = 'supabase/rollbacks/20260902100042_doctor_appointment_reminder_setting.down.sql'
 
 const script = (path: string) => readFile(join(process.cwd(), path), 'utf8')
+
+/** A script's lines of SQL, without its comments or blank lines. */
+const codeLines = (sql: string) =>
+  sql
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line !== '' && !line.startsWith('--'))
 
 const GUARD = /Only the doctor can change their own reminder settings/
 
@@ -321,6 +329,42 @@ describe('migration 42, before and after', () => {
         [fx.doctorAId, fx.doctorBId, fx.doctorCId].sort(),
       )
       expect(rows.every((row) => row.on)).toBe(true)
+    } finally {
+      await database.close()
+    }
+  })
+
+  it('waits at most 3 seconds for its locks, puts the setting back, and can be run again', async () => {
+    // The timeout is in force before `doctor` is touched, and the server's
+    // default is back after the last statement.
+    const lines = codeLines(await script(MIGRATION_42_FILE))
+    expect(lines[0]).toBe("set lock_timeout = '3s';")
+    expect(lines.at(-1)).toBe('reset lock_timeout;')
+
+    const database = await createTestDatabase({ stopAfter: MIGRATION_41 })
+    try {
+      const fx = await seedFixture(database)
+      await database.applyMigration(MIGRATION_42)
+      const [after] = await database.asService<{ lock_timeout: string }>(
+        `select current_setting('lock_timeout') as lock_timeout`,
+      )
+      expect(after!.lock_timeout).toBe('0')
+
+      // Stopped by a lock it could not get, it runs again from the top - and
+      // keeps a choice a doctor has already made.
+      await database.asUser(
+        fx.doctorAUserId,
+        `update public.doctor set doc_appointment_reminder_is_enabled = false
+          where doc_id = $1`,
+        [fx.doctorAId],
+      )
+      await database.applyMigration(MIGRATION_42)
+      expect(await reminderSetting(database, fx.doctorAId)).toBe(false)
+      const [trigger] = await database.asService<{ n: number }>(
+        `select count(*)::int as n from pg_trigger
+          where tgname = 'doctor_protect_reminder_preference'`,
+      )
+      expect(trigger!.n).toBe(1)
     } finally {
       await database.close()
     }

@@ -15,9 +15,18 @@ import { seedFixture, type Fixture } from './helpers/fixtures'
  */
 
 const MIGRATION_38 = '20260902100038'
+const MIGRATION_41 = '20260902100041'
+const MIGRATION_41_FILE = 'supabase/migrations/20260902100041_doctor_notifications_general_only.sql'
 const ROLLBACK_41 = 'supabase/rollbacks/20260902100041_doctor_notifications_general_only.down.sql'
 
 const script = (path: string) => readFile(join(process.cwd(), path), 'utf8')
+
+/** A script's lines of SQL, without its comments or blank lines. */
+const codeLines = (sql: string) =>
+  sql
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line !== '' && !line.startsWith('--'))
 
 const RLS = /row-level security/
 
@@ -214,6 +223,35 @@ describe('migration 41, before and after', () => {
       ).resolves.toEqual([])
     } finally {
       await before.close()
+    }
+  })
+
+  it('waits at most 3 seconds for its lock, puts the setting back, and can be run again', async () => {
+    // The timeout is in force before the policy is touched, and the server's
+    // default is back after the last statement.
+    const lines = codeLines(await script(MIGRATION_41_FILE))
+    expect(lines[0]).toBe("set lock_timeout = '3s';")
+    expect(lines.at(-1)).toBe('reset lock_timeout;')
+
+    const database = await createTestDatabase({ stopAfter: MIGRATION_38 })
+    try {
+      await database.applyMigration(MIGRATION_41)
+      const [after] = await database.asService<{ lock_timeout: string }>(
+        `select current_setting('lock_timeout') as lock_timeout`,
+      )
+      expect(after!.lock_timeout).toBe('0')
+
+      // Stopped by a lock it could not get, it runs again from the top.
+      await database.applyMigration(MIGRATION_41)
+      const policies = await database.asService<{ with_check: string }>(
+        `select with_check from pg_policies
+          where tablename = 'notification'
+            and policyname = 'notification_insert_doctor_to_patient'`,
+      )
+      expect(policies).toHaveLength(1)
+      expect(policies[0]!.with_check).toContain('notification_type')
+    } finally {
+      await database.close()
     }
   })
 

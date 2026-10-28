@@ -930,10 +930,17 @@ Each migration is applied on its own with the Supabase connector's
 :15, :30, :45 and 01:00). 42 changes `doctor` and the hourly appointment
 job; 41 replaces a policy on `notification`, which every reminder job
 writes. The pre-dose job reads `doctor` and writes `notification` every
-minute, so no minute is free of it. "Migration timing and run history" asks
-for a 3-second `lock_timeout` on migrations that lock tables the jobs use,
-and neither file sets one: decide before applying whether to add it, as a
-reviewed change to each file, or to apply them as written, as 37 was.
+minute, so no minute is free of it. As "Migration timing and run history"
+asks of migrations that lock tables the jobs use, each file starts with
+`set lock_timeout = '3s'` and ends with `reset lock_timeout`. It is a plain
+`SET`, not `SET LOCAL`, so it holds whether or not `apply_migration` runs the
+file as one transaction, which is not documented (see "To roll back 31").
+If a lock is not granted in time, the migration stops with `canceling
+statement due to lock timeout`. Each file can be run again from the top as
+it stands - `if exists`, `if not exists`, `or replace` - and a re-run of 42
+keeps any doctor's choice already saved. Do not retry without a separate
+decision, though: first check, read-only, the history and the objects the
+file creates, since part of it may have been applied.
 
 #### Doctors' notifications are general messages (migration 41)
 
