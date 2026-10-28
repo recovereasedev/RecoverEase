@@ -6,6 +6,7 @@ import { pdfLines } from '../tests/unit/support/pdf-text'
 import type { Download } from '@playwright/test'
 
 import { expect, IDS, test, type Page } from './support/fixtures'
+import { bodyOf, capturePrinting, printFrom } from './support/printing'
 
 /**
  * Modules 3.5, 4.10 and 9.4 in a real browser: each Download button hands the
@@ -101,7 +102,53 @@ test.describe('downloading documents', () => {
 
     const button = page.getByRole('button', { name: 'Download prescription (PDF)', exact: true })
     await expect(button).toBeDisabled()
-    await expect(button).toHaveAccessibleDescription(/no prescription to download yet/)
+    await expect(button).toHaveAccessibleDescription(/no prescription to download or print yet/)
+    const print = page.getByRole('button', { name: 'Print prescriptions', exact: true })
+    await expect(print).toBeDisabled()
+    await expect(print).toHaveAccessibleDescription(/no prescription to download or print yet/)
+  })
+
+  test('the patient’s Print prescriptions prints the downloaded sheet, not the page', async ({
+    page,
+    signInAs,
+  }) => {
+    const errors = watchForErrors(page)
+    const writes = watchForWrites(page)
+    await capturePrinting(page)
+    await signInAs('patient', { clinic: [CLINIC] })
+    await page.goto('/patient/medications')
+    await expect(page.getByText('Take with food.')).toBeVisible()
+
+    const { bytes: downloaded } = await downloadFrom(page, 'Download prescription (PDF)')
+    const printed = await printFrom(page, 'Print prescriptions')
+
+    expect(isPdf(printed)).toBe(true)
+    expect(await bodyOf(printed)).toEqual(await bodyOf(downloaded))
+    expect((await pdfLines(printed)).join(' ')).toContain('Harborview Recovery Clinic Prescription')
+    await expect(page.getByRole('status').filter({ hasText: 'opened in a new tab' })).toBeVisible()
+    expect(writes).toEqual([])
+    expect(errors).toEqual([])
+  })
+
+  test('the patient’s Print plan prints the designed treatment plan', async ({ page, signInAs }) => {
+    const errors = watchForErrors(page)
+    const writes = watchForWrites(page)
+    await capturePrinting(page)
+    await signInAs('patient', { clinic: [CLINIC] })
+    await page.goto('/patient/treatment')
+    await expect(page.getByRole('heading', { name: 'Post-operative knee recovery' })).toBeVisible()
+
+    const { bytes: downloaded } = await downloadFrom(page, 'Download plan (PDF)')
+    const printed = await printFrom(page, 'Print plan')
+
+    expect(isPdf(printed)).toBe(true)
+    expect(await bodyOf(printed)).toEqual(await bodyOf(downloaded))
+    const text = (await pdfLines(printed)).join(' ')
+    for (const expected of ['Harborview Recovery Clinic Treatment plan', 'Alice Santos', 'Post-operative knee recovery', 'Goal Target date Status']) {
+      expect(text, expected).toContain(expected)
+    }
+    expect(writes).toEqual([])
+    expect(errors).toEqual([])
   })
 
   test('the patient downloads their treatment plan as a PDF', async ({ page, signInAs }) => {

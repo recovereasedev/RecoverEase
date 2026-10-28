@@ -1,4 +1,7 @@
+import { pdfLines } from '../tests/unit/support/pdf-text'
+
 import { expect, IDS, test, type Page } from './support/fixtures'
+import { capturePrinting, printFrom } from './support/printing'
 
 /**
  * QA 9/12 — on the clinician's patient record, printing lives on the
@@ -92,19 +95,21 @@ test.describe('printing from the patient record', () => {
     const errors = watchForErrors(page)
     const writes = watchForWrites(page)
     await page.setViewportSize({ width: 1280, height: 900 })
+    await capturePrinting(page)
     await signInAs('doctor', RECORD)
     await openMedicationTab(page)
 
-    // The print dialog is the browser's; stand it in to see the button use it.
-    await page.evaluate(() => {
-      ;(window as unknown as { printed: number }).printed = 0
-      window.print = () => {
-        ;(window as unknown as { printed: number }).printed += 1
-      }
-    })
-    await page.getByRole('button', { name: 'Print prescription' }).click()
-    expect(await page.evaluate(() => (window as unknown as { printed: number }).printed)).toBe(1)
+    // The button prints the prescription sheet - the PDF Download saves - not
+    // the record (module 4.4). The print dialog is the browser's own.
+    const printed = (await pdfLines(await printFrom(page, 'Print prescription'))).join(' ')
+    for (const expected of ['Prescription', 'Alice Santos', 'Amoxicillin', 'Take with food.']) {
+      expect(printed, expected).toContain(expected)
+    }
+    // This prescription records no prescriber, so the sheet names none.
+    expect(printed).toContain('Prescribing physician Not available')
 
+    // Printing the page itself, from the browser's own menu, still prints a
+    // tidy prescription: the page's print stylesheet.
     await page.emulateMedia({ media: 'print' })
 
     // The application, the record's header, its tabs and its controls stay on screen.

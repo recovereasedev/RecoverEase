@@ -1,6 +1,7 @@
 import { CalendarDays, Download, Printer } from 'lucide-react'
 
 import { FormError } from '@/components/feedback/form-error'
+import { PrintOutcomeNotice } from '@/components/feedback/print-outcome-notice'
 import { StateView } from '@/components/feedback/state-view'
 import { PageHeader } from '@/components/layout/page-header'
 import { StatusBadge } from '@/components/ui/badge'
@@ -8,6 +9,8 @@ import { ProgressBar } from '@/components/ui/progress'
 import { Button } from '@/components/ui/button'
 import { Card, CardBody } from '@/components/ui/card'
 import { useCurrentUser } from '@/features/auth/auth-context'
+import { fetchOwnClinicName } from '@/features/patients/api'
+import { useMyDoctor } from '@/features/patients/hooks'
 import {
   byTargetDate,
   summariseGoals,
@@ -15,7 +18,7 @@ import {
 } from '@/features/treatment-plans/api'
 import { useTreatmentPlans } from '@/features/treatment-plans/hooks'
 import { useDocumentTitle } from '@/hooks/use-document-title'
-import { useFileDownload } from '@/lib/documents/download'
+import { useDocumentFile } from '@/lib/documents/use-document-file'
 import { formatDate } from '@/lib/format'
 import { treatmentGoalStatus, treatmentPlanStatus } from '@/lib/status'
 import { cn } from '@/lib/utils'
@@ -36,8 +39,9 @@ const MARKER: Record<TreatmentGoalStatus, string> = {
  *
  * Module 3.5 is a real file: "Download plan (PDF)" builds the PDF in the
  * browser from the plans this page has loaded and saves it, with nothing
- * sent anywhere (`treatment-plan-document.ts`). Printing stays beside it -
- * the browser's own "Save as PDF" also produces a tagged, accessible PDF.
+ * sent anywhere (`treatment-plan-document.ts`). "Print plan" prints that
+ * same PDF, not this page (`@/lib/documents/print`), so the paper and the
+ * file are one document.
  *
  * RecoverEase 2.0 draws the plan as a roadmap rather than a form. The summary
  * - what the plan is, when it runs, how far through it the patient is - sits
@@ -53,18 +57,38 @@ export function PatientTreatmentPage() {
     user.profile.kind === 'patient' ? user.profile.patient.pat_id : ''
 
   const plansQuery = useTreatmentPlans(patientId)
-  const planFile = useFileDownload()
+  const planFile = useDocumentFile()
   const patient = user.profile.kind === 'patient' ? user.profile.patient : null
+  // The plan names its doctor when that is the patient's current doctor, the
+  // only one a patient may read - so the file waits for that read.
+  const doctorQuery = useMyDoctor(patient?.doc_id)
+  const canBuildPlan = Boolean(patient && plansQuery.data) && !doctorQuery.isLoading
 
-  const downloadPlan = () => {
+  const buildPlan = () => {
     const plans = plansQuery.data
-    if (!patient || !plans) return
-    void planFile.download(async () => {
-      const { buildTreatmentPlanPdf } = await import(
-        '@/features/treatment-plans/treatment-plan-document'
-      )
-      return buildTreatmentPlanPdf({ patient, plans, generatedAt: new Date() })
-    })
+    if (!patient || !plans) return null
+    return async () => {
+      const [{ buildTreatmentPlanPdf }, clinicName] = await Promise.all([
+        import('@/features/treatment-plans/treatment-plan-document'),
+        // A courtesy on the letterhead: without it the plan is still the plan.
+        fetchOwnClinicName().catch(() => null),
+      ])
+      return buildTreatmentPlanPdf({
+        patient,
+        doctors: [doctorQuery.data],
+        clinicName,
+        plans,
+        generatedAt: new Date(),
+      })
+    }
+  }
+  const downloadPlan = () => {
+    const build = buildPlan()
+    if (build) void planFile.download(build)
+  }
+  const printPlan = () => {
+    const build = buildPlan()
+    if (build) void planFile.print(build)
   }
 
   return (
@@ -79,8 +103,8 @@ export function PatientTreatmentPage() {
               // Controls, so on screen only: the printout is the plan.
               className="max-sm:w-full print:hidden"
               onClick={downloadPlan}
-              disabled={!plansQuery.data}
-              isLoading={planFile.isPending}
+              disabled={!canBuildPlan || planFile.pending !== null}
+              isLoading={planFile.pending === 'download'}
               loadingLabel="Preparing…"
             >
               <Download aria-hidden="true" />
@@ -89,10 +113,13 @@ export function PatientTreatmentPage() {
             <Button
               variant="outline"
               className="max-sm:w-full print:hidden"
-              onClick={() => window.print()}
+              onClick={printPlan}
+              disabled={!canBuildPlan || planFile.pending !== null}
+              isLoading={planFile.pending === 'print'}
+              loadingLabel="Preparing…"
             >
               <Printer aria-hidden="true" />
-              Print or save as PDF
+              Print plan
             </Button>
           </>
         }
@@ -100,9 +127,17 @@ export function PatientTreatmentPage() {
 
       {planFile.error ? (
         <div className="mb-6 print:hidden">
-          <FormError error={planFile.error} title="The plan was not downloaded" />
+          <FormError
+            error={planFile.error.cause}
+            title={
+              planFile.error.action === 'print'
+                ? 'The plan was not printed'
+                : 'The plan was not downloaded'
+            }
+          />
         </div>
       ) : null}
+      <PrintOutcomeNotice outcome={planFile.printOutcome} what="treatment plan" className="mb-6" />
 
       <StateView
         isPending={plansQuery.isPending}

@@ -18,6 +18,7 @@ import { flushSync } from 'react-dom'
 import { useParams, useSearchParams } from 'react-router-dom'
 
 import { FormError } from '@/components/feedback/form-error'
+import { PrintOutcomeNotice } from '@/components/feedback/print-outcome-notice'
 import { StateView } from '@/components/feedback/state-view'
 import { PageHeader } from '@/components/layout/page-header'
 import { StatusBadge } from '@/components/ui/badge'
@@ -62,7 +63,7 @@ import type { RecoveryLog } from '@/features/recovery-logs/api'
 import { useDocumentTitle } from '@/hooks/use-document-title'
 import { useFocusRecovery } from '@/hooks/use-focus-recovery'
 import { useNow } from '@/hooks/use-now'
-import { useFileDownload } from '@/lib/documents/download'
+import { useDocumentFile } from '@/lib/documents/use-document-file'
 import {
   calculateAge,
   formatDate,
@@ -219,12 +220,13 @@ export function DoctorPatientDetailPage() {
   // Module 4.10 as a file, from the record this page has loaded: one sheet
   // per prescription. Each names its own prescriber - here, the signed-in
   // doctor on the prescriptions they issued, the one doctor this account may
-  // read; a prescription another doctor issued says "Not available".
-  const prescriptionFile = useFileDownload()
-  const downloadPrescription = (patient: NonNullable<typeof patientQuery.data>) => {
+  // read; a prescription another doctor issued says "Not available". Module
+  // 4.4 "Print/Export Prescription" prints that same PDF, not this page.
+  const prescriptionFile = useDocumentFile()
+  const buildPrescription = (patient: NonNullable<typeof patientQuery.data>) => {
     const schedules = schedulesQuery.data
-    if (!schedules) return
-    void prescriptionFile.download(async () => {
+    if (!schedules) return null
+    return async () => {
       const [{ buildPrescriptionPdf }, clinicName] = await Promise.all([
         import('@/features/medications/prescription-document'),
         fetchOwnClinicName().catch(() => null),
@@ -236,7 +238,15 @@ export function DoctorPatientDetailPage() {
         schedules,
         generatedAt: new Date(),
       })
-    })
+    }
+  }
+  const downloadPrescription = (patient: NonNullable<typeof patientQuery.data>) => {
+    const build = buildPrescription(patient)
+    if (build) void prescriptionFile.download(build)
+  }
+  const printPrescription = (patient: NonNullable<typeof patientQuery.data>) => {
+    const build = buildPrescription(patient)
+    if (build) void prescriptionFile.print(build)
   }
 
   // The record's summary strip (RecoverEase 2.0). Both are queries the app
@@ -835,8 +845,8 @@ export function DoctorPatientDetailPage() {
                           variant="outline"
                           size="sm"
                           onClick={() => downloadPrescription(patient)}
-                          disabled={!schedulesQuery.data}
-                          isLoading={prescriptionFile.isPending}
+                          disabled={!schedulesQuery.data || prescriptionFile.pending !== null}
+                          isLoading={prescriptionFile.pending === 'download'}
                           loadingLabel="Preparing…"
                         >
                           <Download aria-hidden="true" />
@@ -845,7 +855,10 @@ export function DoctorPatientDetailPage() {
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => window.print()}
+                          onClick={() => printPrescription(patient)}
+                          disabled={!schedulesQuery.data || prescriptionFile.pending !== null}
+                          isLoading={prescriptionFile.pending === 'print'}
+                          loadingLabel="Preparing…"
                         >
                           <Printer aria-hidden="true" />
                           Print prescription
@@ -856,11 +869,20 @@ export function DoctorPatientDetailPage() {
                   {prescriptionFile.error ? (
                     <div className="px-4 pb-2 sm:px-5 print:hidden">
                       <FormError
-                        error={prescriptionFile.error}
-                        title="The prescription was not downloaded"
+                        error={prescriptionFile.error.cause}
+                        title={
+                          prescriptionFile.error.action === 'print'
+                            ? 'The prescription was not printed'
+                            : 'The prescription was not downloaded'
+                        }
                       />
                     </div>
                   ) : null}
+                  <PrintOutcomeNotice
+                    outcome={prescriptionFile.printOutcome}
+                    what="prescription"
+                    className="px-4 pb-2 sm:px-5"
+                  />
                   <CardBody className="p-0">
                     <div ref={medicationFocusRecovery}>
                       <StateView

@@ -21,6 +21,23 @@ vi.mock('@/features/patients/api', async (importOriginal) => ({
   fetchOwnClinicName: clinic.name,
 }))
 
+// Print hands the built PDF to the print path (`@/lib/documents/print`),
+// which only a real browser can follow; here it records what it was given.
+const printing = vi.hoisted(() => ({
+  outcome: 'printed' as 'printed' | 'opened' | 'downloaded',
+  files: [] as { bytes: Uint8Array; fileName: string; mimeType: string }[],
+}))
+
+vi.mock('@/lib/documents/print', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/documents/print')>()),
+  printRoute: () => 'frame',
+  openPrintTab: () => null,
+  printFile: async (file: { bytes: Uint8Array; fileName: string; mimeType: string }) => {
+    printing.files.push(file)
+    return printing.outcome
+  },
+}))
+
 vi.mock('@/features/patients/hooks', () => ({
   useMyDoctor: (doctorId: string | undefined) => {
     doctor.askedFor.push(doctorId)
@@ -104,6 +121,8 @@ beforeEach(() => {
   doctor.askedFor = []
   schedules.data = [amoxicillin]
   clinic.name.mockReset().mockResolvedValue('Harbor Clinic')
+  printing.files = []
+  printing.outcome = 'printed'
   vi.spyOn(window, 'print').mockImplementation(() => {})
 })
 
@@ -223,11 +242,55 @@ describe('printing prescriptions from the medication page', () => {
     ).toBe(true)
   })
 
-  it('still prints from the same button', () => {
+  it('prints the prescription sheet itself, not this page', async () => {
     render(<PatientMedicationsPage />)
-    fireEvent.click(screen.getByRole('button', { name: /print prescriptions/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Print prescriptions' }))
 
-    expect(window.print).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(printing.files).toHaveLength(1))
+    expect(window.print).not.toHaveBeenCalled()
+    expect(printing.files[0]!.mimeType).toBe('application/pdf')
+    const text = (await pdfLines(printing.files[0]!.bytes)).join(' ')
+    for (const expected of [
+      'Harbor Clinic Prescription',
+      'Dr. Lorna Villanueva',
+      'Maria Reyes',
+      'Amoxicillin',
+      'Finish the full course.',
+    ]) {
+      expect(text, expected).toContain(expected)
+    }
+  })
+
+  it('prints exactly what Download saves', async () => {
+    const capture = captureDownloads()
+    try {
+      render(<PatientMedicationsPage />)
+      fireEvent.click(screen.getByRole('button', { name: 'Download prescription (PDF)' }))
+      await waitFor(() => expect(capture.files).toHaveLength(1))
+      fireEvent.click(screen.getByRole('button', { name: 'Print prescriptions' }))
+      await waitFor(() => expect(printing.files).toHaveLength(1))
+
+      // Built a moment apart, so only the footer's time may differ.
+      const body = (lines: string[]) =>
+        lines.filter((line) => !line.startsWith('RecoverEase prescription ·'))
+      expect(body(await pdfLines(printing.files[0]!.bytes))).toEqual(
+        body(await pdfLines(await capture.files[0]!.bytes())),
+      )
+    } finally {
+      capture.release()
+    }
+  })
+
+  it('says where the prescription went when the browser opened it in a tab', async () => {
+    printing.outcome = 'opened'
+    render(<PatientMedicationsPage />)
+    fireEvent.click(screen.getByRole('button', { name: 'Print prescriptions' }))
+
+    expect(
+      await screen.findByText(
+        'The prescription opened in a new tab. Print it from there, or share it to a printer.',
+      ),
+    ).toBeInTheDocument()
   })
 
   it('says when each prescription was issued, and by whom, on screen and on paper', () => {
@@ -318,15 +381,17 @@ describe('downloading the prescription (module 4.10)', () => {
     }
   })
 
-  it('is unavailable, and says why, while nothing is prescribed', () => {
+  it('is unavailable, and says why, while nothing is prescribed - and so is Print', () => {
     schedules.data = []
     render(<PatientMedicationsPage />)
 
-    const button = screen.getByRole('button', { name: 'Download prescription (PDF)' })
-    expect(button).toBeDisabled()
-    expect(button).toHaveAccessibleDescription(
-      'There is no prescription to download yet: your doctor has not prescribed anything.',
-    )
+    for (const name of ['Download prescription (PDF)', 'Print prescriptions']) {
+      const button = screen.getByRole('button', { name })
+      expect(button, name).toBeDisabled()
+      expect(button, name).toHaveAccessibleDescription(
+        'There is no prescription to download or print yet: your doctor has not prescribed anything.',
+      )
+    }
   })
 
   it('is a control: on screen, off the paper', () => {
