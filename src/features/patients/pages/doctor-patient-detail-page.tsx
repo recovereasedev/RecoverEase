@@ -42,6 +42,7 @@ import { summariseAdherence, type Adherence } from '@/features/medications/api'
 import { useDoses, useMedicationSchedules } from '@/features/medications/hooks'
 import { NotifyPatient } from '@/features/notifications/components/notify-patient'
 import { ConsultationFlow } from '@/features/patients/components/consultation-flow'
+import { PatientDetailsCard } from '@/features/patients/components/patient-details-card'
 import { ResetCredentialDialog } from '@/features/patients/components/reset-credential-dialog'
 import { fetchOwnClinicName } from '@/features/patients/api'
 import { usePatient } from '@/features/patients/hooks'
@@ -407,47 +408,9 @@ export function DoctorPatientDetailPage() {
                     </Card>
 
                     {/* Demographics are reference, not status: a compact
-                        panel beside the clinical picture, every field kept. */}
-                    <Card>
-                      <CardHeader title="Patient details" as="h2" />
-                      <CardBody>
-                        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2.5 text-sm">
-                          {(
-                            [
-                              [
-                                'Date of birth',
-                                patient.pat_birth_date
-                                  ? formatDate(patient.pat_birth_date)
-                                  : 'Not recorded',
-                              ],
-                              ['Gender', patient.pat_gender ?? 'Not recorded'],
-                              [
-                                'Contact',
-                                patient.pat_contact_no ?? 'Not recorded',
-                              ],
-                              [
-                                'Address',
-                                patient.pat_address ?? 'Not recorded',
-                              ],
-                              ['Registered', formatDate(patient.pat_created_at)],
-                              [
-                                'Privacy consent',
-                                patient.pat_consent_at
-                                  ? formatDate(patient.pat_consent_at)
-                                  : 'Not yet given',
-                              ],
-                            ] as const
-                          ).map(([label, value]) => (
-                            <div key={label} className="contents">
-                              <dt className="text-muted">{label}</dt>
-                              <dd className="min-w-0 font-medium text-heading [overflow-wrap:anywhere]">
-                                {value}
-                              </dd>
-                            </div>
-                          ))}
-                        </dl>
-                      </CardBody>
-                    </Card>
+                        panel beside the clinical picture, every field kept,
+                        and correctable here (module 2.5). */}
+                    <PatientDetailsCard patient={patient} />
                   </div>
                 </div>
               ) : null}

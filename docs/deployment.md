@@ -11,11 +11,14 @@
 >
 > **Production on 2026-10-29** (a read-only check; a dated snapshot, not the
 > current state - check again before relying on it): every migration in
-> `supabase/migrations/` is in the history, the last being 38
-> (`guidance_assistant_switch`), except three. 34 (`lift_single_clinic_gate`)
-> is held for its own decision; 41 and 42 are not applied and go in only with
-> approval, in the order under "Doctors' notifications and reminders
-> (migrations 41 and 42)". Four Edge Functions are ACTIVE with `verify_jwt`:
+> `supabase/migrations/` up to 38 (`guidance_assistant_switch`) is in the
+> history but 34 (`lift_single_clinic_gate`), which is held for its own
+> decision. 41 and 42 are **not applied**, although PR #67, the website that
+> uses 42, was merged to `main` (`ad3be04`) - see "Doctors' notifications and
+> reminders (migrations 41 and 42)": until 42 is applied, a doctor's **Save
+> reminder settings** fails. 43 (`system_report_snapshot`) is not applied
+> either; it goes in before the website that calls it (below). Four Edge
+> Functions are ACTIVE with `verify_jwt`:
 > `create-account` v11, `reset-account-password` v6,
 > `complete-password-setup` v3 and `chatbot-reply` v18.
 >
@@ -385,6 +388,10 @@ To roll back 31, go the other way, newest first. Each later migration is
 rolled back with its own down-script, applied as a new migration, and where
 deployed code depends on it, that code goes back first:
 
+1. **43**: the website from before migration 43, then
+   `supabase/rollbacks/20260902100043_system_report_snapshot.down.sql`. Every
+   report row stays, but the figures each kept are lost: no report can be
+   downloaded again from the history afterwards.
 1. **41**: `supabase/rollbacks/20260902100041_doctor_notifications_general_only.down.sql`.
    Nothing deployed depends on it. It goes in last, so it comes out first.
 1. **42**: the website from before PR #67, then
@@ -1009,6 +1016,37 @@ with it every doctor's choice - and refuses when 42 is not applied. Roll the
 website back first. Like the migration, it waits at most 3 seconds for its
 locks and resets the setting at the end; the timeout is set only after its
 check, so a refusal changes no setting.
+
+### Report figures kept (migration 43)
+
+Module 9.5's download: a system-wide report keeps the figures it was
+generated with, in `report.report_snapshot`, written only by
+`admin_record_system_report()` (`docs/database.md`, section 14). It is not
+applied anywhere yet; apply it only with approval, as a new migration.
+
+1. **Apply migration 43 and verify it**, in one of the windows above. It
+   starts with the 3-second `lock_timeout` and resets it. Verify, read-only:
+   the history has one entry named `system_report_snapshot`; `select
+   column_name from information_schema.columns where table_name = 'report'
+   and column_name = 'report_snapshot'` returns one row; `select tgname from
+   pg_trigger where tgname = 'report_protect_snapshot'` returns one row; and
+   `has_function_privilege('authenticated',
+   'public.admin_record_system_report()', 'execute')` is true while
+   `has_function_privilege('anon', 'public.admin_record_system_report()',
+   'execute')` is false. Expect one more
+   `authenticated_security_definer_function_executable` advisor warning, for
+   `admin_record_system_report`: it is meant for signed-in Clinic Admins and
+   refuses anyone else.
+2. **Then merge the website.** Its **Generate report** calls
+   `admin_record_system_report()`; merged before 43, generating a
+   system-wide report fails ("The report was not generated") until 43 is in.
+   Everything else on the page works either way: the history's download
+   appears only for a report that kept its figures.
+
+Nothing is written by applying it: every existing report is left without
+figures and says so. Generating a report after it is a production write -
+the smoke test's, with its own approval, from a `@smoke.invalid` Clinic
+Admin. Its down-script is above, in "To roll back 31": the website first.
 
 ## Bundle budget
 

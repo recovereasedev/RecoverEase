@@ -436,6 +436,7 @@ the columns that decide their own privileges, so triggers close that gap:
 | `patient_guard_protected_columns` | A patient reassigning themselves to another doctor, or resetting their own status after discharge. `user_id` is immutable for everyone — re-pointing it would transfer an entire medical history to a different login. |
 | `doctor_guard_protected_columns` | A deactivated doctor reactivating themselves, or changing their own licence number. |
 | `doctor_guard_reminder_preference` | Anyone but the doctor - their clinic's administrator included - turning a doctor's appointment reminders off or on (migration 42). |
+| `report_guard_snapshot` | Any signed-in user or visitor writing or changing the figures a system-wide report kept - a Clinic Admin included. Only `admin_record_system_report()`, which computes them with `admin_dashboard_stats()`, and the service role write them (migration 43). |
 | `appointment_guard_patient_transitions` | A patient marking their own appointment `completed` (a clinical assertion), or moving its time instead of using the reschedule flow. |
 | `medication_log_guard_slot` | Anyone moving when a dose was due, which would make the adherence history meaningless. |
 | `user_account_guard_writes` | Any browser session writing an account — a role, a sign-in address, a login — even if a later policy allowed it; and anyone re-pointing an account at a different login. |
@@ -745,22 +746,27 @@ Recorded honestly rather than left for someone to discover:
    recorded with a reason — never silenced by weakening a policy.
 2. **Rate limiting relies on Supabase defaults.** No additional throttling is
    applied to the Edge Functions.
-3. **`report_file_path` is never populated, and no document is stored.**
+3. **`report_file_path` is never populated, and no document file is stored.**
    The prescription, the treatment plan and the system-wide report download
    as files built in the browser - PDF with pdf-lib, the report also as an
    Excel workbook - from data the signed-in user's own access already
    returned, and are handed straight to the browser's download
    (`src/lib/documents/`). Nothing is uploaded, so a downloaded document can
-   hold nothing its reader could not already see. Printing, through the
-   browser's own pipeline, stays beside each download. Writing a rendered
-   file to Supabase Storage remains the documented extension point,
-   deliberately not faked with a URL that would 404. So the Reports page's
-   **Recently generated reports** says that an earlier report's contents
-   are not stored, offers nothing to download from it, and names who
-   generated each one only from what RLS already returns: the reader's own
-   reports by their name, a colleague's by the account's email address (a
-   Clinic Admin reads their clinic's accounts, not other administrators'
-   profiles), or "Not available" (`tests/db/report-creators.test.ts`).
+   hold nothing its reader could not already see. Print prints that same
+   PDF, never the page around it (`src/lib/documents/print.ts`): from a
+   hidden frame where the browser shows PDFs itself, otherwise in a new tab
+   or, if that is blocked, as a download. What a system-wide report keeps,
+   from migration 43, is its figures - a handful of clinic-wide counts, in
+   `report.report_snapshot`, written only by the database - so **Recently
+   generated reports** can download a report again exactly as it was
+   generated, rebuilt in the browser from those figures; a report from
+   before 43 says its figures were not kept. A doctor's recovery report,
+   which holds a patient's record, keeps nothing. The list names who
+   generated each report only from what RLS already returns: the reader's
+   own reports by their name, a colleague's by the account's email address
+   (a Clinic Admin reads their clinic's accounts, not other administrators'
+   profiles), or "Not available" (`tests/db/report-creators.test.ts`,
+   `tests/db/report-snapshot.test.ts`).
 4. **Reminder delivery is in-app only.** Medication reminders are dispatched
    on a pg_cron schedule and written to the `notification` table, which is
    what the ERD models. Email and push delivery are not implemented. While
@@ -768,3 +774,13 @@ Recorded honestly rather than left for someone to discover:
    (`src/features/reminders/`) also shows a dose the server has just reminded
    the patient of, and an appointment about to start; it is a surface for
    those reminders, not a way to deliver them when the app is closed.
+   **Offline reminders are the phone's own calendar.** A website cannot
+   promise to alert a phone that is offline with the site closed - a web
+   push needs a connection, and no browser lets a page schedule a local
+   alert for later - and the service worker deliberately caches no clinical
+   data. So the Medications page lets a patient download their next 30 days
+   of dose slots as an iCalendar file (`reminder-calendar.ts`), whose alarms
+   the phone's calendar keeps and sounds without a connection. It is built
+   on the device from the patient's own reads, can leave medicine names out
+   for a calendar that syncs to an online account, and does not update
+   itself; the page says so. There is no "offline reminders" switch.
