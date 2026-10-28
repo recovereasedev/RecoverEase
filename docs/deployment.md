@@ -1,6 +1,6 @@
 # Deployment
 
-> **Status: deployed, smoke-tested and origin-migrated. Two items outstanding.**
+> **Status: deployed, smoke-tested and origin-migrated.**
 >
 > | | |
 > | --- | --- |
@@ -9,9 +9,20 @@
 > | Vercel project | `recovereasedev-7251s-projects/recoverease` |
 > | Repository | `recovereasedev/RecoverEase` |
 >
-> 14 migrations applied, 20 tables, RLS on every one, 54 policies, 3 pg_cron
-> jobs all confirmed to have actually executed, both Edge Functions ACTIVE at
-> v3 with `verify_jwt`.
+> **Production on 2026-10-29** (a read-only check; a dated snapshot, not the
+> current state - check again before relying on it): every migration in
+> `supabase/migrations/` is in the history, the last being 38
+> (`guidance_assistant_switch`), except three. 34 (`lift_single_clinic_gate`)
+> is held for its own decision; 41 and 42 are not applied and go in only with
+> approval, in the order under "Doctors' notifications and reminders
+> (migrations 41 and 42)". Four Edge Functions are ACTIVE with `verify_jwt`:
+> `create-account` v11, `reset-account-password` v6,
+> `complete-password-setup` v3 and `chatbot-reply` v18.
+>
+> At the first deployment, on 2026-09-03: 14 migrations applied, 20 tables,
+> RLS on every one, 54 policies, 3 pg_cron jobs all confirmed to have
+> actually executed, and both Edge Functions of the time ACTIVE at v3 with
+> `verify_jwt`.
 >
 > Two older hostnames on the same Vercel project still resolve, and both are
 > on the Edge Function CORS allow-list so nothing bookmarked breaks:
@@ -21,10 +32,13 @@
 > | `recovereasedev.vercel.app` | 307 → the canonical host |
 > | `recoverease-zeta.vercel.app` | serves the same deployment directly |
 >
-> **The recovery guidance assistant is live.** `GEMINI_API_KEY` is set and a
-> real Gemini request was verified end to end through the production UI:
-> patient message → authenticated Edge Function → Google Gemini → structured
-> output → Zod validation → database → rendered reply.
+> **The recovery guidance assistant went live on 2026-09-03.** `GEMINI_API_KEY`
+> was set and a real Gemini request was verified end to end through the
+> production UI: patient message → authenticated Edge Function → Google
+> Gemini → structured output → Zod validation → database → rendered reply.
+> Replies were later reported running into the 30 s limit against Gemini
+> (see "The guidance assistant switch (migration 38)"); no end-to-end check
+> of `chatbot-reply` v18 is recorded here.
 >
 > Leaked-password protection cannot be enabled on the current Supabase plan;
 > see `docs/security.md`.
@@ -371,10 +385,11 @@ To roll back 31, go the other way, newest first. Each later migration is
 rolled back with its own down-script, applied as a new migration, and where
 deployed code depends on it, that code goes back first:
 
-1. **42**: the website from before migration 42, then
-   `supabase/rollbacks/20260902100042_doctor_appointment_reminder_setting.down.sql`.
 1. **41**: `supabase/rollbacks/20260902100041_doctor_notifications_general_only.down.sql`.
-   Nothing deployed depends on it.
+   Nothing deployed depends on it. It goes in last, so it comes out first.
+1. **42**: the website from before PR #67, then
+   `supabase/rollbacks/20260902100042_doctor_appointment_reminder_setting.down.sql`.
+   41 and 42 do not depend on each other, so either can go back alone.
 1. **38**: `chatbot-reply` and the website from before migration 38, then
    `supabase/rollbacks/20260902100038_guidance_assistant_switch.down.sql`.
    33's down-script refuses while 38 is installed.
@@ -875,7 +890,52 @@ and before 33's: since this change, 33's down-script refuses while 38 is
 installed, because 38's switch is changed only through the Super Admin checks
 33 removes.
 
-### Doctors' notifications are general messages (migration 41)
+### Doctors' notifications and reminders (migrations 41 and 42)
+
+PR #67 brings two migrations and the website that uses them. Neither is
+applied anywhere yet. The release order, each step its own approval:
+
+1. **Apply migration 42 and verify it** - its history entry and the
+   read-only checks under migration 42 below - before anything is merged.
+   PR #67's website saves the doctor's reminder setting to the column 42
+   adds.
+2. **Approve merging PR #67.** Vercel deploys `main` on merge, so approving
+   the merge is approving the deployment. Confirm the Production deployment
+   is the merge commit and has succeeded.
+3. **Apply migration 41 and verify it** - its history entry and the
+   read-only check under migration 41 below. It goes after the website, not
+   before: the website deployed before PR #67 puts no limit on a doctor's
+   message, so with 41 in first, a message over 1,000 characters would be
+   refused. PR #67's website stops at 1,000 characters and sends nothing 41
+   refuses. Nothing waits on 41: until it is applied, the policy production
+   has always had stays in force.
+4. **Smoke-test** with the `@smoke.invalid` accounts only. Sending a
+   notification and saving a reminder setting are production writes, with
+   their own approval.
+
+Out of order:
+
+- **The merge before 42:** **Save reminder settings** fails for every doctor
+  ("Your reminder settings were not saved") until 42 is applied. Nothing
+  else breaks: no other read names the column - every read of a doctor's
+  row asks for `*` - and the setting shows as on without it.
+- **41 before the merge:** a doctor's message over 1,000 characters is
+  refused and shown as "You do not have access to this". Nothing else
+  changes. A doctor's page loaded before the deployment keeps the old form
+  until it is reloaded, so this can still happen there after step 3.
+
+Each migration is applied on its own with the Supabase connector's
+`apply_migration`, never `db push`, in one of the windows used for 37
+(:08-:12, :18-:27, :33-:42 and :48-:57 UTC, away from the jobs at :00, :05,
+:15, :30, :45 and 01:00). 42 changes `doctor` and the hourly appointment
+job; 41 replaces a policy on `notification`, which every reminder job
+writes. The pre-dose job reads `doctor` and writes `notification` every
+minute, so no minute is free of it. "Migration timing and run history" asks
+for a 3-second `lock_timeout` on migrations that lock tables the jobs use,
+and neither file sets one: decide before applying whether to add it, as a
+reviewed change to each file, or to apply them as written, as 37 was.
+
+#### Doctors' notifications are general messages (migration 41)
 
 Module 7.1's insert policy, `notification_insert_doctor_to_patient`, keeps
 its recipient rule - an active doctor's own patient - and now also requires
@@ -883,26 +943,24 @@ what the form has always sent: type `general`, no chat link, unread, and 1 to
 1,000 characters. It is not applied anywhere yet; apply it only with
 approval, as a new migration.
 
-- **Order.** The website first, then the migration, though either order
-  works for everything the website sends: the form already sends only
-  `general`, and from this branch it stops at 1,000 characters. A website
-  from before it would have a message over 1,000 characters refused once 41
-  is in, shown as "You do not have access to this".
+- **Order.** After the website: step 3 of the release order above.
 - **What does not change.** Every notification the system writes - the
   reminder jobs, cancellation and reassignment notices, and `chatbot-reply`'s
   critical-chat alerts - is written by SECURITY DEFINER functions or the
   service role, which this policy never governed
   (`tests/db/doctor-notifications.test.ts`).
-- **Verify.** Read-only: `select with_check from pg_policies where tablename
-  = 'notification' and policyname = 'notification_insert_doctor_to_patient'`
-  shows the type, link, read state and length conditions.
+- **Verify.** Read-only: the history has one entry named
+  `doctor_notifications_general_only`, under the time it was applied; and
+  `select with_check from pg_policies where tablename = 'notification' and
+  policyname = 'notification_insert_doctor_to_patient'` shows the type,
+  link, read state and length conditions.
 
 Its down-script, `supabase/rollbacks/20260902100041_doctor_notifications_general_only.down.sql`,
 puts back migration 06's policy and refuses when 41 is not applied. No data
 changes either way, and nothing deployed depends on 41, so it can go back
 first and alone.
 
-### A doctor's own appointment reminders (migration 42)
+#### A doctor's own appointment reminders (migration 42)
 
 Module 7.3 for doctors: `doctor.doc_appointment_reminder_is_enabled`, on by
 default, the trigger that lets only the doctor change it, and
@@ -910,21 +968,27 @@ default, the trigger that lets only the doctor change it, and
 off. It is not applied anywhere yet; apply it only with approval, as a new
 migration.
 
-- **Order.** The migration first, then the website. The doctor's **My
-  profile** page reads and saves the column; before 42 its **Save reminder
-  settings** would fail and nothing would be saved. The page shows the
-  setting as on when the column is missing, as every doctor is before 42.
+- **Order.** Before the website: step 1 of the release order above. The
+  doctor's **My profile** page reads and saves the column; before 42 its
+  **Save reminder settings** would fail and nothing would be saved. The page
+  shows the setting as on when the column is missing, as every doctor is
+  before 42. The website deployed before PR #67 works with 42 applied: it
+  never sends the column, and the trigger asks only when its value changes.
 - **What does not change.** Every doctor starts on, so the job sends what it
   sent before until a doctor turns theirs off. The patient's appointment
   reminder is always sent. `system_setting`, the clinic's time zone and grace
   period, the job's 24-hour lead time and its schedule, and the patients'
   reminder preferences are untouched
   (`tests/db/doctor-reminder-setting.test.ts`).
-- **Verify.** Read-only: `select count(*) filter (where
-  doc_appointment_reminder_is_enabled) as on, count(*) as doctors from
-  public.doctor` shows every doctor on straight after applying, and
-  `select tgname from pg_trigger where tgname =
-  'doctor_protect_reminder_preference'` returns one row.
+- **Verify.** Read-only: the history has one entry named
+  `doctor_appointment_reminder_setting`, under the time it was applied;
+  `select count(*) filter (where doc_appointment_reminder_is_enabled) as on,
+  count(*) as doctors from public.doctor` shows every doctor on straight
+  after applying; `select tgname from pg_trigger where tgname =
+  'doctor_protect_reminder_preference'` returns one row; and `select prosrc
+  like '%doctor_wants_reminder%' from pg_proc where oid =
+  'public.dispatch_appointment_reminders(integer)'::regprocedure` returns
+  true.
 
 Its down-script, `supabase/rollbacks/20260902100042_doctor_appointment_reminder_setting.down.sql`,
 puts back migration 31's reminder job, drops the trigger and the column - and
@@ -971,7 +1035,11 @@ npm run build          # then check what index.html references
 
 ## Demonstration accounts
 
-The production database contains exactly three accounts, and no others:
+When this section was written, on 2026-09-03, the production database
+contained exactly three accounts, these, and no others. Other accounts have
+been added since - the first Super Admin and further `@smoke.invalid` test
+accounts among them (a read-only count, 2026-10-29) - so this table lists
+only the original three:
 
 | Email | Role | Name |
 | --- | --- | --- |
@@ -979,10 +1047,10 @@ The production database contains exactly three accounts, and no others:
 | `doctor@smoke.invalid` | doctor | Dr Alan Cruz |
 | `admin@smoke.invalid` | admin | Ada Reyes |
 
-They were created to smoke-test the live deployment and they are also the only
-data that makes it demonstrable — there is no separate "real" set behind them.
-Deleting them would leave the system with no users at all, so they were kept
-and their credentials rotated instead.
+They were created to smoke-test the live deployment and were then also the only
+data that made it demonstrable — there was no separate "real" set behind them.
+Deleting them then would have left the system with no users at all, so they
+were kept and their credentials rotated instead.
 
 **The password these accounts were originally seeded with no longer works.**
 It was rotated, verified dead against the live sign-in page, and later replaced
@@ -1023,8 +1091,8 @@ the invitation flow in `create-account`.
 
 ## Pre-deployment checklist
 
-- [ ] `npm run verify` passes (lint, typecheck, 164 tests, build)
-- [ ] `npm run test:e2e` passes (42 browser tests)
+- [ ] `npm run verify` passes (lint, typecheck, unit and database tests, build)
+- [ ] `npm run test:e2e` passes (every browser test)
 - [ ] Migrations applied; `db advisors` reports no security findings
 - [ ] Every migration a website change depends on is applied and verified
       **before** that change is merged - Vercel deploys `main` on merge
