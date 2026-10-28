@@ -229,10 +229,10 @@ role's only, for `chatbot-reply`).
 
 ### 12. A doctor's notification is a general message
 
-Module 7.1 lets a doctor write to their own patient. Before migration 39 the
+Module 7.1 lets a doctor write to their own patient. Before migration 41 the
 insert policy checked only the recipient, so a direct Data API call could
 send a doctor's words as any type - a critical-chat alert, a reminder, an
-announcement - linked to a conversation or already read. Migration 39 keeps
+announcement - linked to a conversation or already read. Migration 41 keeps
 the recipient rule (an active doctor's own patient) and adds what the form
 sends: `notification_type = 'general'`, no `chat_session_id`, unread, and a
 message of 1 to 1,000 characters once trimmed.
@@ -247,7 +247,7 @@ stored once.
 
 Module 7.3, the doctor's own. `dispatch_appointment_reminders` (migration 18)
 writes two notifications the day before each appointment, one to the doctor
-and one to the patient. Migration 40 adds
+and one to the patient. Migration 42 adds
 `doctor.doc_appointment_reminder_is_enabled`, on by default, so every doctor
 keeps that reminder until they turn it off on **My profile → Reminder
 settings**. The job then leaves that doctor out; the patient's reminder is

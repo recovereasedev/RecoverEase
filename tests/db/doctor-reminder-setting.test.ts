@@ -7,16 +7,16 @@ import { createTestDatabase, expectDenied, type TestDatabase } from './helpers/d
 import { seedFixture, type Fixture } from './helpers/fixtures'
 
 /**
- * Module 7.3 "Configure Reminder Settings", the doctor's own (migration 40):
+ * Module 7.3 "Configure Reminder Settings", the doctor's own (migration 42):
  * a doctor may turn off the reminder they are sent the day before each of
  * their appointments. Nobody else may turn it off for them, and turning it
  * off changes nothing for their patients, for any other doctor, or for the
  * clinic's settings.
  */
 
-const MIGRATION_39 = '20260902100039'
-const MIGRATION_40 = '20260902100040'
-const ROLLBACK_40 = 'supabase/rollbacks/20260902100040_doctor_appointment_reminder_setting.down.sql'
+const MIGRATION_41 = '20260902100041'
+const MIGRATION_42 = '20260902100042'
+const ROLLBACK_42 = 'supabase/rollbacks/20260902100042_doctor_appointment_reminder_setting.down.sql'
 
 const script = (path: string) => readFile(join(process.cwd(), path), 'utf8')
 
@@ -45,7 +45,7 @@ function setReminderAs(
   )
 }
 
-describe('a doctor’s appointment reminder setting (migration 40)', () => {
+describe('a doctor’s appointment reminder setting (migration 42)', () => {
   let database: TestDatabase
   let fx: Fixture
 
@@ -307,12 +307,12 @@ describe('a doctor’s appointment reminder setting (migration 40)', () => {
   })
 })
 
-describe('migration 40, before and after', () => {
+describe('migration 42, before and after', () => {
   it('turns it on for every doctor who already exists', async () => {
-    const database = await createTestDatabase({ stopAfter: MIGRATION_39 })
+    const database = await createTestDatabase({ stopAfter: MIGRATION_41 })
     try {
       const fx = await seedFixture(database)
-      await database.applyMigration(MIGRATION_40)
+      await database.applyMigration(MIGRATION_42)
 
       const rows = await database.asService<{ doc_id: string; on: boolean }>(
         'select doc_id, doc_appointment_reminder_is_enabled as on from public.doctor order by doc_id',
@@ -337,7 +337,7 @@ describe('migration 40, before and after', () => {
         [fx.doctorAId],
       )
 
-      await database.db.exec(await script(ROLLBACK_40))
+      await database.db.exec(await script(ROLLBACK_42))
 
       const columns = await database.asService(
         `select 1 from information_schema.columns
@@ -369,12 +369,12 @@ describe('migration 40, before and after', () => {
       )
       expect(Number(sent!.n)).toBe(2)
 
-      await expect(database.db.exec(await script(ROLLBACK_40))).rejects.toThrow(
-        /Migration 40 is not applied/,
+      await expect(database.db.exec(await script(ROLLBACK_42))).rejects.toThrow(
+        /Migration 42 is not applied/,
       )
 
       // Re-applying it starts every doctor on again.
-      await database.applyMigration(MIGRATION_40)
+      await database.applyMigration(MIGRATION_42)
       const rows = await database.asService<{ on: boolean }>(
         'select doc_appointment_reminder_is_enabled as on from public.doctor',
       )

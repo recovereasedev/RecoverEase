@@ -371,9 +371,9 @@ To roll back 31, go the other way, newest first. Each later migration is
 rolled back with its own down-script, applied as a new migration, and where
 deployed code depends on it, that code goes back first:
 
-1. **40**: the website from before migration 40, then
-   `supabase/rollbacks/20260902100040_doctor_appointment_reminder_setting.down.sql`.
-1. **39**: `supabase/rollbacks/20260902100039_doctor_notifications_general_only.down.sql`.
+1. **42**: the website from before migration 42, then
+   `supabase/rollbacks/20260902100042_doctor_appointment_reminder_setting.down.sql`.
+1. **41**: `supabase/rollbacks/20260902100041_doctor_notifications_general_only.down.sql`.
    Nothing deployed depends on it.
 1. **38**: `chatbot-reply` and the website from before migration 38, then
    `supabase/rollbacks/20260902100038_guidance_assistant_switch.down.sql`.
@@ -875,7 +875,7 @@ and before 33's: since this change, 33's down-script refuses while 38 is
 installed, because 38's switch is changed only through the Super Admin checks
 33 removes.
 
-### Doctors' notifications are general messages (migration 39)
+### Doctors' notifications are general messages (migration 41)
 
 Module 7.1's insert policy, `notification_insert_doctor_to_patient`, keeps
 its recipient rule - an active doctor's own patient - and now also requires
@@ -886,7 +886,7 @@ approval, as a new migration.
 - **Order.** The website first, then the migration, though either order
   works for everything the website sends: the form already sends only
   `general`, and from this branch it stops at 1,000 characters. A website
-  from before it would have a message over 1,000 characters refused once 39
+  from before it would have a message over 1,000 characters refused once 41
   is in, shown as "You do not have access to this".
 - **What does not change.** Every notification the system writes - the
   reminder jobs, cancellation and reassignment notices, and `chatbot-reply`'s
@@ -897,12 +897,12 @@ approval, as a new migration.
   = 'notification' and policyname = 'notification_insert_doctor_to_patient'`
   shows the type, link, read state and length conditions.
 
-Its down-script, `supabase/rollbacks/20260902100039_doctor_notifications_general_only.down.sql`,
-puts back migration 06's policy and refuses when 39 is not applied. No data
-changes either way, and nothing deployed depends on 39, so it can go back
+Its down-script, `supabase/rollbacks/20260902100041_doctor_notifications_general_only.down.sql`,
+puts back migration 06's policy and refuses when 41 is not applied. No data
+changes either way, and nothing deployed depends on 41, so it can go back
 first and alone.
 
-### A doctor's own appointment reminders (migration 40)
+### A doctor's own appointment reminders (migration 42)
 
 Module 7.3 for doctors: `doctor.doc_appointment_reminder_is_enabled`, on by
 default, the trigger that lets only the doctor change it, and
@@ -911,9 +911,9 @@ off. It is not applied anywhere yet; apply it only with approval, as a new
 migration.
 
 - **Order.** The migration first, then the website. The doctor's **My
-  profile** page reads and saves the column; before 40 its **Save reminder
+  profile** page reads and saves the column; before 42 its **Save reminder
   settings** would fail and nothing would be saved. The page shows the
-  setting as on when the column is missing, as every doctor is before 40.
+  setting as on when the column is missing, as every doctor is before 42.
 - **What does not change.** Every doctor starts on, so the job sends what it
   sent before until a doctor turns theirs off. The patient's appointment
   reminder is always sent. `system_setting`, the clinic's time zone and grace
@@ -926,9 +926,9 @@ migration.
   `select tgname from pg_trigger where tgname =
   'doctor_protect_reminder_preference'` returns one row.
 
-Its down-script, `supabase/rollbacks/20260902100040_doctor_appointment_reminder_setting.down.sql`,
+Its down-script, `supabase/rollbacks/20260902100042_doctor_appointment_reminder_setting.down.sql`,
 puts back migration 31's reminder job, drops the trigger and the column - and
-with it every doctor's choice - and refuses when 40 is not applied. Roll the
+with it every doctor's choice - and refuses when 42 is not applied. Roll the
 website back first.
 
 ## Bundle budget

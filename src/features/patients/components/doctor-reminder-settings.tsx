@@ -10,7 +10,7 @@ import type { Doctor } from '@/features/patients/api'
 import { useUpdateDoctor } from '@/features/patients/hooks'
 
 /**
- * Module 7.3 "Configure Reminder Settings", the doctor's own (migration 40):
+ * Module 7.3 "Configure Reminder Settings", the doctor's own (migration 42):
  * whether they are sent the reminder the day before each of their
  * appointments.
  *

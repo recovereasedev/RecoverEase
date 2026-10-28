@@ -72,7 +72,7 @@ export async function markAllNotificationsRead(): Promise<void> {
 
 /**
  * The longest message a doctor may send, as the database's own policy has it
- * from migration 39.
+ * from migration 41.
  */
 export const NOTIFICATION_MESSAGE_MAX_LENGTH = 1000
 

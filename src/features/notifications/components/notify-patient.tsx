@@ -28,7 +28,7 @@ const LIMIT = NOTIFICATION_MESSAGE_MAX_LENGTH.toLocaleString('en')
  * The type is fixed to `general`. The other kinds are raised by the system
  * itself — a due dose, a booked appointment, a critical concern from the
  * guidance chat — and letting a written message borrow one of those would
- * put a person's words behind a machine's icon. From migration 39 the
+ * put a person's words behind a machine's icon. From migration 41 the
  * database refuses anything else from a doctor too.
  *
  * Who may be notified is not decided here. The insert is checked against

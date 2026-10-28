@@ -152,7 +152,7 @@ Applied to every policy, each guarding a specific failure:
 | `appointment` | r, insert, confirm/cancel | r/w | none |
 | `reschedule_request` | r, insert | r + **decide** | none |
 | `chat_session` / `chat_message` | own (r/w) | r | **none** |
-| `notification` | own (r + mark read) | own + **send a general message, up to 1,000 characters, to own patient** (migration 39) | own |
+| `notification` | own (r + mark read) | own + **send a general message, up to 1,000 characters, to own patient** (migration 41) | own |
 | `announcement` | published: platform, own clinic's Clinic Admin's, **own active doctor's** (migration 36) | published platform and Clinic Admin's; **writes for own patients, reads and manages only own** (migration 36) | full |
 | `report` | **none** | own | own + system-wide |
 | `audit_log` | none | none | **read only** (administration and clinical entries) |
@@ -435,7 +435,7 @@ the columns that decide their own privileges, so triggers close that gap:
 | --- | --- |
 | `patient_guard_protected_columns` | A patient reassigning themselves to another doctor, or resetting their own status after discharge. `user_id` is immutable for everyone — re-pointing it would transfer an entire medical history to a different login. |
 | `doctor_guard_protected_columns` | A deactivated doctor reactivating themselves, or changing their own licence number. |
-| `doctor_guard_reminder_preference` | Anyone but the doctor - their clinic's administrator included - turning a doctor's appointment reminders off or on (migration 40). |
+| `doctor_guard_reminder_preference` | Anyone but the doctor - their clinic's administrator included - turning a doctor's appointment reminders off or on (migration 42). |
 | `appointment_guard_patient_transitions` | A patient marking their own appointment `completed` (a clinical assertion), or moving its time instead of using the reschedule flow. |
 | `medication_log_guard_slot` | Anyone moving when a dose was due, which would make the adherence history meaningless. |
 | `user_account_guard_writes` | Any browser session writing an account — a role, a sign-in address, a login — even if a later policy allowed it; and anyone re-pointing an account at a different login. |

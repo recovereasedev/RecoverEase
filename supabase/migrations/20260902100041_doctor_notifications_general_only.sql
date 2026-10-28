@@ -1,5 +1,5 @@
 -- ===========================================================================
--- RecoverEase — 39. A doctor's notification is a general message, nothing else
+-- RecoverEase — 41. A doctor's notification is a general message, nothing else
 -- ===========================================================================
 -- Module 7.1 "Send Notification to Patient". The website has only ever sent
 -- `general` from it (src/features/notifications/components/notify-patient.tsx),
@@ -28,7 +28,7 @@
 -- doctor policy was never their path, so the escalation alerts and the
 -- reminders arrive exactly as before (tests/db/doctor-notifications.test.ts).
 --
--- Rollback: supabase/rollbacks/20260902100039_doctor_notifications_general_only.down.sql
+-- Rollback: supabase/rollbacks/20260902100041_doctor_notifications_general_only.down.sql
 -- ===========================================================================
 
 drop policy if exists notification_insert_doctor_to_patient on public.notification;
@@ -46,4 +46,4 @@ create policy notification_insert_doctor_to_patient
 comment on policy notification_insert_doctor_to_patient on public.notification is
   'Module 7.1: an active doctor may send their own patient a general, unread '
   'message of up to 1,000 characters. Every other notification is written by '
-  'SECURITY DEFINER functions or the service role (migration 39).';
+  'SECURITY DEFINER functions or the service role (migration 41).';

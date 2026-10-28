@@ -8,14 +8,14 @@ import { seedFixture, type Fixture } from './helpers/fixtures'
 
 /**
  * Module 7.1 "Send Notification to Patient", as the database allows it after
- * migration 39: an active doctor may send their own patient a general, unread
+ * migration 41: an active doctor may send their own patient a general, unread
  * message of 1 to 1,000 characters - and nothing else. Every other kind of
  * notification is the system's, written by SECURITY DEFINER functions and the
  * service role, and still arrives.
  */
 
 const MIGRATION_38 = '20260902100038'
-const ROLLBACK_39 = 'supabase/rollbacks/20260902100039_doctor_notifications_general_only.down.sql'
+const ROLLBACK_41 = 'supabase/rollbacks/20260902100041_doctor_notifications_general_only.down.sql'
 
 const script = (path: string) => readFile(join(process.cwd(), path), 'utf8')
 
@@ -55,7 +55,7 @@ function notifyAs(
   )
 }
 
-describe('a doctor’s notification to a patient (migration 39)', () => {
+describe('a doctor’s notification to a patient (migration 41)', () => {
   let database: TestDatabase
   let fx: Fixture
 
@@ -204,7 +204,7 @@ describe('a doctor’s notification to a patient (migration 39)', () => {
   })
 })
 
-describe('migration 39, before and after', () => {
+describe('migration 41, before and after', () => {
   it('was the gap it closes: before it, a doctor could raise a critical alert', async () => {
     const before = await createTestDatabase({ stopAfter: MIGRATION_38 })
     try {
@@ -221,7 +221,7 @@ describe('migration 39, before and after', () => {
     const database = await createTestDatabase()
     try {
       const fx = await seedFixture(database)
-      await database.db.exec(await script(ROLLBACK_39))
+      await database.db.exec(await script(ROLLBACK_41))
 
       await expect(
         notifyAs(database, fx.doctorAUserId, { to: fx.aliceUserId, type: 'treatment' }),
@@ -230,8 +230,8 @@ describe('migration 39, before and after', () => {
         notifyAs(database, fx.doctorAUserId, { to: fx.carolUserId }),
       ).rejects.toThrow(RLS)
 
-      await expect(database.db.exec(await script(ROLLBACK_39))).rejects.toThrow(
-        /Migration 39 is not applied/,
+      await expect(database.db.exec(await script(ROLLBACK_41))).rejects.toThrow(
+        /Migration 41 is not applied/,
       )
     } finally {
       await database.close()

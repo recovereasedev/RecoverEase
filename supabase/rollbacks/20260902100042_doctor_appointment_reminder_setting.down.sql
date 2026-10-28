@@ -1,7 +1,7 @@
 -- ===========================================================================
--- Rollback of migration 40 (doctor_appointment_reminder_setting)
+-- Rollback of migration 42 (doctor_appointment_reminder_setting)
 -- ===========================================================================
--- Every doctor is sent their appointment reminders again, as before 40:
+-- Every doctor is sent their appointment reminders again, as before 42:
 -- `dispatch_appointment_reminders` goes back to migration 31's body, word for
 -- word, the guard trigger and its function go, and the column goes with each
 -- doctor's choice in it. Applied as a new migration, with approval
@@ -9,7 +9,7 @@
 --
 -- Roll the website back first: from this branch the doctor's My profile
 -- page reads and saves the column, and its Reminder settings would fail
--- once it is gone. Nothing else depends on 40, and no reminder already
+-- once it is gone. Nothing else depends on 42, and no reminder already
 -- written changes.
 -- ===========================================================================
 
@@ -22,7 +22,7 @@ begin
        and table_name = 'doctor'
        and column_name = 'doc_appointment_reminder_is_enabled'
   ) then
-    raise exception 'Migration 40 is not applied. Nothing was changed.';
+    raise exception 'Migration 42 is not applied. Nothing was changed.';
   end if;
 end
 $$;

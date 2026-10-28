@@ -1,5 +1,5 @@
 -- ===========================================================================
--- RecoverEase — 40. A doctor can turn their own appointment reminders off
+-- RecoverEase — 42. A doctor can turn their own appointment reminders off
 -- ===========================================================================
 -- Module 7.3 "Configure Reminder Settings", the doctor's own: whether *they*
 -- are sent the reminder `dispatch_appointment_reminders` writes the day
@@ -28,7 +28,7 @@
 -- passes, and the patients' own reminder preferences are all as they were.
 -- There is no personal lead time.
 --
--- Rollback: supabase/rollbacks/20260902100040_doctor_appointment_reminder_setting.down.sql
+-- Rollback: supabase/rollbacks/20260902100042_doctor_appointment_reminder_setting.down.sql
 -- ===========================================================================
 
 alter table public.doctor
@@ -36,7 +36,7 @@ alter table public.doctor
 
 comment on column public.doctor.doc_appointment_reminder_is_enabled is
   'Module 7.3: whether this doctor is sent the reminder the day before each '
-  'of their appointments. Changed only by the doctor (migration 40).';
+  'of their appointments. Changed only by the doctor (migration 42).';
 
 -- ---------------------------------------------------------------------------
 -- Only the doctor changes it
@@ -156,7 +156,7 @@ $$;
 -- where the doctor has turned theirs off.
 comment on function public.dispatch_appointment_reminders(integer) is
   'Creates one appointment notification for the assigned clinician, unless '
-  'they have turned their appointment reminders off (migration 40), and one '
+  'they have turned their appointment reminders off (migration 42), and one '
   'for the patient, for each scheduled or confirmed appointment falling '
   'within lead_hours. Returns the number of notifications created. '
   'Idempotent: appointment_reminder_sent_at keeps each appointment to a '

@@ -3,7 +3,7 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 /**
- * Module 7.3 "Configure Reminder Settings", the doctor's own (migration 40).
+ * Module 7.3 "Configure Reminder Settings", the doctor's own (migration 42).
  *
  * The doctor turns their appointment reminders off or on from their profile.
  * Who may write it, and what the reminder job then does with it, is covered
