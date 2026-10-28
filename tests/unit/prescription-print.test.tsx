@@ -12,6 +12,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const doctor = vi.hoisted(() => ({ data: null as unknown, askedFor: [] as unknown[] }))
 const schedules = vi.hoisted(() => ({ data: [] as unknown[] }))
+const clinic = vi.hoisted(() => ({ name: vi.fn() }))
+
+// The letterhead's clinic name, read when the file is made; never a network
+// call from a test.
+vi.mock('@/features/patients/api', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/features/patients/api')>()),
+  fetchOwnClinicName: clinic.name,
+}))
 
 vi.mock('@/features/patients/hooks', () => ({
   useMyDoctor: (doctorId: string | undefined) => {
@@ -57,7 +65,14 @@ const { PatientMedicationsPage } = await import(
   '@/features/medications/pages/patient-medications-page'
 )
 
-const LORNA = { doc_first_name: 'Lorna', doc_last_name: 'Villanueva' }
+const LORNA = {
+  doc_id: 'd-7',
+  doc_first_name: 'Lorna',
+  doc_last_name: 'Villanueva',
+  doc_specialization: 'Orthopaedics',
+  doc_license_no: 'LIC-7',
+  doc_contact_no: null,
+}
 
 const amoxicillin = {
   medication_schedule_id: 'ms-1',
@@ -73,6 +88,7 @@ const amoxicillin = {
     prescription_id: 'rx-1',
     prescription_issued_date: '2026-09-01',
     prescription_notes: 'Finish the full course.',
+    doc_id: 'd-7',
   },
 }
 
@@ -87,6 +103,7 @@ beforeEach(() => {
   doctor.data = LORNA
   doctor.askedFor = []
   schedules.data = [amoxicillin]
+  clinic.name.mockReset().mockResolvedValue('Harbor Clinic')
   vi.spyOn(window, 'print').mockImplementation(() => {})
 })
 
@@ -212,10 +229,33 @@ describe('printing prescriptions from the medication page', () => {
 
     expect(window.print).toHaveBeenCalledTimes(1)
   })
+
+  it('says when each prescription was issued, and by whom, on screen and on paper', () => {
+    render(<PatientMedicationsPage />)
+
+    const line = screen.getByText(/^Issued 1 September( 2026)? · /)
+    expect(line).toHaveTextContent('Prescribed by Dr. Lorna Villanueva')
+    expect(leftOffPaper(line)).toBe(false)
+  })
+
+  it('names no prescriber for a prescription an earlier doctor issued', () => {
+    schedules.data = [
+      { ...amoxicillin, prescription: { ...amoxicillin.prescription, doc_id: 'd-earlier' } },
+    ]
+    render(<PatientMedicationsPage />)
+
+    expect(screen.getByText(/· Prescriber not available$/)).toBeInTheDocument()
+    expect(screen.queryByText(/Prescribed by/)).not.toBeInTheDocument()
+  })
 })
 
+/** A downloaded PDF's text as one string, so a wrapped cell reads whole. */
+async function pdfText(file: { bytes: () => Promise<Uint8Array> }): Promise<string> {
+  return (await pdfLines(await file.bytes())).join(' ')
+}
+
 describe('downloading the prescription (module 4.10)', () => {
-  it('saves a PDF of the same prescription, naming the patient and their doctor', async () => {
+  it('saves a PDF of the same prescription, naming the patient and its prescriber', async () => {
     const capture = captureDownloads()
     try {
       render(<PatientMedicationsPage />)
@@ -225,17 +265,21 @@ describe('downloading the prescription (module 4.10)', () => {
       const [file] = capture.files
       expect(file!.type).toBe('application/pdf')
       expect(file!.name).toMatch(/^recoverease-prescription-maria-reyes-\d{4}-\d{2}-\d{2}\.pdf$/)
-      expect(await pdfLines(await file!.bytes())).toEqual(
-        expect.arrayContaining([
-          'Prescription',
-          'Maria Reyes',
-          'Dr. Lorna Villanueva',
-          'Amoxicillin',
-          '500mg · 3 times a day at 08:00, 14:00, 20:00',
-          'From 1 Sep 2026 until 10 Sep 2026',
-          'Finish the full course.',
-        ]),
-      )
+      const text = await pdfText(file!)
+      for (const expected of [
+        'Harbor Clinic Prescription',
+        'Dr. Lorna Villanueva',
+        'Orthopaedics',
+        'Date issued 1 Sep 2026',
+        'Prescription ID rx-1',
+        'Maria Reyes',
+        'Amoxicillin',
+        '3 times a day at 08:00, 14:00, 20:00',
+        '1 Sep 2026 to 10 Sep 2026',
+        'Finish the full course.',
+      ]) {
+        expect(text, expected).toContain(expected)
+      }
       // A download, not a print; and the object URL is let go afterwards.
       expect(window.print).not.toHaveBeenCalled()
       await waitFor(() => expect(capture.revoked).toHaveLength(1))
@@ -257,6 +301,32 @@ describe('downloading the prescription (module 4.10)', () => {
     } finally {
       capture.release()
     }
+  })
+
+  it('still downloads when the clinic cannot be read, leaving its name off', async () => {
+    clinic.name.mockRejectedValue(new Error('Failed to fetch'))
+    const capture = captureDownloads()
+    try {
+      render(<PatientMedicationsPage />)
+      fireEvent.click(screen.getByRole('button', { name: 'Download prescription (PDF)' }))
+      await waitFor(() => expect(capture.files).toHaveLength(1))
+      const text = await pdfText(capture.files[0]!)
+      expect(text).not.toContain('Harbor')
+      expect(text).toContain('Amoxicillin')
+    } finally {
+      capture.release()
+    }
+  })
+
+  it('is unavailable, and says why, while nothing is prescribed', () => {
+    schedules.data = []
+    render(<PatientMedicationsPage />)
+
+    const button = screen.getByRole('button', { name: 'Download prescription (PDF)' })
+    expect(button).toBeDisabled()
+    expect(button).toHaveAccessibleDescription(
+      'There is no prescription to download yet: your doctor has not prescribed anything.',
+    )
   })
 
   it('is a control: on screen, off the paper', () => {

@@ -42,6 +42,7 @@ import { useDoses, useMedicationSchedules } from '@/features/medications/hooks'
 import { NotifyPatient } from '@/features/notifications/components/notify-patient'
 import { ConsultationFlow } from '@/features/patients/components/consultation-flow'
 import { ResetCredentialDialog } from '@/features/patients/components/reset-credential-dialog'
+import { fetchOwnClinicName } from '@/features/patients/api'
 import { usePatient } from '@/features/patients/hooks'
 import { MoodTrend } from '@/features/recovery-logs/components/mood-trend'
 import { useRecoveryLogs } from '@/features/recovery-logs/hooks'
@@ -215,20 +216,23 @@ export function DoctorPatientDetailPage() {
 
   const adherence = weekDoses.data ? summariseAdherence(weekDoses.data) : null
 
-  // Module 4.10 as a file, from the record this page has loaded. The doctor
-  // is named as prescriber only when they are the patient's assigned doctor,
-  // exactly as on the printed prescription.
+  // Module 4.10 as a file, from the record this page has loaded: one sheet
+  // per prescription. Each names its own prescriber - here, the signed-in
+  // doctor on the prescriptions they issued, the one doctor this account may
+  // read; a prescription another doctor issued says "Not available".
   const prescriptionFile = useFileDownload()
   const downloadPrescription = (patient: NonNullable<typeof patientQuery.data>) => {
     const schedules = schedulesQuery.data
     if (!schedules) return
     void prescriptionFile.download(async () => {
-      const { buildPrescriptionPdf } = await import(
-        '@/features/medications/prescription-document'
-      )
+      const [{ buildPrescriptionPdf }, clinicName] = await Promise.all([
+        import('@/features/medications/prescription-document'),
+        fetchOwnClinicName().catch(() => null),
+      ])
       return buildPrescriptionPdf({
         patient,
-        doctor: doctor?.doc_id === patient.doc_id ? doctor : null,
+        doctors: [doctor],
+        clinicName,
         schedules,
         generatedAt: new Date(),
       })

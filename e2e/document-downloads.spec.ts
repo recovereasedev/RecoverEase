@@ -53,23 +53,55 @@ async function downloadFrom(page: Page, name: string): Promise<{ file: Download;
 
 const isPdf = (bytes: Uint8Array) => new TextDecoder().decode(bytes.slice(0, 5)) === '%PDF-'
 
+/** The reader's own clinic, which `clinic_select_member` returns to its members. */
+const CLINIC = {
+  clinic_id: IDS.clinic,
+  clinic_name: 'Harborview Recovery Clinic',
+  clinic_status: 'active',
+  clinic_timezone: 'Asia/Manila',
+  clinic_created_at: '2026-01-01T00:00:00Z',
+  clinic_updated_at: '2026-01-01T00:00:00Z',
+}
+
 test.describe('downloading documents', () => {
   test('the patient downloads their prescription as a PDF', async ({ page, signInAs }) => {
     const errors = watchForErrors(page)
     const writes = watchForWrites(page)
-    await signInAs('patient')
+    await signInAs('patient', { clinic: [CLINIC] })
     await page.goto('/patient/medications')
     await expect(page.getByText('Take with food.')).toBeVisible()
+    await expect(page.getByText(/^Issued 1 February( 2026)? · Prescribed by Dr\. Alan Cruz$/)).toBeVisible()
 
     const { file, bytes } = await downloadFrom(page, 'Download prescription (PDF)')
 
     expect(file.suggestedFilename()).toMatch(/^recoverease-prescription-alice-santos-\d{4}-\d{2}-\d{2}\.pdf$/)
     expect(isPdf(bytes)).toBe(true)
-    expect(await pdfLines(bytes)).toEqual(
-      expect.arrayContaining(['Prescription', 'Alice Santos', 'Dr. Alan Cruz', 'Paracetamol', 'Take with food.']),
-    )
+    const text = (await pdfLines(bytes)).join(' ')
+    for (const expected of [
+      'Harborview Recovery Clinic Prescription',
+      'Prescribing physician',
+      'Dr. Alan Cruz',
+      'Date issued 1 Feb 2026',
+      'Alice Santos',
+      'Paracetamol',
+      'Take with food.',
+    ]) {
+      expect(text, expected).toContain(expected)
+    }
     expect(writes).toEqual([])
     expect(errors).toEqual([])
+  })
+
+  test('the patient with nothing prescribed is told why there is nothing to download', async ({
+    page,
+    signInAs,
+  }) => {
+    await signInAs('patient', { medication_schedule: [], medication_log: [] })
+    await page.goto('/patient/medications')
+
+    const button = page.getByRole('button', { name: 'Download prescription (PDF)', exact: true })
+    await expect(button).toBeDisabled()
+    await expect(button).toHaveAccessibleDescription(/no prescription to download yet/)
   })
 
   test('the patient downloads their treatment plan as a PDF', async ({ page, signInAs }) => {
@@ -98,9 +130,11 @@ test.describe('downloading documents', () => {
       prescription_id: 'rx-download',
       prescription_issued_date: '2026-09-01',
       prescription_notes: 'Take with food.',
+      doc_id: IDS.doctorA,
       pat_id: IDS.alicePat,
     }
     await signInAs('doctor', {
+      clinic: [CLINIC],
       prescription: [prescription],
       medication_schedule: [
         {
@@ -124,9 +158,19 @@ test.describe('downloading documents', () => {
 
     expect(file.suggestedFilename()).toMatch(/^recoverease-prescription-alice-santos-/)
     expect(isPdf(bytes)).toBe(true)
-    expect(await pdfLines(bytes)).toEqual(
-      expect.arrayContaining(['Alice Santos', 'Dr. Alan Cruz', 'Amoxicillin', '500mg · 2 times a day at 08:00, 20:00', 'Take with food.']),
-    )
+    const text = (await pdfLines(bytes)).join(' ')
+    for (const expected of [
+      'Harborview Recovery Clinic Prescription',
+      'Alice Santos',
+      'Dr. Alan Cruz',
+      'Licence no.: LIC-A-001',
+      'Amoxicillin',
+      '500mg',
+      '2 times a day at 08:00, 20:00',
+      'Take with food.',
+    ]) {
+      expect(text, expected).toContain(expected)
+    }
     expect(writes).toEqual([])
     expect(errors).toEqual([])
   })

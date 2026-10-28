@@ -328,6 +328,7 @@ export type Database = {
           doc_is_active: boolean
           doc_created_at: string
           clinic_id: string
+          doc_appointment_reminder_is_enabled: boolean
         }
         Insert: {
           doc_id?: string
@@ -340,6 +341,7 @@ export type Database = {
           doc_is_active?: boolean
           doc_created_at?: string
           clinic_id?: string
+          doc_appointment_reminder_is_enabled?: boolean
         }
         Update: {
           doc_id?: string
@@ -352,6 +354,7 @@ export type Database = {
           doc_is_active?: boolean
           doc_created_at?: string
           clinic_id?: string
+          doc_appointment_reminder_is_enabled?: boolean
         }
         Relationships: [
           {

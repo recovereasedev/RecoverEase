@@ -2,6 +2,7 @@ import { strFromU8, unzipSync } from 'fflate'
 import { PDFDocument, StandardFonts } from 'pdf-lib'
 import { describe, expect, it } from 'vitest'
 
+import { prescribedBy, prescriberOf } from '@/features/medications/prescriber'
 import { buildPrescriptionPdf } from '@/features/medications/prescription-document'
 import type { ScheduleWithPrescription } from '@/features/medications/api'
 import type { DashboardStats, ReportWithPatient } from '@/features/reports/api'
@@ -42,10 +43,32 @@ function schedule(overrides: Partial<ScheduleWithPrescription> = {}): ScheduleWi
     prescription: {
       prescription_id: 'rx1',
       prescription_issued_date: '2026-10-01',
-      prescription_notes: 'Take with food. Finish the course.',
+      prescription_notes: 'Take with food.\nFinish the course.',
+      doc_id: 'd-alan',
     },
     ...overrides,
   } as ScheduleWithPrescription
+}
+
+const ALICE = {
+  pat_first_name: 'Alice',
+  pat_last_name: 'Santos',
+  pat_birth_date: '1991-04-02',
+  pat_gender: 'Female',
+}
+
+const DR_CRUZ = {
+  doc_id: 'd-alan',
+  doc_first_name: 'Alan',
+  doc_last_name: 'Cruz',
+  doc_specialization: 'Orthopaedic rehabilitation',
+  doc_license_no: 'LIC-A-001',
+  doc_contact_no: '032 000 0000',
+}
+
+/** A page's text as one string, so a cell wrapped over two lines still reads whole. */
+function pageText(lines: string[]): string {
+  return lines.join(' ')
 }
 
 describe('text Helvetica can draw', () => {
@@ -117,44 +140,172 @@ describe('a rendered PDF', () => {
 })
 
 describe('the prescription (module 4.10)', () => {
-  it('names the patient and their doctor, and every medicine as the screen does', async () => {
+  const paracetamol = schedule({
+    medication_schedule_id: 's2',
+    medication_schedule_name: 'Paracetamol',
+    medication_schedule_dosage: '500mg',
+    medication_schedule_frequency: 1,
+    medication_schedule_times: ['20:00:00'],
+    medication_schedule_end_date: null,
+  })
+
+  it('lays a prescription out as a sheet, from the records alone', async () => {
     const file = await buildPrescriptionPdf({
-      patient: { pat_first_name: 'Alice', pat_last_name: 'Santos' },
-      doctor: { doc_first_name: 'Alan', doc_last_name: 'Cruz' },
-      schedules: [schedule(), schedule({ medication_schedule_id: 's2', medication_schedule_name: 'Paracetamol', medication_schedule_dosage: '500mg', medication_schedule_frequency: 1, medication_schedule_times: ['20:00:00'], medication_schedule_end_date: null, prescription: null })],
+      patient: ALICE,
+      doctors: [DR_CRUZ],
+      clinicName: 'Harbor Clinic',
+      schedules: [schedule(), paracetamol],
       generatedAt: GENERATED,
     })
 
     expect(file.mimeType).toBe(PDF_TYPE)
     expect(file.fileName).toBe('recoverease-prescription-alice-santos-2026-10-20.pdf')
-    const lines = await pdfLines(file.bytes)
-    expect(lines).toEqual(
-      expect.arrayContaining([
-        'Prescription',
-        'Alice Santos',
-        'Dr. Alan Cruz',
-        'Amoxicillin',
-        '500 mg · 3 times a day at 08:00, 14:00, 20:00',
-        'From 1 Oct 2026 until 10 Oct 2026',
-        'Take with food. Finish the course.',
-        'Paracetamol',
-        '500mg · 1 time a day at 20:00',
-        'From 1 Oct 2026, ongoing',
-      ]),
-    )
+    const pages = await pdfPages(file.bytes)
+    expect(pages).toHaveLength(1)
+    const text = pageText(pages[0]!)
+
+    for (const expected of [
+      // Letterhead: the mark, the wordmark and the reader's clinic.
+      'Recover Ease',
+      'Harbor Clinic Prescription',
+      // The prescription's own doctor, with what their record holds.
+      'Prescribing physician',
+      'Dr. Alan Cruz',
+      'Orthopaedic rehabilitation',
+      'Licence no.: LIC-A-001',
+      'Date issued 1 Oct 2026',
+      'Prescription ID rx1',
+      // The patient.
+      'Patient information',
+      'Alice Santos',
+      '2 Apr 1991 (35 years old)',
+      'Female',
+      // The ℞ and its medicines.
+      'Rx',
+      'Medication Dosage Instructions Course',
+      'Amoxicillin',
+      '500 mg',
+      '3 times a day at 08:00, 14:00, 20:00',
+      '1 Oct 2026 to 10 Oct 2026',
+      'Paracetamol',
+      '1 time a day at 20:00',
+      'From 1 Oct 2026, ongoing',
+      // The doctor's instructions, one per line as they wrote them.
+      'Notes / additional instructions',
+      'Take with food.',
+      'Finish the course.',
+      // The prescriber's block, with the signature line left blank.
+      'Printed name Dr. Alan Cruz',
+      'Contact no. 032 000 0000',
+      "Prescriber's signature",
+      'RecoverEase prescription · Generated 20 Oct 2026, 08:15 · Page 1 of 1',
+    ]) {
+      expect(text, expected).toContain(expected)
+    }
+    // Nothing the records do not hold.
+    expect(text).not.toMatch(/Quantity|tablets|capsules/)
   })
 
-  it('names no doctor it was not given, and says when nothing is prescribed', async () => {
+  it('names each prescription’s own prescriber, and nobody the reader may not read', async () => {
+    const earlier = schedule({
+      medication_schedule_id: 's-old',
+      medication_schedule_name: 'Ibuprofen',
+      prescription_id: 'rx-old',
+      prescription: {
+        prescription_id: 'rx-old',
+        prescription_issued_date: '2026-09-01',
+        prescription_notes: null,
+        doc_id: 'd-previous',
+      },
+    })
     const file = await buildPrescriptionPdf({
-      patient: { pat_first_name: 'Alice', pat_last_name: 'Santos' },
-      doctor: null,
+      patient: ALICE,
+      doctors: [DR_CRUZ],
+      clinicName: null,
+      schedules: [earlier, schedule()],
+      generatedAt: GENERATED,
+    })
+
+    // One sheet per prescription, the newest first.
+    const [current, previous] = (await pdfPages(file.bytes)).map(pageText)
+    expect(current).toContain('Date issued 1 Oct 2026')
+    expect(current).toContain('Dr. Alan Cruz')
+    expect(previous).toContain('Date issued 1 Sep 2026')
+    expect(previous).toContain('Ibuprofen')
+    expect(previous).toContain("The prescriber's details are not available to this account.")
+    expect(previous).toContain('Printed name Not available')
+    expect(previous).not.toContain('Dr.')
+    expect(previous).toContain('None recorded.')
+  })
+
+  it('says what is not recorded rather than inventing it, and leaves off a clinic it could not read', async () => {
+    const file = await buildPrescriptionPdf({
+      patient: { ...ALICE, pat_birth_date: null, pat_gender: null },
+      doctors: [{ ...DR_CRUZ, doc_specialization: null, doc_contact_no: null }],
+      clinicName: null,
+      schedules: [schedule()],
+      generatedAt: GENERATED,
+    })
+    const text = pageText((await pdfLines(file.bytes)))
+
+    expect(text).toContain('Date of birth / Age Not recorded')
+    expect(text).toContain('Gender Not recorded')
+    expect(text).toContain('Specialisation Not recorded')
+    expect(text).toContain('Contact no. Not recorded')
+    expect(text).not.toContain('Harbor')
+  })
+
+  it('carries a long prescription onto a continuation sheet without splitting a row', async () => {
+    const many = Array.from({ length: 24 }, (_, index) =>
+      schedule({
+        medication_schedule_id: `s-${index}`,
+        medication_schedule_name: `Medicine ${index + 1}`,
+      }),
+    )
+    const file = await buildPrescriptionPdf({
+      patient: ALICE,
+      doctors: [DR_CRUZ],
+      clinicName: null,
+      schedules: many,
+      generatedAt: GENERATED,
+    })
+
+    const pages = await pdfPages(file.bytes)
+    expect(pages.length).toBeGreaterThan(1)
+    expect(pageText(pages[1]!)).toContain('Prescription, continued')
+    // The table's header is repeated above the rows that carry on.
+    expect(pageText(pages[1]!)).toContain('Medication Dosage Instructions Course')
+    const names = pages.flat().filter((line) => /^Medicine \d+$/.test(line))
+    expect(names).toHaveLength(24)
+    expect(new Set(names).size).toBe(24)
+    pages.forEach((lines, index) => {
+      expect(pageText(lines)).toContain(`Page ${index + 1} of ${pages.length}`)
+    })
+  })
+
+  it('names nobody, and says so, when nothing is prescribed', async () => {
+    const file = await buildPrescriptionPdf({
+      patient: ALICE,
+      doctors: [],
+      clinicName: null,
       schedules: [],
       generatedAt: GENERATED,
     })
     const lines = await pdfLines(file.bytes)
-    expect(lines).toContain('Not available')
     expect(lines).toContain('No prescriptions on record.')
     expect(lines.some((line) => line.startsWith('Dr.'))).toBe(false)
+  })
+})
+
+describe('a prescription’s prescriber', () => {
+  it('is the doctor who issued it, named only when the reader may read them', () => {
+    expect(prescribedBy(schedule(), DR_CRUZ)).toBe('Prescribed by Dr. Alan Cruz')
+    // Taken over by another doctor since: not the current one's name.
+    expect(prescribedBy(schedule(), { ...DR_CRUZ, doc_id: 'd-new' })).toBe(
+      'Prescriber not available',
+    )
+    expect(prescribedBy(schedule(), null)).toBe('Prescriber not available')
+    expect(prescriberOf(null, [DR_CRUZ])).toBeNull()
   })
 })
 
@@ -223,10 +374,30 @@ describe('the system-wide report (module 9.4)', () => {
     generated_at: '2026-10-20T00:10:00Z',
   }
   const reports = [
-    { report_id: 'r1', report_type: 'system_wide', report_generated_at: '2026-10-19T06:00:00Z' },
-    { report_id: 'r2', report_type: 'patient_recovery', report_generated_at: '2026-10-18T06:00:00Z' },
+    {
+      report_id: 'r1',
+      user_id: 'u-ada',
+      report_type: 'system_wide',
+      report_generated_at: '2026-10-19T06:00:00Z',
+      user_account: { user_email: 'ada.reyes@harborview.test' },
+    },
+    {
+      report_id: 'r2',
+      user_id: 'u-noel',
+      report_type: 'system_wide',
+      report_generated_at: '2026-10-18T08:30:00Z',
+      user_account: { user_email: 'noel.bautista@harborview.test' },
+    },
+    {
+      report_id: 'r3',
+      user_id: 'u-hidden',
+      report_type: 'patient_recovery',
+      report_generated_at: '2026-10-18T06:00:00Z',
+      user_account: null,
+    },
   ] as unknown as ReportWithPatient[]
-  const input = { stats, reports, preparer: 'Ada Reyes', generatedAt: GENERATED }
+  const reader = { userId: 'u-ada', name: 'Ada Reyes', email: 'ada.reyes@harborview.test' }
+  const input = { stats, reports, preparer: 'Ada Reyes', reader, generatedAt: GENERATED }
 
   it('as a PDF, gives the figures as loaded and who prepared it, adding nothing', async () => {
     const file = await buildSystemReportPdf(input)
@@ -243,6 +414,24 @@ describe('the system-wide report (module 9.4)', () => {
         'Patient recovery report',
       ]),
     )
+  })
+
+  it('names who generated each report, as the page does, and guesses no one', async () => {
+    const lines = await pdfLines((await buildSystemReportPdf(input)).bytes)
+    expect(lines).toEqual(
+      expect.arrayContaining([
+        'Generated by',
+        'Ada Reyes (you)',
+        'noel.bautista@harborview.test',
+        'Not available',
+      ]),
+    )
+
+    const parts = unzipSync((await buildSystemReportXlsx(input)).bytes)
+    const recent = strFromU8(parts['xl/worksheets/sheet3.xml']!)
+    for (const text of ['Generated by', 'Ada Reyes (you)', 'noel.bautista@harborview.test', 'Not available']) {
+      expect(recent).toContain(`<t xml:space="preserve">${text}</t>`)
+    }
   })
 
   it('as a workbook, puts the same figures in number cells, one sheet per part', async () => {

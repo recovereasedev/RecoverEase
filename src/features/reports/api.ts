@@ -6,13 +6,19 @@ export type ReportType = Enums<'report_type'>
 
 export type ReportWithPatient = Report & {
   patient: Pick<Tables<'patient'>, 'pat_first_name' | 'pat_last_name'> | null
+  /**
+   * The account that generated it, where the reader may see that account:
+   * their own, and for a Clinic Admin every account in their clinic
+   * (migration 30). Null where RLS hides it.
+   */
+  user_account: Pick<Tables<'user_account'>, 'user_email'> | null
 }
 
 /** Module 9.5 "View Recently Generated Reports". */
 export async function fetchReports(): Promise<ReportWithPatient[]> {
   const { data, error } = await supabase
     .from('report')
-    .select(`*, patient ( pat_first_name, pat_last_name )`)
+    .select(`*, patient ( pat_first_name, pat_last_name ), user_account ( user_email )`)
     .order('report_generated_at', { ascending: false })
     .limit(100)
 

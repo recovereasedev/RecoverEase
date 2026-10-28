@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { act, fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 /**
@@ -18,7 +18,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const api = vi.hoisted(() => ({ sendNotificationToPatient: vi.fn() }))
 
-vi.mock('@/features/notifications/api', () => api)
+vi.mock('@/features/notifications/api', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/features/notifications/api')>()),
+  sendNotificationToPatient: api.sendNotificationToPatient,
+}))
+
+/** The id each call was sent under. */
+const sentIds = () =>
+  api.sendNotificationToPatient.mock.calls.map(
+    (call) => (call[0] as { notificationId: string }).notificationId,
+  )
 
 const { NotifyPatient } = await import(
   '@/features/notifications/components/notify-patient'
@@ -76,6 +85,9 @@ describe('notifying a patient', () => {
 
     expect(api.sendNotificationToPatient).toHaveBeenCalledTimes(1)
     expect(api.sendNotificationToPatient.mock.calls[0]?.[0]).toEqual({
+      notificationId: expect.stringMatching(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+      ),
       userId: PATIENT.patientUserId,
       type: 'general',
       message: 'Bring your medication list on Thursday.',
@@ -162,5 +174,105 @@ describe('notifying a patient', () => {
     ]
     expect(sent.type).toBe('general')
     expect(['chat_critical', 'medication', 'appointment']).not.toContain(sent.type)
+  })
+})
+
+describe('sending once', () => {
+  it('sends a retry of the same message under the same id, so it cannot arrive twice', async () => {
+    api.sendNotificationToPatient
+      .mockRejectedValueOnce(new Error('the server said no'))
+      .mockResolvedValueOnce(undefined)
+    renderCard()
+
+    await send('Bring your medication list on Thursday.')
+    expect(await screen.findByRole('alert')).toHaveTextContent('The notification was not sent')
+    await act(async () => {
+      fireEvent.click(sendButton())
+    })
+
+    expect(api.sendNotificationToPatient).toHaveBeenCalledTimes(2)
+    const [first, retry] = sentIds()
+    expect(retry).toBe(first)
+    expect(await screen.findByRole('status')).toHaveTextContent('Sent to Alice Santos.')
+  })
+
+  it('ignores a second press while the first is still on its way', async () => {
+    let finish: () => void = () => {}
+    api.sendNotificationToPatient.mockImplementationOnce(
+      () => new Promise<void>((resolve) => (finish = resolve)),
+    )
+    renderCard()
+
+    await send('Bring your medication list on Thursday.')
+    await waitFor(() => expect(sendButton()).toHaveAttribute('aria-busy', 'true'))
+    await act(async () => {
+      fireEvent.click(sendButton())
+    })
+    expect(api.sendNotificationToPatient).toHaveBeenCalledTimes(1)
+
+    await act(async () => finish())
+    expect(await screen.findByRole('status')).toHaveTextContent('Sent to Alice Santos.')
+  })
+
+  it('sends two submits in the same instant under one id, which the database stores once', async () => {
+    renderCard()
+    fireEvent.change(messageBox(), { target: { value: 'Bring your medication list on Thursday.' } })
+
+    // Before the first has re-rendered the button as busy.
+    const form = sendButton().closest('form')!
+    await act(async () => {
+      fireEvent.submit(form)
+      fireEvent.submit(form)
+    })
+
+    const ids = sentIds()
+    expect(ids.length).toBeGreaterThanOrEqual(1)
+    expect(new Set(ids).size).toBe(1)
+  })
+
+  it('gives the next message, and any edited one, an id of its own', async () => {
+    api.sendNotificationToPatient.mockRejectedValueOnce(new Error('Failed to fetch'))
+    renderCard()
+
+    await send('Bring your list.')
+    // Changed after a failure: a different message now, so a new id.
+    await send('Bring your medication list.')
+    // And the one after a successful send is new again.
+    await send('One more thing.')
+
+    const [failed, edited, next] = sentIds()
+    expect(new Set([failed, edited, next]).size).toBe(3)
+  })
+})
+
+describe('the message’s length', () => {
+  it('allows up to 1,000 characters, and says so', () => {
+    renderCard()
+
+    expect(messageBox()).toHaveAttribute('maxlength', '1000')
+    expect(messageBox()).toHaveAccessibleDescription('Up to 1,000 characters.')
+    expect(screen.getByText('0 / 1,000')).toBeInTheDocument()
+    fireEvent.change(messageBox(), { target: { value: 'Bring your list.' } })
+    expect(screen.getByText('16 / 1,000')).toBeInTheDocument()
+  })
+
+  it('sends nothing longer, and says why', async () => {
+    renderCard()
+
+    await send('x'.repeat(1001))
+
+    expect(api.sendNotificationToPatient).not.toHaveBeenCalled()
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Keep the message to 1,000 characters or fewer.',
+    )
+    expect(messageBox()).toHaveFocus()
+  })
+
+  it('sends exactly 1,000', async () => {
+    renderCard()
+
+    await send('x'.repeat(1000))
+
+    expect(api.sendNotificationToPatient).toHaveBeenCalledTimes(1)
   })
 })

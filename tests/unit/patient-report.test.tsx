@@ -29,6 +29,7 @@ const DOCTOR: Doctor = {
   doc_is_active: true,
   doc_created_at: '2026-01-01T00:00:00Z',
   clinic_id: 'c-1',
+  doc_appointment_reminder_is_enabled: true,
 }
 
 const NOTE_TEXT = 'Wound healing well.\nContinue physiotherapy twice weekly.'
