@@ -29,6 +29,8 @@ vi.mock('@/features/auth/auth-context', () => ({
 const mockUser = vi.hoisted(() => ({ current: null as AppUser | null }))
 
 vi.mock('@/features/patients/hooks', () => ({
+  // The record's Patient details panel (module 2.5); nothing here saves it.
+  useUpdatePatient: () => ({ mutate: vi.fn(), reset: vi.fn(), isPending: false, isError: false, error: null }),
   usePatient: () => ({
     isPending: false,
     error: null,
