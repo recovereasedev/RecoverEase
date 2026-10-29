@@ -9,8 +9,10 @@ import { seedFixture, type Fixture } from './helpers/fixtures'
 import { assuredSuperAdmin, createSignIn, type Claims } from './helpers/super-admin'
 
 /**
- * The down-scripts for migrations 34 and 33 (supabase/rollbacks), after 43's, 42's,
- * 41's, 38's, 37's, 36's and 35's, which go first.
+ * The down-scripts for migrations 34 and 33 (supabase/rollbacks), after 43's,
+ * 44's, 41's, 42's, 38's, 37's, 36's and 35's, which go first - newest
+ * applied first, as production applied them: 42, 41 and 44 on 2026-10-29,
+ * with 43 still to come.
  *
  * Run against a database that has been used - a Super Admin, a clinic's
  * status changed back and forth, a platform announcement written and
@@ -20,6 +22,7 @@ import { assuredSuperAdmin, createSignIn, type Claims } from './helpers/super-ad
  * the comparison includes the enum, so it shows that is all that remains.
  */
 
+const ROLLBACK_44 = 'supabase/rollbacks/20260902100044_notification_created_at_server_time.down.sql'
 const ROLLBACK_43 = 'supabase/rollbacks/20260902100043_system_report_snapshot.down.sql'
 const ROLLBACK_42 = 'supabase/rollbacks/20260902100042_doctor_appointment_reminder_setting.down.sql'
 const ROLLBACK_41 = 'supabase/rollbacks/20260902100041_doctor_notifications_general_only.down.sql'
@@ -49,7 +52,7 @@ const rows = async (database: TestDatabase) => ({
   ),
 })
 
-describe('rolling back migrations 43, 42, 41, 38, 37, 36, 35, 34 and 33 with their down-scripts', () => {
+describe('rolling back migrations 43, 44, 41, 42, 38, 37, 36, 35, 34 and 33 with their down-scripts', () => {
   let used: TestDatabase
   let through32: TestDatabase
   let fx: Fixture
@@ -94,8 +97,9 @@ describe('rolling back migrations 43, 42, 41, 38, 37, 36, 35, 34 and 33 with the
     const before = await rows(used)
 
     await used.db.exec(await script(ROLLBACK_43))
-    await used.db.exec(await script(ROLLBACK_42))
+    await used.db.exec(await script(ROLLBACK_44))
     await used.db.exec(await script(ROLLBACK_41))
+    await used.db.exec(await script(ROLLBACK_42))
     await used.db.exec(await script(ROLLBACK_38))
     await used.db.exec(await script(ROLLBACK_37))
     await used.db.exec(await script(ROLLBACK_36))

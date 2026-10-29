@@ -3,8 +3,9 @@
 The status of every requirement in the official module list
 (`Final Modules.pdf`, "Program Specification - List of Modules": 14 modules,
 73 sub-functions) and in the adviser's follow-up list, checked against the
-code on 2026-10-29 (branch `feature/adviser-checklist-completion`, from
-`main` `ad3be04`).
+code on 2026-10-29 (branch `feature/adviser-checklist-completion`, started
+from `main` `ad3be04` and merged with `main` `e88bc2b`, which adds migration
+44).
 
 **Statuses.** *Complete*: the whole path works - screen, rules, database,
 tests. *Partial*: part of it is missing, said why. *Blocked*: needs a
@@ -29,7 +30,7 @@ nothing is built for it.
 | 1.1 | Account Creation | Doctor, Admin | Complete | `create-account` Edge Function; Register account dialog |
 | 1.2 | Login / Logout | All | Complete | `features/auth` |
 | 1.3 | Reset Password | All | Complete | Forgot / reset password pages, `reset-account-password` |
-| 1.4 | Account Verification (Email) | All | **Blocked - product decision** | Accounts are created confirmed (`email_confirm: true`) because they are handed over in person with a temporary password, and a password-setup link is emailed. Options: (a) require the emailed link before first sign-in and drop in-person temporary passwords; (b) keep both and show whether the address has been used. Either changes `create-account` and onboarding. |
+| 1.4 | Account Verification (Email) | All | **Blocked - product decision** | Accounts are created confirmed (`email_confirm: true`) because they are handed over in person with a temporary password, and a password-setup link is emailed. The module list names it only as "Account Verification (Email)", for all three roles, and does not say whether an address must be confirmed before first sign-in. Options: (a) require the emailed link before first sign-in and drop in-person temporary passwords; (b) keep both and show whether the address has been used. Either changes `create-account` and onboarding. |
 | 1.5 | Role-Based Access Control | All | Complete | RLS on every table; `docs/security.md` |
 | 1.6 | Capture Data Privacy Consent | Patient | Complete | `pat_consent_at` at first sign-in |
 
@@ -94,7 +95,7 @@ nothing is built for it.
 
 | # | Requirement | Roles | Status | Where |
 | --- | --- | --- | --- | --- |
-| 7.1 | Send Notification to Patient | Doctor | Complete (PR #67) | Notifications page; record. Migration 41 not yet applied |
+| 7.1 | Send Notification to Patient | Doctor | Complete (PR #67) | Notifications page; record. Migrations 41 and 44 applied 2026-10-29: a general, unread message of up to 1,000 characters, dated by the database |
 | 7.2 | Post System Announcement | Doctor | Complete | Doctor Announcements (migration 36) |
 | 7.3 | Configure Reminder Settings | Doctor | **Partial - product decision** | See below |
 | 7.4 | View Notifications and Reminders | Patient | Complete | Notifications |
@@ -103,9 +104,10 @@ nothing is built for it.
 **7.3, as the adviser worded it:** "configure or adjust medication and
 appointment reminder settings for their patients based on their prescribed
 schedules". Today a doctor sets the dose times (which the reminders follow),
-and can turn their own appointment reminders off (PR #67, migration 42); the
-clinic sets the pre-dose lead time (migration 37), and the patient their own
-on/off and preferred time. Which setting a doctor should hold *for a
+and can turn their own appointment reminders off (PR #67, migration 42,
+applied 2026-10-29); the clinic sets the pre-dose lead time (migration 37)
+and the missed-dose grace period; and the patient sets their own on/off and
+preferred time. Which setting a doctor should hold *for a
 patient* is not specified, and any of them changes the reminder jobs
 running in production. The smallest options, each a migration with its own
 tests and approval:
@@ -139,7 +141,7 @@ check of it is recorded. Needs a production smoke test.
 | --- | --- | --- | --- | --- |
 | 9.1-9.2 | Generate / print recovery report | Doctor | Complete | Doctor Reports |
 | 9.3-9.4 | Generate / export system-wide report | Admin | Complete | Admin Reports, PDF and Excel |
-| 9.5 | View Recently Generated Reports | Admin | **Complete (this branch, migration 43)** | Each report keeps its figures and downloads again as generated; older ones say theirs were not kept |
+| 9.5 | View Recently Generated Reports | Admin | **Complete (this branch, migration 43)** | Each report keeps its figures and downloads again as generated; older ones say theirs were not kept. 43 is not applied: it goes in, verified, before this website is deployed |
 
 ## Admin Dashboard, Doctor Accounts, Announcements, Audit, Settings
 
@@ -162,7 +164,7 @@ check of it is recorded. Needs a production smoke test.
 | Medicine and appointment calendar (Patient & Doctor) | **Complete (this branch)** |
 | Send notification to a specific patient (Doctor) | Complete (PR #67) |
 | Configure reminder settings (Doctor) | Partial - product decision (7.3 above) |
-| View recently generated reports, with download (Admin) | **Complete (this branch, migration 43)** |
+| View recently generated reports, with download (Admin) | **Complete (this branch, migration 43; apply 43 before deploying)** |
 | View system usage statistics | Complete |
 | AI chatbot on/off | Complete (migration 38) |
 | Intermittent AI failure handling | Partial: the failure states exist; live Gemini timeouts need a production check |

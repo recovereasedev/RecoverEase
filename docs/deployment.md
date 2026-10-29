@@ -9,18 +9,42 @@
 > | Vercel project | `recovereasedev-7251s-projects/recoverease` |
 > | Repository | `recovereasedev/RecoverEase` |
 >
-> **Production on 2026-10-29** (a read-only check; a dated snapshot, not the
-> current state - check again before relying on it): every migration in
-> `supabase/migrations/` up to 38 (`guidance_assistant_switch`) is in the
-> history but 34 (`lift_single_clinic_gate`), which is held for its own
-> decision. 41 and 42 are **not applied**, although PR #67, the website that
-> uses 42, was merged to `main` (`ad3be04`) - see "Doctors' notifications and
-> reminders (migrations 41 and 42)": until 42 is applied, a doctor's **Save
-> reminder settings** fails. 43 (`system_report_snapshot`) is not applied
-> either; it goes in before the website that calls it (below). Four Edge
-> Functions are ACTIVE with `verify_jwt`:
-> `create-account` v11, `reset-account-password` v6,
-> `complete-password-setup` v3 and `chatbot-reply` v18.
+> **Production on 2026-10-29 at 17:38 UTC** (read-only checks; a dated
+> snapshot, not the current state - check again before relying on it):
+>
+> - **Website.** The Vercel Production deployment
+>   `dpl_7P9bhug51rgRDPoKqh5kP4PZN7Kf`, built from `main` at `23af842` (the
+>   merge of PR #68), serves <https://recoverease-web.vercel.app>.
+> - **Database.** The migration history has 41 entries. Every file in
+>   `supabase/migrations/` is in it except two: 34
+>   (`lift_single_clinic_gate`), held for its own decision, and 43
+>   (`system_report_snapshot`), which is not applied. 43 must be applied and
+>   verified before the website that calls it is deployed - see "Report
+>   figures kept (migration 43)".
+> - **History versions are apply times, not file numbers.** `apply_migration`
+>   records each migration under the time it was applied, so no entry uses
+>   its file's `20260902100…` number; match them by name. The three applied
+>   on 2026-10-29:
+>
+>   | Repository file | History entry | Applied (UTC) |
+>   | --- | --- | --- |
+>   | `20260902100042_doctor_appointment_reminder_setting.sql` | `20261029021824 doctor_appointment_reminder_setting` | 02:18:24 |
+>   | `20260902100041_doctor_notifications_general_only.sql` | `20261029071908 doctor_notifications_general_only` | 07:19:08 |
+>   | `20260902100044_notification_created_at_server_time.sql` | `20261029173402 notification_created_at_server_time` | 17:34:02 |
+>
+>   Each was verified read-only once applied: the entry's statements match
+>   the file's MD5, its objects are in place, and the rest of the schema
+>   and the security advisors are as they were before it.
+> - **Smoke tests**, with the `@smoke.invalid` accounts only. After 42 and
+>   41 (07:30-07:54 UTC): a doctor's general message, the doctor's reminder
+>   setting turned off and back on, the patient's prescription PDF, and a
+>   system-wide report. After 44 (17:38 UTC): a doctor's insert naming a past
+>   time, run as the smoke doctor in a statement that was then rolled back,
+>   was stored at the transaction's own time; nothing it wrote was kept.
+>   These cover those flows only, not every feature.
+> - **Edge Functions.** Four are ACTIVE with `verify_jwt`: `create-account`
+>   v11, `reset-account-password` v6, `complete-password-setup` v3 and
+>   `chatbot-reply` v18.
 >
 > At the first deployment, on 2026-09-03: 14 migrations applied, 20 tables,
 > RLS on every one, 54 policies, 3 pg_cron jobs all confirmed to have
@@ -392,8 +416,14 @@ deployed code depends on it, that code goes back first:
    `supabase/rollbacks/20260902100043_system_report_snapshot.down.sql`. Every
    report row stays, but the figures each kept are lost: no report can be
    downloaded again from the history afterwards.
+1. **44**, where it is applied:
+   `supabase/rollbacks/20260902100044_notification_created_at_server_time.down.sql`.
+   Nothing deployed depends on it, and nothing depends on it in the
+   database, so it can go back alone. 43 and 44 change different tables, so
+   either can go back before the other.
 1. **41**: `supabase/rollbacks/20260902100041_doctor_notifications_general_only.down.sql`.
-   Nothing deployed depends on it. It goes in last, so it comes out first.
+   Nothing deployed depends on it. It went in after 42, so it comes out
+   before it.
 1. **42**: the website from before PR #67, then
    `supabase/rollbacks/20260902100042_doctor_appointment_reminder_setting.down.sql`.
    41 and 42 do not depend on each other, so either can go back alone.
@@ -899,8 +929,12 @@ installed, because 38's switch is changed only through the Super Admin checks
 
 ### Doctors' notifications and reminders (migrations 41 and 42)
 
-PR #67 brings two migrations and the website that uses them. Neither is
-applied anywhere yet. The release order, each step its own approval:
+PR #67 brings two migrations and the website that uses them. All four steps
+below were done on 2026-10-29, though not in this order: the merge was
+deployed before 42 was applied, so **Save reminder settings** failed as
+"Out of order" describes until 02:18 UTC. 42 is recorded as
+`20261029021824` and 41 as `20261029071908`. The release order, each step
+its own approval:
 
 1. **Apply migration 42 and verify it** - its history entry and the
    read-only checks under migration 42 below - before anything is merged.
@@ -954,8 +988,7 @@ file creates, since part of it may have been applied.
 Module 7.1's insert policy, `notification_insert_doctor_to_patient`, keeps
 its recipient rule - an active doctor's own patient - and now also requires
 what the form has always sent: type `general`, no chat link, unread, and 1 to
-1,000 characters. It is not applied anywhere yet; apply it only with
-approval, as a new migration.
+1,000 characters. Applied to production on 2026-10-29 and verified.
 
 - **Order.** After the website: step 3 of the release order above.
 - **What does not change.** Every notification the system writes - the
@@ -985,8 +1018,7 @@ policy back, then the rollback, each with its own decision.
 Module 7.3 for doctors: `doctor.doc_appointment_reminder_is_enabled`, on by
 default, the trigger that lets only the doctor change it, and
 `dispatch_appointment_reminders` leaving out a doctor who has turned theirs
-off. It is not applied anywhere yet; apply it only with approval, as a new
-migration.
+off. Applied to production on 2026-10-29 and verified.
 
 - **Order.** Before the website: step 1 of the release order above. The
   doctor's **My profile** page reads and saves the column; before 42 its
@@ -1022,7 +1054,9 @@ check, so a refusal changes no setting.
 Module 9.5's download: a system-wide report keeps the figures it was
 generated with, in `report.report_snapshot`, written only by
 `admin_record_system_report()` (`docs/database.md`, section 14). It is not
-applied anywhere yet; apply it only with approval, as a new migration.
+applied anywhere yet; apply it only with approval, as a new migration. It
+changes only `report`: 44, already applied, touches nothing it changes, and
+neither depends on the other.
 
 1. **Apply migration 43 and verify it**, in one of the windows above. It
    starts with the 3-second `lock_timeout` and resets it. Verify, read-only:
@@ -1047,6 +1081,70 @@ Nothing is written by applying it: every existing report is left without
 figures and says so. Generating a report after it is a production write -
 the smoke test's, with its own approval, from a `@smoke.invalid` Clinic
 Admin. Its down-script is above, in "To roll back 31": the website first.
+
+### Notification times (migration 44)
+
+`notification_created_at` defaulted to now(), but a direct Data API call
+could name its own value, so a doctor could date a message to their patient
+in the past or the future - and the patient's list is ordered by it, newest
+first. 44 adds one trigger, `notification_assign_created_at`, that gives
+every new notification the start of the inserting transaction, whatever the
+insert named. Applied to production on 2026-10-29 at 17:34:02 UTC (history
+`20261029173402`) and verified.
+
+- **Order.** On its own, after 42 and 41, which are applied. No website
+  change goes with it: the website never names the time. 43 (above) changes
+  only `report`; 44 does not depend on it and touches nothing it changes, so
+  either could go in first - 44 did.
+- **What does not change.** Migration 41's policy - who a doctor may notify,
+  and with what - word for word, and every other policy. The system's
+  writers - the reminder jobs, the cancellation and reassignment notices,
+  and `chatbot-reply`'s critical-chat alerts - never name the time, and the
+  trigger gives exactly what the default gave them, so each writes the same
+  rows at the same times. The trigger runs on insert only: no stored
+  notification changes, and marking one read keeps its time
+  (`tests/db/notification-created-at.test.ts`).
+- **Timing.** One of the windows used for 37, like 41: adding the trigger
+  locks `notification`, which every reminder job writes. The file starts
+  with `set lock_timeout = '3s'` and ends with `reset lock_timeout`. Stopped
+  on the timeout between dropping and creating the trigger - possible only
+  where the runner does not run the file as one transaction - there is no
+  trigger, notifications are dated as before 44, and nothing is refused; the
+  file runs again from the top. As for 41 and 42, check the history and the
+  objects read-only before deciding to run it again.
+- **Before applying - read-only.** Choose a cutoff `T` a moment in the past
+  and record `select count(*) as n, md5(string_agg(notification_id::text ||
+  notification_created_at::text, ',' order by notification_id)) as times
+  from public.notification where notification_created_at < 'T'`. The jobs
+  keep writing newer rows; the cutoff leaves them out.
+- **Verify - read-only.** The history has one entry named
+  `notification_created_at_server_time`, under the time it was applied, whose
+  statements match the file's MD5. `select tgname, tgenabled,
+  pg_get_triggerdef(oid) from pg_trigger where tgrelid =
+  'public.notification'::regclass and not tgisinternal` returns one row,
+  `notification_assign_created_at`, enabled (`O`), `BEFORE INSERT ... FOR EACH
+  ROW`. `select prosecdef, proconfig, proacl from pg_proc where oid =
+  'public.notification_assign_created_at()'::regprocedure` shows `false`,
+  `{search_path=""}`, and no `EXECUTE` for PUBLIC, `anon` or `authenticated`.
+  The before-applying query, with the same `T`, returns the same count and
+  MD5. The policies and the security advisors are unchanged, and the jobs
+  after the apply succeed (`cron.job_run_details`).
+- **Smoke test.** Sending a notification as `doctor@smoke.invalid` is a
+  production write with its own approval; its stored time should be when it
+  was sent. A direct insert naming a past time, as the smoke doctor, can be
+  checked inside a statement that ends by raising an error, as 41's was, so
+  that nothing it writes is kept: the row's time should equal now(), not the
+  time named.
+
+Its down-script,
+`supabase/rollbacks/20260902100044_notification_created_at_server_time.down.sql`,
+drops the trigger and its function, so a notification is dated by its
+default - and by its sender, where the sender names a time - as before. No
+data changes either way, and nothing depends on 44, so it can go back
+alone, before or after 43's. It waits at most 3 seconds for its lock, set only after its check,
+and resets the setting at the end. It runs while either the trigger or the
+function is there, so a run that stops between dropping one and the other
+is finished by running it again; it refuses only once both are gone.
 
 ## Bundle budget
 
