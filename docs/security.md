@@ -152,7 +152,7 @@ Applied to every policy, each guarding a specific failure:
 | `appointment` | r, insert, confirm/cancel | r/w | none |
 | `reschedule_request` | r, insert | r + **decide** | none |
 | `chat_session` / `chat_message` | own (r/w) | r | **none** |
-| `notification` | own (r + mark read) | own + **send a general message, up to 1,000 characters, to own patient** (migration 41) | own |
+| `notification` | own (r + mark read) | own + **send a general message, up to 1,000 characters, to own patient** (migration 41), **dated by the database, not by the doctor** (migration 44) | own |
 | `announcement` | published: platform, own clinic's Clinic Admin's, **own active doctor's** (migration 36) | published platform and Clinic Admin's; **writes for own patients, reads and manages only own** (migration 36) | full |
 | `report` | **none** | own | own + system-wide |
 | `audit_log` | none | none | **read only** (administration and clinical entries) |
@@ -441,6 +441,7 @@ the columns that decide their own privileges, so triggers close that gap:
 | `user_account_guard_writes` | Any browser session writing an account — a role, a sign-in address, a login — even if a later policy allowed it; and anyone re-pointing an account at a different login. |
 | `profile_matches_account_role` | A doctor or patient profile being created for an account of a different role — a doctor profile on a patient's account, a patient profile on an administrator's. Applies to the service role too. |
 | `patient_guard_reassignment` | A patient being reassigned to a deactivated doctor, or to a doctor row whose account is not a doctor's, where no active clinician could see them. |
+| `notification_assign_created_at` | A doctor dating a message to their patient in the past or the future through a direct Data API call, which would move it in the patient's newest-first list and misstate when it was sent. Every new notification is given the start of the inserting transaction, whatever the insert named - exactly what the column default gives, so the system's writers, none of which names a time, write what they always did. Insert only; no stored notification is changed (migration 44, `tests/db/notification-created-at.test.ts`). |
 
 Each is covered by a test in `tests/db/rls.test.ts` or
 `tests/db/account-integrity.test.ts` that asserts both the refusal **and**
@@ -768,3 +769,15 @@ Recorded honestly rather than left for someone to discover:
    (`src/features/reminders/`) also shows a dose the server has just reminded
    the patient of, and an appointment about to start; it is a surface for
    those reminders, not a way to deliver them when the app is closed.
+5. **A notification's addressee may update every column of it, not only
+   its read state.** `notification_update_own` (migration 06) limits *which*
+   rows - the signed-in user's own - and keeps `user_id`, but not *which
+   columns*. The website only marks notifications read, yet a direct Data
+   API call could re-date, reword or retype a notification addressed to the
+   caller, or change its chat link. What changes is only the caller's own
+   inbox: no other user reads those rows, and a chat link still opens only a
+   conversation the reader's own access allows. Migration 44 dates a
+   notification when it is written and does not touch updates. The fix is
+   its own migration: revoke `update` on `notification` from `authenticated`
+   and grant `update (notification_is_read)` back, so marking read is all a
+   session can do.
