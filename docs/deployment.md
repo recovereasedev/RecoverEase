@@ -9,17 +9,39 @@
 > | Vercel project | `recovereasedev-7251s-projects/recoverease` |
 > | Repository | `recovereasedev/RecoverEase` |
 >
-> **Production on 2026-10-29 at 07:54 UTC** (read-only checks; a dated
-> snapshot, not the current state - check again before relying on it): every
-> migration in `supabase/migrations/` is in the history except two. 34
-> (`lift_single_clinic_gate`) is held for its own decision; 44
-> (`notification_created_at_server_time`) is not applied and goes in only
-> with approval, as "Notification times (migration 44)" describes. 42 was
-> applied at 02:18:24 UTC (history version `20261029021824`) and 41 at
-> 07:19:08 UTC (`20261029071908`), each verified, and the `@smoke.invalid`
-> smoke tests passed. Four Edge Functions are ACTIVE with `verify_jwt`:
-> `create-account` v11, `reset-account-password` v6,
-> `complete-password-setup` v3 and `chatbot-reply` v18.
+> **Production on 2026-10-29 at 17:38 UTC** (read-only checks; a dated
+> snapshot, not the current state - check again before relying on it):
+>
+> - **Website.** The Vercel Production deployment
+>   `dpl_7P9bhug51rgRDPoKqh5kP4PZN7Kf`, built from `main` at `23af842` (the
+>   merge of PR #68), serves <https://recoverease-web.vercel.app>.
+> - **Database.** The migration history has 41 entries. Every file in
+>   `supabase/migrations/` is in it except 34 (`lift_single_clinic_gate`),
+>   held for its own decision. 43 is not on `main` and not in the history.
+> - **History versions are apply times, not file numbers.** `apply_migration`
+>   records each migration under the time it was applied, so no entry uses
+>   its file's `20260902100…` number; match them by name. The three applied
+>   on 2026-10-29:
+>
+>   | Repository file | History entry | Applied (UTC) |
+>   | --- | --- | --- |
+>   | `20260902100042_doctor_appointment_reminder_setting.sql` | `20261029021824 doctor_appointment_reminder_setting` | 02:18:24 |
+>   | `20260902100041_doctor_notifications_general_only.sql` | `20261029071908 doctor_notifications_general_only` | 07:19:08 |
+>   | `20260902100044_notification_created_at_server_time.sql` | `20261029173402 notification_created_at_server_time` | 17:34:02 |
+>
+>   Each was verified read-only once applied: the entry's statements match
+>   the file's MD5, its objects are in place, and the rest of the schema
+>   and the security advisors are as they were before it.
+> - **Smoke tests**, with the `@smoke.invalid` accounts only. After 42 and
+>   41 (07:30-07:54 UTC): a doctor's general message, the doctor's reminder
+>   setting turned off and back on, the patient's prescription PDF, and a
+>   system-wide report. After 44 (17:38 UTC): a doctor's insert naming a past
+>   time, run as the smoke doctor in a statement that was then rolled back,
+>   was stored at the transaction's own time; nothing it wrote was kept.
+>   These cover those flows only, not every feature.
+> - **Edge Functions.** Four are ACTIVE with `verify_jwt`: `create-account`
+>   v11, `reset-account-password` v6, `complete-password-setup` v3 and
+>   `chatbot-reply` v18.
 >
 > At the first deployment, on 2026-09-03: 14 migrations applied, 20 tables,
 > RLS on every one, 54 policies, 3 pg_cron jobs all confirmed to have
@@ -1026,8 +1048,8 @@ could name its own value, so a doctor could date a message to their patient
 in the past or the future - and the patient's list is ordered by it, newest
 first. 44 adds one trigger, `notification_assign_created_at`, that gives
 every new notification the start of the inserting transaction, whatever the
-insert named. It is not applied anywhere yet; apply it only with approval,
-as a new migration.
+insert named. Applied to production on 2026-10-29 at 17:34:02 UTC (history
+`20261029173402`) and verified.
 
 - **Order.** On its own, after 42 and 41, which are applied. No website
   change goes with it: the website never names the time. The number 43
