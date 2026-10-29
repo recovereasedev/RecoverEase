@@ -9,13 +9,15 @@
 > | Vercel project | `recovereasedev-7251s-projects/recoverease` |
 > | Repository | `recovereasedev/RecoverEase` |
 >
-> **Production on 2026-10-29** (a read-only check; a dated snapshot, not the
-> current state - check again before relying on it): every migration in
-> `supabase/migrations/` is in the history, the last being 38
-> (`guidance_assistant_switch`), except three. 34 (`lift_single_clinic_gate`)
-> is held for its own decision; 41 and 42 are not applied and go in only with
-> approval, in the order under "Doctors' notifications and reminders
-> (migrations 41 and 42)". Four Edge Functions are ACTIVE with `verify_jwt`:
+> **Production on 2026-10-29 at 07:54 UTC** (read-only checks; a dated
+> snapshot, not the current state - check again before relying on it): every
+> migration in `supabase/migrations/` is in the history except two. 34
+> (`lift_single_clinic_gate`) is held for its own decision; 44
+> (`notification_created_at_server_time`) is not applied and goes in only
+> with approval, as "Notification times (migration 44)" describes. 42 was
+> applied at 02:18:24 UTC (history version `20261029021824`) and 41 at
+> 07:19:08 UTC (`20261029071908`), each verified, and the `@smoke.invalid`
+> smoke tests passed. Four Edge Functions are ACTIVE with `verify_jwt`:
 > `create-account` v11, `reset-account-password` v6,
 > `complete-password-setup` v3 and `chatbot-reply` v18.
 >
@@ -385,8 +387,13 @@ To roll back 31, go the other way, newest first. Each later migration is
 rolled back with its own down-script, applied as a new migration, and where
 deployed code depends on it, that code goes back first:
 
+1. **44**, where it is applied:
+   `supabase/rollbacks/20260902100044_notification_created_at_server_time.down.sql`.
+   Nothing deployed depends on it, and nothing depends on it in the
+   database, so it can go back first and alone.
 1. **41**: `supabase/rollbacks/20260902100041_doctor_notifications_general_only.down.sql`.
-   Nothing deployed depends on it. It goes in last, so it comes out first.
+   Nothing deployed depends on it. It went in after 42, so it comes out
+   before it.
 1. **42**: the website from before PR #67, then
    `supabase/rollbacks/20260902100042_doctor_appointment_reminder_setting.down.sql`.
    41 and 42 do not depend on each other, so either can go back alone.
@@ -892,8 +899,12 @@ installed, because 38's switch is changed only through the Super Admin checks
 
 ### Doctors' notifications and reminders (migrations 41 and 42)
 
-PR #67 brings two migrations and the website that uses them. Neither is
-applied anywhere yet. The release order, each step its own approval:
+PR #67 brings two migrations and the website that uses them. All four steps
+below were done on 2026-10-29, though not in this order: the merge was
+deployed before 42 was applied, so **Save reminder settings** failed as
+"Out of order" describes until 02:18 UTC. 42 is recorded as
+`20261029021824` and 41 as `20261029071908`. The release order, each step
+its own approval:
 
 1. **Apply migration 42 and verify it** - its history entry and the
    read-only checks under migration 42 below - before anything is merged.
@@ -947,8 +958,7 @@ file creates, since part of it may have been applied.
 Module 7.1's insert policy, `notification_insert_doctor_to_patient`, keeps
 its recipient rule - an active doctor's own patient - and now also requires
 what the form has always sent: type `general`, no chat link, unread, and 1 to
-1,000 characters. It is not applied anywhere yet; apply it only with
-approval, as a new migration.
+1,000 characters. Applied to production on 2026-10-29 and verified.
 
 - **Order.** After the website: step 3 of the release order above.
 - **What does not change.** Every notification the system writes - the
@@ -978,8 +988,7 @@ policy back, then the rollback, each with its own decision.
 Module 7.3 for doctors: `doctor.doc_appointment_reminder_is_enabled`, on by
 default, the trigger that lets only the doctor change it, and
 `dispatch_appointment_reminders` leaving out a doctor who has turned theirs
-off. It is not applied anywhere yet; apply it only with approval, as a new
-migration.
+off. Applied to production on 2026-10-29 and verified.
 
 - **Order.** Before the website: step 1 of the release order above. The
   doctor's **My profile** page reads and saves the column; before 42 its
@@ -1009,6 +1018,70 @@ with it every doctor's choice - and refuses when 42 is not applied. Roll the
 website back first. Like the migration, it waits at most 3 seconds for its
 locks and resets the setting at the end; the timeout is set only after its
 check, so a refusal changes no setting.
+
+### Notification times (migration 44)
+
+`notification_created_at` defaulted to now(), but a direct Data API call
+could name its own value, so a doctor could date a message to their patient
+in the past or the future - and the patient's list is ordered by it, newest
+first. 44 adds one trigger, `notification_assign_created_at`, that gives
+every new notification the start of the inserting transaction, whatever the
+insert named. It is not applied anywhere yet; apply it only with approval,
+as a new migration.
+
+- **Order.** On its own, after 42 and 41, which are applied. No website
+  change goes with it: the website never names the time. The number 43
+  belongs to a separate branch that is not on `main`; 44 does not depend on
+  it and touches nothing it changes, so either can be applied first.
+- **What does not change.** Migration 41's policy - who a doctor may notify,
+  and with what - word for word, and every other policy. The system's
+  writers - the reminder jobs, the cancellation and reassignment notices,
+  and `chatbot-reply`'s critical-chat alerts - never name the time, and the
+  trigger gives exactly what the default gave them, so each writes the same
+  rows at the same times. The trigger runs on insert only: no stored
+  notification changes, and marking one read keeps its time
+  (`tests/db/notification-created-at.test.ts`).
+- **Timing.** One of the windows used for 37, like 41: adding the trigger
+  locks `notification`, which every reminder job writes. The file starts
+  with `set lock_timeout = '3s'` and ends with `reset lock_timeout`. Stopped
+  on the timeout between dropping and creating the trigger - possible only
+  where the runner does not run the file as one transaction - there is no
+  trigger, notifications are dated as before 44, and nothing is refused; the
+  file runs again from the top. As for 41 and 42, check the history and the
+  objects read-only before deciding to run it again.
+- **Before applying - read-only.** Choose a cutoff `T` a moment in the past
+  and record `select count(*) as n, md5(string_agg(notification_id::text ||
+  notification_created_at::text, ',' order by notification_id)) as times
+  from public.notification where notification_created_at < 'T'`. The jobs
+  keep writing newer rows; the cutoff leaves them out.
+- **Verify - read-only.** The history has one entry named
+  `notification_created_at_server_time`, under the time it was applied, whose
+  statements match the file's MD5. `select tgname, tgenabled,
+  pg_get_triggerdef(oid) from pg_trigger where tgrelid =
+  'public.notification'::regclass and not tgisinternal` returns one row,
+  `notification_assign_created_at`, enabled (`O`), `BEFORE INSERT ... FOR EACH
+  ROW`. `select prosecdef, proconfig, proacl from pg_proc where oid =
+  'public.notification_assign_created_at()'::regprocedure` shows `false`,
+  `{search_path=""}`, and no `EXECUTE` for PUBLIC, `anon` or `authenticated`.
+  The before-applying query, with the same `T`, returns the same count and
+  MD5. The policies and the security advisors are unchanged, and the jobs
+  after the apply succeed (`cron.job_run_details`).
+- **Smoke test.** Sending a notification as `doctor@smoke.invalid` is a
+  production write with its own approval; its stored time should be when it
+  was sent. A direct insert naming a past time, as the smoke doctor, can be
+  checked inside a statement that ends by raising an error, as 41's was, so
+  that nothing it writes is kept: the row's time should equal now(), not the
+  time named.
+
+Its down-script,
+`supabase/rollbacks/20260902100044_notification_created_at_server_time.down.sql`,
+drops the trigger and its function, so a notification is dated by its
+default - and by its sender, where the sender names a time - as before. No
+data changes either way, and nothing depends on 44, so it goes back first
+and alone. It waits at most 3 seconds for its lock, set only after its check,
+and resets the setting at the end. It runs while either the trigger or the
+function is there, so a run that stops between dropping one and the other
+is finished by running it again; it refuses only once both are gone.
 
 ## Bundle budget
 
