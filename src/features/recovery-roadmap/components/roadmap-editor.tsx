@@ -1,4 +1,5 @@
-import { Archive, ArrowDown, ArrowUp, Check, CircleDashed, ListPlus, Pencil, Plus, Target, X } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
+import { Archive, ArrowDown, ArrowUp, Check, CircleDashed, ListPlus, Pencil, Plus, RotateCcw, Target, X } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 
 import { FormError } from '@/components/feedback/form-error'
@@ -8,19 +9,26 @@ import { Button } from '@/components/ui/button'
 import { Field, Input, Select, Textarea } from '@/components/ui/field'
 import { ProgressBar } from '@/components/ui/progress'
 import type { PlanWithGoals, TreatmentGoal } from '@/features/treatment-plans/api'
-import { formatDate, toDateKey } from '@/lib/format'
+import { useQueryKeys } from '@/features/auth/use-query-keys'
+import { deviceTimeZone, todayIn } from '@/features/calendar/calendar-model'
+import { fetchOwnClinicTimeZone } from '@/features/patients/api'
+import { useNow } from '@/hooks/use-now'
+import { formatDate } from '@/lib/format'
 import { treatmentGoalStatus } from '@/lib/status'
 import { cn } from '@/lib/utils'
 
 import type { RecoveryActivity, RecoveryPhase } from '../api'
 import {
   useArchiveActivity,
+  useArchivedRoadmap,
   useArchivePhase,
   useCreateActivity,
   useCreatePhase,
   useLinkGoal,
   useReorderActivities,
   useReorderPhases,
+  useRestoreActivity,
+  useRestorePhase,
   useRoadmap,
   useUpdateActivity,
   useUpdatePhase,
@@ -48,16 +56,24 @@ function moved<T>(items: readonly T[], index: number, by: -1 | 1): T[] {
  * alone; here they are only shown.
  */
 export function RoadmapEditor({ patientId, plan }: { patientId: string; plan: PlanWithGoals }) {
+  const queryKeys = useQueryKeys()
   const roadmapQuery = useRoadmap(patientId, [plan], { live: true })
-  const today = toDateKey()
+  // The clinic's day, as the patient's roadmap counts it - not this device's.
+  const zoneQuery = useQuery({
+    queryKey: queryKeys.ownClinic.timeZone(),
+    queryFn: fetchOwnClinicTimeZone,
+  })
+  const today = todayIn(zoneQuery.data ?? deviceTimeZone(), new Date(useNow()))
 
   const createPhase = useCreatePhase(patientId)
   const updatePhase = useUpdatePhase(patientId)
   const archivePhase = useArchivePhase(patientId)
+  const restorePhase = useRestorePhase(patientId)
   const reorderPhases = useReorderPhases(patientId)
   const createActivity = useCreateActivity(patientId)
   const updateActivity = useUpdateActivity(patientId)
   const archiveActivity = useArchiveActivity(patientId)
+  const restoreActivity = useRestoreActivity(patientId)
   const reorderActivities = useReorderActivities(patientId)
   const linkGoal = useLinkGoal(patientId)
 
@@ -65,16 +81,23 @@ export function RoadmapEditor({ patientId, plan }: { patientId: string; plan: Pl
     createPhase,
     updatePhase,
     archivePhase,
+    restorePhase,
     reorderPhases,
     createActivity,
     updateActivity,
     archiveActivity,
+    restoreActivity,
     reorderActivities,
     linkGoal,
   ]
   const busy = changes.some((change) => change.isPending)
   const failed = changes.find((change) => change.isError)
+  // Each change starts by clearing what the last one said, so a failure is
+  // never left on screen once a later change has gone through.
+  const fresh = () => changes.forEach((change) => change.reset())
   const [addingPhase, setAddingPhase] = useState(false)
+  const [showArchived, setShowArchived] = useState(false)
+  const archivedQuery = useArchivedRoadmap(patientId, plan.treatment_plan_id, showArchived)
 
   const headingId = `roadmap-${plan.treatment_plan_id}`
   const roadmap = roadmapQuery.data ? planRoadmap(plan.treatment_plan_id, plan.treatment_goal, roadmapQuery.data, today) : null
@@ -126,28 +149,46 @@ export function RoadmapEditor({ patientId, plan }: { patientId: string; plan: Pl
                   isFirst={index === 0}
                   isLast={index === roadmap.phases.length - 1}
                   busy={busy}
-                  onSave={(input) => updatePhase.mutateAsync({ phaseId: item.phase.recovery_phase_id, ...input })}
-                  onMove={(by) =>
+                  onSave={(input) => {
+                    fresh()
+                    return updatePhase.mutateAsync({ phaseId: item.phase.recovery_phase_id, ...input })
+                  }}
+                  onMove={(by) => {
+                    fresh()
                     reorderPhases.mutate({
                       planId: plan.treatment_plan_id,
                       phaseIds: moved(roadmap.phases, index, by).map((phase) => phase.phase.recovery_phase_id),
                     })
-                  }
-                  onArchive={() => archivePhase.mutate(item.phase.recovery_phase_id)}
-                  onAddActivity={(input) =>
-                    createActivity.mutateAsync({ phaseId: item.phase.recovery_phase_id, ...input })
-                  }
-                  onSaveActivity={(activityId, input) => updateActivity.mutateAsync({ activityId, ...input })}
-                  onMoveActivity={(activityIndex, by) =>
+                  }}
+                  onArchive={() => {
+                    fresh()
+                    archivePhase.mutate(item.phase.recovery_phase_id)
+                  }}
+                  onAddActivity={(input) => {
+                    fresh()
+                    return createActivity.mutateAsync({ phaseId: item.phase.recovery_phase_id, ...input })
+                  }}
+                  onSaveActivity={(activityId, input) => {
+                    fresh()
+                    return updateActivity.mutateAsync({ activityId, ...input })
+                  }}
+                  onMoveActivity={(activityIndex, by) => {
+                    fresh()
                     reorderActivities.mutate({
                       phaseId: item.phase.recovery_phase_id,
                       activityIds: moved(item.activities, activityIndex, by).map(
                         (activity) => activity.recovery_activity_id,
                       ),
                     })
-                  }
-                  onArchiveActivity={(activityId) => archiveActivity.mutate(activityId)}
-                  onLinkGoal={(goalId, phaseId) => linkGoal.mutate({ goalId, phaseId })}
+                  }}
+                  onArchiveActivity={(activityId) => {
+                    fresh()
+                    archiveActivity.mutate(activityId)
+                  }}
+                  onLinkGoal={(goalId, phaseId) => {
+                    fresh()
+                    linkGoal.mutate({ goalId, phaseId })
+                  }}
                 />
               ))}
             </ol>
@@ -167,6 +208,7 @@ export function RoadmapEditor({ patientId, plan }: { patientId: string; plan: Pl
               submitLabel="Add phase"
               onCancel={() => setAddingPhase(false)}
               onSubmit={async (input) => {
+                fresh()
                 await createPhase.mutateAsync({ planId: plan.treatment_plan_id, ...input })
                 setAddingPhase(false)
               }}
@@ -177,6 +219,89 @@ export function RoadmapEditor({ patientId, plan }: { patientId: string; plan: Pl
               Add phase
             </Button>
           )}
+
+          {/* What has been archived, to put back. Read only when opened. */}
+          <div className="border-t border-[var(--color-border)] pt-4">
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-expanded={showArchived}
+              onClick={() => setShowArchived((open) => !open)}
+            >
+              <Archive aria-hidden="true" />
+              {showArchived ? 'Hide archived' : 'Show archived'}
+            </Button>
+            {showArchived ? (
+              archivedQuery.isPending ? (
+                <LoadingState label="Loading what was archived…" />
+              ) : archivedQuery.error ? (
+                <ErrorState error={archivedQuery.error} onRetry={() => void archivedQuery.refetch()} />
+              ) : archivedQuery.data &&
+                archivedQuery.data.phases.length + archivedQuery.data.activities.length > 0 ? (
+                <ul className="mt-2 divide-y divide-[var(--color-border)] border-y border-[var(--color-border)]">
+                  {archivedQuery.data.phases.map((phase) => (
+                    <li
+                      key={phase.recovery_phase_id}
+                      className="flex flex-col gap-2 py-2.5 sm:flex-row sm:items-center sm:justify-between"
+                    >
+                      <p className="min-w-0 text-sm text-body">
+                        <span className="font-medium">Phase: </span>
+                        {phase.recovery_phase_title}
+                        <span className="text-muted" data-numeric>
+                          {' '}
+                          · archived {formatDate(phase.recovery_phase_archived_at)}
+                        </span>
+                      </p>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        disabled={busy}
+                        aria-label={`Restore phase ${phase.recovery_phase_title}`}
+                        onClick={() => {
+                          fresh()
+                          restorePhase.mutate(phase.recovery_phase_id)
+                        }}
+                      >
+                        <RotateCcw aria-hidden="true" />
+                        Restore
+                      </Button>
+                    </li>
+                  ))}
+                  {archivedQuery.data.activities.map((activity) => (
+                    <li
+                      key={activity.recovery_activity_id}
+                      className="flex flex-col gap-2 py-2.5 sm:flex-row sm:items-center sm:justify-between"
+                    >
+                      <p className="min-w-0 text-sm text-body">
+                        <span className="font-medium">Activity: </span>
+                        {activity.recovery_activity_title}
+                        <span className="text-muted" data-numeric>
+                          {' '}
+                          · {activity.recovery_activity_completed_at ? 'done, ' : ''}archived{' '}
+                          {formatDate(activity.recovery_activity_archived_at)}
+                        </span>
+                      </p>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        disabled={busy}
+                        aria-label={`Restore activity ${activity.recovery_activity_title}`}
+                        onClick={() => {
+                          fresh()
+                          restoreActivity.mutate(activity.recovery_activity_id)
+                        }}
+                      >
+                        <RotateCcw aria-hidden="true" />
+                        Restore
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-2 text-sm text-muted">Nothing in this plan is archived.</p>
+              )
+            ) : null}
+          </div>
         </>
       ) : null}
     </section>
@@ -296,7 +421,7 @@ function PhaseEditor({
         <div className="mt-3 rounded-[var(--radius-sm)] bg-warning-50 p-3 text-sm text-body">
           <p>
             Archive “{name}”? It leaves the patient’s roadmap with its activities; what was done stays on record. Its
-            goals stay in the plan, in no phase.
+            goals stay in the plan, in no phase. It can be restored from the archived list.
           </p>
           <div className="mt-2 flex gap-2">
             <Button
@@ -421,8 +546,10 @@ function ActivityRow({
 }) {
   const done = activity.recovery_activity_completed_at !== null
   const name = activity.recovery_activity_title
+  const [confirmingArchive, setConfirmingArchive] = useState(false)
   return (
-    <li className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between">
+    <li className="py-3">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex min-w-0 gap-3">
         {done ? (
           <Check className="mt-0.5 size-5 shrink-0 text-success-700" aria-hidden="true" />
@@ -452,10 +579,40 @@ function ActivityRow({
         <Button variant="ghost" size="sm" disabled={isLast || busy} onClick={() => onMove(1)} aria-label={`Move activity ${name} down`}>
           <ArrowDown aria-hidden="true" />
         </Button>
-        <Button variant="ghost" size="sm" disabled={busy} onClick={onArchive} aria-label={`Archive activity ${name}`}>
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={busy}
+          onClick={() => setConfirmingArchive(true)}
+          aria-label={`Archive activity ${name}`}
+        >
           <Archive aria-hidden="true" />
         </Button>
       </div>
+      </div>
+      {confirmingArchive ? (
+        <div className="mt-2 rounded-[var(--radius-sm)] bg-warning-50 p-3 text-sm text-body">
+          <p>
+            Archive “{name}”? It leaves the patient’s roadmap{done ? '; that they did it stays on record' : ''}. It can
+            be restored from the archived list.
+          </p>
+          <div className="mt-2 flex gap-2">
+            <Button
+              variant="danger"
+              size="sm"
+              onClick={() => {
+                setConfirmingArchive(false)
+                onArchive()
+              }}
+            >
+              Archive activity
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setConfirmingArchive(false)}>
+              Keep it
+            </Button>
+          </div>
+        </div>
+      ) : null}
     </li>
   )
 }

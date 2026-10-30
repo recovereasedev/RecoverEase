@@ -2,7 +2,7 @@ import { readdir, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { PGlite } from '@electric-sql/pglite'
+import { PGlite, type Extensions } from '@electric-sql/pglite'
 
 const MIGRATIONS_DIR = fileURLToPath(
   new URL('../../../supabase/migrations', import.meta.url),
@@ -216,11 +216,14 @@ async function readMigrations(): Promise<{ name: string; sql: string }[]> {
  * `stopAfter` (a version prefix such as '20260902100028') stops the replay
  * after that migration, so a test can describe an earlier schema, or seed
  * data before the next migration and watch what it does to it.
+ *
+ * `extensions` loads PGlite extensions into the database - `pageinspect`, for
+ * a test that reads which lock a statement left on a row.
  */
 export async function createTestDatabase(
-  options: { anonTablePrivileges?: boolean; stopAfter?: string } = {},
+  options: { anonTablePrivileges?: boolean; stopAfter?: string; extensions?: Extensions } = {},
 ): Promise<TestDatabase> {
-  const db = new PGlite()
+  const db = new PGlite(options.extensions ? { extensions: options.extensions } : {})
   await db.waitReady
 
   await db.exec(SUPABASE_COMPAT)

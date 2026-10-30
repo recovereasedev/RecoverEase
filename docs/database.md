@@ -313,7 +313,19 @@ stamp the server's time and record the event. The doctor reorders through
 (caller's rights, under their own RLS), which take the full new order in one
 call. Nothing is deleted through the website: a phase or an activity is
 archived (`_archived_at`), its history kept; archiving a phase takes its
-goals out of it.
+goals out of it. Either can be restored: a phase comes back at the end of
+its plan's order with its activities and whatever was done in them (its
+goals stay out until placed again), and an activity at the end of its
+phase, done or not as it was - only while that phase is current.
+
+Changes that meet are serialised by row locks, not left to chance: a
+reorder locks the plan's (or phase's) current rows before it checks the
+new order, and writes only those rows, so none is archived, restored or
+moved out from under it and no archived row is given a place; placing a
+goal in a phase locks the phase `FOR SHARE`, so the goal and an archive of
+that phase cannot cross - whichever comes second either takes the goal back
+out or is refused; and the patient's functions check whose activity it is
+before they lock it, so nobody else's call takes the lock.
 
 A goal joins only a phase of its own plan - a composite foreign key
 (`treatment_goal_phase_in_plan`, `ON DELETE SET NULL (recovery_phase_id)`,

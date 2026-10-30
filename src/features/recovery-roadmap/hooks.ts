@@ -9,12 +9,15 @@ import {
   completeActivity,
   createActivity,
   createPhase,
+  fetchArchived,
   fetchGoalStatusEvents,
   fetchRoadmap,
   linkGoalToPhase,
   reopenActivity,
   reorderActivities,
   reorderPhases,
+  restoreActivity,
+  restorePhase,
   updateActivity,
   updatePhase,
   type ActivityInput,
@@ -42,6 +45,16 @@ export function useRoadmap(
     queryFn: () => fetchRoadmap(planIds),
     enabled: Boolean(patientId) && plans !== undefined,
     ...(live ? LIVE : {}),
+  })
+}
+
+/** A plan's archived phases and activities, read when the doctor opens them. */
+export function useArchivedRoadmap(patientId: string, planId: string, enabled: boolean) {
+  const queryKeys = useQueryKeys()
+  return useQuery({
+    queryKey: queryKeys.roadmap.archivedOf(patientId, planId),
+    queryFn: () => fetchArchived(planId),
+    enabled: Boolean(patientId) && enabled,
   })
 }
 
@@ -106,6 +119,10 @@ export const useReorderActivities = (patientId: string) =>
   useRoadmapChange(patientId, (input: { phaseId: string; activityIds: string[] }) =>
     reorderActivities(input.phaseId, input.activityIds),
   )
+export const useRestorePhase = (patientId: string) =>
+  useRoadmapChange(patientId, (phaseId: string) => restorePhase(phaseId))
+export const useRestoreActivity = (patientId: string) =>
+  useRoadmapChange(patientId, (activityId: string) => restoreActivity(activityId))
 export const useLinkGoal = (patientId: string) =>
   useRoadmapChange(patientId, (input: { goalId: string; phaseId: string | null }) =>
     linkGoalToPhase(input.goalId, input.phaseId),

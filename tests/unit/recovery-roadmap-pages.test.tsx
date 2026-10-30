@@ -30,6 +30,9 @@ const api = vi.hoisted(() => ({
   archiveActivity: vi.fn(),
   reorderActivities: vi.fn(),
   linkGoal: vi.fn(),
+  archived: vi.fn(),
+  restorePhase: vi.fn(),
+  restoreActivity: vi.fn(),
 }))
 
 vi.mock('@/features/auth/auth-context', () => ({ useCurrentUser: () => api.user }))
@@ -52,6 +55,9 @@ vi.mock('@/features/recovery-roadmap/api', async (importOriginal) => ({
   archiveActivity: api.archiveActivity,
   reorderActivities: api.reorderActivities,
   linkGoalToPhase: api.linkGoal,
+  fetchArchived: api.archived,
+  restorePhase: api.restorePhase,
+  restoreActivity: api.restoreActivity,
 }))
 vi.mock('@/features/medications/api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/features/medications/api')>()),
@@ -198,9 +204,12 @@ beforeEach(() => {
     api.archiveActivity,
     api.reorderActivities,
     api.linkGoal,
+    api.restorePhase,
+    api.restoreActivity,
   ]) {
     write.mockReset().mockResolvedValue({})
   }
+  api.archived.mockReset().mockResolvedValue({ phases: [], activities: [] })
 })
 
 afterEach(() => {
@@ -428,6 +437,71 @@ describe('the doctor’s roadmap editor', () => {
     editor()
     fireEvent.click(await screen.findByRole('button', { name: 'Move phase Rehabilitation up' }))
     expect(await screen.findByText('The roadmap was not changed')).toBeInTheDocument()
+  })
+
+  it('clears a refusal once a later change goes through', async () => {
+    api.reorderPhases.mockRejectedValue(new Error('The new order must list each of the plan’s current phases once'))
+    editor()
+    fireEvent.click(await screen.findByRole('button', { name: 'Move phase Rehabilitation up' }))
+    expect(await screen.findByText('The roadmap was not changed')).toBeInTheDocument()
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Move activity Take prescribed medication down' })).toBeEnabled())
+    fireEvent.click(screen.getByRole('button', { name: 'Move activity Take prescribed medication down' }))
+    await waitFor(() => expect(api.reorderActivities).toHaveBeenCalledWith('p1', ['a2', 'a1']))
+    await waitFor(() => expect(screen.queryByText('The roadmap was not changed')).not.toBeInTheDocument())
+  })
+
+  it('archives an activity only once the doctor confirms, saying what is kept', async () => {
+    editor()
+    fireEvent.click(await screen.findByRole('button', { name: 'Archive activity Take prescribed medication' }))
+    expect(screen.getByText(/that they did it stays on record/)).toBeInTheDocument()
+    expect(api.archiveActivity).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Keep it' }))
+    expect(screen.queryByText(/that they did it stays on record/)).not.toBeInTheDocument()
+    expect(api.archiveActivity).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Archive activity Take prescribed medication' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Archive activity' }))
+    await waitFor(() => expect(api.archiveActivity.mock.calls[0]![0]).toBe('a1'))
+  })
+
+  it('judges a phase by the clinic’s day, not this device’s', async () => {
+    // 12:30 UTC on 4 November is already 5 November at a clinic on UTC+14.
+    vi.setSystemTime(new Date('2026-11-04T12:30:00Z'))
+    api.zone.mockResolvedValue('Pacific/Kiritimati')
+    api.roadmap.mockResolvedValue({
+      phases: [phase('p1', 1, 'Starts on the 5th', '2026-11-05')],
+      activities: [activity('a1', 'p1', 1, 'Begin', null)],
+    })
+    editor()
+    const heading = await screen.findByRole('heading', { name: 'Phase 1 — Starts on the 5th' })
+    await waitFor(() => expect(within(heading.parentElement as HTMLElement).getByText('In progress')).toBeInTheDocument())
+  })
+
+  it('lists what was archived and restores a phase or an activity', async () => {
+    api.archived.mockResolvedValue({
+      phases: [{ ...phase('p-old', 4, 'Long-Term Maintenance'), recovery_phase_archived_at: '2026-11-01T02:00:00Z' }],
+      activities: [
+        {
+          ...activity('a-old', 'p2', 3, 'Attend check-ups', '2026-10-20T01:00:00+00:00'),
+          recovery_activity_archived_at: '2026-11-02T02:00:00Z',
+        },
+      ],
+    })
+    editor()
+    const toggle = await screen.findByRole('button', { name: 'Show archived' })
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    expect(api.archived).not.toHaveBeenCalled()
+    fireEvent.click(toggle)
+    expect(screen.getByRole('button', { name: 'Hide archived' })).toHaveAttribute('aria-expanded', 'true')
+    expect(await screen.findByText(/done, archived 2 November/)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Restore phase Long-Term Maintenance' }))
+    await waitFor(() => expect(api.restorePhase.mock.calls[0]![0]).toBe('p-old'))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Restore activity Attend check-ups' })).toBeEnabled())
+    fireEvent.click(screen.getByRole('button', { name: 'Restore activity Attend check-ups' }))
+    await waitFor(() => expect(api.restoreActivity.mock.calls[0]![0]).toBe('a-old'))
   })
 })
 

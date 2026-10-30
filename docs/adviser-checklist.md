@@ -90,9 +90,10 @@ shows each plan with its goals down a path, and the doctor writes plans and
 goals on the record. What is new:
 
 - *Doctor*: on the record's Treatment tab, each plan gets a Recovery
-  roadmap - phases with dates inside the plan's, reordered, edited and
-  archived; activities in each, likewise; the plan's existing goals placed
-  in a phase; and what the patient has marked done, with the date.
+  roadmap - phases with dates inside the plan's, reordered, edited,
+  archived (after a confirmation) and restored; activities in each,
+  likewise; the plan's existing goals placed in a phase; and what the
+  patient has marked done, with the date.
 - *Patient*: `/patient/roadmap` - the plan, its progress, its phases with
   their state (Completed, In progress, Upcoming), activities to mark done
   or undo, the plan's goals, upcoming doses, appointments, activities and

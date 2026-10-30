@@ -494,6 +494,290 @@ describe('the recovery roadmap (migration 45)', () => {
   })
 })
 
+describe('migration 45 under concurrent sessions', () => {
+  // PGlite runs one connection, so two transactions cannot truly overlap
+  // here. What can be shown is what makes them safe when they do: the row
+  // lock each statement takes, read straight off the table's page
+  // (pageinspect) before its transaction ends, and the outcome of each
+  // order the two can come in. Each lock test would fail against the
+  // statements as first written.
+  let database: TestDatabase
+  let fx: Fixture
+  let today: string
+
+  const add = async (sql: string, params: unknown[]) =>
+    Object.values((await database.asUser<Record<string, string>>(fx.doctorAUserId, sql, params))[0]!)[0]!
+
+  /** A plan of Alice's with nothing yet locked or linked in it. */
+  const freshPlan = async (title: string) =>
+    Object.values(
+      (
+        await database.asService<{ id: string }>(
+          `insert into public.treatment_plan (pat_id, doc_id, treatment_plan_title, treatment_plan_start_date)
+           values ($1, $2, $3, $4::date) returning treatment_plan_id as id`,
+          [fx.alicePatId, fx.doctorAId, title, today],
+        )
+      )[0]!,
+    )[0]!
+
+  /**
+   * Runs `steps` as `userId` in one transaction, then `inspect` as the
+   * database's owner inside that same transaction - while its row locks are
+   * still held - and rolls it all back.
+   */
+  async function inOneTransaction<T>(
+    userId: string,
+    steps: (query: (sql: string, params?: unknown[]) => Promise<unknown>) => Promise<void>,
+    inspect: () => Promise<T>,
+  ): Promise<T> {
+    const db = database.db
+    await db.exec('begin')
+    try {
+      await db.query(`select set_config('request.jwt.claims', $1, true)`, [JSON.stringify({ sub: userId })])
+      await db.exec('set local role authenticated')
+      await steps((sql, params = []) => db.query(sql, params))
+      await db.exec('reset role')
+      return await inspect()
+    } finally {
+      await db.exec('rollback')
+    }
+  }
+
+  /** The lock flags on a row's current version, from its heap page. */
+  const rowLock = async (table: string, key: string, id: string) => {
+    const [row] = (
+      await database.db.query<{ flags: string; mine: boolean }>(
+        `select array_to_string(f.raw_flags || f.combined_flags, ',') as flags,
+                h.t_xmax::text = pg_current_xact_id()::text as mine
+           from public.${table} t,
+                lateral heap_page_items(get_raw_page('public.${table}', (t.ctid::text::point)[0]::int)) h,
+                lateral heap_tuple_infomask_flags(h.t_infomask, h.t_infomask2) f
+          where t.${key} = $1
+            and h.lp = (t.ctid::text::point)[1]::int`,
+        [id],
+      )
+    ).rows
+    return row!
+  }
+
+  beforeAll(async () => {
+    const { pageinspect } = await import('@electric-sql/pglite/contrib/pageinspect')
+    database = await createTestDatabase({ extensions: { pageinspect } })
+    await database.db.exec('create extension pageinspect')
+    fx = await seedFixture(database)
+    ;[{ today }] = await database.asService<{ today: string }>('select public.app_today()::text as today')
+  })
+
+  afterAll(async () => {
+    await database?.close()
+  })
+
+  it('a goal joining a phase holds it FOR SHARE until it commits, so an archive cannot cross it', async () => {
+    const plan = await freshPlan('Goal and archive')
+    const phaseId = await add(ADD_PHASE, [plan, 'Joined', null, null])
+    const goalId = await add(
+      `insert into public.treatment_goal (treatment_plan_id, treatment_goal_description) values ($1, 'Stairs') returning treatment_goal_id`,
+      [plan],
+    )
+
+    const lock = await inOneTransaction(
+      fx.doctorAUserId,
+      async (query) => {
+        await query('update public.treatment_goal set recovery_phase_id = $2 where treatment_goal_id = $1', [goalId, phaseId])
+      },
+      () => rowLock('recovery_phase', 'recovery_phase_id', phaseId),
+    )
+    // FOR SHARE, which an archive's update waits for. The foreign key's own
+    // check takes only FOR KEY SHARE, which does not hold an archive back.
+    expect(lock.mine).toBe(true)
+    expect(lock.flags).toContain('HEAP_XMAX_LOCK_ONLY')
+    expect(lock.flags).toContain('HEAP_XMAX_SHR_LOCK')
+  })
+
+  it('whichever comes second, a goal never ends up in an archived phase', async () => {
+    const plan = await freshPlan('Either order')
+    const goalId = await add(
+      `insert into public.treatment_goal (treatment_plan_id, treatment_goal_description) values ($1, 'Kneel') returning treatment_goal_id`,
+      [plan],
+    )
+    const phaseOf = async () =>
+      (await database.asService<{ phase: string | null }>(
+        'select recovery_phase_id as phase from public.treatment_goal where treatment_goal_id = $1',
+        [goalId],
+      ))[0]!.phase
+
+    // The archive first: the goal is refused.
+    const first = await add(ADD_PHASE, [plan, 'Archived first', null, null])
+    await add('update public.recovery_phase set recovery_phase_archived_at = now() where recovery_phase_id = $1 returning recovery_phase_id', [first])
+    await expect(
+      database.asUser(fx.doctorAUserId, 'update public.treatment_goal set recovery_phase_id = $2 where treatment_goal_id = $1', [goalId, first]),
+    ).rejects.toThrow(/archived/)
+    expect(await phaseOf()).toBeNull()
+
+    // The goal first: the archive takes it back out.
+    const second = await add(ADD_PHASE, [plan, 'Archived second', null, null])
+    await database.asUser(fx.doctorAUserId, 'update public.treatment_goal set recovery_phase_id = $2 where treatment_goal_id = $1', [goalId, second])
+    await add('update public.recovery_phase set recovery_phase_archived_at = now() where recovery_phase_id = $1 returning recovery_phase_id', [second])
+    expect(await phaseOf()).toBeNull()
+  })
+
+  it('a reorder locks the current phases before it checks the new order, and leaves an archived one alone', async () => {
+    const plan = await freshPlan('Reorder phases')
+    const [one, two, three] = [
+      await add(ADD_PHASE, [plan, 'One', null, null]),
+      await add(ADD_PHASE, [plan, 'Two', null, null]),
+      await add(ADD_PHASE, [plan, 'Three', null, null]),
+    ]
+    await add('update public.recovery_phase set recovery_phase_archived_at = now() where recovery_phase_id = $1 returning recovery_phase_id', [three])
+
+    // A stale order still naming the archived phase: refused - but only once
+    // the current phases were locked, so nothing could change under the check.
+    const locks = await inOneTransaction(
+      fx.doctorAUserId,
+      async (query) => {
+        await query('savepoint attempt')
+        await expect(query('select public.doctor_reorder_recovery_phases($1, $2::uuid[])', [plan, [three, one, two]])).rejects.toThrow(
+          /each of the plan's current phases once/,
+        )
+        await query('rollback to savepoint attempt')
+      },
+      async () => ({
+        one: await rowLock('recovery_phase', 'recovery_phase_id', one),
+        two: await rowLock('recovery_phase', 'recovery_phase_id', two),
+        three: await rowLock('recovery_phase', 'recovery_phase_id', three),
+      }),
+    )
+    expect(locks.one.flags).toContain('HEAP_XMAX_EXCL_LOCK')
+    expect(locks.two.flags).toContain('HEAP_XMAX_EXCL_LOCK')
+    expect(locks.three.flags).not.toContain('HEAP_XMAX_EXCL_LOCK')
+
+    // The current order goes through, and the archived phase keeps its place.
+    const before = await database.asService<{ order: number }>(
+      'select recovery_phase_order as order from public.recovery_phase where recovery_phase_id = $1',
+      [three],
+    )
+    await database.asUser(fx.doctorAUserId, 'select public.doctor_reorder_recovery_phases($1, $2::uuid[])', [plan, [two, one]])
+    const after = await database.asService<{ id: string; order: number }>(
+      'select recovery_phase_id as id, recovery_phase_order as order from public.recovery_phase where treatment_plan_id = $1 order by 2',
+      [plan],
+    )
+    expect(after.filter((row) => row.id !== three).map((row) => row.id)).toEqual([two, one])
+    expect(after.find((row) => row.id === three)!.order).toBe(before[0]!.order)
+  })
+
+  it('an activity moved out of a phase is not reordered in it, and a reorder locks only the phase’s current activities', async () => {
+    const plan = await freshPlan('Reorder activities')
+    const from = await add(ADD_PHASE, [plan, 'From', null, null])
+    const to = await add(ADD_PHASE, [plan, 'To', null, null])
+    const [a, b, c] = [
+      await add(ADD_ACTIVITY, [from, 'A', null]),
+      await add(ADD_ACTIVITY, [from, 'B', null]),
+      await add(ADD_ACTIVITY, [from, 'C', null]),
+    ]
+
+    const locks = await inOneTransaction(
+      fx.doctorAUserId,
+      async (query) => {
+        await query('savepoint attempt')
+        await expect(query('select public.doctor_reorder_recovery_activities($1, $2::uuid[])', [from, [a, b]])).rejects.toThrow(
+          /each of the phase's current activities once/,
+        )
+        await query('rollback to savepoint attempt')
+      },
+      async () => {
+        const flags: string[] = []
+        for (const id of [a, b, c]) flags.push((await rowLock('recovery_activity', 'recovery_activity_id', id)).flags)
+        return flags
+      },
+    )
+    for (const flags of locks) expect(flags).toContain('HEAP_XMAX_EXCL_LOCK')
+
+    // C moves to the other phase; an order made before the move still names
+    // it, and is refused. C keeps its place in its new phase.
+    await database.asUser(fx.doctorAUserId, 'update public.recovery_activity set recovery_phase_id = $2 where recovery_activity_id = $1', [c, to])
+    const placed = await database.asService<{ order: number }>(
+      'select recovery_activity_order as order from public.recovery_activity where recovery_activity_id = $1',
+      [c],
+    )
+    await expect(
+      database.asUser(fx.doctorAUserId, 'select public.doctor_reorder_recovery_activities($1, $2::uuid[])', [from, [c, b, a]]),
+    ).rejects.toThrow(/each of the phase's current activities once/)
+    expect(
+      await database.asService('select recovery_activity_order as order from public.recovery_activity where recovery_activity_id = $1', [c]),
+    ).toEqual(placed)
+
+    await database.asUser(fx.doctorAUserId, 'select public.doctor_reorder_recovery_activities($1, $2::uuid[])', [from, [b, a]])
+    const order = await database.asService<{ id: string }>(
+      `select recovery_activity_id as id from public.recovery_activity
+        where recovery_phase_id = $1 and recovery_activity_archived_at is null order by recovery_activity_order`,
+      [from],
+    )
+    expect(order.map((row) => row.id)).toEqual([b, a])
+  })
+
+  it('another user’s attempt to mark an activity is refused before it takes any lock', async () => {
+    const plan = await freshPlan('Ownership first')
+    const phaseId = await add(ADD_PHASE, [plan, 'Owned', null, null])
+    const task = await add(ADD_ACTIVITY, [phaseId, 'Only Alice marks this', null])
+
+    for (const userId of [fx.bobUserId, fx.doctorAUserId]) {
+      const lock = await inOneTransaction(
+        userId,
+        async (query) => {
+          await query('savepoint attempt')
+          await expect(query(COMPLETE, [task])).rejects.toThrow(/Only the patient/)
+          await query('rollback to savepoint attempt')
+        },
+        () => rowLock('recovery_activity', 'recovery_activity_id', task),
+      )
+      expect(lock.flags).not.toContain('HEAP_XMAX_LOCK_ONLY')
+    }
+
+    // Alice's own press still locks it, marks it once, and records it once.
+    await database.asUser(fx.aliceUserId, COMPLETE, [task])
+    await expect(database.asUser(fx.aliceUserId, COMPLETE, [task])).rejects.toThrow(/already marked done/)
+    expect(
+      await database.asService(
+        `select recovery_activity_event_kind::text as kind from public.recovery_activity_event where recovery_activity_id = $1`,
+        [task],
+      ),
+    ).toEqual([{ kind: 'completed' }])
+  })
+
+  it('restores an archived phase or activity with what was done intact, and an activity only into a current phase', async () => {
+    const plan = await freshPlan('Restoring')
+    const phaseId = await add(ADD_PHASE, [plan, 'Brought back', null, null])
+    const kept = await add(ADD_ACTIVITY, [phaseId, 'Done before archiving', null])
+    await database.asUser(fx.aliceUserId, COMPLETE, [kept])
+    const loose = await add(ADD_ACTIVITY, [phaseId, 'Archived on its own', null])
+    await add('update public.recovery_activity set recovery_activity_archived_at = now() where recovery_activity_id = $1 returning recovery_activity_id', [loose])
+    await add('update public.recovery_phase set recovery_phase_archived_at = now() where recovery_phase_id = $1 returning recovery_phase_id', [phaseId])
+
+    // Its phase archived, the activity cannot come back on its own.
+    await expect(
+      database.asUser(fx.doctorAUserId, 'update public.recovery_activity set recovery_activity_archived_at = null where recovery_activity_id = $1', [loose]),
+    ).rejects.toThrow(/restore the phase first/)
+
+    await database.asUser(fx.doctorAUserId, 'update public.recovery_phase set recovery_phase_archived_at = null where recovery_phase_id = $1', [phaseId])
+    await database.asUser(fx.doctorAUserId, 'update public.recovery_activity set recovery_activity_archived_at = null where recovery_activity_id = $1', [loose])
+
+    const rows = await database.asUser<{ id: string; done: boolean; archived: boolean; order: number }>(
+      fx.aliceUserId,
+      `select recovery_activity_id as id, recovery_activity_completed_at is not null as done,
+              recovery_activity_archived_at is not null as archived, recovery_activity_order as order
+         from public.recovery_activity where recovery_phase_id = $1 order by recovery_activity_order`,
+      [phaseId],
+    )
+    expect(rows).toEqual([
+      { id: kept, done: true, archived: false, order: 1 },
+      { id: loose, done: false, archived: false, order: 2 },
+    ])
+    expect(
+      await database.asService(`select count(*)::int as n from public.recovery_activity_event where recovery_activity_id = $1`, [kept]),
+    ).toEqual([{ n: 1 }])
+  })
+})
+
 describe('migration 45, before and after', () => {
   it('waits at most 3 seconds for its lock, and puts the setting back', async () => {
     const lines = codeLines(await script(MIGRATION_45_FILE))

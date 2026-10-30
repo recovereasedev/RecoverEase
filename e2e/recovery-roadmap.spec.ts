@@ -195,4 +195,22 @@ test.describe('the doctor’s roadmap editor', () => {
     await expect(page.getByRole('heading', { name: 'Phase 4 — Strength Building' })).toBeVisible()
     expect(errors).toEqual([])
   })
+
+  test('fits a 360px phone, with its confirmations and the archived list, nothing running off it', async ({
+    page,
+    signInAs,
+  }) => {
+    await page.setViewportSize({ width: 360, height: 780 })
+    await signInAs('doctor', ROADMAP())
+    await openTreatment(page)
+    await expect(page.getByText('20% · 1 of 5 done')).toBeVisible()
+
+    await page.getByRole('button', { name: 'Archive activity Follow prescribed rest instructions' }).click()
+    await expect(page.getByText(/that they did it stays on record/)).toBeVisible()
+    await page.getByRole('button', { name: 'Show archived' }).click()
+    await expect(page.getByText('Nothing in this plan is archived.')).toBeVisible()
+
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
+    expect(overflow).toBeLessThanOrEqual(0)
+  })
 })

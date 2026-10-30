@@ -532,6 +532,11 @@ begin
     elsif old.recovery_activity_archived_at is not null and new.recovery_activity_archived_at is not null then
       new.recovery_activity_archived_at := old.recovery_activity_archived_at;
     elsif old.recovery_activity_archived_at is not null and new.recovery_activity_archived_at is null then
+      -- Restored, it goes to the end of its phase - which must be current.
+      if phase_closed then
+        raise exception 'This phase is archived; restore the phase first'
+          using errcode = 'check_violation';
+      end if;
       select coalesce(max(a.recovery_activity_order), 0) + 1 into new.recovery_activity_order
         from public.recovery_activity a
        where a.recovery_phase_id = new.recovery_phase_id
@@ -561,19 +566,32 @@ create trigger recovery_activity_prepare
   for each row execute function public.recovery_activity_prepare();
 
 -- A goal joins only a current phase. (Its plan is the foreign key's.)
+--
+-- The phase row is locked FOR SHARE until the goal's transaction ends, so
+-- joining and archiving cannot cross: an archive that comes second waits,
+-- then finds the goal and takes it out (`recovery_phase_release_goals`); a
+-- goal that comes second waits, then finds the phase archived and is
+-- refused. The foreign key's own lock (FOR KEY SHARE) does not hold an
+-- archive back, so it is not enough on its own.
 create or replace function public.treatment_goal_check_phase()
 returns trigger
 language plpgsql
 set search_path = ''
 as $$
+declare
+  is_archived boolean;
 begin
   if new.recovery_phase_id is not null
-     and (tg_op = 'INSERT' or new.recovery_phase_id is distinct from old.recovery_phase_id)
-     and exists (select 1 from public.recovery_phase ph
-                  where ph.recovery_phase_id = new.recovery_phase_id
-                    and ph.recovery_phase_archived_at is not null) then
-    raise exception 'This phase is archived; link the goal to a current phase'
-      using errcode = 'check_violation';
+     and (tg_op = 'INSERT' or new.recovery_phase_id is distinct from old.recovery_phase_id) then
+    select ph.recovery_phase_archived_at is not null
+      into is_archived
+      from public.recovery_phase ph
+     where ph.recovery_phase_id = new.recovery_phase_id
+       for share;
+    if is_archived then
+      raise exception 'This phase is archived; link the goal to a current phase'
+        using errcode = 'check_violation';
+    end if;
   end if;
   return new;
 end;
@@ -623,10 +641,11 @@ revoke all on function public.treatment_goal_record_status() from public, anon, 
 -- ---------------------------------------------------------------------------
 -- The patient marks an activity done, or undoes it
 -- ---------------------------------------------------------------------------
--- The only writes a patient makes to the roadmap. Each locks the activity
--- row, so two presses at once make one change and one event; the second is
--- refused. An activity can be marked only while its phase and itself are on
--- the roadmap and its plan is active.
+-- The only writes a patient makes to the roadmap. Each checks whose
+-- activity it is before anything else, then locks the activity row, so two
+-- presses at once make one change and one event; the second is refused. An
+-- activity can be marked only while its phase and itself are on the roadmap
+-- and its plan is active.
 
 create or replace function public.patient_complete_recovery_activity(target_activity_id uuid)
 returns public.recovery_activity
@@ -642,6 +661,22 @@ declare
   is_closed  boolean;
   activity_row public.recovery_activity;
 begin
+  -- Whose activity it is comes first, read without a lock, so a call from
+  -- anyone else is refused before it takes one.
+  select p.user_id
+    into owner_id
+    from public.recovery_activity a
+    join public.recovery_phase ph on ph.recovery_phase_id = a.recovery_phase_id
+    join public.treatment_plan tp on tp.treatment_plan_id = ph.treatment_plan_id
+    join public.patient p on p.pat_id = tp.pat_id
+   where a.recovery_activity_id = target_activity_id;
+  if me is null or owner_id is distinct from me then
+    raise exception 'Only the patient can mark their own roadmap activity'
+      using errcode = 'insufficient_privilege';
+  end if;
+
+  -- Then the activity, locked until this call ends, and everything that
+  -- decides the change read again under the lock.
   select a.*
     into activity_row
     from public.recovery_activity a
@@ -656,7 +691,7 @@ begin
     join public.patient p on p.pat_id = tp.pat_id
    where ph.recovery_phase_id = activity_row.recovery_phase_id;
 
-  if me is null or owner_id is distinct from me then
+  if owner_id is distinct from me then
     raise exception 'Only the patient can mark their own roadmap activity'
       using errcode = 'insufficient_privilege';
   end if;
@@ -701,6 +736,22 @@ declare
   is_closed  boolean;
   activity_row public.recovery_activity;
 begin
+  -- Whose activity it is comes first, read without a lock, so a call from
+  -- anyone else is refused before it takes one.
+  select p.user_id
+    into owner_id
+    from public.recovery_activity a
+    join public.recovery_phase ph on ph.recovery_phase_id = a.recovery_phase_id
+    join public.treatment_plan tp on tp.treatment_plan_id = ph.treatment_plan_id
+    join public.patient p on p.pat_id = tp.pat_id
+   where a.recovery_activity_id = target_activity_id;
+  if me is null or owner_id is distinct from me then
+    raise exception 'Only the patient can mark their own roadmap activity'
+      using errcode = 'insufficient_privilege';
+  end if;
+
+  -- Then the activity, locked until this call ends, and everything that
+  -- decides the change read again under the lock.
   select a.*
     into activity_row
     from public.recovery_activity a
@@ -715,7 +766,7 @@ begin
     join public.patient p on p.pat_id = tp.pat_id
    where ph.recovery_phase_id = activity_row.recovery_phase_id;
 
-  if me is null or owner_id is distinct from me then
+  if owner_id is distinct from me then
     raise exception 'Only the patient can mark their own roadmap activity'
       using errcode = 'insufficient_privilege';
   end if;
@@ -761,9 +812,12 @@ comment on function public.patient_reopen_recovery_activity(uuid) is
 -- ---------------------------------------------------------------------------
 -- The doctor reorders phases or activities
 -- ---------------------------------------------------------------------------
--- As the caller, under their own row-level security. The new order lists
--- every current row once; it is written in two steps so no two rows ever
--- share a place.
+-- As the caller, under their own row-level security. The current rows are
+-- locked first, so none can be archived, restored, moved or reordered by
+-- another session between the check and the writes; the new order must list
+-- each of them once; and only they are written, in two steps so no two rows
+-- ever share a place. An archived row, or one moved elsewhere, is never
+-- given a place.
 
 create or replace function public.doctor_reorder_recovery_phases(target_plan_id uuid, phase_ids uuid[])
 returns void
@@ -771,30 +825,39 @@ language plpgsql
 security invoker
 set search_path = ''
 as $$
+declare
+  locked_ids uuid[];
 begin
   if not (select app_private.is_my_patient((select app_private.patient_of_treatment_plan(target_plan_id)))) then
     raise exception 'Only the patient''s assigned doctor can change their roadmap'
       using errcode = 'insufficient_privilege';
   end if;
-  if cardinality(phase_ids) is distinct from (select count(distinct id) from unnest(phase_ids) as id)
-     or (select array_agg(ph.recovery_phase_id order by ph.recovery_phase_id)
-           from public.recovery_phase ph
-          where ph.treatment_plan_id = target_plan_id
-            and ph.recovery_phase_archived_at is null)
-        is distinct from
-        (select array_agg(id order by id) from unnest(phase_ids) as id) then
+  select coalesce(array_agg(locked.id order by locked.id), '{}')
+    into locked_ids
+    from (select ph.recovery_phase_id as id
+            from public.recovery_phase ph
+           where ph.treatment_plan_id = target_plan_id
+             and ph.recovery_phase_archived_at is null
+             for update) as locked;
+
+  if phase_ids is null
+     or cardinality(phase_ids) <> (select count(distinct id) from unnest(phase_ids) as id)
+     or locked_ids is distinct from
+        (select coalesce(array_agg(id order by id), '{}') from unnest(phase_ids) as id) then
     raise exception 'The new order must list each of the plan''s current phases once'
       using errcode = 'invalid_parameter_value';
   end if;
 
   update public.recovery_phase ph
      set recovery_phase_order = ph.recovery_phase_order + 100000
-   where ph.treatment_plan_id = target_plan_id
-     and ph.recovery_phase_archived_at is null;
+   where ph.recovery_phase_id = any (locked_ids);
   update public.recovery_phase ph
      set recovery_phase_order = o.position
     from unnest(phase_ids) with ordinality as o(id, position)
-   where ph.recovery_phase_id = o.id;
+   where ph.recovery_phase_id = o.id
+     and ph.recovery_phase_id = any (locked_ids)
+     and ph.treatment_plan_id = target_plan_id
+     and ph.recovery_phase_archived_at is null;
 end;
 $$;
 
@@ -804,30 +867,39 @@ language plpgsql
 security invoker
 set search_path = ''
 as $$
+declare
+  locked_ids uuid[];
 begin
   if not (select app_private.is_my_patient((select app_private.patient_of_recovery_phase(target_phase_id)))) then
     raise exception 'Only the patient''s assigned doctor can change their roadmap'
       using errcode = 'insufficient_privilege';
   end if;
-  if cardinality(activity_ids) is distinct from (select count(distinct id) from unnest(activity_ids) as id)
-     or (select array_agg(a.recovery_activity_id order by a.recovery_activity_id)
-           from public.recovery_activity a
-          where a.recovery_phase_id = target_phase_id
-            and a.recovery_activity_archived_at is null)
-        is distinct from
-        (select array_agg(id order by id) from unnest(activity_ids) as id) then
+  select coalesce(array_agg(locked.id order by locked.id), '{}')
+    into locked_ids
+    from (select a.recovery_activity_id as id
+            from public.recovery_activity a
+           where a.recovery_phase_id = target_phase_id
+             and a.recovery_activity_archived_at is null
+             for update) as locked;
+
+  if activity_ids is null
+     or cardinality(activity_ids) <> (select count(distinct id) from unnest(activity_ids) as id)
+     or locked_ids is distinct from
+        (select coalesce(array_agg(id order by id), '{}') from unnest(activity_ids) as id) then
     raise exception 'The new order must list each of the phase''s current activities once'
       using errcode = 'invalid_parameter_value';
   end if;
 
   update public.recovery_activity a
      set recovery_activity_order = a.recovery_activity_order + 100000
-   where a.recovery_phase_id = target_phase_id
-     and a.recovery_activity_archived_at is null;
+   where a.recovery_activity_id = any (locked_ids);
   update public.recovery_activity a
      set recovery_activity_order = o.position
     from unnest(activity_ids) with ordinality as o(id, position)
-   where a.recovery_activity_id = o.id;
+   where a.recovery_activity_id = o.id
+     and a.recovery_activity_id = any (locked_ids)
+     and a.recovery_phase_id = target_phase_id
+     and a.recovery_activity_archived_at is null;
 end;
 $$;
 

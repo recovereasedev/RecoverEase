@@ -197,6 +197,59 @@ export async function archiveActivity(activityId: string): Promise<RecoveryActiv
   return changeActivity(activityId, { recovery_activity_archived_at: new Date().toISOString() })
 }
 
+/**
+ * Puts an archived phase back on the roadmap, at the end of its plan's order,
+ * with its activities and whatever was done in them; its goals were taken
+ * out when it was archived and stay out until placed again.
+ */
+export async function restorePhase(phaseId: string): Promise<RecoveryPhase> {
+  return changePhase(phaseId, { recovery_phase_archived_at: null })
+}
+
+/**
+ * Puts an archived activity back, at the end of its phase, done or not as it
+ * was. The database refuses it while the phase itself is archived.
+ */
+export async function restoreActivity(activityId: string): Promise<RecoveryActivity> {
+  return changeActivity(activityId, { recovery_activity_archived_at: null })
+}
+
+export type ArchivedRoadmap = {
+  /** The plan's archived phases. */
+  phases: RecoveryPhase[]
+  /** Archived activities in the plan's current phases; one in an archived phase comes back with it. */
+  activities: RecoveryActivity[]
+}
+
+/** What the doctor has archived in a plan, for restoring. */
+export async function fetchArchived(planId: string): Promise<ArchivedRoadmap> {
+  // Read whole and sorted here, where the archive is told apart.
+  const { data: phases, error: phaseError } = await supabase
+    .from('recovery_phase')
+    .select('*')
+    .eq('treatment_plan_id', planId)
+  if (phaseError) throw phaseError
+  const current = new Set(
+    phases.filter((phase) => phase.recovery_phase_archived_at === null).map((phase) => phase.recovery_phase_id),
+  )
+  let activities: RecoveryActivity[] = []
+  if (current.size > 0) {
+    const { data, error } = await supabase
+      .from('recovery_activity')
+      .select('*')
+      .in('recovery_phase_id', [...current])
+    if (error) throw error
+    activities = data.filter((activity) => activity.recovery_activity_archived_at !== null)
+  }
+  const newestFirst = (a: string | null, b: string | null) => (b ?? '').localeCompare(a ?? '')
+  return {
+    phases: phases
+      .filter((phase) => phase.recovery_phase_archived_at !== null)
+      .sort((a, b) => newestFirst(a.recovery_phase_archived_at, b.recovery_phase_archived_at)),
+    activities: activities.sort((a, b) => newestFirst(a.recovery_activity_archived_at, b.recovery_activity_archived_at)),
+  }
+}
+
 async function changeActivity(
   activityId: string,
   changes: TablesUpdate<'recovery_activity'>,

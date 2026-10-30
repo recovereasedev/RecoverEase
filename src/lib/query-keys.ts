@@ -76,6 +76,9 @@ export function queryKeysFor(userId: string) {
       /** Under `forPatient`, so a roadmap change refreshes the charts' view. */
       goalEvents: (patientId: string, from: string) =>
         [...queryKeys.roadmap.forPatient(patientId), 'goal-events', from] as const,
+      /** Under `forPatient`: a plan's archived phases and activities. */
+      archivedOf: (patientId: string, planId: string) =>
+        [...queryKeys.roadmap.forPatient(patientId), 'archived', planId] as const,
     },
 
     medications: {
