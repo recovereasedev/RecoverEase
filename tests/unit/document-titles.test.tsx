@@ -47,6 +47,7 @@ const ROUTES: { path: string; page: string; file: string; title: string | null }
   { path: '/patient/treatment', page: 'PatientTreatmentPage', file: 'treatment-plans/pages/patient-treatment-page.tsx', title: 'Treatment Plan' },
   { path: '/patient/medications', page: 'PatientMedicationsPage', file: 'medications/pages/patient-medications-page.tsx', title: 'Medications' },
   { path: '/patient/calendar', page: 'PatientCalendarPage', file: 'calendar/pages/patient-calendar-page.tsx', title: 'Calendar' },
+  { path: '/patient/roadmap', page: 'PatientRoadmapPage', file: 'recovery-roadmap/pages/patient-roadmap-page.tsx', title: 'Recovery Roadmap' },
   { path: '/patient/appointments', page: 'PatientAppointmentsPage', file: 'appointments/pages/patient-appointments-page.tsx', title: 'Appointments' },
   { path: '/patient/chat', page: 'PatientChatPage', file: 'chat/pages/patient-chat-page.tsx', title: 'Guidance Chat' },
   { path: '/patient/notifications', page: 'NotificationsPage', file: 'notifications/pages/notifications-page.tsx', title: 'Notifications' },

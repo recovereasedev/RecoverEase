@@ -278,6 +278,11 @@ async function main(): Promise<void> {
     lines.push('        Args: Record<PropertyKey, never>')
     lines.push('        Returns: Json')
     lines.push('      }')
+    // Migration 43: a system-wide report, kept with its figures.
+    lines.push('      admin_record_system_report: {')
+    lines.push('        Args: Record<PropertyKey, never>')
+    lines.push("        Returns: Database['public']['Tables']['report']['Row']")
+    lines.push('      }')
     lines.push('      admin_chatbot_usage: {')
     lines.push('        Args: { window_days?: number }')
     lines.push('        Returns: Json')
@@ -310,6 +315,25 @@ async function main(): Promise<void> {
     lines.push('      guidance_assistant_available: {')
     lines.push('        Args: Record<PropertyKey, never>')
     lines.push('        Returns: boolean')
+    lines.push('      }')
+    // Migration 45: the recovery roadmap. The patient marks their own
+    // activity done or undoes it; the assigned doctor reorders.
+    const activityRow = "Database['public']['Tables']['recovery_activity']['Row']"
+    lines.push('      patient_complete_recovery_activity: {')
+    lines.push('        Args: { target_activity_id: string }')
+    lines.push(`        Returns: ${activityRow}`)
+    lines.push('      }')
+    lines.push('      patient_reopen_recovery_activity: {')
+    lines.push('        Args: { target_activity_id: string }')
+    lines.push(`        Returns: ${activityRow}`)
+    lines.push('      }')
+    lines.push('      doctor_reorder_recovery_phases: {')
+    lines.push('        Args: { target_plan_id: string; phase_ids: string[] }')
+    lines.push('        Returns: undefined')
+    lines.push('      }')
+    lines.push('      doctor_reorder_recovery_activities: {')
+    lines.push('        Args: { target_phase_id: string; activity_ids: string[] }')
+    lines.push('        Returns: undefined')
     lines.push('      }')
 
     // The Super Admin's operations (migration 33). Each refuses anyone but a

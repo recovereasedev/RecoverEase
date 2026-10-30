@@ -86,6 +86,11 @@ export function useUpdateGoalStatus(patientId: string) {
       void queryClient.invalidateQueries({
         queryKey: queryKeys.treatment.plansFor(patientId),
       })
+      // The change is recorded in the goal's history (migration 45), which
+      // the progress charts' roadmap view reads.
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.roadmap.forPatient(patientId),
+      })
     },
   })
 }

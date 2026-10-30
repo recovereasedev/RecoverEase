@@ -90,6 +90,7 @@ function recordFor(overrides: Partial<PatientReportData> = {}): PatientReportDat
             treatment_goal_target_date: '2026-10-01',
             treatment_goal_status: 'in_progress',
             treatment_goal_created_at: '2026-02-01T00:00:00Z',
+            recovery_phase_id: null,
           },
           {
             treatment_goal_id: 'g-2',
@@ -98,6 +99,7 @@ function recordFor(overrides: Partial<PatientReportData> = {}): PatientReportDat
             treatment_goal_target_date: null,
             treatment_goal_status: 'achieved',
             treatment_goal_created_at: '2026-02-01T00:00:00Z',
+            recovery_phase_id: null,
           },
         ],
       },

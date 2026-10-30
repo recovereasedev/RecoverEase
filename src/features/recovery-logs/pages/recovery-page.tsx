@@ -1,4 +1,5 @@
 import { Flame } from 'lucide-react'
+import { useEffect, useRef } from 'react'
 
 import { LoadingState, StateView } from '@/components/feedback/state-view'
 import { PageHeader } from '@/components/layout/page-header'
@@ -37,6 +38,13 @@ export function RecoveryPage() {
 
   const logsQuery = useRecoveryLogs(patientId)
   const saveLog = useSaveRecoveryLog(patientId)
+
+  // Arriving from the Recovery Roadmap's "View Progress Charts", the page
+  // opens at the charts. A client-side link does not scroll to a fragment.
+  const chartsRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (window.location.hash === '#progress-charts') chartsRef.current?.scrollIntoView()
+  }, [])
 
   const todayKey = toDateKey()
   const todaysLog = logsQuery.data?.find(
@@ -167,7 +175,8 @@ export function RecoveryPage() {
       </div>
 
       {/* --- Trend charts: module 5.11 ------------------------------------- */}
-      <div className="mt-section lg:mt-8">
+      {/* The Recovery Roadmap's "View Progress Charts" lands here. */}
+      <div id="progress-charts" ref={chartsRef} className="mt-section scroll-mt-28 lg:mt-8">
         <RecoveryProgress patientId={patientId} />
       </div>
     </>

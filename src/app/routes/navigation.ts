@@ -10,6 +10,7 @@ import {
   Megaphone,
   MessageCircle,
   Pill,
+  Route,
   ScrollText,
   Settings,
   Stethoscope,
@@ -87,6 +88,8 @@ const PATIENT_NAV: NavSection[] = [
       // Sixth, so the phone's five-item bar keeps its five; the calendar is
       // in the menu there.
       { label: 'Calendar', to: '/patient/calendar', icon: CalendarRange },
+      // Seventh, for the same reason: in the menu on a phone.
+      { label: 'Recovery roadmap', to: '/patient/roadmap', icon: Route },
     ],
   },
   {

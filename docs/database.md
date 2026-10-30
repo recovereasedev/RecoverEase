@@ -273,6 +273,58 @@ user writing or changing a snapshot, and a check constraint keeps one off a
 doctor's recovery report. Rows from before 43 have none, and nothing
 invents them. Reading is `report_select`, unchanged; no file is stored.
 
+### 15. The recovery roadmap
+
+Module 5.7, enhanced (migration 45). Not applied to production yet. A
+treatment plan is laid out as numbered phases, each holding the activities
+the doctor assigns, which the patient marks done. What already exists stays
+the one source of truth and is never copied:
+
+| Already there | Used as | Never |
+| --- | --- | --- |
+| `treatment_plan` | the roadmap's parent; each active plan has its own roadmap and its own progress | combined with another plan |
+| `treatment_goal` | its one authoritative status; now optionally in one phase of its own plan (`recovery_phase_id`) | duplicated as an activity |
+| `medication_log`, `medication_schedule` | upcoming doses; adherence charts | recorded again, or counted in roadmap progress |
+| `appointment` | upcoming visits | recorded again, or counted in roadmap progress |
+| `recovery_log` | mood charts | recorded again, or counted in roadmap progress |
+
+New:
+
+- **`recovery_phase`**: a plan's phases - title, description, order, and
+  optional start and target end dates inside the plan's. A partial unique
+  index keeps one current phase per place in the order.
+- **`recovery_activity`**: a phase's doctor-assigned activities - title,
+  instructions, optional target date, order - and the patient's completion
+  (`recovery_activity_completed_at`, `_completed_by`).
+- **`recovery_activity_event`**: every time the patient marked an activity
+  done or undid it (`completed` / `reopened`), with who and when.
+  Append-only.
+- **`treatment_goal_status_event`**: every change of a goal's status from
+  migration 45 on - previous status, new status, who, when - written by a
+  trigger on `treatment_goal`. Goals achieved before it have no recorded
+  date, and none is invented.
+
+The patient writes only through `patient_complete_recovery_activity()` and
+`patient_reopen_recovery_activity()` (owner's rights): they check the caller
+is the plan's patient, the plan is active and the activity and its phase are
+current, lock the row so a second press is refused rather than doubled,
+stamp the server's time and record the event. The doctor reorders through
+`doctor_reorder_recovery_phases()` and `doctor_reorder_recovery_activities()`
+(caller's rights, under their own RLS), which take the full new order in one
+call. Nothing is deleted through the website: a phase or an activity is
+archived (`_archived_at`), its history kept; archiving a phase takes its
+goals out of it.
+
+A goal joins only a phase of its own plan - a composite foreign key
+(`treatment_goal_phase_in_plan`, `ON DELETE SET NULL (recovery_phase_id)`,
+PostgreSQL 15 and later; production runs 17.6) - and only a current one.
+
+**Roadmap progress** = (activities marked done + goals in a phase marked
+achieved) / (activities + goals in a phase), per plan, as a whole percent;
+with nothing to count there is none ("No activities yet"). Doses,
+appointments and check-ins are never counted
+(`src/features/recovery-roadmap/roadmap.ts`).
+
 ## Assumptions where the ERD was silent
 
 The ERD types every status column as `varchar` without listing values. Each
