@@ -134,14 +134,25 @@ describe('a provider that stalls after its headers', () => {
     await once(server, 'listening')
     const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/`
 
-    const response = await fetch(url, { method: 'POST', signal: AbortSignal.timeout(100) })
+    // The time limit starts once the headers are in. Started with the
+    // request, it raced the headers themselves, and a busy suite sometimes
+    // lost: the request failed before the body read this test is about. The
+    // request's signal is aborted with the limit's own reason, as
+    // `AbortSignal.timeout` passed to `fetch` aborts it in chatbot-reply.
+    const request = new AbortController()
+    const response = await fetch(url, { method: 'POST', signal: request.signal })
     expect(response.ok).toBe(true)
+    const limit = AbortSignal.timeout(100)
+    limit.addEventListener('abort', () => request.abort(limit.reason), { once: true })
     const cause = await response.json().then(
       () => undefined,
       (error: unknown) => error,
     )
 
     expect(cause).toBeDefined()
+    // The time limit's own error, not a stand-in for it.
+    expect(cause).toBe(limit.reason)
+    expect((cause as Error).name).toBe('TimeoutError')
     expect(isProviderTimeout(cause)).toBe(true)
   })
 })

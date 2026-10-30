@@ -1,4 +1,5 @@
-import { CalendarDays, Download, Printer } from 'lucide-react'
+import { CalendarDays, Download, Printer, Route } from 'lucide-react'
+import { Link } from 'react-router-dom'
 
 import { FormError } from '@/components/feedback/form-error'
 import { PrintOutcomeNotice } from '@/components/feedback/print-outcome-notice'
@@ -6,7 +7,7 @@ import { StateView } from '@/components/feedback/state-view'
 import { PageHeader } from '@/components/layout/page-header'
 import { StatusBadge } from '@/components/ui/badge'
 import { ProgressBar } from '@/components/ui/progress'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
 import { Card, CardBody } from '@/components/ui/card'
 import { useCurrentUser } from '@/features/auth/auth-context'
 import { fetchOwnClinicName } from '@/features/patients/api'
@@ -98,6 +99,14 @@ export function PatientTreatmentPage() {
         description="The programme your doctor has set, and the goals along the way."
         actions={
           <>
+            {/* The plan as phases and activities (migration 45). */}
+            <Link
+              to="/patient/roadmap"
+              className={cn(buttonVariants({ variant: 'outline' }), 'max-sm:w-full print:hidden')}
+            >
+              <Route aria-hidden="true" />
+              View Recovery Roadmap
+            </Link>
             <Button
               variant="outline"
               // Controls, so on screen only: the printout is the plan.

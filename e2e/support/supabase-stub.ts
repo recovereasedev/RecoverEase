@@ -82,6 +82,14 @@ function primaryKeyOf(table: string): string {
   return PRIMARY_KEYS[table] ?? `${table}_id`
 }
 
+/** The recovery roadmap's functions (migration 45), answered by `roadmapCall`. */
+const ROADMAP_FUNCTIONS = new Set([
+  'patient_complete_recovery_activity',
+  'patient_reopen_recovery_activity',
+  'doctor_reorder_recovery_phases',
+  'doctor_reorder_recovery_activities',
+])
+
 /** Reserved PostgREST params that select rows rather than filter them. */
 const NON_FILTER_PARAMS = new Set([
   'select',
@@ -529,6 +537,8 @@ export class SupabaseStub {
       let result: unknown
       if (this.rpcResults.has(name)) {
         result = this.rpcResults.get(name)
+      } else if (ROADMAP_FUNCTIONS.has(name)) {
+        result = this.roadmapCall(name, JSON.parse(request.postData() ?? '{}') as Record<string, unknown>)
       } else if (name === 'super_admin_assured') {
         // The database's answer, from this session: the real one also
         // checks the session, factor and code against Supabase Auth's
@@ -640,7 +650,7 @@ export class SupabaseStub {
 
       const created = incoming.map((row) => ({
         [primaryKeyOf(table)]: crypto.randomUUID(),
-        ...this.defaultsFor(table),
+        ...this.defaultsFor(table, row),
         ...row,
       }))
 
@@ -742,10 +752,65 @@ export class SupabaseStub {
     }
   }
 
+  /**
+   * The recovery roadmap's functions (migration 45), as far as the browser
+   * sees them: the patient's activity marked done at the server's time, or
+   * not; and the doctor's new order for a plan's phases or a phase's
+   * activities. Who may call them is the database's to refuse
+   * (tests/db/recovery-roadmap.test.ts), not the stub's.
+   */
+  private roadmapCall(name: string, args: Record<string, unknown>): unknown {
+    if (name === 'patient_complete_recovery_activity' || name === 'patient_reopen_recovery_activity') {
+      const row = this.rowsIn('recovery_activity').find(
+        (candidate) => candidate['recovery_activity_id'] === args['target_activity_id'],
+      )
+      if (!row) return null
+      const done = name === 'patient_complete_recovery_activity'
+      row['recovery_activity_completed_at'] = done ? new Date().toISOString() : null
+      row['recovery_activity_completed_by'] = done ? (this.session?.userId ?? null) : null
+      return row
+    }
+    const [table, ids, column] =
+      name === 'doctor_reorder_recovery_phases'
+        ? ['recovery_phase', args['phase_ids'], 'recovery_phase_order']
+        : ['recovery_activity', args['activity_ids'], 'recovery_activity_order']
+    ;(ids as string[]).forEach((id, index) => {
+      const row = this.rowsIn(table).find((candidate) => candidate[primaryKeyOf(table)] === id)
+      if (row) row[column] = index + 1
+    })
+    return null
+  }
+
+  /** The next place in a roadmap's order, as the database numbers a new row. */
+  private nextOrder(table: 'recovery_phase' | 'recovery_activity', parentColumn: string, parentId: unknown): number {
+    const column = table === 'recovery_phase' ? 'recovery_phase_order' : 'recovery_activity_order'
+    const archived = table === 'recovery_phase' ? 'recovery_phase_archived_at' : 'recovery_activity_archived_at'
+    const orders = this.rowsIn(table)
+      .filter((row) => row[parentColumn] === parentId && row[archived] === null)
+      .map((row) => Number(row[column]))
+    return Math.max(0, ...orders) + 1
+  }
+
   /** Server-side defaults the database would supply on insert. */
-  private defaultsFor(table: string): Record<string, unknown> {
+  private defaultsFor(table: string, row: Record<string, unknown> = {}): Record<string, unknown> {
     const now = new Date().toISOString()
     switch (table) {
+      case 'recovery_phase':
+        return {
+          recovery_phase_order: this.nextOrder('recovery_phase', 'treatment_plan_id', row['treatment_plan_id']),
+          recovery_phase_archived_at: null,
+          recovery_phase_created_at: now,
+          recovery_phase_updated_at: now,
+        }
+      case 'recovery_activity':
+        return {
+          recovery_activity_order: this.nextOrder('recovery_activity', 'recovery_phase_id', row['recovery_phase_id']),
+          recovery_activity_completed_at: null,
+          recovery_activity_completed_by: null,
+          recovery_activity_archived_at: null,
+          recovery_activity_created_at: now,
+          recovery_activity_updated_at: now,
+        }
       case 'recovery_log':
         return { recovery_log_created_at: now }
       case 'appointment':

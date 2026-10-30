@@ -326,6 +326,7 @@ describe('the goal snapshot', () => {
       treatment_goal_target_date: target,
       treatment_goal_status: status,
       treatment_goal_created_at: '2026-09-01T00:00:00Z',
+      recovery_phase_id: null,
     }
   }
 

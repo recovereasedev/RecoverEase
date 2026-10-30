@@ -18,10 +18,11 @@
 >   merge of PR #68), serves <https://recoverease-web.vercel.app>.
 > - **Database** (at 00:29 UTC). The migration history has 42 entries.
 >   Every file in `supabase/migrations/` is in it except 34
->   (`lift_single_clinic_gate`), held for its own decision. 43
->   (`system_report_snapshot`) is applied and verified; the website that
->   calls it is on PR #70, not yet deployed - see "Report figures kept
->   (migration 43)".
+>   (`lift_single_clinic_gate`), held for its own decision, and 45
+>   (`recovery_roadmap`), not applied - see "Recovery roadmap (migration
+>   45)". 43 (`system_report_snapshot`) is applied and verified; the
+>   website that calls it was merged in PR #70 and deployed from `main`
+>   `7d6e60d` on 2026-10-30 - see "Report figures kept (migration 43)".
 > - **History versions are apply times, not file numbers.** `apply_migration`
 >   records each migration under the time it was applied, so no entry uses
 >   its file's `20260902100…` number; match them by name. The four applied
@@ -422,6 +423,10 @@ To roll back 31, go the other way, newest first. Each later migration is
 rolled back with its own down-script, applied as a new migration, and where
 deployed code depends on it, that code goes back first:
 
+1. **45**: the website from before migration 45, then
+   `supabase/rollbacks/20260902100045_recovery_roadmap.down.sql`. Every
+   plan and goal stays with its status; the phases, the activities, every
+   record of one marked done, and the goals' status history are lost.
 1. **43**: the website from before migration 43, then
    `supabase/rollbacks/20260902100043_system_report_snapshot.down.sql`. Every
    report row stays, but the figures each kept are lost: no report can be
@@ -1175,6 +1180,43 @@ alone, before or after 43's. It waits at most 3 seconds for its lock, set only a
 and resets the setting at the end. It runs while either the trigger or the
 function is there, so a run that stops between dropping one and the other
 is finished by running it again; it refuses only once both are gone.
+
+### Recovery roadmap (migration 45)
+
+Module 5.7, enhanced: a plan's phases and activities, the patient's
+completions and the goals' status history (`docs/database.md`, section 15).
+**Not applied anywhere yet**; apply it only with approval, as a new
+migration, and before the website that reads it is deployed - that
+website's Recovery Roadmap page, the record's roadmap editor and the
+progress panel's Roadmap view all read the new tables, and fail with "could
+not load" without them. Nothing else on the site depends on it.
+
+- **What it changes in place.** One nullable column, a foreign key, an
+  index and two triggers on `treatment_goal`; everything else is new. It
+  locks `treatment_goal` briefly, so it starts with `set lock_timeout =
+  '3s'` and ends with `reset lock_timeout`, and every statement runs again
+  cleanly from the top after a timeout. No reminder job touches
+  `treatment_goal`; use any of the windows above.
+- **What it does not change.** No dose, schedule, appointment, check-in,
+  plan or goal row; no existing policy or function. No goal history is
+  backfilled: a goal achieved before 45 has no recorded date
+  (`tests/db/recovery-roadmap.test.ts`, "before and after").
+- **Verify, read-only.** One history entry named `recovery_roadmap`, whose
+  statements match the file's MD5; four new tables, each with RLS on;
+  `treatment_goal.recovery_phase_id` present and null on every row;
+  `treatment_goal_status_event` empty;
+  `has_function_privilege('authenticated',
+  'public.patient_complete_recovery_activity(uuid)', 'execute')` true and the
+  same for `anon` false; the security advisors with exactly two more
+  `authenticated_security_definer_function_executable` warnings, for the two
+  patient functions; and doses, appointments, check-ins, plans and goals
+  unchanged by count and checksum.
+- **Hosted test, with its own approval.** A smoke patient marking one of
+  their own activities done and undoing it, and their doctor seeing it,
+  writes rows; it is the first use of the roadmap against the hosted
+  project and has not been done.
+
+Its down-script is in "To roll back 31": the website first.
 
 ## Bundle budget
 

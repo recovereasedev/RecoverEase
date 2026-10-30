@@ -145,6 +145,8 @@ Applied to every policy, each guarding a specific failure:
 | `doctor` | own clinician (r) | own row (r/w, guarded) | r + update (no insert) |
 | `admin` | none | none | own row (r/w) |
 | `treatment_plan` / `treatment_goal` | r | r/w | none |
+| `recovery_phase` / `recovery_activity` (migration 45) | r; **marks own activities done or undone, only through two functions** | r/w, archive (no delete) | none |
+| `recovery_activity_event` / `treatment_goal_status_event` (migration 45) | r | r | none - **no session writes either** |
 | `prescription` / `medication_schedule` | r | r/w | none |
 | `medication_log` | r + **update status** | **r only** | none |
 | `recovery_log` | r/w | r | none |
@@ -442,6 +444,9 @@ the columns that decide their own privileges, so triggers close that gap:
 | `user_account_guard_writes` | Any browser session writing an account — a role, a sign-in address, a login — even if a later policy allowed it; and anyone re-pointing an account at a different login. |
 | `profile_matches_account_role` | A doctor or patient profile being created for an account of a different role — a doctor profile on a patient's account, a patient profile on an administrator's. Applies to the service role too. |
 | `patient_guard_reassignment` | A patient being reassigned to a deactivated doctor, or to a doctor row whose account is not a doctor's, where no active clinician could see them. |
+| `recovery_activity_prepare` | Any signed-in session - the doctor's included - writing or changing an activity's completion directly; only `patient_complete_recovery_activity()` and `patient_reopen_recovery_activity()`, which check the caller is the plan's patient before taking any lock, write it (migration 45). Also keeps an activity in its own plan, its timestamps the server's, a new target date inside the plan's dates, and a restored activity out of an archived phase. |
+| `recovery_phase_prepare` | A phase moved to another plan, a client-set timestamp, or new dates outside the plan's (migration 45). |
+| `treatment_goal_check_phase` | A goal placed in an archived phase - also when the archive comes at the same moment: it holds the phase `FOR SHARE`, so one of the two waits for the other. That it is a phase of its own plan is the foreign key's (migration 45). |
 | `notification_assign_created_at` | A doctor dating a message to their patient in the past or the future through a direct Data API call, which would move it in the patient's newest-first list and misstate when it was sent. Every new notification is given the start of the inserting transaction, whatever the insert named - exactly what the column default gives, so the system's writers, none of which names a time, write what they always did. Insert only; no stored notification is changed (migration 44, `tests/db/notification-created-at.test.ts`). |
 
 Each is covered by a test in `tests/db/rls.test.ts` or
@@ -809,3 +814,16 @@ Recorded honestly rather than left for someone to discover:
    its own migration: revoke `update` on `notification` from `authenticated`
    and grant `update (notification_is_read)` back, so marking read is all a
    session can do.
+6. **Roadmap edits are not in the audit log.** Like `treatment_goal`'s,
+   the doctor's changes to a roadmap's phases and activities (migration 45)
+   write no `audit_log` entry: the audit trigger maps each audited table to
+   its clinic by name (`app_private.audit_clinic_for`), and adding these
+   would mean rewriting that function. What the roadmap does keep is its own
+   history - every completion and undo (`recovery_activity_event`) and every
+   change of a goal's status (`treatment_goal_status_event`), with who and
+   when - and nothing on it is deleted through the website. Two new
+   functions run with their owner's rights for signed-in users
+   (`patient_complete_recovery_activity`, `patient_reopen_recovery_activity`),
+   so the security advisors list two more
+   `authenticated_security_definer_function_executable` warnings; each
+   checks the caller is the plan's own patient before writing.

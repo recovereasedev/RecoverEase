@@ -79,11 +79,40 @@ nothing is built for it.
 | 5.1-5.3 | Recovery dashboard, progress charts, adherence | Doctor | Complete | Patient record, Recovery tab |
 | 5.4-5.5 | Add / view doctor's notes | Doctor | Complete | Record, Notes tab |
 | 5.6 | View Personal Recovery Dashboard | Patient | Complete | Patient dashboard |
-| 5.7 | View Recovery Roadmap | Patient | Complete | Treatment plan page (the goals as a path) |
+| 5.7 | View Recovery Roadmap | Patient, Doctor | Complete as first built (the Treatment plan page draws the goals as a path). **Enhanced on branch `feature/enhanced-recovery-roadmap`: built and tested, not in production** - migration 45 is not applied and no screen of it has run against the hosted project | `/patient/roadmap`; record, Treatment tab, Recovery roadmap; see below |
 | 5.8 | View Treatment Goals | Patient | Complete | Treatment plan page |
 | 5.9-5.10 | Log progress, recovery journal | Patient | Complete | My recovery |
 | 5.11 | View Recovery Trend Charts | Patient | Complete | My recovery; 7- and 30-day filters (PR #66) |
 | 5.12 | View Recovery Streak | Patient | Complete | My recovery |
+
+**5.7, enhanced (migration 45).** What existed: the Treatment plan page
+shows each plan with its goals down a path, and the doctor writes plans and
+goals on the record. What is new:
+
+- *Doctor*: on the record's Treatment tab, each plan gets a Recovery
+  roadmap - phases with dates inside the plan's, reordered, edited,
+  archived (after a confirmation) and restored; activities in each,
+  likewise; the plan's existing goals placed in a phase; and what the
+  patient has marked done, with the date.
+- *Patient*: `/patient/roadmap` - the plan, its progress, its phases with
+  their state (Completed, In progress, Upcoming), activities to mark done
+  or undo, the plan's goals, upcoming doses, appointments, activities and
+  goal dates (each linked to its own page), and View Progress Charts. Each
+  active plan has its own roadmap.
+- *Progress*: (activities done + phase goals achieved) / (activities +
+  phase goals), per plan; "No activities yet" when there is nothing to
+  count. Doses, appointments and check-ins are never counted; they keep
+  their own charts. The progress panel's new Roadmap view shows what was
+  done in its 7- or 30-day period.
+- *History*: every completion and undo, and every change of a goal's
+  status from migration 45 on, with who and when. Goals achieved before it
+  have no recorded date.
+
+Tested on PGlite (who may read and write, completion, duplicates, order,
+dates, goal links, history, rollback), in Vitest and jsdom, and in
+Playwright against the stub. Still outstanding: applying migration 45 to
+production, and using the roadmap there - a patient marking an activity
+done and the doctor seeing it.
 
 ## Appointment Management
 
