@@ -85,11 +85,14 @@ describe('printing from a hidden frame', () => {
     }
   })
 
-  it('hands the reader the file when the frame will not print', async () => {
+  it('hands the reader the file when the frame will not print, and leaves no frame behind', async () => {
     const capture = captureDownloads()
     try {
       const printed = printFile(FILE, 'frame', null)
       const frame = document.querySelector('iframe')!
+      const frameUrl = frame.src
+      // As a frame the Content-Security-Policy blocked: it loads an error
+      // page, whose print() the site may not call.
       Object.defineProperty(frame, 'contentWindow', {
         value: {
           focus: vi.fn(),
@@ -103,7 +106,53 @@ describe('printing from a hidden frame', () => {
 
       await expect(printed).resolves.toBe('downloaded')
       expect(capture.files.map((file) => file.name)).toEqual([FILE.fileName])
+      // The frame is gone and its PDF released; the download has its own URL.
+      expect(document.querySelector('iframe')).toBeNull()
+      expect(capture.revoked).toContain(frameUrl)
     } finally {
+      capture.release()
+    }
+  })
+
+  it('gives up on a frame that never loads, and takes it away', async () => {
+    vi.useFakeTimers()
+    const capture = captureDownloads()
+    try {
+      const printed = printFile(FILE, 'frame', null)
+      const frameUrl = document.querySelector('iframe')!.src
+      const failed = expect(printed).rejects.toThrow('The document could not be prepared for printing.')
+
+      await vi.advanceTimersByTimeAsync(15_000)
+      await failed
+
+      expect(document.querySelector('iframe')).toBeNull()
+      expect(capture.revoked).toContain(frameUrl)
+      // Nothing is saved in its place: the page says Print failed.
+      expect(capture.files).toHaveLength(0)
+    } finally {
+      vi.clearAllTimers()
+      vi.useRealTimers()
+      capture.release()
+    }
+  })
+
+  it('leaves a newer print’s frame alone when an older one gives up', async () => {
+    vi.useFakeTimers()
+    const capture = captureDownloads()
+    try {
+      const failed = expect(printFile(FILE, 'frame', null)).rejects.toThrow()
+      await vi.advanceTimersByTimeAsync(10_000)
+      void printFile(FILE, 'frame', null)
+      const newer = document.querySelector('iframe')!
+
+      await vi.advanceTimersByTimeAsync(5_000)
+      await failed
+
+      expect(document.querySelectorAll('iframe')).toHaveLength(1)
+      expect(document.querySelector('iframe')).toBe(newer)
+    } finally {
+      vi.clearAllTimers()
+      vi.useRealTimers()
       capture.release()
     }
   })

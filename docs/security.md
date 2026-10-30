@@ -647,6 +647,18 @@ app's own origin and Supabase, `frame-ancestors 'none'`, `object-src 'none'`,
 plus `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy` and
 HSTS.
 
+`frame-src 'self' blob:` is the one source added for a feature: Print loads
+the PDF the page has just built into a hidden frame, by its `blob:` URL
+(`src/lib/documents/print.ts`), which `default-src 'self'` does not cover -
+without it Chrome and Edge block the frame and Print can only download. A
+`blob:` URL can be made only by the page's own scripts, which `script-src
+'self'` limits to the site's own files, and a document framed from one keeps
+the page's policy: an inline script in it is refused. Nothing else was
+relaxed - `object-src 'none'` stays, as Chrome's and Edge's PDF viewers in
+the frame do not need it. `tests/unit/vercel-headers.test.ts` pins the
+directives; `e2e/print-under-csp.spec.ts` prints under the served policy in
+Chrome.
+
 Sign-in does not distinguish an unknown email from a wrong password: a message
 that separates them lets an attacker enumerate which patients and clinicians
 are registered.

@@ -251,6 +251,9 @@ export class SupabaseStub {
 
     await page.addInitScript(
       ([key, value]) => {
+        // The page only: a frame inside it - Print's PDF, which has no
+        // storage at all - shares the page's session and signs in to nothing.
+        if (window !== window.top) return
         window.localStorage.setItem(key as string, value as string)
       },
       ['recoverease.auth', JSON.stringify(payload)],

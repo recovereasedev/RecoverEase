@@ -10,7 +10,10 @@ import { type DownloadableFile, saveFile } from '@/lib/documents/download'
  *
  * - **frame** - a desktop browser that shows PDFs itself (Chrome, Edge,
  *   Firefox) loads the PDF into a hidden frame and opens its print dialog
- *   straight away.
+ *   straight away. The frame's address is the PDF's `blob:` URL, which the
+ *   site's Content-Security-Policy has to allow (`frame-src 'self' blob:` in
+ *   `vercel.json`): without it the browser blocks the frame, and Print can
+ *   only download (`e2e/print-under-csp.spec.ts`).
  * - **tab** - a phone, a tablet, Safari, or any browser without its own PDF
  *   viewer, cannot print a PDF from inside a page reliably. The PDF opens in
  *   a new tab instead, where the system's own Print or Share is one tap away.
@@ -91,9 +94,15 @@ function printInFrame(file: DownloadableFile): Promise<PrintOutcome> {
   frame.style.cssText =
     'position:fixed;right:0;bottom:0;width:1px;height:1px;border:0;opacity:0;pointer-events:none'
   previous = { frame, url }
+  // A frame that will not print is taken away at once, so no hidden frame is
+  // left holding the PDF - unless a newer print has already replaced it.
+  const release = () => {
+    if (previous?.frame === frame) releasePrevious()
+  }
 
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
+      release()
       reject(new Error('The document could not be prepared for printing.'))
     }, FRAME_LOAD_TIMEOUT_MS)
     frame.addEventListener(
@@ -107,7 +116,10 @@ function printInFrame(file: DownloadableFile): Promise<PrintOutcome> {
           view.print()
           resolve('printed')
         } catch {
-          // The frame would not print: the reader gets the file instead.
+          // The frame would not print - a browser that refuses, or a frame
+          // the Content-Security-Policy blocked, which loads as an error page
+          // the site may not touch: the reader gets the file instead.
+          release()
           saveFile(file)
           resolve('downloaded')
         }

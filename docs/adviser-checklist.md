@@ -15,8 +15,11 @@ smallest options are given.
 **What "tested" means here.** Database rules are tested on PGlite (real
 PostgreSQL, the repository's migrations replayed, Supabase's roles
 emulated); screens with Vitest and jsdom; journeys with Playwright in
-Chromium against a stubbed Supabase. Nothing on this branch has run against
-the hosted Supabase project or on a real phone.
+Chromium against a stubbed Supabase, served with production's security
+headers, and Print's PDF frame in Google Chrome as well. On the hosted
+Supabase project, only migration 43 and a rolled-back test of its
+`admin_record_system_report()` have run (9.5 below); no screen on this
+branch has been used against it, and nothing has run on a real phone.
 
 The "No. of Points (1 point per module per user)" row under each module in
 `Final Modules.pdf` is the grading rubric - one point per module per user
@@ -141,7 +144,7 @@ check of it is recorded. Needs a production smoke test.
 | --- | --- | --- | --- | --- |
 | 9.1-9.2 | Generate / print recovery report | Doctor | Complete | Doctor Reports |
 | 9.3-9.4 | Generate / export system-wide report | Admin | Complete | Admin Reports, PDF and Excel |
-| 9.5 | View Recently Generated Reports | Admin | **Complete (this branch, migration 43)** | Each report keeps its figures and downloads again as generated; older ones say theirs were not kept. 43 is not applied: it goes in, verified, before this website is deployed |
+| 9.5 | View Recently Generated Reports | Admin | **Complete (this branch, migration 43)** | Each report keeps its figures and downloads again as generated; older ones say theirs were not kept. 43 is applied to production and verified (2026-10-29, history `20261029185125`), and `admin_record_system_report()` passed a rolled-back hosted test; Generate report and the history's download have not been tested on the hosted site |
 
 ## Admin Dashboard, Doctor Accounts, Announcements, Audit, Settings
 
@@ -164,7 +167,7 @@ check of it is recorded. Needs a production smoke test.
 | Medicine and appointment calendar (Patient & Doctor) | **Complete (this branch)** |
 | Send notification to a specific patient (Doctor) | Complete (PR #67) |
 | Configure reminder settings (Doctor) | Partial - product decision (7.3 above) |
-| View recently generated reports, with download (Admin) | **Complete (this branch, migration 43; apply 43 before deploying)** |
+| View recently generated reports, with download (Admin) | **Complete (this branch, migration 43, applied and verified in production)** |
 | View system usage statistics | Complete |
 | AI chatbot on/off | Complete (migration 38) |
 | Intermittent AI failure handling | Partial: the failure states exist; live Gemini timeouts need a production check |

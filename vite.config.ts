@@ -4,9 +4,16 @@ import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 
+import { vercelHeaders } from './scripts/vercel-headers.ts'
+
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [
+    react(),
+    tailwindcss(),
+    // `vite preview` serves production's headers, from the file Vercel reads.
+    vercelHeaders(fileURLToPath(new URL('./vercel.json', import.meta.url))),
+  ],
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
