@@ -1,10 +1,11 @@
 import { expect, test, type Page } from './support/fixtures'
 
 /**
- * The patient's treatment plan, printed in a real browser (module 3.5).
- * "Print or save as PDF" stays on screen; printing sends the plan without it,
- * or any other control, and fits the paper. Served by the browser-only stub;
- * nothing is written anywhere.
+ * The patient's treatment plan page, printed from the browser's own menu, in
+ * a real browser (module 3.5). Its "Print plan" button prints the designed
+ * PDF (`document-downloads.spec.ts`); a printout of the page itself still
+ * leaves every control off and fits the paper. Served by the browser-only
+ * stub; nothing is written anywhere.
  */
 
 /** Console errors and uncaught exceptions, for asserting there were none. */
@@ -29,11 +30,11 @@ async function openTreatmentPlan(page: Page) {
 }
 
 test.describe('printing the treatment plan', () => {
-  test('keeps "Print or save as PDF" on screen', async ({ page, signInAs }) => {
+  test('keeps "Print plan" on screen', async ({ page, signInAs }) => {
     await signInAs('patient')
     await openTreatmentPlan(page)
 
-    await expect(page.getByRole('button', { name: /print or save as pdf/i })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Print plan', exact: true })).toBeVisible()
   })
 
   test('prints the plan without its print control', async ({ page, signInAs }) => {
@@ -44,7 +45,7 @@ test.describe('printing the treatment plan', () => {
 
     await page.emulateMedia({ media: 'print' })
 
-    await expect(page.getByRole('button', { name: /print or save as pdf/i })).toBeHidden()
+    await expect(page.getByRole('button', { name: 'Print plan', exact: true })).toBeHidden()
     await expect(page.getByRole('navigation', { name: 'Main' })).toBeHidden()
     await expect(page.getByRole('banner')).toBeHidden()
 

@@ -196,6 +196,21 @@ runs only `responsive.spec.ts`, and the desktop project explicitly ignores it �
 asserting a bottom bar at desktop width would fail on something correctly
 absent.
 
+**Production's headers.** `vite preview` sends the headers `vercel.json`
+gives production — the Content-Security-Policy among them — read from that
+file by `scripts/vercel-headers.ts`, so every spec runs under the policy the
+site is served with; `security-headers.spec.ts` fails if the server stops
+sending them. Without them, Print's PDF frame passed every test while
+production's policy blocked it.
+
+**A third project, `desktop-pdf-viewer`,** runs `print-under-csp.spec.ts` in
+Google Chrome (`channel: 'chrome'`; install it with `npx playwright install
+chrome`). Playwright's own headless Chromium has no PDF viewer, so Print
+takes its tab route there and the frame is never tried. Under the served
+policy it prints the prescription (patient and doctor) and the treatment
+plan from the frame, opens the PDF in a tab where there is no viewer, and
+reproduces the old failure under the policy without `frame-src`.
+
 ### What the browser suite covers
 
 | Area | Examples |

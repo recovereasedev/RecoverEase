@@ -24,6 +24,22 @@ const mockUser = vi.hoisted(() => ({ current: null as AppUser | null }))
 
 const noop = { mutate: vi.fn(), isPending: false, isError: false, error: null }
 
+// Print hands the built PDF to the print path (`@/lib/documents/print`),
+// which only a real browser can follow; here it records what it was given.
+const printing = vi.hoisted(() => ({
+  files: [] as { bytes: Uint8Array; fileName: string; mimeType: string }[],
+}))
+
+vi.mock('@/lib/documents/print', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/documents/print')>()),
+  printRoute: () => 'frame',
+  openPrintTab: () => null,
+  printFile: async (file: { bytes: Uint8Array; fileName: string; mimeType: string }) => {
+    printing.files.push(file)
+    return 'printed'
+  },
+}))
+
 vi.mock('@/features/auth/auth-context', () => ({
   useCurrentUser: () => mockUser.current,
   useAuth: () => ({ user: mockUser.current, signOut: vi.fn(), refresh: vi.fn() }),
@@ -37,6 +53,8 @@ vi.mock('@/features/patients/api', async (importOriginal) => ({
 }))
 
 vi.mock('@/features/patients/hooks', () => ({
+  // The record's Patient details panel (module 2.5); nothing here saves it.
+  useUpdatePatient: () => ({ mutate: vi.fn(), reset: vi.fn(), isPending: false, isError: false, error: null }),
   usePatient: () => ({
     isPending: false,
     error: null,
@@ -163,6 +181,7 @@ beforeEach(() => {
   state.schedules = [amoxicillin]
   noop.mutate.mockReset()
   mockUser.current = doctorSession('doc-1')
+  printing.files = []
   vi.spyOn(window, 'print').mockImplementation(() => {})
 })
 
@@ -188,11 +207,16 @@ describe('print controls on the patient record', () => {
     expect(screen.queryByRole('button', { name: /print record/i })).not.toBeInTheDocument()
   })
 
-  it('prints, and writes nothing', () => {
+  it('prints the prescription sheet itself, not the record, and writes nothing (module 4.4)', async () => {
     openRecord('medication')
     fireEvent.click(screen.getByRole('button', { name: 'Print prescription' }))
 
-    expect(window.print).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(printing.files).toHaveLength(1))
+    expect(window.print).not.toHaveBeenCalled()
+    const text = (await pdfLines(printing.files[0]!.bytes)).join(' ')
+    for (const expected of ['Harbor Clinic Prescription', 'Maria Reyes', 'Dr. Lorna Villanueva', 'Amoxicillin']) {
+      expect(text, expected).toContain(expected)
+    }
     expect(noop.mutate).not.toHaveBeenCalled()
   })
 })

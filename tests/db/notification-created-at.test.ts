@@ -23,6 +23,7 @@ const MIGRATION_37 = '20260902100037'
 const MIGRATION_38 = '20260902100038'
 const MIGRATION_41 = '20260902100041'
 const MIGRATION_42 = '20260902100042'
+const MIGRATION_43 = '20260902100043'
 const MIGRATION_44 = '20260902100044'
 const MIGRATION_44_FILE = 'supabase/migrations/20260902100044_notification_created_at_server_time.sql'
 const ROLLBACK_44 = 'supabase/rollbacks/20260902100044_notification_created_at_server_time.down.sql'
@@ -432,12 +433,14 @@ describe('the system’s own notifications, dated as the column default dated th
 
 describe('migration 44, before and after', () => {
   it('adds one trigger and its function, and nothing else', async () => {
-    const [applied, through42] = await Promise.all([
+    // Against every migration before it in the repository's order, 43
+    // included; production applied 44 before 43, which the last test covers.
+    const [applied, through43] = await Promise.all([
       createTestDatabase(),
-      createTestDatabase({ stopAfter: MIGRATION_42 }),
+      createTestDatabase({ stopAfter: MIGRATION_43 }),
     ])
     try {
-      const earlier = new Set((await catalog(through42)).map((entry) => JSON.stringify(entry)))
+      const earlier = new Set((await catalog(through43)).map((entry) => JSON.stringify(entry)))
       const added = (await catalog(applied)).filter((entry) => !earlier.has(JSON.stringify(entry)))
 
       expect(added.map((entry) => `${entry.kind} ${entry.name}`)).toEqual([
@@ -454,9 +457,9 @@ describe('migration 44, before and after', () => {
       expect(acl).not.toBe('-')
       expect(acl.split(',').some((entry) => /^(|anon|authenticated)=/.test(entry))).toBe(false)
       expect(added[1]!.detail).toMatch(/BEFORE INSERT ON public\.notification FOR EACH ROW/)
-      expect((await catalog(applied)).length).toBe((await catalog(through42)).length + 2)
+      expect((await catalog(applied)).length).toBe((await catalog(through43)).length + 2)
     } finally {
-      await Promise.all([applied.close(), through42.close()])
+      await Promise.all([applied.close(), through43.close()])
     }
   })
 
@@ -562,16 +565,16 @@ describe('migration 44, before and after', () => {
     }
   })
 
-  it('rolls back to exactly what 42 left, refuses to run twice, and can be applied again', async () => {
-    const [database, through42] = await Promise.all([
+  it('rolls back to exactly what the migrations before it left, refuses to run twice, and can be applied again', async () => {
+    const [database, through43] = await Promise.all([
       createTestDatabase(),
-      createTestDatabase({ stopAfter: MIGRATION_42 }),
+      createTestDatabase({ stopAfter: MIGRATION_43 }),
     ])
     try {
       const fx = await seedFixture(database)
       await database.db.exec(await script(ROLLBACK_44))
 
-      expect(await catalog(database)).toEqual(await catalog(through42))
+      expect(await catalog(database)).toEqual(await catalog(through43))
       // Dated by the doctor again, as before 44.
       await expect(sendTimed(database, fx.doctorAUserId, fx.aliceUserId, PAST)).resolves.toEqual({
         on_time: false,
@@ -588,7 +591,7 @@ describe('migration 44, before and after', () => {
         as_supplied: false,
       })
     } finally {
-      await Promise.all([database.close(), through42.close()])
+      await Promise.all([database.close(), through43.close()])
     }
   })
 
@@ -620,21 +623,21 @@ describe('migration 44, before and after', () => {
   })
 
   it('stopped between dropping the trigger and the function, finishes when run again', async () => {
-    const [database, through42] = await Promise.all([
+    const [database, through43] = await Promise.all([
       createTestDatabase(),
-      createTestDatabase({ stopAfter: MIGRATION_42 }),
+      createTestDatabase({ stopAfter: MIGRATION_43 }),
     ])
     try {
       await database.db.exec('drop trigger notification_assign_created_at on public.notification')
 
       await database.db.exec(await script(ROLLBACK_44))
-      expect(await catalog(database)).toEqual(await catalog(through42))
+      expect(await catalog(database)).toEqual(await catalog(through43))
     } finally {
-      await Promise.all([database.close(), through42.close()])
+      await Promise.all([database.close(), through43.close()])
     }
   })
 
-  it('goes in after 42 and 41 with 34 still unapplied, as production has them; then the same schema once 34 follows', async () => {
+  it('goes in after 42 and 41 with 43 and 34 still unapplied, as production has them; then the same schema once 43 and 34 follow', async () => {
     const [production, repository] = await Promise.all([
       createTestDatabase({ stopAfter: MIGRATION_33 }),
       createTestDatabase(),
@@ -647,6 +650,14 @@ describe('migration 44, before and after', () => {
       await production.applyMigration(MIGRATION_44)
 
       await expect(sendTimed(production, fx.doctorAUserId, fx.aliceUserId, PAST)).resolves.toEqual({
+        on_time: true,
+        as_supplied: false,
+      })
+
+      // 43 goes in after 44, as it will in production, and leaves the time
+      // to the database.
+      await production.applyMigration(MIGRATION_43)
+      await expect(sendTimed(production, fx.doctorAUserId, fx.aliceUserId, FUTURE)).resolves.toEqual({
         on_time: true,
         as_supplied: false,
       })

@@ -9,6 +9,10 @@ const BASE_URL = `http://localhost:${PORT}`
  * unminified code with different chunking; testing it would leave the artefact
  * that actually ships unexercised — including the lazy route chunks, which are
  * where a code-splitting mistake shows up.
+ *
+ * `vite preview` sends the headers `vercel.json` gives production, the
+ * Content-Security-Policy among them (`scripts/vercel-headers.ts`), so every
+ * spec runs under the policy the site is served with.
  */
 export default defineConfig({
   testDir: './e2e',
@@ -34,12 +38,23 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'] },
       // responsive.spec.ts asserts the small-screen layout; running it at
       // desktop width would fail on a bottom bar that is correctly absent.
-      testIgnore: /responsive\.spec\.ts/,
+      // print-under-csp.spec.ts needs a browser with a PDF viewer (below).
+      testIgnore: [/responsive\.spec\.ts/, /print-under-csp\.spec\.ts/],
     },
     {
       name: 'mobile',
       use: { ...devices['Pixel 7'] },
       testMatch: /responsive\.spec\.ts/,
+    },
+    {
+      // Print's hidden PDF frame, under production's security headers, in a
+      // browser that shows PDFs itself - Google Chrome. Playwright's own
+      // headless Chromium has no PDF viewer, so Print takes the tab route
+      // there and the frame is never tried. Needs Chrome installed
+      // (`npx playwright install chrome`).
+      name: 'desktop-pdf-viewer',
+      use: { ...devices['Desktop Chrome'], channel: 'chrome' },
+      testMatch: /print-under-csp\.spec\.ts/,
     },
   ],
 

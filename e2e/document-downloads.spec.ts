@@ -6,6 +6,7 @@ import { pdfLines } from '../tests/unit/support/pdf-text'
 import type { Download } from '@playwright/test'
 
 import { expect, IDS, test, type Page } from './support/fixtures'
+import { bodyOf, capturePrinting, printFrom } from './support/printing'
 
 /**
  * Modules 3.5, 4.10 and 9.4 in a real browser: each Download button hands the
@@ -101,7 +102,97 @@ test.describe('downloading documents', () => {
 
     const button = page.getByRole('button', { name: 'Download prescription (PDF)', exact: true })
     await expect(button).toBeDisabled()
-    await expect(button).toHaveAccessibleDescription(/no prescription to download yet/)
+    await expect(button).toHaveAccessibleDescription(/no prescription to download or print yet/)
+    const print = page.getByRole('button', { name: 'Print prescriptions', exact: true })
+    await expect(print).toBeDisabled()
+    await expect(print).toHaveAccessibleDescription(/no prescription to download or print yet/)
+  })
+
+  test('the patient’s Print prescriptions prints the downloaded sheet, not the page', async ({
+    page,
+    signInAs,
+  }) => {
+    const errors = watchForErrors(page)
+    const writes = watchForWrites(page)
+    await capturePrinting(page)
+    await signInAs('patient', { clinic: [CLINIC] })
+    await page.goto('/patient/medications')
+    await expect(page.getByText('Take with food.')).toBeVisible()
+
+    const { bytes: downloaded } = await downloadFrom(page, 'Download prescription (PDF)')
+    const printed = await printFrom(page, 'Print prescriptions')
+
+    expect(isPdf(printed)).toBe(true)
+    expect(await bodyOf(printed)).toEqual(await bodyOf(downloaded))
+    expect((await pdfLines(printed)).join(' ')).toContain('Harborview Recovery Clinic Prescription')
+    await expect(page.getByRole('status').filter({ hasText: 'opened in a new tab' })).toBeVisible()
+    expect(writes).toEqual([])
+    expect(errors).toEqual([])
+  })
+
+  test('the patient’s Print plan prints the designed treatment plan', async ({ page, signInAs }) => {
+    const errors = watchForErrors(page)
+    const writes = watchForWrites(page)
+    await capturePrinting(page)
+    await signInAs('patient', { clinic: [CLINIC] })
+    await page.goto('/patient/treatment')
+    await expect(page.getByRole('heading', { name: 'Post-operative knee recovery' })).toBeVisible()
+
+    const { bytes: downloaded } = await downloadFrom(page, 'Download plan (PDF)')
+    const printed = await printFrom(page, 'Print plan')
+
+    expect(isPdf(printed)).toBe(true)
+    expect(await bodyOf(printed)).toEqual(await bodyOf(downloaded))
+    const text = (await pdfLines(printed)).join(' ')
+    for (const expected of ['Harborview Recovery Clinic Treatment plan', 'Alice Santos', 'Post-operative knee recovery', 'Goal Target date Status']) {
+      expect(text, expected).toContain(expected)
+    }
+    expect(writes).toEqual([])
+    expect(errors).toEqual([])
+  })
+
+  test('the patient saves their next doses to their phone’s calendar, for reminders offline', async ({
+    page,
+    signInAs,
+  }) => {
+    const errors = watchForErrors(page)
+    const writes = watchForWrites(page)
+    const tomorrow = new Date()
+    tomorrow.setDate(tomorrow.getDate() + 1)
+    tomorrow.setHours(8, 0, 0, 0)
+    await signInAs('patient', {
+      clinic: [CLINIC],
+      medication_log: [
+        {
+          medication_log_id: 'd2b22222-2222-4222-8222-222222222222',
+          medication_schedule_id: IDS.scheduleA,
+          medication_log_scheduled_at: tomorrow.toISOString(),
+          medication_log_taken_at: null,
+          medication_log_status: 'pending',
+          medication_log_follow_up_sent_at: null,
+          medication_log_pre_dose_sent_at: null,
+          medication_schedule: {
+            medication_schedule_id: IDS.scheduleA,
+            medication_schedule_name: 'Paracetamol',
+            medication_schedule_dosage: '500mg',
+            prescription: { pat_id: IDS.alicePat },
+          },
+        },
+      ],
+    })
+    await page.goto('/patient/medications')
+    await expect(page.getByRole('heading', { name: 'Reminders on your phone' })).toBeVisible()
+
+    const { file, bytes } = await downloadFrom(page, 'Download reminders (.ics)')
+
+    expect(file.suggestedFilename()).toMatch(/^recoverease-medicine-reminders-alice-santos-\d{4}-\d{2}-\d{2}\.ics$/)
+    const calendar = new TextDecoder().decode(bytes)
+    expect(calendar.startsWith('BEGIN:VCALENDAR\r\n')).toBe(true)
+    expect(calendar).toContain('SUMMARY:Take Paracetamol 500mg')
+    expect(calendar).toContain('TRIGGER:-PT10M')
+    await expect(page.getByText(/^Saved 1 dose time for the next 30 days/)).toBeVisible()
+    expect(writes).toEqual([])
+    expect(errors).toEqual([])
   })
 
   test('the patient downloads their treatment plan as a PDF', async ({ page, signInAs }) => {

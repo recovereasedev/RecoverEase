@@ -9,18 +9,22 @@
 > | Vercel project | `recovereasedev-7251s-projects/recoverease` |
 > | Repository | `recovereasedev/RecoverEase` |
 >
-> **Production on 2026-10-29 at 17:38 UTC** (read-only checks; a dated
-> snapshot, not the current state - check again before relying on it):
+> **Production, read-only checks** - the website and Edge Functions on
+> 2026-10-29 at 17:38 UTC, the database on 2026-10-30 at 00:29 UTC. A dated
+> snapshot, not the current state - check again before relying on it:
 >
-> - **Website.** The Vercel Production deployment
+> - **Website** (at 17:38 UTC). The Vercel Production deployment
 >   `dpl_7P9bhug51rgRDPoKqh5kP4PZN7Kf`, built from `main` at `23af842` (the
 >   merge of PR #68), serves <https://recoverease-web.vercel.app>.
-> - **Database.** The migration history has 41 entries. Every file in
->   `supabase/migrations/` is in it except 34 (`lift_single_clinic_gate`),
->   held for its own decision. 43 is not on `main` and not in the history.
+> - **Database** (at 00:29 UTC). The migration history has 42 entries.
+>   Every file in `supabase/migrations/` is in it except 34
+>   (`lift_single_clinic_gate`), held for its own decision. 43
+>   (`system_report_snapshot`) is applied and verified; the website that
+>   calls it is on PR #70, not yet deployed - see "Report figures kept
+>   (migration 43)".
 > - **History versions are apply times, not file numbers.** `apply_migration`
 >   records each migration under the time it was applied, so no entry uses
->   its file's `20260902100…` number; match them by name. The three applied
+>   its file's `20260902100…` number; match them by name. The four applied
 >   on 2026-10-29:
 >
 >   | Repository file | History entry | Applied (UTC) |
@@ -28,20 +32,25 @@
 >   | `20260902100042_doctor_appointment_reminder_setting.sql` | `20261029021824 doctor_appointment_reminder_setting` | 02:18:24 |
 >   | `20260902100041_doctor_notifications_general_only.sql` | `20261029071908 doctor_notifications_general_only` | 07:19:08 |
 >   | `20260902100044_notification_created_at_server_time.sql` | `20261029173402 notification_created_at_server_time` | 17:34:02 |
+>   | `20260902100043_system_report_snapshot.sql` | `20261029185125 system_report_snapshot` | 18:51:25 |
 >
 >   Each was verified read-only once applied: the entry's statements match
 >   the file's MD5, its objects are in place, and the rest of the schema
->   and the security advisors are as they were before it.
+>   and the security advisors are as they were before it (for 43, with the
+>   one expected new advisor warning, for `admin_record_system_report`).
 > - **Smoke tests**, with the `@smoke.invalid` accounts only. After 42 and
 >   41 (07:30-07:54 UTC): a doctor's general message, the doctor's reminder
 >   setting turned off and back on, the patient's prescription PDF, and a
 >   system-wide report. After 44 (17:38 UTC): a doctor's insert naming a past
 >   time, run as the smoke doctor in a statement that was then rolled back,
 >   was stored at the transaction's own time; nothing it wrote was kept.
->   These cover those flows only, not every feature.
-> - **Edge Functions.** Four are ACTIVE with `verify_jwt`: `create-account`
->   v11, `reset-account-password` v6, `complete-password-setup` v3 and
->   `chatbot-reply` v18.
+>   After 43 (23:49 UTC): `admin_record_system_report()`, run as the smoke
+>   Clinic Admin in a statement that was then rolled back - see "Report
+>   figures kept (migration 43)"; nothing it wrote was kept. These cover
+>   those flows only, not every feature.
+> - **Edge Functions** (at 17:38 UTC). Four are ACTIVE with `verify_jwt`:
+>   `create-account` v11, `reset-account-password` v6,
+>   `complete-password-setup` v3 and `chatbot-reply` v18.
 >
 > At the first deployment, on 2026-09-03: 14 migrations applied, 20 tables,
 > RLS on every one, 54 policies, 3 pg_cron jobs all confirmed to have
@@ -242,7 +251,11 @@ are used.
 - **Content-Security-Policy** — `connect-src` limited to the app's own origin
   and Supabase, `frame-ancestors 'none'`, `object-src 'none'`.
   `style-src` includes `'unsafe-inline'` because React sets inline `style`
-  attributes for the progress bars.
+  attributes for the progress bars. `frame-src 'self' blob:` lets Print load
+  the PDF the page built into a hidden frame (`src/lib/documents/print.ts`);
+  without it the frame is blocked and Print can only download.
+  `vite preview`, and so the browser suite, serves these same headers, read
+  from this file (`scripts/vercel-headers.ts`).
 - **Immutable caching** for `/assets/*`, which are content-hashed.
 - `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`, HSTS.
 
@@ -409,10 +422,15 @@ To roll back 31, go the other way, newest first. Each later migration is
 rolled back with its own down-script, applied as a new migration, and where
 deployed code depends on it, that code goes back first:
 
+1. **43**: the website from before migration 43, then
+   `supabase/rollbacks/20260902100043_system_report_snapshot.down.sql`. Every
+   report row stays, but the figures each kept are lost: no report can be
+   downloaded again from the history afterwards.
 1. **44**, where it is applied:
    `supabase/rollbacks/20260902100044_notification_created_at_server_time.down.sql`.
    Nothing deployed depends on it, and nothing depends on it in the
-   database, so it can go back first and alone.
+   database, so it can go back alone. 43 and 44 change different tables, so
+   either can go back before the other.
 1. **41**: `supabase/rollbacks/20260902100041_doctor_notifications_general_only.down.sql`.
    Nothing deployed depends on it. It went in after 42, so it comes out
    before it.
@@ -1041,6 +1059,59 @@ website back first. Like the migration, it waits at most 3 seconds for its
 locks and resets the setting at the end; the timeout is set only after its
 check, so a refusal changes no setting.
 
+### Report figures kept (migration 43)
+
+Module 9.5's download: a system-wide report keeps the figures it was
+generated with, in `report.report_snapshot`, written only by
+`admin_record_system_report()` (`docs/database.md`, section 14). It
+changes only `report`: 44, applied before it, touches nothing it changes,
+and neither depends on the other.
+
+**Applied to production on 2026-10-29 at 18:51:25 UTC** (history
+`20261029185125 system_report_snapshot`, whose statements match the file's
+MD5) **and verified** read-only with the checks in step 1: the column,
+constraint, trigger and both functions are in place, `authenticated` may
+call the function and `anon` may not, the advisors gained only the expected
+warning, and the 44 reports already there were unchanged, none with figures.
+
+**Hosted test of the function, rolled back,** on 2026-10-29 at 23:49 UTC.
+`admin_record_system_report()` ran as `admin@smoke.invalid`, with that
+account's signed-in claims, in one statement that always ends in an error,
+so nothing it wrote was kept. All 21 checks passed: the report it returned
+was system-wide, the smoke admin's, for the smoke clinic, and dated by the
+database; its figures equalled both `admin_dashboard_stats()` and the
+tables counted directly; figures sent in a direct insert were refused by
+the guard, and a direct change or clearing of them reached no row; the
+smoke doctor and a visitor were refused. Afterwards the 44 reports, their
+IDs and their checksums were as before, and the test report did not exist.
+**The website's Generate report, and downloading a report again from the
+history, have not been tested on the hosted site:** that is a production
+write, with its own approval, after the website is deployed.
+
+1. **Apply migration 43 and verify it** - done, as above. It
+   starts with the 3-second `lock_timeout` and resets it. Verify, read-only:
+   the history has one entry named `system_report_snapshot`; `select
+   column_name from information_schema.columns where table_name = 'report'
+   and column_name = 'report_snapshot'` returns one row; `select tgname from
+   pg_trigger where tgname = 'report_protect_snapshot'` returns one row; and
+   `has_function_privilege('authenticated',
+   'public.admin_record_system_report()', 'execute')` is true while
+   `has_function_privilege('anon', 'public.admin_record_system_report()',
+   'execute')` is false. Expect one more
+   `authenticated_security_definer_function_executable` advisor warning, for
+   `admin_record_system_report`: it is meant for signed-in Clinic Admins and
+   refuses anyone else.
+2. **Then merge the website** (PR #70, not yet merged). Its **Generate
+   report** calls `admin_record_system_report()`; merged before 43,
+   generating a system-wide report would fail ("The report was not
+   generated"). Everything else on the page works either way: the history's
+   download appears only for a report that kept its figures.
+
+Nothing was written by applying it: every existing report is left without
+figures and says so. Generating a report after it is a production write -
+the smoke test's, with its own approval, from a `@smoke.invalid` Clinic
+Admin. Its down-script is above, in "To roll back 31": the website first.
+
 ### Notification times (migration 44)
 
 `notification_created_at` defaulted to now(), but a direct Data API call
@@ -1052,9 +1123,9 @@ insert named. Applied to production on 2026-10-29 at 17:34:02 UTC (history
 `20261029173402`) and verified.
 
 - **Order.** On its own, after 42 and 41, which are applied. No website
-  change goes with it: the website never names the time. The number 43
-  belongs to a separate branch that is not on `main`; 44 does not depend on
-  it and touches nothing it changes, so either can be applied first.
+  change goes with it: the website never names the time. 43 (above) changes
+  only `report`; 44 does not depend on it and touches nothing it changes, so
+  either could go in first - 44 did.
 - **What does not change.** Migration 41's policy - who a doctor may notify,
   and with what - word for word, and every other policy. The system's
   writers - the reminder jobs, the cancellation and reassignment notices,
@@ -1099,8 +1170,8 @@ Its down-script,
 `supabase/rollbacks/20260902100044_notification_created_at_server_time.down.sql`,
 drops the trigger and its function, so a notification is dated by its
 default - and by its sender, where the sender names a time - as before. No
-data changes either way, and nothing depends on 44, so it goes back first
-and alone. It waits at most 3 seconds for its lock, set only after its check,
+data changes either way, and nothing depends on 44, so it can go back
+alone, before or after 43's. It waits at most 3 seconds for its lock, set only after its check,
 and resets the setting at the end. It runs while either the trigger or the
 function is there, so a run that stops between dropping one and the other
 is finished by running it again; it refuses only once both are gone.

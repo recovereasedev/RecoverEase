@@ -313,7 +313,7 @@ describe('the treatment plan (module 3.5)', () => {
   const plan = {
     treatment_plan_id: 'tp1',
     pat_id: 'p1',
-    doc_id: 'd1',
+    doc_id: 'd-alan',
     treatment_plan_title: 'Knee rehabilitation',
     treatment_plan_description: 'Six weeks of guided exercise.',
     treatment_plan_status: 'active',
@@ -327,27 +327,52 @@ describe('the treatment plan (module 3.5)', () => {
     ],
   } as unknown as PlanWithGoals
 
-  it('lists the plan with its status in words, and its goals in the order they are due', async () => {
-    const file = await buildTreatmentPlanPdf({
-      patient: { pat_first_name: 'Alice', pat_last_name: 'Santos' },
+  const build = (overrides: Partial<Parameters<typeof buildTreatmentPlanPdf>[0]> = {}) =>
+    buildTreatmentPlanPdf({
+      patient: ALICE,
+      doctors: [DR_CRUZ],
+      clinicName: 'Harbor Clinic',
       plans: [plan],
       generatedAt: GENERATED,
+      ...overrides,
     })
 
+  it('is the prescription’s sheet: the letterhead, the patient, and the plan in full', async () => {
+    const file = await build()
+
+    expect(file.mimeType).toBe(PDF_TYPE)
     expect(file.fileName).toBe('recoverease-treatment-plan-alice-santos-2026-10-20.pdf')
-    const lines = await pdfLines(file.bytes)
-    expect(lines).toEqual(
-      expect.arrayContaining([
-        'Knee rehabilitation',
-        'Active',
-        '1 Oct 2026 onwards',
-        '1 of 3',
-        'Six weeks of guided exercise.',
-        'By 20 Oct 2026 · Achieved',
-        'By 15 Nov 2026 · In progress',
-        'No target date · Not started',
-      ]),
-    )
+    const pages = await pdfPages(file.bytes)
+    expect(pages).toHaveLength(1)
+    const text = pageText(pages[0]!)
+    for (const expected of [
+      'Recover Ease',
+      'Harbor Clinic Treatment plan',
+      'Patient information',
+      'Alice Santos',
+      'Female',
+      'Knee rehabilitation',
+      // The plan's own doctor, whom this reader may read.
+      'Doctor Dr. Alan Cruz Orthopaedic rehabilitation',
+      'Status Active',
+      'Plan period 1 Oct 2026 onwards',
+      'Goals achieved 1 of 3',
+      'About this plan Six weeks of guided exercise.',
+      'Progress 1 of 3 goals achieved (33%)',
+      'Goal Target date Status',
+      'Bend the knee to 90° 20 Oct 2026 Achieved',
+      'Climb stairs 15 Nov 2026 In progress',
+      'Walk without a stick No target date Not started',
+      'Page 1 of 1',
+    ]) {
+      expect(text, expected).toContain(expected)
+    }
+    // Nothing the records do not hold: no signature, no advice.
+    expect(text).not.toMatch(/signature/i)
+  })
+
+  it('lists the goals in the order they are due', async () => {
+    const lines = await pdfLines((await build()).bytes)
     const order = ['Bend the knee to 90°', 'Climb stairs', 'Walk without a stick'].map((goal) =>
       lines.indexOf(goal),
     )
@@ -355,13 +380,56 @@ describe('the treatment plan (module 3.5)', () => {
     expect([...order].sort((a, b) => a - b)).toEqual(order)
   })
 
-  it('says so when there is no plan yet', async () => {
-    const file = await buildTreatmentPlanPdf({
-      patient: { pat_first_name: 'Alice', pat_last_name: 'Santos' },
-      plans: [],
-      generatedAt: GENERATED,
+  it('names no doctor the reader may not read, and leaves an unread clinic off', async () => {
+    const text = pageText((await pdfPages((await build({ doctors: [null], clinicName: null })).bytes))[0]!)
+    expect(text).toContain('Doctor Not available')
+    expect(text).not.toContain('Dr. Alan Cruz')
+    expect(text).not.toContain('Harbor Clinic')
+    // Another doctor wrote it: the current one's name is not put on it.
+    const other = pageText(
+      (await pdfPages((await build({ doctors: [{ ...DR_CRUZ, doc_id: 'd-new' }] })).bytes))[0]!,
+    )
+    expect(other).toContain('Doctor Not available')
+  })
+
+  it('carries a long plan onto further pages, every one numbered, no goal lost', async () => {
+    const many = {
+      ...plan,
+      treatment_plan_description: Array.from({ length: 12 }, (_, i) => `Paragraph ${i + 1} of the plan.`).join('\n'),
+      treatment_goal: Array.from({ length: 40 }, (_, i) => ({
+        treatment_goal_id: `g${i}`,
+        treatment_goal_description: `Goal ${i + 1}`,
+        treatment_goal_target_date: `2026-11-${String((i % 28) + 1).padStart(2, '0')}`,
+        treatment_goal_status: 'pending',
+      })),
+    } as unknown as PlanWithGoals
+    const pages = await pdfPages((await build({ plans: [many] })).bytes)
+
+    expect(pages.length).toBeGreaterThan(1)
+    pages.forEach((lines, index) => {
+      expect(pageText(lines)).toContain(`Page ${index + 1} of ${pages.length}`)
+      if (index > 0) expect(lines).toContain('Treatment plan, continued')
     })
-    expect(await pdfLines(file.bytes)).toContain('No treatment plan yet.')
+    expect(pages.flat().filter((line) => /^Goal \d+$/.test(line))).toHaveLength(40)
+  })
+
+  it('starts each plan on a page of its own', async () => {
+    const second = { ...plan, treatment_plan_id: 'tp2', treatment_plan_title: 'Strength programme' } as PlanWithGoals
+    const pages = await pdfPages((await build({ plans: [plan, second] })).bytes)
+    expect(pages).toHaveLength(2)
+    expect(pageText(pages[0]!)).toContain('Knee rehabilitation')
+    expect(pageText(pages[1]!)).toContain('Strength programme')
+  })
+
+  it('says so when a plan has no goals, or there is no plan at all', async () => {
+    const empty = { ...plan, treatment_plan_description: null, treatment_goal: [] } as unknown as PlanWithGoals
+    const text = pageText((await pdfPages((await build({ plans: [empty] })).bytes))[0]!)
+    expect(text).toContain('No description recorded.')
+    expect(text).toContain('No goals have been set for this plan yet.')
+    expect(text).toContain('Goals achieved No goals yet')
+    expect(text).not.toContain('Progress')
+
+    expect(await pdfLines((await build({ plans: [] })).bytes)).toContain('No treatment plan on record.')
   })
 })
 

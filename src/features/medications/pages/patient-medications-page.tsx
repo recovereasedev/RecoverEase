@@ -3,6 +3,7 @@ import { AlarmClock, Download, Pill, Printer } from 'lucide-react'
 import { useState } from 'react'
 
 import { FormError } from '@/components/feedback/form-error'
+import { PrintOutcomeNotice } from '@/components/feedback/print-outcome-notice'
 import { InlineEmpty, StateView } from '@/components/feedback/state-view'
 import { PageHeader } from '@/components/layout/page-header'
 import { StatusBadge } from '@/components/ui/badge'
@@ -13,6 +14,7 @@ import { PageSection } from '@/components/ui/section-heading'
 import { useCurrentUser } from '@/features/auth/auth-context'
 import { summariseAdherence } from '@/features/medications/api'
 import { AdherenceSummary } from '@/features/medications/components/adherence-summary'
+import { PhoneReminders } from '@/features/medications/components/phone-reminders'
 import { PrescriptionPrintHeader } from '@/features/medications/components/prescription-print-header'
 import { patientDoseState } from '@/features/medications/dose-status'
 import { prescribedBy } from '@/features/medications/prescriber'
@@ -25,7 +27,7 @@ import { fetchOwnClinicName } from '@/features/patients/api'
 import { useMyDoctor } from '@/features/patients/hooks'
 import { useDocumentTitle } from '@/hooks/use-document-title'
 import { useNow } from '@/hooks/use-now'
-import { useFileDownload } from '@/lib/documents/download'
+import { useDocumentFile } from '@/lib/documents/use-document-file'
 import {
   formatDate,
   formatDateRelative,
@@ -38,6 +40,10 @@ import { cn } from '@/lib/utils'
 /**
  * Modules 4.5 "View Medication Schedule", 4.6 "Mark Medication as Taken",
  * 4.8 "View Weekly Adherence Tracking" and 4.10 "Download Prescription".
+ *
+ * Download and Print hand on the same prescription sheet, built once by
+ * `buildPrescriptionPdf`: Print prints that PDF, not this page
+ * (`@/lib/documents/print`).
  *
  * The page opens on what is due today, because that is the question a patient
  * has when they open it. RecoverEase 2.0 sets today's doses as a timeline: the
@@ -82,10 +88,11 @@ export function PatientMedicationsPage() {
   const now = useNow()
   // The dose just marked taken: only its badge animates in.
   const [confirmedId, setConfirmedId] = useState<string | null>(null)
-  const prescriptionFile = useFileDownload()
+  const prescriptionFile = useDocumentFile()
 
   // Module 4.10 as a file: one prescription sheet per prescription, built
-  // from what this page has loaded. Offered once the prescriptions are here
+  // from what this page has loaded - the one document both Download and
+  // Print hand on. Offered once the prescriptions are here
   // and the doctor has either loaded or will not (no assigned doctor), so a
   // sheet never says "Not available" only because it was asked for too soon -
   // and not at all while there is no prescription to put on it.
@@ -95,10 +102,10 @@ export function PatientMedicationsPage() {
     Boolean(schedulesQuery.data) &&
     !hasNoPrescriptions &&
     !doctorQuery.isLoading
-  const downloadPrescription = () => {
-    if (!patient || !schedulesQuery.data) return
+  const buildPrescription = () => {
+    if (!patient || !schedulesQuery.data) return null
     const schedules = schedulesQuery.data
-    void prescriptionFile.download(async () => {
+    return async () => {
       const [{ buildPrescriptionPdf }, clinicName] = await Promise.all([
         import('@/features/medications/prescription-document'),
         // The letterhead's clinic name is a courtesy: without it the sheet
@@ -114,7 +121,15 @@ export function PatientMedicationsPage() {
         schedules,
         generatedAt: new Date(),
       })
-    })
+    }
+  }
+  const downloadPrescription = () => {
+    const build = buildPrescription()
+    if (build) void prescriptionFile.download(build)
+  }
+  const printPrescription = () => {
+    const build = buildPrescription()
+    if (build) void prescriptionFile.print(build)
   }
 
   const adherence = weekDoses.data
@@ -154,8 +169,8 @@ export function PatientMedicationsPage() {
               variant="outline"
               className="max-sm:w-full"
               onClick={downloadPrescription}
-              disabled={!canDownloadPrescription}
-              isLoading={prescriptionFile.isPending}
+              disabled={!canDownloadPrescription || prescriptionFile.pending !== null}
+              isLoading={prescriptionFile.pending === 'download'}
               loadingLabel="Preparing…"
               {...(hasNoPrescriptions
                 ? { 'aria-describedby': 'prescription-download-unavailable' }
@@ -167,7 +182,13 @@ export function PatientMedicationsPage() {
             <Button
               variant="outline"
               className="max-sm:w-full"
-              onClick={() => window.print()}
+              onClick={printPrescription}
+              disabled={!canDownloadPrescription || prescriptionFile.pending !== null}
+              isLoading={prescriptionFile.pending === 'print'}
+              loadingLabel="Preparing…"
+              {...(hasNoPrescriptions
+                ? { 'aria-describedby': 'prescription-download-unavailable' }
+                : {})}
             >
               <Printer aria-hidden="true" />
               Print prescriptions
@@ -183,19 +204,28 @@ export function PatientMedicationsPage() {
           id="prescription-download-unavailable"
           className="-mt-2 mb-6 text-sm text-muted print:hidden"
         >
-          There is no prescription to download yet: your doctor has not
-          prescribed anything.
+          There is no prescription to download or print yet: your doctor
+          has not prescribed anything.
         </p>
       ) : null}
 
       {prescriptionFile.error ? (
         <div className="mb-6 print:hidden">
           <FormError
-            error={prescriptionFile.error}
-            title="The prescription was not downloaded"
+            error={prescriptionFile.error.cause}
+            title={
+              prescriptionFile.error.action === 'print'
+                ? 'The prescription was not printed'
+                : 'The prescription was not downloaded'
+            }
           />
         </div>
       ) : null}
+      <PrintOutcomeNotice
+        outcome={prescriptionFile.printOutcome}
+        what="prescription"
+        className="-mt-2 mb-6"
+      />
 
       <div className="grid gap-section lg:grid-cols-3 lg:gap-8">
         <div className="space-y-section lg:col-span-2">
@@ -460,18 +490,23 @@ export function PatientMedicationsPage() {
           </PageSection>
         </div>
 
-        {/* --- Adherence --------------------------------------------------- */}
-        <PageSection className="print:hidden" title="This week">
-          <Card>
-            <CardBody>
-              {adherence ? (
-                <AdherenceSummary adherence={adherence} />
-              ) : (
-                <p className="text-sm text-muted">Loading…</p>
-              )}
-            </CardBody>
-          </Card>
-        </PageSection>
+        <div className="space-y-section">
+          {/* --- Adherence ------------------------------------------------- */}
+          <PageSection className="print:hidden" title="This week">
+            <Card>
+              <CardBody>
+                {adherence ? (
+                  <AdherenceSummary adherence={adherence} />
+                ) : (
+                  <p className="text-sm text-muted">Loading…</p>
+                )}
+              </CardBody>
+            </Card>
+          </PageSection>
+
+          {/* --- Offline reminders, on the phone's own calendar ------------ */}
+          {patient ? <PhoneReminders patient={patient} /> : null}
+        </div>
       </div>
     </>
   )

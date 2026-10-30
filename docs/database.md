@@ -260,6 +260,19 @@ refuses a change to this column from any signed-in user other than the
 doctor. Nothing clinic-wide changes: no setting, time zone, grace period or
 lead time, and no patient's reminder preference.
 
+### 14. A system-wide report keeps its figures
+
+Module 9.5, with the download the adviser asked for. Migration 43 adds
+`report.report_snapshot` (jsonb): the figures a system-wide report was
+generated with, exactly as `admin_dashboard_stats()` returned them. It is
+written only by `admin_record_system_report()`, which the Clinic Admin's
+**Generate report** calls: the function computes the figures for the
+caller's clinic (refusing anyone but a Clinic Admin) and records the report
+with them in one statement. `report_guard_snapshot` refuses any signed-in
+user writing or changing a snapshot, and a check constraint keeps one off a
+doctor's recovery report. Rows from before 43 have none, and nothing
+invents them. Reading is `report_select`, unchanged; no file is stored.
+
 ## Assumptions where the ERD was silent
 
 The ERD types every status column as `varchar` without listing values. Each

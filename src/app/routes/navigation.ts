@@ -3,6 +3,7 @@ import {
   Bell,
   Building2,
   CalendarDays,
+  CalendarRange,
   ClipboardList,
   FileBarChart,
   LayoutDashboard,
@@ -83,6 +84,9 @@ const PATIENT_NAV: NavSection[] = [
         to: '/patient/appointments',
         icon: CalendarDays,
       },
+      // Sixth, so the phone's five-item bar keeps its five; the calendar is
+      // in the menu there.
+      { label: 'Calendar', to: '/patient/calendar', icon: CalendarRange },
     ],
   },
   {
@@ -126,6 +130,8 @@ const DOCTOR_NAV: NavSection[] = [
         to: '/doctor/announcements',
         icon: Megaphone,
       },
+      // Sixth, so the phone's five-item bar keeps its five.
+      { label: 'Calendar', to: '/doctor/calendar', icon: CalendarRange },
     ],
   },
   {

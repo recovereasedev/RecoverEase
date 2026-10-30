@@ -691,6 +691,7 @@ export type Database = {
           report_generated_at: string
           report_file_path: string | null
           clinic_id: string
+          report_snapshot: Json | null
         }
         Insert: {
           report_id?: string
@@ -700,6 +701,7 @@ export type Database = {
           report_generated_at?: string
           report_file_path?: string | null
           clinic_id?: string
+          report_snapshot?: Json | null
         }
         Update: {
           report_id?: string
@@ -709,6 +711,7 @@ export type Database = {
           report_generated_at?: string
           report_file_path?: string | null
           clinic_id?: string
+          report_snapshot?: Json | null
         }
         Relationships: [
           {
@@ -983,6 +986,10 @@ export type Database = {
       admin_dashboard_stats: {
         Args: Record<PropertyKey, never>
         Returns: Json
+      }
+      admin_record_system_report: {
+        Args: Record<PropertyKey, never>
+        Returns: Database['public']['Tables']['report']['Row']
       }
       admin_chatbot_usage: {
         Args: { window_days?: number }
