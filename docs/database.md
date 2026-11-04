@@ -275,7 +275,8 @@ invents them. Reading is `report_select`, unchanged; no file is stored.
 
 ### 15. The recovery roadmap
 
-Module 5.7, enhanced (migration 45). Not applied to production yet. A
+Module 5.7, enhanced (migration 45). Applied to production on 2026-11-04
+(`docs/deployment.md`, "Recovery roadmap (migration 45)"). A
 treatment plan is laid out as numbered phases, each holding the activities
 the doctor assigns, which the patient marks done. What already exists stays
 the one source of truth and is never copied:

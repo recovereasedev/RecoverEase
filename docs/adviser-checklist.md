@@ -79,7 +79,7 @@ nothing is built for it.
 | 5.1-5.3 | Recovery dashboard, progress charts, adherence | Doctor | Complete | Patient record, Recovery tab |
 | 5.4-5.5 | Add / view doctor's notes | Doctor | Complete | Record, Notes tab |
 | 5.6 | View Personal Recovery Dashboard | Patient | Complete | Patient dashboard |
-| 5.7 | View Recovery Roadmap | Patient, Doctor | Complete as first built (the Treatment plan page draws the goals as a path). **Enhanced on branch `feature/enhanced-recovery-roadmap`: built and tested, not in production** - migration 45 is not applied and no screen of it has run against the hosted project | `/patient/roadmap`; record, Treatment tab, Recovery roadmap; see below |
+| 5.7 | View Recovery Roadmap | Patient, Doctor | Complete as first built (the Treatment plan page draws the goals as a path). **Enhanced on branch `feature/enhanced-recovery-roadmap`: built and tested, not in production** - migration 45 is applied to production (2026-11-04), but the website that uses it is not yet merged and no screen of it has run against the hosted project | `/patient/roadmap`; record, Treatment tab, Recovery roadmap; see below |
 | 5.8 | View Treatment Goals | Patient | Complete | Treatment plan page |
 | 5.9-5.10 | Log progress, recovery journal | Patient | Complete | My recovery |
 | 5.11 | View Recovery Trend Charts | Patient | Complete | My recovery; 7- and 30-day filters (PR #66) |

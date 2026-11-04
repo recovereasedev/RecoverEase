@@ -10,16 +10,17 @@
 > | Repository | `recovereasedev/RecoverEase` |
 >
 > **Production, read-only checks** - the website and Edge Functions on
-> 2026-10-29 at 17:38 UTC, the database on 2026-10-30 at 00:29 UTC. A dated
+> 2026-10-29 at 17:38 UTC, the database on 2026-11-04 at 19:42 UTC. A dated
 > snapshot, not the current state - check again before relying on it:
 >
 > - **Website** (at 17:38 UTC). The Vercel Production deployment
 >   `dpl_7P9bhug51rgRDPoKqh5kP4PZN7Kf`, built from `main` at `23af842` (the
 >   merge of PR #68), serves <https://recoverease-web.vercel.app>.
-> - **Database** (at 00:29 UTC). The migration history has 42 entries.
->   Every file in `supabase/migrations/` is in it except 34
->   (`lift_single_clinic_gate`), held for its own decision, and 45
->   (`recovery_roadmap`), not applied - see "Recovery roadmap (migration
+> - **Database** (2026-11-04 at 19:42 UTC). The migration history has 43
+>   entries. Every file in `supabase/migrations/` is in it except 34
+>   (`lift_single_clinic_gate`), held for its own decision. 45
+>   (`recovery_roadmap`) was applied and verified on 2026-11-04, ahead of
+>   the website that reads it (PR #71) - see "Recovery roadmap (migration
 >   45)". 43 (`system_report_snapshot`) is applied and verified; the
 >   website that calls it was merged in PR #70 and deployed from `main`
 >   `7d6e60d` on 2026-10-30 - see "Report figures kept (migration 43)".
@@ -1185,11 +1186,28 @@ is finished by running it again; it refuses only once both are gone.
 
 Module 5.7, enhanced: a plan's phases and activities, the patient's
 completions and the goals' status history (`docs/database.md`, section 15).
-**Not applied anywhere yet**; apply it only with approval, as a new
-migration, and before the website that reads it is deployed - that
-website's Recovery Roadmap page, the record's roadmap editor and the
-progress panel's Roadmap view all read the new tables, and fail with "could
-not load" without them. Nothing else on the site depends on it.
+It goes in before the website that reads it is deployed - that website's
+Recovery Roadmap page, the record's roadmap editor and the progress panel's
+Roadmap view all read the new tables, and fail with "could not load"
+without them. Nothing else on the site depends on it.
+
+**Applied to production on 2026-11-04 at 19:41:21 UTC** (history
+`20261104194121 recovery_roadmap`, whose one statement matches the file's
+MD5, `f67e4fbf392d8a6d44c37ce465c2af06`), inside the :33-:42 window, after
+a read-only preflight found none of its objects present, everything it
+reads in place, and no open transaction or lock on the tables it locks.
+**Verified** read-only with the checks below: the four tables with RLS on
+and their eight policies, the twelve functions, five triggers and ten
+indexes; `treatment_goal.recovery_phase_id` null on all 3 goals, and the
+new tables and the goal history empty; `authenticated` may call both
+patient functions and `anon` may not, and no signed-in session may write
+either history; the security advisors gained exactly the two expected
+warnings, and the performance advisors only notices (the goal-to-phase
+link's two-column key, and the new indexes not yet used); plans, goals
+(their columns from before 45), appointments, check-ins, schedules and
+doses unchanged by count and checksum; and the reminder jobs that ran
+afterwards all succeeded. The website that reads it is PR #71, not yet
+merged.
 
 - **What it changes in place.** One nullable column, a foreign key, an
   index and two triggers on `treatment_goal`; everything else is new. It
