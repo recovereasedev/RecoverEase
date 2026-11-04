@@ -582,10 +582,18 @@ create trigger recovery_activity_prepare
 --
 -- The phase row is locked FOR SHARE until the goal's transaction ends, so
 -- joining and archiving cannot cross: an archive that comes second waits,
--- then finds the goal and takes it out (`recovery_phase_release_goals`); a
--- goal that comes second waits, then finds the phase archived and is
--- refused. The foreign key's own lock (FOR KEY SHARE) does not hold an
--- archive back, so it is not enough on its own.
+-- then finds the goal and takes it out (`recovery_phase_release_goals`). The
+-- foreign key's own lock (FOR KEY SHARE) does not hold an archive back, so
+-- it is not enough on its own.
+--
+-- The lock is taken NOWAIT. This trigger runs with the goal row already
+-- locked, and an archive holds its phase while it goes on to lock the
+-- phase's goals, so the two take the same rows in opposite orders: a goal
+-- update covering several goals - one already in the phase, one joining
+-- it - could wait for the archive while the archive waits for it. Only
+-- phase-then-goal may wait; a goal joining a phase someone else is changing
+-- is refused at once (55P03), and is safe to try again: by then the phase
+-- is either current, or archived and refused.
 create or replace function public.treatment_goal_check_phase()
 returns trigger
 language plpgsql
@@ -600,7 +608,7 @@ begin
       into is_archived
       from public.recovery_phase ph
      where ph.recovery_phase_id = new.recovery_phase_id
-       for share;
+       for share nowait;
     if is_archived then
       raise exception 'This phase is archived; link the goal to a current phase'
         using errcode = 'check_violation';

@@ -273,12 +273,19 @@ export async function reorderActivities(phaseId: string, activityIds: readonly s
 }
 
 /** Places an existing goal in a phase of its own plan, or takes it out (null). */
+const LOCK_NOT_AVAILABLE = '55P03'
+
 export async function linkGoalToPhase(goalId: string, phaseId: string | null): Promise<void> {
   const { data, error } = await supabase
     .from('treatment_goal')
     .update({ recovery_phase_id: phaseId })
     .eq('treatment_goal_id', goalId)
     .select('treatment_goal_id')
+  // The database refuses at once, rather than wait, when the phase is being
+  // changed at that moment (migration 45); trying again is safe.
+  if (error?.code === LOCK_NOT_AVAILABLE) {
+    throw new Error('That phase is being changed right now. Try again in a moment.')
+  }
   if (error) throw error
   // Row-level security returns no row rather than an error.
   if (data.length === 0) throw new Error('The goal was not moved.')

@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 
 import { catalog } from './helpers/catalog'
 import { addClinic, liftSingleClinicGate } from './helpers/clinics'
@@ -503,6 +503,12 @@ describe('migration 45 under concurrent sessions', () => {
   // that transaction; and the outcome of each order the two can come in.
   // A lock taken after a savepoint is released by ROLLBACK TO SAVEPOINT;
   // its flags stay on the row, so those tests show only that it was taken.
+  //
+  // A prepared transaction (PREPARE TRANSACTION) is a second transaction
+  // that keeps its row locks while the session runs another; what it holds
+  // is shown by a NOWAIT lock it refuses. A statement that would wait for it
+  // never returns here, so no test can show two transactions waiting on
+  // each other - a deadlock, or its absence, is argued from lock order.
   let database: TestDatabase
   let fx: Fixture
   let today: string
@@ -569,7 +575,7 @@ describe('migration 45 under concurrent sessions', () => {
 
   beforeAll(async () => {
     const { pageinspect } = await import('@electric-sql/pglite/contrib/pageinspect')
-    database = await createTestDatabase({ extensions: { pageinspect } })
+    database = await createTestDatabase({ extensions: { pageinspect }, preparedTransactions: true })
     await database.db.exec('create extension pageinspect')
     fx = await seedFixture(database)
     ;[{ today }] = await database.asService<{ today: string }>('select public.app_today()::text as today')
@@ -578,6 +584,42 @@ describe('migration 45 under concurrent sessions', () => {
   afterAll(async () => {
     await database?.close()
   })
+
+  afterEach(async () => {
+    // A failed test must not leave a prepared transaction holding its locks.
+    const left = await database.asService<{ gid: string }>('select gid from pg_prepared_xacts')
+    for (const { gid } of left) await database.db.exec(`rollback prepared '${gid}'`)
+  })
+
+  /** Runs `steps` as `userId` in a transaction left prepared, holding its locks. */
+  async function prepared(
+    userId: string,
+    name: string,
+    steps: (query: (sql: string, params?: unknown[]) => Promise<unknown>) => Promise<void>,
+  ) {
+    const db = database.db
+    await db.exec('begin')
+    try {
+      await db.query(`select set_config('request.jwt.claims', $1, true)`, [JSON.stringify({ sub: userId })])
+      await db.exec('set local role authenticated')
+      await steps((sql, params = []) => db.query(sql, params))
+    } catch (error) {
+      await db.exec('rollback')
+      throw error
+    }
+    await db.exec(`prepare transaction '${name}'`)
+  }
+
+  /** Whether a lock a statement would need is held by another transaction. */
+  const heldElsewhere = async (table: string, key: string, id: string, mode = 'no key update') => {
+    try {
+      await database.asService(`select 1 from public.${table} where ${key} = $1 for ${mode} nowait`, [id])
+      return false
+    } catch (error) {
+      if ((error as { code?: string }).code === '55P03') return true
+      throw error
+    }
+  }
 
   it('a goal joining a phase holds it FOR SHARE until it commits, so an archive cannot cross it', async () => {
     const plan = await freshPlan('Goal and archive')
@@ -876,6 +918,67 @@ describe('migration 45 under concurrent sessions', () => {
     // Archived first, the phase takes no new activity.
     await add('update public.recovery_phase set recovery_phase_archived_at = now() where recovery_phase_id = $1 returning recovery_phase_id', [away])
     await expect(database.asUser(fx.doctorAUserId, ADD_ACTIVITY, [away, 'Too late', null])).rejects.toThrow(/add the activity to a current phase/)
+  })
+
+  it('an archive holds its phase and then its goals; a goal never waits for a phase, so the two cannot deadlock', async () => {
+    const plan = await freshPlan('Lock order')
+    const phaseId = await add(ADD_PHASE, [plan, 'Contested', null, null])
+    const goal = (description: string) =>
+      add(`insert into public.treatment_goal (treatment_plan_id, treatment_goal_description) values ($1, $2) returning treatment_goal_id`, [
+        plan,
+        description,
+      ])
+    const [inPhase, joining] = [await goal('Already in it'), await goal('Joining it')]
+    await database.asUser(fx.doctorAUserId, 'update public.treatment_goal set recovery_phase_id = $2 where treatment_goal_id = $1', [inPhase, phaseId])
+    const LINK = 'update public.treatment_goal set recovery_phase_id = $2 where treatment_goal_id = any($1::uuid[])'
+    const phaseOf = async (id: string) =>
+      (await database.asService<{ phase: string | null }>('select recovery_phase_id as phase from public.treatment_goal where treatment_goal_id = $1', [id]))[0]!
+        .phase
+
+    // An archive in progress holds the phase, and the goals it took out of it.
+    await prepared(fx.doctorAUserId, 'archive', async (query) => {
+      await query('update public.recovery_phase set recovery_phase_archived_at = now() where recovery_phase_id = $1', [phaseId])
+    })
+    expect(await heldElsewhere('recovery_phase', 'recovery_phase_id', phaseId)).toBe(true)
+    expect(await heldElsewhere('treatment_goal', 'treatment_goal_id', inPhase)).toBe(true)
+    // A goal joining that phase is refused at once rather than waiting for
+    // it while holding the goal - the wait that could close a cycle.
+    await expect(database.asUser(fx.doctorAUserId, LINK, [[joining], phaseId])).rejects.toMatchObject({ code: '55P03' })
+    await database.db.exec(`commit prepared 'archive'`)
+    // Tried again, it finds the phase archived.
+    await expect(database.asUser(fx.doctorAUserId, LINK, [[joining], phaseId])).rejects.toThrow(/archived/)
+    expect([await phaseOf(inPhase), await phaseOf(joining)]).toEqual([null, null])
+
+    // The other way round: goals joining a current phase - one already in
+    // it - hold the phase FOR SHARE and their own rows, so an archive waits
+    // for them, and they wait for nothing it holds.
+    const current = await add(ADD_PHASE, [plan, 'Current', null, null])
+    await database.asUser(fx.doctorAUserId, LINK, [[inPhase], current])
+    await prepared(fx.doctorAUserId, 'link', async (query) => {
+      await query(LINK, [[inPhase, joining], current])
+    })
+    expect(await heldElsewhere('recovery_phase', 'recovery_phase_id', current)).toBe(true)
+    expect(await heldElsewhere('recovery_phase', 'recovery_phase_id', current, 'share')).toBe(false)
+    expect(await heldElsewhere('treatment_goal', 'treatment_goal_id', inPhase)).toBe(true)
+    await database.db.exec(`commit prepared 'link'`)
+    await add('update public.recovery_phase set recovery_phase_archived_at = now() where recovery_phase_id = $1 returning recovery_phase_id', [current])
+    expect([await phaseOf(inPhase), await phaseOf(joining)]).toEqual([null, null])
+  })
+
+  it('a patient’s mark, until it commits, holds back an archive of its phase and a change to its plan', async () => {
+    const plan = await freshPlan('Held by the patient')
+    const phaseId = await add(ADD_PHASE, [plan, 'Held', null, null])
+    const task = await add(ADD_ACTIVITY, [phaseId, 'Marked', null])
+
+    await prepared(fx.aliceUserId, 'mark', async (query) => {
+      await query(COMPLETE, [task])
+    })
+    expect(await heldElsewhere('recovery_phase', 'recovery_phase_id', phaseId)).toBe(true)
+    expect(await heldElsewhere('treatment_plan', 'treatment_plan_id', plan)).toBe(true)
+    // Shared: another patient call or a goal joining the phase is not held back.
+    expect(await heldElsewhere('recovery_phase', 'recovery_phase_id', phaseId, 'share')).toBe(false)
+    await database.db.exec(`rollback prepared 'mark'`)
+    expect(await heldElsewhere('recovery_phase', 'recovery_phase_id', phaseId)).toBe(false)
   })
 
   it('another user’s attempt to mark an activity is refused before it takes any lock', async () => {

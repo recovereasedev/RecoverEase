@@ -331,7 +331,15 @@ transaction ends, so a phase archived or a plan closed at the same moment
 cannot slip in after the check. An activity added, moved or restored holds
 its phase `FOR SHARE` the same way. Locks go activity, then phase and plan;
 nothing that changes a phase or a plan goes on to lock an activity, so these
-cannot deadlock.
+cannot deadlock. Goals and phases are the one pair taken in both orders: an
+update of a goal locks the goal before its trigger asks for the phase, and an
+archive locks the phase before it takes its goals out. So only the archive's
+order may wait: a goal joining a phase asks for it `NOWAIT`, and while
+someone else is changing that phase it is refused at once (`55P03`, shown to
+the doctor as "try again") rather than waiting with the goal held. Tried
+again, it finds the phase current or archived. Without that, an update of
+several goals - one already in the phase - and an archive of the phase could
+each wait for the other.
 
 A goal joins only a phase of its own plan - a composite foreign key
 (`treatment_goal_phase_in_plan`, `ON DELETE SET NULL (recovery_phase_id)`,

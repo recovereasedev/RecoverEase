@@ -199,6 +199,20 @@ async function readMigrations(): Promise<{ name: string; sql: string }[]> {
   )
 }
 
+/** PGlite's own start parameters (0.5), which `startParams` replaces. */
+const PGLITE_START_PARAMS = [
+  '--single', '-F', '-O', '-j',
+  '-c', 'search_path=public',
+  '-c', 'exit_on_error=false',
+  '-c', 'log_checkpoints=false',
+  '-c', 'max_worker_processes=0',
+  '-c', 'max_parallel_workers=0',
+  '-c', 'max_parallel_workers_per_gather=0',
+  '-c', 'io_method=sync',
+  '-c', 'max_parallel_maintenance_workers=0',
+]
+
+
 /**
  * Boots an in-process PostgreSQL, applies every migration in order, and
  * returns handles for querying it as different principals.
@@ -219,11 +233,19 @@ async function readMigrations(): Promise<{ name: string; sql: string }[]> {
  *
  * `extensions` loads PGlite extensions into the database - `pageinspect`, for
  * a test that reads which lock a statement left on a row.
+ *
+ * `preparedTransactions` lets a test PREPARE TRANSACTION: a transaction that
+ * goes on holding its row locks after the session moves on, so a second
+ * transaction can be refused by them (with NOWAIT - a statement that would
+ * wait never returns, PGlite having one connection to wait with).
  */
 export async function createTestDatabase(
-  options: { anonTablePrivileges?: boolean; stopAfter?: string; extensions?: Extensions } = {},
+  options: { anonTablePrivileges?: boolean; stopAfter?: string; extensions?: Extensions; preparedTransactions?: boolean } = {},
 ): Promise<TestDatabase> {
-  const db = new PGlite(options.extensions ? { extensions: options.extensions } : {})
+  const db = new PGlite({
+    ...(options.extensions ? { extensions: options.extensions } : {}),
+    ...(options.preparedTransactions ? { startParams: [...PGLITE_START_PARAMS, '-c', 'max_prepared_transactions=4'] } : {}),
+  })
   await db.waitReady
 
   await db.exec(SUPABASE_COMPAT)
