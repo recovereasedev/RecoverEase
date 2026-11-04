@@ -325,7 +325,13 @@ moved out from under it and no archived row is given a place; placing a
 goal in a phase locks the phase `FOR SHARE`, so the goal and an archive of
 that phase cannot cross - whichever comes second either takes the goal back
 out or is refused; and the patient's functions check whose activity it is
-before they lock it, so nobody else's call takes the lock.
+before they lock it, so nobody else's call takes the lock, then hold the
+activity, its phase and its plan (the last two `FOR SHARE`) until the call's
+transaction ends, so a phase archived or a plan closed at the same moment
+cannot slip in after the check. An activity added, moved or restored holds
+its phase `FOR SHARE` the same way. Locks go activity, then phase and plan;
+nothing that changes a phase or a plan goes on to lock an activity, so these
+cannot deadlock.
 
 A goal joins only a phase of its own plan - a composite foreign key
 (`treatment_goal_phase_in_plan`, `ON DELETE SET NULL (recovery_phase_id)`,

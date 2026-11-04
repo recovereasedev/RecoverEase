@@ -478,6 +478,19 @@ declare
   plan_start   date;
   plan_end     date;
 begin
+  -- An activity joining a phase (added, moved or restored) holds the phase
+  -- FOR SHARE until its transaction ends, as a goal does, so it and an
+  -- archive of that phase cannot cross; the read below then sees any
+  -- archive that came first. Other changes take no phase lock.
+  if tg_op = 'INSERT'
+     or new.recovery_phase_id is distinct from old.recovery_phase_id
+     or (old.recovery_activity_archived_at is not null and new.recovery_activity_archived_at is null) then
+    perform 1
+       from public.recovery_phase ph
+      where ph.recovery_phase_id = new.recovery_phase_id
+        for share;
+  end if;
+
   select ph.treatment_plan_id, ph.recovery_phase_archived_at is not null,
          tp.treatment_plan_start_date, tp.treatment_plan_end_date
     into phase_plan, phase_closed, plan_start, plan_end
@@ -645,7 +658,11 @@ revoke all on function public.treatment_goal_record_status() from public, anon, 
 -- activity it is before anything else, then locks the activity row, so two
 -- presses at once make one change and one event; the second is refused. An
 -- activity can be marked only while its phase and itself are on the roadmap
--- and its plan is active.
+-- and its plan is active - and its phase and plan are held FOR SHARE until
+-- the call's transaction ends, so a doctor archiving the phase or closing
+-- the plan at the same moment waits for it, or is waited for and refuses it.
+-- Locks are taken activity first, then phase and plan; nothing that changes
+-- a phase or a plan goes on to lock an activity, so the two cannot deadlock.
 
 create or replace function public.patient_complete_recovery_activity(target_activity_id uuid)
 returns public.recovery_activity
@@ -676,7 +693,9 @@ begin
   end if;
 
   -- Then the activity, locked until this call ends, and everything that
-  -- decides the change read again under the lock.
+  -- decides the change read again under locks: the phase and the plan are
+  -- held FOR SHARE, so neither can be archived or closed until this
+  -- transaction ends. Always activity, then phase and plan.
   select a.*
     into activity_row
     from public.recovery_activity a
@@ -689,7 +708,8 @@ begin
     from public.recovery_phase ph
     join public.treatment_plan tp on tp.treatment_plan_id = ph.treatment_plan_id
     join public.patient p on p.pat_id = tp.pat_id
-   where ph.recovery_phase_id = activity_row.recovery_phase_id;
+   where ph.recovery_phase_id = activity_row.recovery_phase_id
+     for share of ph, tp;
 
   if owner_id is distinct from me then
     raise exception 'Only the patient can mark their own roadmap activity'
@@ -751,7 +771,9 @@ begin
   end if;
 
   -- Then the activity, locked until this call ends, and everything that
-  -- decides the change read again under the lock.
+  -- decides the change read again under locks: the phase and the plan are
+  -- held FOR SHARE, so neither can be archived or closed until this
+  -- transaction ends. Always activity, then phase and plan.
   select a.*
     into activity_row
     from public.recovery_activity a
@@ -764,7 +786,8 @@ begin
     from public.recovery_phase ph
     join public.treatment_plan tp on tp.treatment_plan_id = ph.treatment_plan_id
     join public.patient p on p.pat_id = tp.pat_id
-   where ph.recovery_phase_id = activity_row.recovery_phase_id;
+   where ph.recovery_phase_id = activity_row.recovery_phase_id
+     for share of ph, tp;
 
   if owner_id is distinct from me then
     raise exception 'Only the patient can mark their own roadmap activity'

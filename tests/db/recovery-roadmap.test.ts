@@ -496,11 +496,13 @@ describe('the recovery roadmap (migration 45)', () => {
 
 describe('migration 45 under concurrent sessions', () => {
   // PGlite runs one connection, so two transactions cannot truly overlap
-  // here. What can be shown is what makes them safe when they do: the row
+  // here, and nothing in this block shows two sessions waiting on each
+  // other. What can be shown is what makes them safe when they do: the row
   // lock each statement takes, read straight off the table's page
-  // (pageinspect) before its transaction ends, and the outcome of each
-  // order the two can come in. Each lock test would fail against the
-  // statements as first written.
+  // (pageinspect) while its transaction is still open, checked to belong to
+  // that transaction; and the outcome of each order the two can come in.
+  // A lock taken after a savepoint is released by ROLLBACK TO SAVEPOINT;
+  // its flags stay on the row, so those tests show only that it was taken.
   let database: TestDatabase
   let fx: Fixture
   let today: string
@@ -543,12 +545,17 @@ describe('migration 45 under concurrent sessions', () => {
     }
   }
 
-  /** The lock flags on a row's current version, from its heap page. */
+  /**
+   * A row's current version, from its heap page: its lock flags; whether
+   * the lock on it (`mine`) or the version itself (`written`) is this
+   * transaction's own - not a savepoint's, nor an ended transaction's.
+   */
   const rowLock = async (table: string, key: string, id: string) => {
     const [row] = (
-      await database.db.query<{ flags: string; mine: boolean }>(
+      await database.db.query<{ flags: string; mine: boolean; written: boolean }>(
         `select array_to_string(f.raw_flags || f.combined_flags, ',') as flags,
-                h.t_xmax::text = pg_current_xact_id()::text as mine
+                h.t_xmax::text = pg_current_xact_id()::text as mine,
+                h.t_xmin::text = pg_current_xact_id()::text as written
            from public.${table} t,
                 lateral heap_page_items(get_raw_page('public.${table}', (t.ctid::text::point)[0]::int)) h,
                 lateral heap_tuple_infomask_flags(h.t_infomask, h.t_infomask2) f
@@ -632,6 +639,8 @@ describe('migration 45 under concurrent sessions', () => {
 
     // A stale order still naming the archived phase: refused - but only once
     // the current phases were locked, so nothing could change under the check.
+    // The refusal rolls back to the savepoint, which releases those locks:
+    // their flags show they were taken, by the savepoint's own transaction.
     const locks = await inOneTransaction(
       fx.doctorAUserId,
       async (query) => {
@@ -650,6 +659,7 @@ describe('migration 45 under concurrent sessions', () => {
     expect(locks.one.flags).toContain('HEAP_XMAX_EXCL_LOCK')
     expect(locks.two.flags).toContain('HEAP_XMAX_EXCL_LOCK')
     expect(locks.three.flags).not.toContain('HEAP_XMAX_EXCL_LOCK')
+    expect([locks.one.mine, locks.two.mine]).toEqual([false, false])
 
     // The current order goes through, and the archived phase keeps its place.
     const before = await database.asService<{ order: number }>(
@@ -675,6 +685,8 @@ describe('migration 45 under concurrent sessions', () => {
       await add(ADD_ACTIVITY, [from, 'C', null]),
     ]
 
+    // Refused, and rolled back to the savepoint, which releases the locks it
+    // took: their flags show only that it locked every current activity.
     const locks = await inOneTransaction(
       fx.doctorAUserId,
       async (query) => {
@@ -713,6 +725,157 @@ describe('migration 45 under concurrent sessions', () => {
       [from],
     )
     expect(order.map((row) => row.id)).toEqual([b, a])
+  })
+
+  it('a reorder that goes through holds the plan’s current phases until its transaction ends, and not an archived one', async () => {
+    const plan = await freshPlan('Reorder phases, held')
+    const [one, two, gone] = [
+      await add(ADD_PHASE, [plan, 'One', null, null]),
+      await add(ADD_PHASE, [plan, 'Two', null, null]),
+      await add(ADD_PHASE, [plan, 'Gone', null, null]),
+    ]
+    await add('update public.recovery_phase set recovery_phase_archived_at = now() where recovery_phase_id = $1 returning recovery_phase_id', [gone])
+
+    const rows = await inOneTransaction(
+      fx.doctorAUserId,
+      async (query) => {
+        await query('select public.doctor_reorder_recovery_phases($1, $2::uuid[])', [plan, [two, one]])
+        await query('select 1')
+      },
+      async () => ({
+        one: await rowLock('recovery_phase', 'recovery_phase_id', one),
+        two: await rowLock('recovery_phase', 'recovery_phase_id', two),
+        gone: await rowLock('recovery_phase', 'recovery_phase_id', gone),
+      }),
+    )
+    // Each current phase is this transaction's own uncommitted version, so
+    // any other session changing it waits for the commit.
+    expect([rows.one.written, rows.two.written]).toEqual([true, true])
+    expect([rows.gone.written, rows.gone.mine]).toEqual([false, false])
+  })
+
+  it('an activity reorder that goes through holds the phase’s current activities, and not one moved out', async () => {
+    const plan = await freshPlan('Reorder activities, held')
+    const from = await add(ADD_PHASE, [plan, 'From', null, null])
+    const to = await add(ADD_PHASE, [plan, 'To', null, null])
+    const [a, b, moved] = [
+      await add(ADD_ACTIVITY, [from, 'A', null]),
+      await add(ADD_ACTIVITY, [from, 'B', null]),
+      await add(ADD_ACTIVITY, [from, 'Moved', null]),
+    ]
+    await database.asUser(fx.doctorAUserId, 'update public.recovery_activity set recovery_phase_id = $2 where recovery_activity_id = $1', [moved, to])
+
+    const rows = await inOneTransaction(
+      fx.doctorAUserId,
+      async (query) => {
+        await query('select public.doctor_reorder_recovery_activities($1, $2::uuid[])', [from, [b, a]])
+        await query('select 1')
+      },
+      async () => {
+        const state = []
+        for (const id of [a, b, moved]) state.push(await rowLock('recovery_activity', 'recovery_activity_id', id))
+        return state
+      },
+    )
+    expect(rows.map((row) => row.written)).toEqual([true, true, false])
+    expect(rows[2]!.mine).toBe(false)
+  })
+
+  it('marking an activity done, or undoing it, holds its phase and plan FOR SHARE until the transaction ends', async () => {
+    const plan = await freshPlan('Patient locks')
+    const phaseId = await add(ADD_PHASE, [plan, 'Held', null, null])
+    const task = await add(ADD_ACTIVITY, [phaseId, 'Marked while held', null])
+
+    for (const call of [COMPLETE, REOPEN]) {
+      const rows = await inOneTransaction(
+        fx.aliceUserId,
+        async (query) => {
+          await query(call, [task])
+          await query('select 1')
+        },
+        async () => ({
+          phase: await rowLock('recovery_phase', 'recovery_phase_id', phaseId),
+          plan: await rowLock('treatment_plan', 'treatment_plan_id', plan),
+          activity: await rowLock('recovery_activity', 'recovery_activity_id', task),
+        }),
+      )
+      // Held by this transaction - the patient's - after the call returned:
+      // an archive of the phase or a change to the plan waits for its end.
+      for (const row of [rows.phase, rows.plan]) {
+        expect(row.mine).toBe(true)
+        expect(row.flags).toContain('HEAP_XMAX_LOCK_ONLY')
+        expect(row.flags).toContain('HEAP_XMAX_SHR_LOCK')
+      }
+      expect(rows.activity.written).toBe(true)
+      // Committed done, for the undo to have something to undo.
+      if (call === COMPLETE) await database.asUser(fx.aliceUserId, COMPLETE, [task])
+    }
+  })
+
+  it('a mark made before the phase is archived or the plan closed stays; one made after is refused', async () => {
+    const plan = await freshPlan('Mark and close')
+    const phaseId = await add(ADD_PHASE, [plan, 'Closing', null, null])
+    const [first, second] = [await add(ADD_ACTIVITY, [phaseId, 'First', null]), await add(ADD_ACTIVITY, [phaseId, 'Second', null])]
+
+    await database.asUser(fx.aliceUserId, COMPLETE, [first])
+    await database.asUser(fx.doctorAUserId, 'update public.treatment_plan set treatment_plan_status = $2 where treatment_plan_id = $1', [plan, 'completed'])
+    await expect(database.asUser(fx.aliceUserId, COMPLETE, [second])).rejects.toThrow(/plan is active/)
+    await database.asUser(fx.doctorAUserId, 'update public.treatment_plan set treatment_plan_status = $2 where treatment_plan_id = $1', [plan, 'active'])
+    await add('update public.recovery_phase set recovery_phase_archived_at = now() where recovery_phase_id = $1 returning recovery_phase_id', [phaseId])
+    await expect(database.asUser(fx.aliceUserId, REOPEN, [first])).rejects.toThrow(/no longer on the roadmap/)
+
+    expect(
+      await database.asService(
+        `select recovery_activity_id as id, recovery_activity_completed_at is not null as done
+           from public.recovery_activity where recovery_phase_id = $1 order by recovery_activity_order`,
+        [phaseId],
+      ),
+    ).toEqual([
+      { id: first, done: true },
+      { id: second, done: false },
+    ])
+  })
+
+  it('an activity added, moved or restored holds its phase FOR SHARE; other edits take no phase lock', async () => {
+    const plan = await freshPlan('Activity joins')
+    const home = await add(ADD_PHASE, [plan, 'Home', null, null])
+    const away = await add(ADD_PHASE, [plan, 'Away', null, null])
+    const task = await add(ADD_ACTIVITY, [home, 'Travels', null])
+    const shelved = await add(ADD_ACTIVITY, [home, 'Shelved', null])
+    await add('update public.recovery_activity set recovery_activity_archived_at = now() where recovery_activity_id = $1 returning recovery_activity_id', [shelved])
+
+    const joins: [string, string, unknown[]][] = [
+      ['added', `insert into public.recovery_activity (recovery_phase_id, recovery_activity_title) values ($1, 'New')`, [home]],
+      ['moved', 'update public.recovery_activity set recovery_phase_id = $2 where recovery_activity_id = $1', [task, away]],
+      ['restored', 'update public.recovery_activity set recovery_activity_archived_at = null where recovery_activity_id = $1', [shelved]],
+    ]
+    for (const [, sql, params] of joins) {
+      const target = params.at(-1) === away ? away : home
+      const lock = await inOneTransaction(
+        fx.doctorAUserId,
+        async (query) => {
+          await query(sql, params)
+        },
+        () => rowLock('recovery_phase', 'recovery_phase_id', target),
+      )
+      // FOR SHARE, which an archive waits for; the foreign key's own check
+      // takes only FOR KEY SHARE.
+      expect(lock.mine).toBe(true)
+      expect(lock.flags).toContain('HEAP_XMAX_SHR_LOCK')
+    }
+
+    const renamed = await inOneTransaction(
+      fx.doctorAUserId,
+      async (query) => {
+        await query(`update public.recovery_activity set recovery_activity_title = 'Renamed' where recovery_activity_id = $1`, [task])
+      },
+      () => rowLock('recovery_phase', 'recovery_phase_id', home),
+    )
+    expect(renamed.mine).toBe(false)
+
+    // Archived first, the phase takes no new activity.
+    await add('update public.recovery_phase set recovery_phase_archived_at = now() where recovery_phase_id = $1 returning recovery_phase_id', [away])
+    await expect(database.asUser(fx.doctorAUserId, ADD_ACTIVITY, [away, 'Too late', null])).rejects.toThrow(/add the activity to a current phase/)
   })
 
   it('another user’s attempt to mark an activity is refused before it takes any lock', async () => {
