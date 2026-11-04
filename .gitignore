@@ -40,6 +40,8 @@ supabase/.branches/
 # Test + build output
 coverage/
 *.tsbuildinfo
+# The local Super Admin preview's own build (playwright.preview.config.ts)
+.preview-dist/
 
 # Playwright
 /test-results/

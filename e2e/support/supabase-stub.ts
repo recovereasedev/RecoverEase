@@ -17,6 +17,18 @@ import type { Page, Route } from '@playwright/test'
 
 export type TableRows = Record<string, Record<string, unknown>[]>
 
+/**
+ * What a modelled database function answers: its result, or a PostgREST
+ * error - `{ code, message }` with a 4xx status, as a refusal raised in the
+ * function arrives in the browser.
+ */
+export type RpcReply =
+  | { result: unknown }
+  | { status: number; error: { code: string; message: string } }
+
+/** Models one database function from the arguments the app sent it. */
+export type RpcHandler = (args: Record<string, unknown>) => RpcReply
+
 export type StubSession = {
   userId: string
   email: string
@@ -164,6 +176,7 @@ export class SupabaseStub {
   /** Requests the app made, for assertions about what it asked for. */
   readonly requests: string[] = []
   private readonly rpcResults = new Map<string, unknown>()
+  private readonly rpcHandlers = new Map<string, RpcHandler>()
   private factors: StubFactor[] = []
   private aal: 'aal1' | 'aal2' = 'aal1'
 
@@ -197,6 +210,17 @@ export class SupabaseStub {
    */
   setRpcResult(name: string, value: unknown): void {
     this.rpcResults.set(name, value)
+  }
+
+  /**
+   * Models a database function that depends on what it is sent - one that
+   * writes, or refuses - where a fixed answer would not do. Takes precedence
+   * over `setRpcResult`. It models the reply only: every check the real
+   * function makes in PostgreSQL is tested against the migrations in
+   * tests/db, not here.
+   */
+  setRpcHandler(name: string, handler: RpcHandler): void {
+    this.rpcHandlers.set(name, handler)
   }
 
   /**
@@ -526,6 +550,22 @@ export class SupabaseStub {
     // call, not an insert, so it must not fall through to the table routing.
     if (table.startsWith('rpc/')) {
       const name = table.slice('rpc/'.length)
+      const handler = this.rpcHandlers.get(name)
+      if (handler) {
+        const args = JSON.parse(request.postData() || '{}') as Record<string, unknown>
+        const reply = handler(args)
+        await route.fulfill({
+          status: 'error' in reply ? reply.status : 200,
+          contentType: 'application/json',
+          body: JSON.stringify(
+            'error' in reply
+              ? { ...reply.error, details: null, hint: null }
+              : reply.result,
+          ),
+        })
+        return
+      }
+
       let result: unknown
       if (this.rpcResults.has(name)) {
         result = this.rpcResults.get(name)
