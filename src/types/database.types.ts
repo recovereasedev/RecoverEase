@@ -647,6 +647,102 @@ export type Database = {
           },
         ]
       }
+      recovery_activity: {
+        Row: {
+          recovery_activity_id: string
+          recovery_phase_id: string
+          recovery_activity_title: string
+          recovery_activity_description: string | null
+          recovery_activity_target_date: string | null
+          recovery_activity_order: number
+          recovery_activity_completed_at: string | null
+          recovery_activity_completed_by: string | null
+          recovery_activity_archived_at: string | null
+          recovery_activity_created_at: string
+          recovery_activity_updated_at: string
+        }
+        Insert: {
+          recovery_activity_id?: string
+          recovery_phase_id: string
+          recovery_activity_title: string
+          recovery_activity_description?: string | null
+          recovery_activity_target_date?: string | null
+          recovery_activity_order: number
+          recovery_activity_completed_at?: string | null
+          recovery_activity_completed_by?: string | null
+          recovery_activity_archived_at?: string | null
+          recovery_activity_created_at?: string
+          recovery_activity_updated_at?: string
+        }
+        Update: {
+          recovery_activity_id?: string
+          recovery_phase_id?: string
+          recovery_activity_title?: string
+          recovery_activity_description?: string | null
+          recovery_activity_target_date?: string | null
+          recovery_activity_order?: number
+          recovery_activity_completed_at?: string | null
+          recovery_activity_completed_by?: string | null
+          recovery_activity_archived_at?: string | null
+          recovery_activity_created_at?: string
+          recovery_activity_updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'recovery_activity_recovery_activity_completed_by_fkey'
+            columns: ['recovery_activity_completed_by']
+            isOneToOne: false
+            referencedRelation: 'user_account'
+            referencedColumns: ['user_id']
+          },
+          {
+            foreignKeyName: 'recovery_activity_recovery_phase_id_fkey'
+            columns: ['recovery_phase_id']
+            isOneToOne: false
+            referencedRelation: 'recovery_phase'
+            referencedColumns: ['recovery_phase_id']
+          },
+        ]
+      }
+      recovery_activity_event: {
+        Row: {
+          recovery_activity_event_id: string
+          recovery_activity_id: string
+          recovery_activity_event_kind: Database['public']['Enums']['recovery_activity_event_kind']
+          recovery_activity_event_actor: string | null
+          recovery_activity_event_at: string
+        }
+        Insert: {
+          recovery_activity_event_id?: string
+          recovery_activity_id: string
+          recovery_activity_event_kind: Database['public']['Enums']['recovery_activity_event_kind']
+          recovery_activity_event_actor?: string | null
+          recovery_activity_event_at?: string
+        }
+        Update: {
+          recovery_activity_event_id?: string
+          recovery_activity_id?: string
+          recovery_activity_event_kind?: Database['public']['Enums']['recovery_activity_event_kind']
+          recovery_activity_event_actor?: string | null
+          recovery_activity_event_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'recovery_activity_event_recovery_activity_event_actor_fkey'
+            columns: ['recovery_activity_event_actor']
+            isOneToOne: false
+            referencedRelation: 'user_account'
+            referencedColumns: ['user_id']
+          },
+          {
+            foreignKeyName: 'recovery_activity_event_recovery_activity_id_fkey'
+            columns: ['recovery_activity_id']
+            isOneToOne: false
+            referencedRelation: 'recovery_activity'
+            referencedColumns: ['recovery_activity_id']
+          },
+        ]
+      }
       recovery_log: {
         Row: {
           recovery_log_id: string
@@ -679,6 +775,53 @@ export type Database = {
             isOneToOne: false
             referencedRelation: 'patient'
             referencedColumns: ['pat_id']
+          },
+        ]
+      }
+      recovery_phase: {
+        Row: {
+          recovery_phase_id: string
+          treatment_plan_id: string
+          recovery_phase_title: string
+          recovery_phase_description: string | null
+          recovery_phase_order: number
+          recovery_phase_start_date: string | null
+          recovery_phase_target_end_date: string | null
+          recovery_phase_archived_at: string | null
+          recovery_phase_created_at: string
+          recovery_phase_updated_at: string
+        }
+        Insert: {
+          recovery_phase_id?: string
+          treatment_plan_id: string
+          recovery_phase_title: string
+          recovery_phase_description?: string | null
+          recovery_phase_order: number
+          recovery_phase_start_date?: string | null
+          recovery_phase_target_end_date?: string | null
+          recovery_phase_archived_at?: string | null
+          recovery_phase_created_at?: string
+          recovery_phase_updated_at?: string
+        }
+        Update: {
+          recovery_phase_id?: string
+          treatment_plan_id?: string
+          recovery_phase_title?: string
+          recovery_phase_description?: string | null
+          recovery_phase_order?: number
+          recovery_phase_start_date?: string | null
+          recovery_phase_target_end_date?: string | null
+          recovery_phase_archived_at?: string | null
+          recovery_phase_created_at?: string
+          recovery_phase_updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'recovery_phase_treatment_plan_id_fkey'
+            columns: ['treatment_plan_id']
+            isOneToOne: false
+            referencedRelation: 'treatment_plan'
+            referencedColumns: ['treatment_plan_id']
           },
         ]
       }
@@ -867,6 +1010,7 @@ export type Database = {
           treatment_goal_target_date: string | null
           treatment_goal_status: Database['public']['Enums']['treatment_goal_status']
           treatment_goal_created_at: string
+          recovery_phase_id: string | null
         }
         Insert: {
           treatment_goal_id?: string
@@ -875,6 +1019,7 @@ export type Database = {
           treatment_goal_target_date?: string | null
           treatment_goal_status?: Database['public']['Enums']['treatment_goal_status']
           treatment_goal_created_at?: string
+          recovery_phase_id?: string | null
         }
         Update: {
           treatment_goal_id?: string
@@ -883,14 +1028,64 @@ export type Database = {
           treatment_goal_target_date?: string | null
           treatment_goal_status?: Database['public']['Enums']['treatment_goal_status']
           treatment_goal_created_at?: string
+          recovery_phase_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: 'treatment_goal_phase_in_plan'
+            columns: ['recovery_phase_id', 'treatment_plan_id']
+            isOneToOne: false
+            referencedRelation: 'recovery_phase'
+            referencedColumns: ['recovery_phase_id', 'treatment_plan_id']
+          },
           {
             foreignKeyName: 'treatment_goal_treatment_plan_id_fkey'
             columns: ['treatment_plan_id']
             isOneToOne: false
             referencedRelation: 'treatment_plan'
             referencedColumns: ['treatment_plan_id']
+          },
+        ]
+      }
+      treatment_goal_status_event: {
+        Row: {
+          treatment_goal_status_event_id: string
+          treatment_goal_id: string
+          treatment_goal_previous_status: Database['public']['Enums']['treatment_goal_status'] | null
+          treatment_goal_new_status: Database['public']['Enums']['treatment_goal_status']
+          treatment_goal_changed_by: string | null
+          treatment_goal_changed_at: string
+        }
+        Insert: {
+          treatment_goal_status_event_id?: string
+          treatment_goal_id: string
+          treatment_goal_previous_status?: Database['public']['Enums']['treatment_goal_status'] | null
+          treatment_goal_new_status: Database['public']['Enums']['treatment_goal_status']
+          treatment_goal_changed_by?: string | null
+          treatment_goal_changed_at?: string
+        }
+        Update: {
+          treatment_goal_status_event_id?: string
+          treatment_goal_id?: string
+          treatment_goal_previous_status?: Database['public']['Enums']['treatment_goal_status'] | null
+          treatment_goal_new_status?: Database['public']['Enums']['treatment_goal_status']
+          treatment_goal_changed_by?: string | null
+          treatment_goal_changed_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'treatment_goal_status_event_treatment_goal_changed_by_fkey'
+            columns: ['treatment_goal_changed_by']
+            isOneToOne: false
+            referencedRelation: 'user_account'
+            referencedColumns: ['user_id']
+          },
+          {
+            foreignKeyName: 'treatment_goal_status_event_treatment_goal_id_fkey'
+            columns: ['treatment_goal_id']
+            isOneToOne: false
+            referencedRelation: 'treatment_goal'
+            referencedColumns: ['treatment_goal_id']
           },
         ]
       }
@@ -1019,6 +1214,22 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: boolean
       }
+      patient_complete_recovery_activity: {
+        Args: { target_activity_id: string }
+        Returns: Database['public']['Tables']['recovery_activity']['Row']
+      }
+      patient_reopen_recovery_activity: {
+        Args: { target_activity_id: string }
+        Returns: Database['public']['Tables']['recovery_activity']['Row']
+      }
+      doctor_reorder_recovery_phases: {
+        Args: { target_plan_id: string; phase_ids: string[] }
+        Returns: undefined
+      }
+      doctor_reorder_recovery_activities: {
+        Args: { target_phase_id: string; activity_ids: string[] }
+        Returns: undefined
+      }
       super_admin_assured: {
         Args: Record<PropertyKey, never>
         Returns: boolean
@@ -1083,6 +1294,7 @@ export type Database = {
       medication_log_status: 'pending' | 'taken' | 'missed' | 'skipped'
       notification_type: 'appointment' | 'medication' | 'treatment' | 'chat_critical' | 'announcement' | 'general'
       patient_status: 'active' | 'inactive' | 'discharged'
+      recovery_activity_event_kind: 'completed' | 'reopened'
       report_type: 'patient_recovery' | 'system_wide'
       reschedule_request_status: 'pending' | 'approved' | 'declined'
       treatment_goal_status: 'pending' | 'in_progress' | 'achieved' | 'missed'

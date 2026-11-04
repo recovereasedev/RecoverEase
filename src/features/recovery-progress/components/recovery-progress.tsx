@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { DataTable, TBody, TD, TH, THead, TR } from '@/components/ui/data-table'
 import { MOOD_OPTIONS } from '@/features/recovery-logs/components/mood-scale'
+import { RoadmapProgress } from '@/features/recovery-roadmap/components/roadmap-progress'
 import { formatDateRelative } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
@@ -23,7 +24,7 @@ import { ChoiceGroup } from './choice-group'
 import { DailyChart, type ChartDay, type ChartTick } from './daily-chart'
 import { GoalSnapshotView } from './goal-snapshot'
 
-type Indicator = 'mood' | 'medication' | 'goals'
+type Indicator = 'mood' | 'medication' | 'goals' | 'roadmap'
 
 const RANGES = [
   { value: 7, label: '7 days' },
@@ -34,6 +35,8 @@ const INDICATORS = [
   { value: 'mood', label: 'Mood' },
   { value: 'medication', label: 'Medication' },
   { value: 'goals', label: 'Treatment goals' },
+  // Migration 45: the recovery roadmap's activities and phase goals.
+  { value: 'roadmap', label: 'Roadmap' },
 ] as const satisfies readonly { value: Indicator; label: string }[]
 
 const PERCENT_TICKS: ChartTick[] = [0, 25, 50, 75, 100].map((value) => ({
@@ -130,6 +133,24 @@ export function RecoveryProgress({
                 <MoodSection period={period} summary={summary} logs={logs} />
               ) : indicator === 'medication' ? (
                 <MedicationSection period={period} summary={summary} doses={doses} />
+              ) : indicator === 'roadmap' ? (
+                <section aria-label="Recovery roadmap">
+                  <h3 className="mb-3 text-base font-semibold text-heading">Recovery roadmap</h3>
+                  {plans.isPending ? (
+                    <LoadingState label="Loading the roadmap…" />
+                  ) : plans.error ? (
+                    <SourceProblem error={plans.error} what="The roadmap" onRetry={() => void plans.refetch()} />
+                  ) : (
+                    <RoadmapProgress
+                      patientId={patientId}
+                      plans={plans.data ?? []}
+                      range={progress.shownRange}
+                      today={today}
+                      period={period}
+                      live={live}
+                    />
+                  )}
+                </section>
               ) : (
                 <section aria-label="Treatment goals">
                   <h3 className="mb-3 text-base font-semibold text-heading">

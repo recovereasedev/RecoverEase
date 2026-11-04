@@ -94,6 +94,12 @@ vi.mock('@tanstack/react-query', async () => {
   }
 })
 
+// Every query above answers an empty list, which is not a roadmap; the
+// editor has its own tests (recovery-roadmap-pages.test.tsx).
+vi.mock('@/features/recovery-roadmap/components/roadmap-editor', () => ({
+  RoadmapEditor: () => null,
+}))
+
 const { DoctorPatientDetailPage } = await import(
   '@/features/patients/pages/doctor-patient-detail-page'
 )

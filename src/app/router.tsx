@@ -155,6 +155,7 @@ export const router = createBrowserRouter([
     { path: 'medications', element: <Page.PatientMedicationsPage /> },
     { path: 'appointments', element: <Page.PatientAppointmentsPage /> },
     { path: 'calendar', element: <Page.PatientCalendarPage /> },
+    { path: 'roadmap', element: <Page.PatientRoadmapPage /> },
     { path: 'chat', element: <Page.PatientChatPage /> },
     { path: 'notifications', element: <Page.NotificationsPage /> },
     { path: 'announcements', element: <Page.AnnouncementsPage /> },

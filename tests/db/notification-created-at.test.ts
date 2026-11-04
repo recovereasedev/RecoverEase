@@ -436,7 +436,8 @@ describe('migration 44, before and after', () => {
     // Against every migration before it in the repository's order, 43
     // included; production applied 44 before 43, which the last test covers.
     const [applied, through43] = await Promise.all([
-      createTestDatabase(),
+      // Through 44: what later migrations add is not 44's.
+      createTestDatabase({ stopAfter: MIGRATION_44 }),
       createTestDatabase({ stopAfter: MIGRATION_43 }),
     ])
     try {
@@ -567,7 +568,7 @@ describe('migration 44, before and after', () => {
 
   it('rolls back to exactly what the migrations before it left, refuses to run twice, and can be applied again', async () => {
     const [database, through43] = await Promise.all([
-      createTestDatabase(),
+      createTestDatabase({ stopAfter: MIGRATION_44 }),
       createTestDatabase({ stopAfter: MIGRATION_43 }),
     ])
     try {
@@ -624,7 +625,7 @@ describe('migration 44, before and after', () => {
 
   it('stopped between dropping the trigger and the function, finishes when run again', async () => {
     const [database, through43] = await Promise.all([
-      createTestDatabase(),
+      createTestDatabase({ stopAfter: MIGRATION_44 }),
       createTestDatabase({ stopAfter: MIGRATION_43 }),
     ])
     try {
@@ -640,7 +641,7 @@ describe('migration 44, before and after', () => {
   it('goes in after 42 and 41 with 43 and 34 still unapplied, as production has them; then the same schema once 43 and 34 follow', async () => {
     const [production, repository] = await Promise.all([
       createTestDatabase({ stopAfter: MIGRATION_33 }),
-      createTestDatabase(),
+      createTestDatabase({ stopAfter: MIGRATION_44 }),
     ])
     try {
       const fx = await seedFixture(production)

@@ -49,6 +49,7 @@ import { usePatient } from '@/features/patients/hooks'
 import { MoodTrend } from '@/features/recovery-logs/components/mood-trend'
 import { useRecoveryLogs } from '@/features/recovery-logs/hooks'
 import { RecoveryProgress } from '@/features/recovery-progress/components/recovery-progress'
+import { RoadmapEditor } from '@/features/recovery-roadmap/components/roadmap-editor'
 import { TreatmentGoalForm } from '@/features/treatment-plans/components/treatment-goal-form'
 import { TreatmentPlanForm } from '@/features/treatment-plans/components/treatment-plan-form'
 import {
@@ -782,6 +783,12 @@ export function DoctorPatientDetailPage() {
                                     Add goal
                                   </Button>
                                 )}
+                              </div>
+
+                              {/* Module 5.7: the plan laid out as phases and
+                                  activities for the patient (migration 45). */}
+                              <div className="mt-6 border-t border-[var(--color-border)] pt-6">
+                                <RoadmapEditor patientId={patientId} plan={plan} />
                               </div>
                             </CardBody>
                           </Card>

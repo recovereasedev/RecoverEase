@@ -65,6 +65,22 @@ export function queryKeysFor(userId: string) {
         [...queryKeys.treatment.all, 'goals', planId] as const,
     },
 
+    /** The recovery roadmap (migration 45): a patient's phases and activities. */
+    roadmap: {
+      all: [userId, 'roadmap'] as const,
+      forPatient: (patientId: string) =>
+        [...queryKeys.roadmap.all, patientId] as const,
+      /** Under `forPatient`: the read for these plans of the patient. */
+      ofPlans: (patientId: string, planIds: readonly string[]) =>
+        [...queryKeys.roadmap.forPatient(patientId), 'plans', ...planIds] as const,
+      /** Under `forPatient`, so a roadmap change refreshes the charts' view. */
+      goalEvents: (patientId: string, from: string) =>
+        [...queryKeys.roadmap.forPatient(patientId), 'goal-events', from] as const,
+      /** Under `forPatient`: a plan's archived phases and activities. */
+      archivedOf: (patientId: string, planId: string) =>
+        [...queryKeys.roadmap.forPatient(patientId), 'archived', planId] as const,
+    },
+
     medications: {
       all: [userId, 'medications'] as const,
       schedulesFor: (patientId: string) =>

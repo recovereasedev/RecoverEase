@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import { PDFDocument } from 'pdf-lib'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -137,7 +138,7 @@ afterEach(() => {
 
 describe('printing the treatment plan', () => {
   it('prints the designed plan itself, not this page', async () => {
-    render(<PatientTreatmentPage />)
+    render(<PatientTreatmentPage />, { wrapper: MemoryRouter })
     fireEvent.click(printButton())
 
     await waitFor(() => expect(printing.files).toHaveLength(1))
@@ -160,7 +161,7 @@ describe('printing the treatment plan', () => {
   it('prints exactly what Download saves', async () => {
     const capture = captureDownloads()
     try {
-      render(<PatientTreatmentPage />)
+      render(<PatientTreatmentPage />, { wrapper: MemoryRouter })
       fireEvent.click(downloadButton())
       await waitFor(() => expect(capture.files).toHaveLength(1))
       fireEvent.click(printButton())
@@ -179,7 +180,7 @@ describe('printing the treatment plan', () => {
 
   it('says where the plan went when the browser downloaded it instead', async () => {
     printing.outcome = 'downloaded'
-    render(<PatientTreatmentPage />)
+    render(<PatientTreatmentPage />, { wrapper: MemoryRouter })
     fireEvent.click(printButton())
 
     expect(
@@ -191,7 +192,7 @@ describe('printing the treatment plan', () => {
 
   it('says the plan was not printed when it could not be built', async () => {
     vi.spyOn(PDFDocument, 'create').mockRejectedValueOnce(new Error('Out of memory'))
-    render(<PatientTreatmentPage />)
+    render(<PatientTreatmentPage />, { wrapper: MemoryRouter })
     fireEvent.click(printButton())
 
     expect(await screen.findByText('The plan was not printed')).toBeInTheDocument()
@@ -199,19 +200,19 @@ describe('printing the treatment plan', () => {
   })
 
   it('keeps both controls off any printout of the page, plans or none', () => {
-    const { unmount } = render(<PatientTreatmentPage />)
+    const { unmount } = render(<PatientTreatmentPage />, { wrapper: MemoryRouter })
     expect(leftOffPaper(printButton())).toBe(true)
     expect(leftOffPaper(downloadButton())).toBe(true)
     unmount()
 
     plans.data = []
-    render(<PatientTreatmentPage />)
+    render(<PatientTreatmentPage />, { wrapper: MemoryRouter })
     expect(leftOffPaper(printButton())).toBe(true)
     expect(leftOffPaper(screen.getByText('No treatment plan yet'))).toBe(false)
   })
 
   it('keeps the plan itself on a printout of the page', () => {
-    render(<PatientTreatmentPage />)
+    render(<PatientTreatmentPage />, { wrapper: MemoryRouter })
 
     for (const text of [
       'Treatment plan',
@@ -235,7 +236,7 @@ describe('downloading the treatment plan (module 3.5)', () => {
   it('saves the designed plan as a PDF, with its goals and their states in words', async () => {
     const capture = captureDownloads()
     try {
-      render(<PatientTreatmentPage />)
+      render(<PatientTreatmentPage />, { wrapper: MemoryRouter })
       fireEvent.click(downloadButton())
 
       await waitFor(() => expect(capture.files).toHaveLength(1))
@@ -266,7 +267,7 @@ describe('downloading the treatment plan (module 3.5)', () => {
     doctor.data = null
     const capture = captureDownloads()
     try {
-      render(<PatientTreatmentPage />)
+      render(<PatientTreatmentPage />, { wrapper: MemoryRouter })
       fireEvent.click(downloadButton())
       await waitFor(() => expect(capture.files).toHaveLength(1))
       const text = await pdfText(await capture.files[0]!.bytes())

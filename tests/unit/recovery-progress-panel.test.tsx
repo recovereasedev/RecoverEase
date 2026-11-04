@@ -123,6 +123,7 @@ const PLANS: PlanWithGoals[] = [
         treatment_goal_target_date: '2026-11-01',
         treatment_goal_status: 'in_progress',
         treatment_goal_created_at: '2026-09-01T00:00:00Z',
+        recovery_phase_id: null,
       },
       {
         treatment_goal_id: 'g-2',
@@ -131,6 +132,7 @@ const PLANS: PlanWithGoals[] = [
         treatment_goal_target_date: '2026-10-01',
         treatment_goal_status: 'achieved',
         treatment_goal_created_at: '2026-09-01T00:00:00Z',
+        recovery_phase_id: null,
       },
     ],
   },
