@@ -1206,8 +1206,8 @@ warnings, and the performance advisors only notices (the goal-to-phase
 link's two-column key, and the new indexes not yet used); plans, goals
 (their columns from before 45), appointments, check-ins, schedules and
 doses unchanged by count and checksum; and the reminder jobs that ran
-afterwards all succeeded. The website that reads it is PR #71, not yet
-merged.
+afterwards all succeeded. The website that reads it, PR #71, merged
+afterwards on 2026-11-04 (`main` `5f53080`) and deployed to production.
 
 - **What it changes in place.** One nullable column, a foreign key, an
   index and two triggers on `treatment_goal`; everything else is new. It
@@ -1229,10 +1229,20 @@ merged.
   `authenticated_security_definer_function_executable` warnings, for the two
   patient functions; and doses, appointments, check-ins, plans and goals
   unchanged by count and checksum.
-- **Hosted test, with its own approval.** A smoke patient marking one of
-  their own activities done and undoing it, and their doctor seeing it,
-  writes rows; it is the first use of the roadmap against the hosted
-  project and has not been done.
+- **Hosted test, approved and passed** on 2026-11-04 from 20:00 to 20:03
+  UTC, on the production site after PR #71 merged (`main` `5f53080`), with
+  the `@smoke.invalid` accounts only, on the smoke patient's active plan.
+  The smoke doctor added a phase and an activity from the record's
+  Treatment tab; the smoke patient, on `/patient/roadmap`, marked the
+  activity done (100%, "Done on 5 November", the clinic's date in
+  Asia/Manila), undid it (0%), and marked it done again; the smoke doctor
+  then saw "100% - 1 of 1 done" and "Done by the patient on 5 November".
+  Each step was checked in the database: the completion set, cleared and
+  set again by the smoke patient, with three events (`completed`,
+  `reopened`, `completed`); no goal was placed in the phase, so the goal
+  history stayed empty; nothing was written outside the smoke patient's
+  plan, and no reminder job failed. The smoke phase, activity and events
+  were left in place.
 
 Its down-script is in "To roll back 31": the website first.
 
