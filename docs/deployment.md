@@ -424,6 +424,10 @@ To roll back 31, go the other way, newest first. Each later migration is
 rolled back with its own down-script, applied as a new migration, and where
 deployed code depends on it, that code goes back first:
 
+1. **46**, where it is applied: the website from before migration 46, then
+   `supabase/rollbacks/20260902100046_super_admin_platform_overview.down.sql`.
+   It drops one read-only function; no row is lost. 33's down-script refuses
+   while 46 is installed.
 1. **45**: the website from before migration 45, then
    `supabase/rollbacks/20260902100045_recovery_roadmap.down.sql`. Every
    plan and goal stays with its status; the phases, the activities, every
@@ -1245,6 +1249,57 @@ afterwards on 2026-11-04 (`main` `5f53080`) and deployed to production.
   were left in place.
 
 Its down-script is in "To roll back 31": the website first.
+
+### Platform overview (migration 46)
+
+The Super Admin console's first page, `/platform`: counts of clinics,
+Clinic Admins, doctors, patients and platform announcements, platform-wide
+and per clinic, from one function, `super_admin_platform_overview()`
+(`docs/security.md`, "The Super Admin"). The clinic list moves from
+`/platform` to `/platform/clinics`.
+
+**Not applied to production.** It needs its own approval, like every
+migration, and goes in **before** the website that calls it is merged:
+deployed first, the overview page shows its error state (every other
+console page keeps working, and nothing else on the site depends on it).
+
+- **What it changes.** One new function, `stable` and `SECURITY DEFINER`
+  with an empty `search_path`, refused to `anon` and granted to
+  `authenticated`; its first statement is
+  `app_private.require_super_admin()`. It writes nothing - no row, no
+  audit entry - and changes no table, policy, trigger or other function.
+  It needs migration 33 and refuses to run without it; it is independent
+  of 34 (with one clinic or many it counts what is there).
+- **Locks.** Creating a function locks no table, but it starts with `set
+  lock_timeout = '3s'` and ends with `reset lock_timeout`, as every
+  migration from 41 does. It touches nothing a reminder job reads; any of
+  the windows above will do.
+- **Expected advisor change.** The security advisors gain exactly one
+  `authenticated_security_definer_function_executable` warning, for
+  `super_admin_platform_overview` - meant to be called by a signed-in user
+  and deciding inside who may, like every Super Admin function.
+- **Verify, read-only.** One history entry named
+  `super_admin_platform_overview`, whose statements match the file's MD5
+  (`1f03b5c2b55a5e628db232d4b17dd4a4` at the time of writing - recompute
+  from the file being applied); `to_regprocedure('public.super_admin_platform_overview()')`
+  present, `prosecdef` true, `proconfig` `search_path=""`, `provolatile`
+  `s`; `has_function_privilege('anon', …, 'execute')` false and
+  `'authenticated'` true; the advisors as above; every table unchanged by
+  count. The Super Admin then opens `/platform` themselves (Kean signs in;
+  never on a Vercel preview, which uses the production database) and sees
+  the counts; with one clinic in production, the per-clinic figures equal
+  its Clinic Admin's own dashboard.
+- **Rollback.** "To roll back 31", step 46: the website first, then the
+  down-script, which only drops the function.
+
+Tests: `tests/db/platform-overview.test.ts` (counts across two clinics;
+every caller but an assured Super Admin refused - anonymous, a patient, a
+doctor, a deactivated doctor and a Clinic Admin each with their own
+verified authenticator, and a Super Admin at `aal1`, with another user's
+factor or session, signed out, expired or banned; no name, email, licence
+or id in the answer; nothing written; the rollback); the overview added
+to `tests/db/super-admin.test.ts`'s every-operation checks; and
+`tests/db/super-admin-rollback.test.ts` rolling 46 back first.
 
 ## Bundle budget
 

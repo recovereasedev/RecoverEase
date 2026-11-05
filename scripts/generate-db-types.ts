@@ -376,6 +376,8 @@ async function main(): Promise<void> {
         '{ enabled: boolean; updated_at: string | null }[]',
       ],
       ['super_admin_set_guidance_assistant', '{ enabled: boolean }', 'boolean'],
+      // Migration 46: jsonb, checked by parsePlatformOverview.
+      ['super_admin_platform_overview', 'Record<PropertyKey, never>', 'Json'],
     ]
     for (const [name, args, returns] of superAdminFunctions) {
       lines.push(`      ${name}: {`)

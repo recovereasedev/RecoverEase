@@ -76,7 +76,8 @@ const ROUTES: { path: string; page: string; file: string; title: string | null }
   { path: '/admin/profile', page: 'AdminProfilePage', file: 'system-settings/pages/admin-profile-page.tsx', title: 'My Profile' },
 
   // Platform (Super Admin).
-  { path: '/platform', page: 'PlatformClinicsPage', file: 'platform/pages/platform-clinics-page.tsx', title: 'Clinics' },
+  { path: '/platform', page: 'PlatformOverviewPage', file: 'platform/pages/platform-overview-page.tsx', title: 'Platform Overview' },
+  { path: '/platform/clinics', page: 'PlatformClinicsPage', file: 'platform/pages/platform-clinics-page.tsx', title: 'Clinics' },
   { path: '/platform/announcements', page: 'PlatformAnnouncementsPage', file: 'platform/pages/platform-announcements-page.tsx', title: 'Platform Announcements' },
   { path: '/platform/audit', page: 'PlatformAuditPage', file: 'platform/pages/platform-audit-page.tsx', title: 'Platform Audit Log' },
 ]

@@ -10,9 +10,9 @@ import { assuredSuperAdmin, createSignIn, type Claims } from './helpers/super-ad
 
 /**
  * The down-scripts for migrations 34 and 33 (supabase/rollbacks), after
- * 45's, 43's, 44's, 41's, 42's, 38's, 37's, 36's and 35's, which go first -
- * newest applied first, as production applied them: 42, 41, 44 and 43 on
- * 2026-10-29, with 45 the next to come.
+ * 46's, 45's, 43's, 44's, 41's, 42's, 38's, 37's, 36's and 35's, which go
+ * first - newest applied first, as production applied them: 42, 41, 44 and
+ * 43 on 2026-10-29, 45 on 2026-11-04, with 46 the next to come.
  *
  * Run against a database that has been used - a Super Admin, a clinic's
  * status changed back and forth, a platform announcement written and
@@ -22,6 +22,7 @@ import { assuredSuperAdmin, createSignIn, type Claims } from './helpers/super-ad
  * the comparison includes the enum, so it shows that is all that remains.
  */
 
+const ROLLBACK_46 = 'supabase/rollbacks/20260902100046_super_admin_platform_overview.down.sql'
 const ROLLBACK_45 = 'supabase/rollbacks/20260902100045_recovery_roadmap.down.sql'
 const ROLLBACK_44 = 'supabase/rollbacks/20260902100044_notification_created_at_server_time.down.sql'
 const ROLLBACK_43 = 'supabase/rollbacks/20260902100043_system_report_snapshot.down.sql'
@@ -53,7 +54,7 @@ const rows = async (database: TestDatabase) => ({
   ),
 })
 
-describe('rolling back migrations 45, 43, 44, 41, 42, 38, 37, 36, 35, 34 and 33 with their down-scripts', () => {
+describe('rolling back migrations 46, 45, 43, 44, 41, 42, 38, 37, 36, 35, 34 and 33 with their down-scripts', () => {
   let used: TestDatabase
   let through32: TestDatabase
   let fx: Fixture
@@ -97,6 +98,7 @@ describe('rolling back migrations 45, 43, 44, 41, 42, 38, 37, 36, 35, 34 and 33 
   it('returns the schema to exactly what 32 left, and keeps every row', async () => {
     const before = await rows(used)
 
+    await used.db.exec(await script(ROLLBACK_46))
     await used.db.exec(await script(ROLLBACK_45))
     await used.db.exec(await script(ROLLBACK_43))
     await used.db.exec(await script(ROLLBACK_44))
@@ -138,7 +140,12 @@ describe('the down-scripts refuse, changing nothing, when they cannot be undone 
     expect(await catalog(database)).toEqual(before)
   }
 
-  it('33’s, while 38 is still applied, and then while 34 is', async () => {
+  it('33’s, while 46 is still applied, then while 38 is, and then while 34 is', async () => {
+    // 46's overview starts with the Super Admin check 33's down-script
+    // removes; newest first, 46 goes before it.
+    await refusedUnchanged(ROLLBACK_33, /Roll back migration 46 first/)
+    // Only to let the next refusal show: the test's own database.
+    await database.db.exec(await script(ROLLBACK_46))
     // 38's switch is changed only through the Super Admin checks 33's
     // down-script removes; newest first, 38 goes before it.
     await refusedUnchanged(ROLLBACK_33, /Roll back migration 38 first/)

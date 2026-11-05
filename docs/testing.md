@@ -257,7 +257,9 @@ Add `-- --project=enrol`, `verify` or `console` for one. The authenticator
 code is `123456`. Clinics, Clinic Admin invitations, the guidance
 assistant's platform switch, platform announcements and the audit log are
 kept in memory (`e2e/support/platform-preview.ts`); a second clinic is
-refused, as production refuses it until migration 34.
+refused, as production refuses it until migration 34. The overview at
+`/platform` counts that memory, so its doctors and patients are always
+none: the preview has no clinical people, as the console never reaches any.
 `PREVIEW_SMOKE=1` runs it headless and clicks through each state itself.
 
 None of it can reach production or ship with the website:

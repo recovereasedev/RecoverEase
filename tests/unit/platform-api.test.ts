@@ -39,6 +39,88 @@ beforeEach(() => {
   client.invoke.mockReset()
 })
 
+const OVERVIEW = {
+  clinics: { total: 2, active: 1, inactive: 1 },
+  clinic_admins: 1,
+  doctors: { total: 5, active: 3 },
+  patients: { total: 6, active: 5 },
+  announcements: { published: 1, drafts: 0 },
+  by_clinic: [
+    {
+      clinic_id: 'clinic-1',
+      clinic_name: 'Harbor Clinic',
+      clinic_status: 'active',
+      clinic_admins: 1,
+      active_doctors: 2,
+      active_patients: 4,
+    },
+  ],
+  generated_at: '2026-11-05T02:00:00Z',
+}
+
+describe('the platform overview', () => {
+  it('reads the counts through the Super Admin function, sending nothing', async () => {
+    client.rpc.mockResolvedValue({ data: OVERVIEW, error: null })
+
+    expect(await api.fetchPlatformOverview()).toEqual({
+      clinics: { total: 2, active: 1, inactive: 1 },
+      clinicAdmins: 1,
+      doctors: { total: 5, active: 3 },
+      patients: { total: 6, active: 5 },
+      announcements: { published: 1, drafts: 0 },
+      byClinic: [
+        {
+          clinicId: 'clinic-1',
+          clinicName: 'Harbor Clinic',
+          clinicStatus: 'active',
+          clinicAdmins: 1,
+          activeDoctors: 2,
+          activePatients: 4,
+        },
+      ],
+      generatedAt: '2026-11-05T02:00:00Z',
+    })
+    expect(client.rpc).toHaveBeenCalledWith('super_admin_platform_overview')
+  })
+
+  it("passes the database's refusal through", async () => {
+    const refusal = { code: '42501', message: 'Super Admin privileges are required' }
+    client.rpc.mockResolvedValue({ data: null, error: refusal })
+
+    await expect(api.fetchPlatformOverview()).rejects.toBe(refusal)
+  })
+
+  it('refuses an answer that is not exactly counts, rather than showing it', () => {
+    const broken: unknown[] = [
+      null,
+      [],
+      'counts',
+      { ...OVERVIEW, clinic_admins: '1' },
+      { ...OVERVIEW, clinic_admins: -1 },
+      { ...OVERVIEW, clinic_admins: 1.5 },
+      { ...OVERVIEW, patients: { total: 6 } },
+      { ...OVERVIEW, by_clinic: null },
+      { ...OVERVIEW, by_clinic: [{ ...OVERVIEW.by_clinic[0], clinic_status: 'deleted' }] },
+      { ...OVERVIEW, by_clinic: [{ ...OVERVIEW.by_clinic[0], active_patients: null }] },
+      { ...OVERVIEW, generated_at: undefined },
+    ]
+    for (const data of broken) {
+      expect(() => api.parsePlatformOverview(data), JSON.stringify(data)).toThrow(
+        'The platform overview could not be read.',
+      )
+    }
+  })
+
+  it('keeps no field the page does not show', () => {
+    const parsed = api.parsePlatformOverview({
+      ...OVERVIEW,
+      unexpected: 'ignored',
+      by_clinic: [{ ...OVERVIEW.by_clinic[0], also_unexpected: 'ignored' }],
+    })
+    expect(JSON.stringify(parsed)).not.toContain('ignored')
+  })
+})
+
 describe('clinics', () => {
   it('lists them through the Super Admin function', async () => {
     client.rpc.mockResolvedValue({ data: [CLINIC], error: null })

@@ -178,13 +178,15 @@ const ADMIN_NAV: NavSection[] = [
 ]
 
 /**
- * The platform console. Clinics, platform announcements and the platform's
- * own audit trail - nothing inside a clinic, so nothing clinical.
+ * The platform console. The overview's counts, clinics, platform
+ * announcements and the platform's own audit trail - nothing inside a
+ * clinic, so nothing clinical.
  */
 const PLATFORM_NAV: NavSection[] = [
   {
     items: [
-      { label: 'Clinics', to: '/platform', icon: Building2 },
+      { label: 'Overview', to: '/platform', icon: LayoutDashboard },
+      { label: 'Clinics', to: '/platform/clinics', icon: Building2 },
       {
         label: 'Announcements',
         shortLabel: 'Notices',

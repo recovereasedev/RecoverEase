@@ -100,6 +100,10 @@ preview('Super Admin console, local preview', async ({ page, signInAs, previewSt
     await page.getByLabel(/6-digit code/).fill(STUB_TOTP_CODE)
     await page.getByRole('button', { name: 'Verify' }).click()
   }
+  // The console opens on the overview: counts from the preview's own state.
+  await expect(page.getByRole('heading', { level: 1, name: 'Platform overview' })).toBeVisible()
+  await expect(page.getByText('1 Clinic Admin · 0 active doctors · 0 active patients')).toBeVisible()
+  await page.getByRole('link', { name: 'Manage clinics' }).click()
   await expect(page.getByRole('heading', { level: 1, name: 'Clinics' })).toBeVisible()
 
   // A Clinic Admin, invited with no password on screen.
@@ -146,6 +150,14 @@ preview('Super Admin console, local preview', async ({ page, signInAs, previewSt
   await expect(audit).toContainText('Platform announcement')
   await expect(audit).toContainText('Guidance assistant switch')
   await expect(audit).toContainText('Clinic Admin account')
+
+  // Back on the overview, the counts have followed: the new Clinic Admin and
+  // the published announcement.
+  await page.getByRole('link', { name: 'Overview' }).first().click()
+  await expect(page.getByText('2 Clinic Admins · 0 active doctors · 0 active patients')).toBeVisible()
+  await expect(
+    page.getByRole('region', { name: 'Platform announcements' }).getByText('1', { exact: true }),
+  ).toBeVisible()
 
   // Everything went to the local server or the stub, and nowhere else.
   expect(blocked).toEqual([])

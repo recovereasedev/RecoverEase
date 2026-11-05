@@ -59,6 +59,7 @@ function everyOperation(clinicId: string, someUserId: string, announcementId: st
     ['publish an announcement', 'select public.super_admin_set_announcement_published($1, false)', [announcementId]],
     ['delete an announcement', 'select public.super_admin_delete_announcement($1)', [announcementId]],
     ['read the platform audit', 'select * from public.super_admin_list_audit()', []],
+    ['read the platform overview', 'select public.super_admin_platform_overview()', []],
   ]
 }
 
@@ -372,9 +373,9 @@ describe('every Super Admin operation needs a live session verified with the cal
         where n.nspname = 'public' and p.proname like 'super_admin\\_%' and p.prorettype <> 'trigger'::regtype
         order by 1`,
     )
-    // 12 from migration 33, and migration 38's two for the guidance
-    // assistant's platform switch.
-    expect(definers).toHaveLength(14)
+    // 12 from migration 33, migration 38's two for the guidance assistant's
+    // platform switch, and migration 46's platform overview.
+    expect(definers).toHaveLength(15)
     for (const row of definers) {
       expect(row, row.fn).toMatchObject({ definer: true, path: 'search_path=""', anon: false })
     }

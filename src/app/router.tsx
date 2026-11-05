@@ -186,7 +186,8 @@ export const router = createBrowserRouter([
   ]),
 
   protectedSection('super_admin', [
-    { index: true, element: <Page.PlatformClinicsPage /> },
+    { index: true, element: <Page.PlatformOverviewPage /> },
+    { path: 'clinics', element: <Page.PlatformClinicsPage /> },
     { path: 'announcements', element: <Page.PlatformAnnouncementsPage /> },
     { path: 'audit', element: <Page.PlatformAuditPage /> },
   ]),

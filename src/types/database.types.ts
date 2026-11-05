@@ -1286,6 +1286,10 @@ export type Database = {
         Args: { enabled: boolean }
         Returns: boolean
       }
+      super_admin_platform_overview: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
     }
     Enums: {
       appointment_status: 'scheduled' | 'confirmed' | 'completed' | 'cancelled' | 'no_show'
