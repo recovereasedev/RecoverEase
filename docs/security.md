@@ -321,6 +321,20 @@ whether to ask for an authenticator code, about the caller only.
   transaction) and set status. `active` and `inactive` are the only states
   and each moves only to the other. An inactive clinic takes no new Clinic
   Admin; its people and records are untouched. No clinic is ever deleted.
+- a clinic's details (migration 47): its Clinic Admins - first and last
+  name, account creation time and whether the account has ever signed in,
+  for the clinic named and no other; no email, account or profile id,
+  nothing from Supabase Auth's sessions, factors or tokens, and nothing
+  clinical (`tests/db/super-admin-clinic-details.test.ts` plants every
+  id, email and patient and doctor name and finds none) - and editing its
+  name and time zone with the same validation as creating it, never its
+  id or status. The time zone and the legacy `app.timezone` setting move
+  in one transaction. Audited by the clinic's trigger as a `platform`
+  entry (before and after values, under the Super Admin) and, for the
+  setting, an `administration` entry its own Clinic Admin sees. It writes
+  no dose, schedule, prescription or appointment. The caller is checked
+  before the clinic is looked up, so an unknown clinic id tells anyone
+  else nothing.
 - Clinic Admins: provisioned with `create-account` (below).
 - platform announcements: write, edit, publish, withdraw and delete. A
   published one reaches every signed-in user, which is what migration 30's

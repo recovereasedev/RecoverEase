@@ -18,7 +18,9 @@
 >   merge of PR #68), serves <https://recoverease-web.vercel.app>.
 > - **Database** (2026-11-05 at 20:34 UTC). The migration history has 44
 >   entries. Every file in `supabase/migrations/` is in it except 34
->   (`lift_single_clinic_gate`), held for its own decision. 46
+>   (`lift_single_clinic_gate`), held for its own decision, and 47
+>   (`super_admin_clinic_details`), not yet applied - see "Clinic details
+>   (migration 47)". 46
 >   (`super_admin_platform_overview`) was applied and verified on
 >   2026-11-05, ahead of the website that calls it (PR #74) - see
 >   "Platform overview (migration 46)". 45
@@ -427,6 +429,10 @@ To roll back 31, go the other way, newest first. Each later migration is
 rolled back with its own down-script, applied as a new migration, and where
 deployed code depends on it, that code goes back first:
 
+1. **47**, where it is applied: the website from before migration 47, then
+   `supabase/rollbacks/20260902100047_super_admin_clinic_details.down.sql`.
+   It drops two functions; no row is lost, and a clinic keeps the name and
+   time zone it was given. 33's down-script refuses while 47 is installed.
 1. **46**, where it is applied: the website from before migration 46, then
    `supabase/rollbacks/20260902100046_super_admin_platform_overview.down.sql`.
    It drops one read-only function; no row is lost. 33's down-script refuses
@@ -1283,9 +1289,9 @@ warnings 25 to 26 - the one new one this function - and nothing else new;
 clinics 1, Clinic Admins 1, doctors 7, patients 7, announcements 1,
 accounts 16 and audit rows 101, all as before; `lock_timeout` back to `0`;
 and the pre-dose reminder job's runs at 20:33 and 20:34 succeeded. The
-website that calls it, PR #74, is not merged: until it is, nothing calls
-the function. Its own check - the Super Admin opening `/platform` and
-seeing the totals - comes after that merge.
+website that calls it, PR #74, was merged on 2026-11-05 (`main` `4704eb4`)
+and deployed to production by Vercel at 20:37 UTC. Its own check - the
+Super Admin opening `/platform` and seeing the totals - is Kean's to do.
 
 - **What it changes.** One new function, `stable` and `SECURITY DEFINER`
   with an empty `search_path`, refused to `anon` and granted to
@@ -1324,6 +1330,99 @@ factor or session, signed out, expired or banned; no name, email, licence
 or id in the answer; nothing written; the rollback); the overview added
 to `tests/db/super-admin.test.ts`'s every-operation checks; and
 `tests/db/super-admin-rollback.test.ts` rolling 46 back first.
+
+### Clinic details (migration 47)
+
+The Super Admin console's clinic details page, `/platform/clinics/:clinicId`
+(Phase 2), and two functions it calls (`docs/security.md`, "The Super
+Admin"):
+
+- `super_admin_list_clinic_admins(clinic)`: one clinic's Clinic Admins -
+  first and last name, when the account was made, and whether (and when)
+  it has ever signed in. No email, account id, profile id or Auth secret,
+  and nothing clinical. "Has signed in" is the only setup fact the
+  database records: a Clinic Admin chooses their password through Supabase
+  Auth's recovery email, which RecoverEase does not record, and opening
+  that link already counts as a sign-in. There is no Clinic Admin
+  active/inactive flag (only doctors have one), so none is shown.
+- `super_admin_update_clinic(clinic, name, time zone)`: renames a clinic
+  and/or changes its time zone. Its id and status never change. The name
+  is trimmed, not blank, at most 120 characters and not another clinic's
+  in any case; the time zone is trimmed and must be one PostgreSQL knows
+  (`clinic_validate_timezone`). In the same transaction it brings the
+  clinic's legacy `app.timezone` setting to the same zone, as
+  `admin_set_clinic_timezone` does for a Clinic Admin (production still
+  has that row). Audited by the clinic's own trigger as a `platform`
+  entry with the before and after values, and, when the alias changes, by
+  the setting's trigger as an `administration` entry its Clinic Admin can
+  read. Nothing changed, nothing written.
+
+**What a time zone change does to doses.** It moves, regenerates or
+deletes nothing: each dose already scheduled is an exact moment
+(`medication_log_scheduled_at`) and keeps it, and its reminder goes at that
+moment. What is worked out from then on - a new or edited schedule's
+doses, the nightly job that keeps 30 days ahead, "today", appointment
+reminder days - reads wall-clock times in the new zone. **Known
+limitation:** where the new zone has a different UTC offset, the nightly
+job adds the next 30 days' doses at the new local times beside the doses
+already scheduled at the old ones (on conflict it skips only an identical
+moment), so those days can show the same dose twice until a doctor reviews
+the schedule. The Clinic Admin's own time zone change (migration 31) has
+always behaved the same way. The edit dialog says so and asks for
+confirmation; fixing the job itself is a separate decision.
+
+It goes in **before** the website that calls it is merged: merged first,
+the details page shows its error state (the clinic list and every other
+console page keep working).
+
+**Not applied.** Production applies need Kean's approval and a quiet
+window ("Migration timing and run history").
+
+- **What it changes.** Two new functions, `SECURITY DEFINER` with an empty
+  `search_path`, refused to `anon` and `public` and granted to
+  `authenticated`; the first statement of each is
+  `app_private.require_super_admin()`. No table, policy, trigger or other
+  function changes. It needs migration 33 and refuses to run without it;
+  it is independent of 34 - it creates no clinic and leaves the
+  single-clinic gate as it is.
+- **Locks.** Creating a function locks no table; it starts with `set
+  lock_timeout = '3s'` and ends with `reset lock_timeout`, as every
+  migration from 41 does. Any of the windows above will do.
+- **Expected advisor change.** Exactly two new
+  `authenticated_security_definer_function_executable` warnings, one per
+  function - meant to be called by a signed-in user and deciding inside
+  who may.
+- **Verify, read-only.** One history entry named
+  `super_admin_clinic_details`, whose statements match the file's MD5
+  (`9890e558ddf566f37bcce681f0a96721` at the time of writing - recompute
+  from the file being applied); both functions present with `prosecdef`
+  true and `proconfig` `search_path=""`; `anon` may not execute either,
+  `authenticated` may; a direct call with no Super Admin refused with
+  `42501`; public Super Admin functions 15 to 17; every table unchanged by
+  count. The Super Admin then opens a clinic's details page themselves
+  (Kean signs in; never on a Vercel preview, which uses the production
+  database). Editing the production clinic is a real change to a real
+  clinic: do it only if Kean wants to, and never just to test.
+- **Rollback.** "To roll back 31", step 47: the website first, then the
+  down-script, which drops only the two functions. A clinic renamed or
+  moved to another zone keeps its new values, and their audit entries
+  stay.
+
+Tests: `tests/db/super-admin-clinic-details.test.ts` (a clinic's Clinic
+Admins only, never another clinic's, with no email or id; unknown clinic
+reported; rename trimmed, with id, status and creation time kept, audited
+as `platform` and readable in the platform trail; empty, blank, 121-
+character, taken and SQL-fragment names and unknown zones refused with
+nothing changed or audited; a 120-character name and a change of case
+accepted; nothing written when nothing changes; the clinic and its alias
+moved together and both audited, a failed alias write leaving neither
+changed, a stale alias brought back in step; every dose, schedule,
+prescription and appointment byte-for-byte unchanged by a zone change;
+doses generated afterwards at the new zone's wall-clock time; every caller
+but an assured Super Admin refused before the clinic is looked up; the
+rollback); both functions added to `tests/db/super-admin.test.ts`'s
+every-operation checks; `tests/db/super-admin-rollback.test.ts` rolling 47
+back first.
 
 ## Bundle budget
 
