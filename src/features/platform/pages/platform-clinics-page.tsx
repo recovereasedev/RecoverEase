@@ -1,16 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Building2, Plus, UserPlus } from 'lucide-react'
-import { useRef, useState, type MouseEvent } from 'react'
+import { Building2, ChevronRight, Plus, UserPlus } from 'lucide-react'
+import { useMemo, useRef, useState, type MouseEvent } from 'react'
 import { flushSync } from 'react-dom'
+import { Link } from 'react-router-dom'
 
 import { FormError } from '@/components/feedback/form-error'
 import { EmptyState, StateView } from '@/components/feedback/state-view'
 import { PageHeader } from '@/components/layout/page-header'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Dialog } from '@/components/ui/dialog'
-import { Field, Input } from '@/components/ui/field'
+import { Field, Input, Select } from '@/components/ui/field'
 import { useQueryKeys } from '@/features/auth/use-query-keys'
 import { AddClinicAdminDialog } from '@/features/platform/components/add-clinic-admin-dialog'
 import { GuidanceAssistantSwitch } from '@/features/platform/components/guidance-assistant-switch'
@@ -25,6 +26,25 @@ import { useDocumentTitle } from '@/hooks/use-document-title'
 import { useFocusRecovery } from '@/hooks/use-focus-recovery'
 import { formatDate } from '@/lib/format'
 import { focusFirstInvalid } from '@/lib/form-focus'
+
+type StatusFilter = 'all' | 'active' | 'inactive'
+
+/**
+ * The clinics whose name contains every word searched for, in any case, and
+ * whose status matches the filter. Exported for its unit test.
+ */
+export function filterClinics(
+  clinics: readonly PlatformClinic[],
+  search: string,
+  status: StatusFilter,
+): PlatformClinic[] {
+  const words = search.trim().toLowerCase().split(/\s+/).filter(Boolean)
+  return clinics.filter(
+    (clinic) =>
+      (status === 'all' || clinic.clinic_status === status) &&
+      words.every((word) => clinic.clinic_name.toLowerCase().includes(word)),
+  )
+}
 
 function adminCount(count: number): string {
   if (count === 0) return 'No Clinic Admin yet'
@@ -126,6 +146,15 @@ export function PlatformClinicsPage() {
   // --- Clinic Admins -----------------------------------------------------------
   const [adminFor, setAdminFor] = useState<PlatformClinic | null>(null)
 
+  // --- Search and status ---------------------------------------------------------
+  const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+  const isFiltering = search.trim() !== '' || statusFilter !== 'all'
+  const shown = useMemo(
+    () => filterClinics(clinicsQuery.data ?? [], search, statusFilter),
+    [clinicsQuery.data, search, statusFilter],
+  )
+
   return (
     <>
       <div ref={focusRecovery}>
@@ -160,10 +189,59 @@ export function PlatformClinicsPage() {
             </Card>
           }
         >
-          {(clinics) => (
+          {() => (
             <Card className="overflow-hidden">
-              <ul className="divide-y divide-[var(--color-border)]">
-                {clinics.map((clinic) => {
+              <div className="grid gap-4 border-b border-[var(--color-border)] p-4 sm:grid-cols-[minmax(0,1fr)_12rem]">
+                <Field label="Search clinics">
+                  <Input
+                    type="search"
+                    value={search}
+                    autoComplete="off"
+                    placeholder="Clinic name"
+                    onChange={(event) => setSearch(event.target.value)}
+                  />
+                </Field>
+                <Field label="Status">
+                  <Select
+                    value={statusFilter}
+                    onChange={(event) =>
+                      setStatusFilter(event.target.value as StatusFilter)
+                    }
+                  >
+                    <option value="all">All clinics</option>
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                  </Select>
+                </Field>
+              </div>
+
+              {/* How many the filters leave, for a screen reader as it changes. */}
+              <p className="sr-only" role="status">
+                {isFiltering
+                  ? `${shown.length} of ${clinicsQuery.data?.length ?? 0} clinics shown`
+                  : ''}
+              </p>
+
+              {shown.length === 0 ? (
+                <EmptyState
+                  title="No matching clinics"
+                  description="Try another name, or show clinics of every status."
+                  action={
+                    <Button
+                      variant="secondary"
+                      onClick={() => {
+                        setSearch('')
+                        setStatusFilter('all')
+                      }}
+                    >
+                      Clear filters
+                    </Button>
+                  }
+                />
+              ) : null}
+
+              <ul className="divide-y divide-[var(--color-border)] empty:hidden">
+                {shown.map((clinic) => {
                   const isActive = clinic.clinic_status === 'active'
                   const isChanging =
                     changeStatus.isPending &&
@@ -192,6 +270,15 @@ export function PlatformClinicsPage() {
                         </div>
 
                         <div className="mt-4 flex flex-wrap gap-2">
+                          <Link
+                            to={`/platform/clinics/${clinic.clinic_id}`}
+                            aria-label={`View details of ${clinic.clinic_name}`}
+                            className={buttonVariants({ size: 'sm', variant: 'secondary' })}
+                          >
+                            View details
+                            <ChevronRight aria-hidden="true" />
+                          </Link>
+
                           {isActive ? (
                             <Button
                               size="sm"

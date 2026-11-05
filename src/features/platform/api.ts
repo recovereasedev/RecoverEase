@@ -158,6 +158,68 @@ export async function setClinicStatus(
   return updated
 }
 
+// --- One clinic's details (migration 47) ----------------------------------------
+
+/**
+ * One clinic's Clinic Admin, as the database lists them: names, when the
+ * account was made and whether it has ever signed in. No email, no id and
+ * nothing from Supabase Auth's secrets. "Has signed in" is all the database
+ * can say about account setup - a password set through the reset email is
+ * not recorded - so the page says no more than that.
+ */
+export type ClinicAdminSummary = {
+  firstName: string
+  lastName: string
+  createdAt: string
+  hasSignedIn: boolean
+  lastSignedInAt: string | null
+}
+
+export async function fetchClinicAdmins(clinicId: string): Promise<ClinicAdminSummary[]> {
+  const { data, error } = await supabase.rpc('super_admin_list_clinic_admins', {
+    target_clinic_id: clinicId,
+  })
+  if (error) throw error
+  // Only these fields reach the page, whatever else an answer carries.
+  return (data ?? []).map((row) => ({
+    firstName: row.admin_first_name,
+    lastName: row.admin_last_name,
+    createdAt: row.admin_created_at,
+    hasSignedIn: row.has_signed_in,
+    lastSignedInAt: row.last_signed_in_at,
+  }))
+}
+
+/**
+ * Renames a clinic and/or changes its time zone. The database validates
+ * both again, keeps the legacy time zone setting in step in the same
+ * transaction, and never moves a dose that is already scheduled.
+ */
+export async function updateClinic(input: {
+  clinicId: string
+  name: string
+  timezone: string
+}): Promise<PlatformClinic> {
+  const { data, error } = await supabase.rpc('super_admin_update_clinic', {
+    target_clinic_id: input.clinicId,
+    new_clinic_name: input.name,
+    new_clinic_timezone: input.timezone,
+  })
+
+  if (error) {
+    // Two edits racing for the same name: the unique index refuses the
+    // second, and its message names the index rather than the problem.
+    if (codeOf(error) === UNIQUE_VIOLATION && messageOf(error).includes('clinic_name_key')) {
+      throw new Error('A clinic with that name already exists.')
+    }
+    throw error
+  }
+
+  const updated = data?.[0]
+  if (!updated) throw new Error('The clinic could not be updated.')
+  return updated
+}
+
 // --- The guidance assistant's platform switch --------------------------------
 
 export type GuidanceAssistantSwitch = { enabled: boolean; updatedAt: string | null }

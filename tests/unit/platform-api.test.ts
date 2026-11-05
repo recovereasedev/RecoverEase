@@ -301,3 +301,70 @@ describe('the platform audit trail', () => {
     expect(api.nextAuditCursor([])).toBeUndefined()
   })
 })
+
+describe('one clinic’s details (migration 47)', () => {
+  it('lists a clinic’s Clinic Admins by its id, keeping names and sign-in only', async () => {
+    client.rpc.mockResolvedValue({
+      data: [
+        {
+          admin_first_name: 'Ada',
+          admin_last_name: 'Reyes',
+          admin_created_at: '2026-10-01T00:00:00Z',
+          has_signed_in: true,
+          last_signed_in_at: '2026-10-03T00:00:00Z',
+          // Not sent by the function; dropped if it ever were.
+          user_email: 'ada@harbor.test',
+          user_id: 'user-1',
+        },
+      ],
+      error: null,
+    })
+    const admins = await api.fetchClinicAdmins('clinic-1')
+    expect(client.rpc).toHaveBeenCalledWith('super_admin_list_clinic_admins', { target_clinic_id: 'clinic-1' })
+    expect(admins).toEqual([
+      {
+        firstName: 'Ada',
+        lastName: 'Reyes',
+        createdAt: '2026-10-01T00:00:00Z',
+        hasSignedIn: true,
+        lastSignedInAt: '2026-10-03T00:00:00Z',
+      },
+    ])
+    expect(JSON.stringify(admins)).not.toMatch(/ada@harbor|user-1/)
+  })
+
+  it('passes a refusal of the list through', async () => {
+    client.rpc.mockResolvedValue({ data: null, error: { code: 'P0002', message: 'That clinic could not be found' } })
+    await expect(api.fetchClinicAdmins('clinic-404')).rejects.toMatchObject({ code: 'P0002' })
+  })
+
+  it('updates a clinic with the id, name and zone given, and nothing else', async () => {
+    client.rpc.mockResolvedValue({ data: [{ ...CLINIC, clinic_name: 'Harbor Recovery' }], error: null })
+    await expect(api.updateClinic({ clinicId: 'clinic-1', name: 'Harbor Recovery', timezone: 'UTC' })).resolves.toMatchObject({
+      clinic_name: 'Harbor Recovery',
+    })
+    expect(client.rpc).toHaveBeenCalledWith('super_admin_update_clinic', {
+      target_clinic_id: 'clinic-1',
+      new_clinic_name: 'Harbor Recovery',
+      new_clinic_timezone: 'UTC',
+    })
+  })
+
+  it("explains a name taken in a race in words rather than the index's name, and passes other refusals through", async () => {
+    client.rpc.mockResolvedValueOnce({
+      data: null,
+      error: { code: '23505', message: 'duplicate key value violates unique constraint "clinic_name_key"' },
+    })
+    await expect(api.updateClinic({ clinicId: 'clinic-1', name: 'Alder', timezone: 'UTC' })).rejects.toThrow(
+      'A clinic with that name already exists.',
+    )
+    client.rpc.mockResolvedValueOnce({ data: null, error: { code: '23514', message: 'Unknown time zone: Mars/Olympus' } })
+    await expect(api.updateClinic({ clinicId: 'clinic-1', name: 'Harbor', timezone: 'Mars/Olympus' })).rejects.toMatchObject({
+      code: '23514',
+    })
+    client.rpc.mockResolvedValueOnce({ data: [], error: null })
+    await expect(api.updateClinic({ clinicId: 'clinic-1', name: 'Harbor', timezone: 'UTC' })).rejects.toThrow(
+      'The clinic could not be updated.',
+    )
+  })
+})

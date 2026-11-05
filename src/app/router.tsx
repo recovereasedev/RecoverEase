@@ -188,6 +188,7 @@ export const router = createBrowserRouter([
   protectedSection('super_admin', [
     { index: true, element: <Page.PlatformOverviewPage /> },
     { path: 'clinics', element: <Page.PlatformClinicsPage /> },
+    { path: 'clinics/:clinicId', element: <Page.PlatformClinicDetailsPage /> },
     { path: 'announcements', element: <Page.PlatformAnnouncementsPage /> },
     { path: 'audit', element: <Page.PlatformAuditPage /> },
   ]),
