@@ -42,7 +42,7 @@ export function PlatformClinicDetailsPage() {
     staleTime: 0,
   })
   const clinic = clinicsQuery.data?.find((row) => row.clinic_id === clinicId)
-  useDocumentTitle(clinic ? clinic.clinic_name : 'Clinic Details')
+  useDocumentTitle('Clinic Details')
 
   return (
     <div ref={focusRecovery}>
