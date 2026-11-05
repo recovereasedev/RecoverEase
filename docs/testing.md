@@ -241,6 +241,53 @@ The stub answers *per principal* — a doctor's dataset contains only their own
 patients, an administrator's contains no patient rows — so the browser tests
 assert what each role is actually shown, without pretending to enforce it.
 
+### Previewing the Super Admin console locally
+
+The platform console can be looked at and clicked through before any real
+Super Admin exists, against the same stub:
+
+```bash
+npm run preview:super-admin
+```
+
+That opens a browser at each starting point in turn - a new Super Admin
+setting up an authenticator, a later sign-in entering its code, and a
+session already verified - and moves to the next when the window is closed.
+Add `-- --project=enrol`, `verify` or `console` for one. The authenticator
+code is `123456`. Clinics, Clinic Admin invitations, the guidance
+assistant's platform switch, platform announcements and the audit log are
+kept in memory (`e2e/support/platform-preview.ts`); a second clinic is
+refused, as production refuses it until migration 34.
+`PREVIEW_SMOKE=1` runs it headless and clicks through each state itself.
+
+None of it can reach production or ship with the website:
+
+- **Its own build.** `playwright.preview.config.ts` builds the website into
+  `.preview-dist/`, not `dist/`, with `VITE_SUPABASE_URL` set to
+  `https://supabase.preview.invalid`. `.invalid` is reserved never to exist,
+  and there is no key. `scripts/check-preview-build.ts` refuses to serve the
+  build if it contains any real Supabase project address, and the server
+  listens on `127.0.0.1` only.
+- **No network beyond this machine.** Every Supabase request is answered in
+  the browser by the stub, and a guard on the whole preview browser - every
+  tab - aborts any request that is not to the local server or the `.invalid`
+  address. The smoke run proves it blocks a Supabase-shaped address and a
+  page opened in a second tab. The preview browser ignores the
+  Content-Security-Policy `vite preview` serves: its `connect-src` allows
+  only `*.supabase.co`, so it would refuse the `.invalid` address, and it
+  is no barrier to production anyway - the guard is.
+- **Not in the website.** The mock lives under `e2e/`, which nothing in
+  `src/` imports, so `npm run build` - what Vercel runs - never contains it.
+  `tests/unit/preview-isolation.test.ts` fails if that changes, if the build
+  check stops refusing real addresses, or if the preview address could
+  resolve.
+
+What it cannot show is everything the database and Supabase Auth decide: a
+real authenticator code, `aal2` and the checks behind every Super Admin
+function, Row Level Security, `create-account` creating a sign-in and its
+email being delivered. Those are covered by `tests/db/super-admin.test.ts`
+and by the first real Super Admin.
+
 ### Two real defects this suite found
 
 Both were invisible to jsdom tests and to manual clicking.

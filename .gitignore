@@ -16,6 +16,7 @@ dist-ssr
 .vscode/*
 !.vscode/extensions.json
 .idea
+.obsidian/
 .DS_Store
 *.suo
 *.ntvs*
@@ -40,6 +41,8 @@ supabase/.branches/
 # Test + build output
 coverage/
 *.tsbuildinfo
+# The local Super Admin preview's own build (playwright.preview.config.ts)
+.preview-dist/
 
 # Playwright
 /test-results/
