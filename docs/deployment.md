@@ -16,9 +16,12 @@
 > - **Website** (at 17:38 UTC). The Vercel Production deployment
 >   `dpl_7P9bhug51rgRDPoKqh5kP4PZN7Kf`, built from `main` at `23af842` (the
 >   merge of PR #68), serves <https://recoverease-web.vercel.app>.
-> - **Database** (2026-11-04 at 19:42 UTC). The migration history has 43
+> - **Database** (2026-11-05 at 20:34 UTC). The migration history has 44
 >   entries. Every file in `supabase/migrations/` is in it except 34
->   (`lift_single_clinic_gate`), held for its own decision. 45
+>   (`lift_single_clinic_gate`), held for its own decision. 46
+>   (`super_admin_platform_overview`) was applied and verified on
+>   2026-11-05, ahead of the website that calls it (PR #74) - see
+>   "Platform overview (migration 46)". 45
 >   (`recovery_roadmap`) was applied and verified on 2026-11-04, ahead of
 >   the website that reads it (PR #71) - see "Recovery roadmap (migration
 >   45)". 43 (`system_report_snapshot`) is applied and verified; the
@@ -1259,10 +1262,30 @@ one function, `super_admin_platform_overview()` (`docs/security.md`, "The
 Super Admin"). The clinic list moves from `/platform` to
 `/platform/clinics`.
 
-**Not applied to production.** It needs its own approval, like every
-migration, and goes in **before** the website that calls it is merged:
-deployed first, the overview page shows its error state (every other
-console page keeps working, and nothing else on the site depends on it).
+It goes in **before** the website that calls it is merged: merged first,
+the overview page shows its error state (every other console page keeps
+working, and nothing else on the site depends on it).
+
+**Applied to production on 2026-11-05 at 20:33:47 UTC** (history
+`20261105203347 super_admin_platform_overview`, whose one statement
+matches the file's MD5, `0d400e463dd9556ae6c128ef930e3fe9`), inside the
+:33-:42 window, with Kean's approval, after a read-only preflight at 20:33
+UTC found the function absent, migration 33's table and check in place, no
+open transaction older than 30 seconds, and the baseline counts below.
+**Verified** read-only at 20:34 UTC: history 43 to 44 entries; the
+function `SECURITY DEFINER` with `search_path=""` and `stable`; `anon` and
+`public` may not execute it, `authenticated` may; a direct call with no
+signed-in Super Admin refused with `42501` ("Super Admin access requires a
+current session verified with an authenticator app"), so the check runs
+before anything is counted; public Super Admin functions 14 to 15; the
+security advisors' `authenticated_security_definer_function_executable`
+warnings 25 to 26 - the one new one this function - and nothing else new;
+clinics 1, Clinic Admins 1, doctors 7, patients 7, announcements 1,
+accounts 16 and audit rows 101, all as before; `lock_timeout` back to `0`;
+and the pre-dose reminder job's runs at 20:33 and 20:34 succeeded. The
+website that calls it, PR #74, is not merged: until it is, nothing calls
+the function. Its own check - the Super Admin opening `/platform` and
+seeing the totals - comes after that merge.
 
 - **What it changes.** One new function, `stable` and `SECURITY DEFINER`
   with an empty `search_path`, refused to `anon` and granted to
