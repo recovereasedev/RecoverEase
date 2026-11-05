@@ -14,6 +14,7 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
  */
 
 const api = vi.hoisted(() => ({
+  fetchPlatformOverview: vi.fn(),
   fetchClinics: vi.fn(),
   createClinic: vi.fn(),
   setClinicStatus: vi.fn(),
@@ -39,6 +40,9 @@ vi.mock('@/features/auth/auth-context', () => ({
   }),
 }))
 
+const { PlatformOverviewPage } = await import(
+  '@/features/platform/pages/platform-overview-page'
+)
 const { PlatformClinicsPage } = await import(
   '@/features/platform/pages/platform-clinics-page'
 )
@@ -90,6 +94,67 @@ function openDialog(): HTMLElement {
   if (!(dialog instanceof HTMLElement)) throw new Error('No dialog is open')
   return dialog
 }
+
+describe('the platform overview', () => {
+  const OVERVIEW = {
+    clinics: { total: 2, active: 1, inactive: 1 },
+    clinicAdmins: 1,
+    doctors: { total: 5, active: 3 },
+    patients: { total: 6, active: 5 },
+    announcements: { published: 1, drafts: 2 },
+    generatedAt: '2026-11-05T02:00:00Z',
+  }
+
+  it('shows the platform totals and the announcements, and no clinic on its own', async () => {
+    api.fetchPlatformOverview.mockResolvedValue(OVERVIEW)
+    renderPage(<PlatformOverviewPage />)
+
+    const totals = await screen.findByLabelText('Platform totals')
+    expect(within(totals).getByText('Clinics')).toBeInTheDocument()
+    expect(within(totals).getByText('1 active · 1 inactive')).toBeInTheDocument()
+    expect(within(totals).getByText('Clinic Admins')).toBeInTheDocument()
+    expect(within(totals).getByText('3 active')).toBeInTheDocument()
+    expect(within(totals).getByText('5 active')).toBeInTheDocument()
+    expect(screen.getByText('Published').nextElementSibling).toHaveTextContent('1')
+    expect(screen.getByText('Drafts').nextElementSibling).toHaveTextContent('2')
+
+    // Platform totals only: no per-clinic section, no clinic named.
+    expect(screen.queryByRole('heading', { name: 'By clinic' })).not.toBeInTheDocument()
+    expect(screen.queryByText(/Harbor Clinic|Alder Clinic/)).not.toBeInTheDocument()
+
+    expect(screen.getByRole('link', { name: /Manage clinics/ })).toHaveAttribute('href', '/platform/clinics')
+    expect(screen.getByRole('link', { name: /Announcements/ })).toHaveAttribute('href', '/platform/announcements')
+  })
+
+  it('shows a platform with nothing yet as zeros, not as an error', async () => {
+    api.fetchPlatformOverview.mockResolvedValue({
+      ...OVERVIEW,
+      clinics: { total: 0, active: 0, inactive: 0 },
+      clinicAdmins: 0,
+      doctors: { total: 0, active: 0 },
+      patients: { total: 0, active: 0 },
+      announcements: { published: 0, drafts: 0 },
+    })
+    renderPage(<PlatformOverviewPage />)
+
+    const totals = await screen.findByLabelText('Platform totals')
+    expect(within(totals).getByText('0 active · 0 inactive')).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('shows a refusal or an unreadable answer as an error, with a retry, and no figures', async () => {
+    api.fetchPlatformOverview.mockRejectedValueOnce(new Error('The platform overview could not be read.'))
+    api.fetchPlatformOverview.mockResolvedValueOnce(OVERVIEW)
+    renderPage(<PlatformOverviewPage />)
+
+    const retry = await screen.findByRole('button', { name: /try again|retry/i })
+    expect(screen.queryByLabelText('Platform totals')).not.toBeInTheDocument()
+
+    await userEvent.click(retry)
+    expect(await screen.findByLabelText('Platform totals')).toBeInTheDocument()
+    expect(api.fetchPlatformOverview).toHaveBeenCalledTimes(2)
+  })
+})
 
 describe('clinics', () => {
   it("lists each clinic's status, zone and Clinic Admins", async () => {

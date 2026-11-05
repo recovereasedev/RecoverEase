@@ -167,7 +167,7 @@ test.describe('the Super Admin', () => {
       }
     })
 
-    await page.goto('/platform')
+    await page.goto('/platform/clinics')
     await expect(page.getByText('On for every clinic', { exact: true })).toBeVisible()
 
     await page.getByRole('button', { name: 'Turn off for every clinic' }).click()
@@ -199,7 +199,7 @@ test.describe('the Super Admin', () => {
       }),
     )
 
-    await page.goto('/platform')
+    await page.goto('/platform/clinics')
     await page.getByRole('button', { name: 'Turn off for every clinic' }).click()
     const dialog = page.getByRole('dialog', { name: 'Turn the guidance assistant off for every clinic?' })
     await dialog.getByRole('button', { name: 'Turn off for every clinic' }).click()

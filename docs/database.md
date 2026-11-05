@@ -176,6 +176,13 @@ platform announcements. From migration 35 the Super Admin's read of them,
 the fields an update changed (`{"changed_columns": [...]}`, or NULL), never a
 stored value; the entries themselves are unchanged.
 
+Migration 46 adds no table: `super_admin_platform_overview()` returns one
+`jsonb` of platform totals - `clinics` (`total`, `active`, `inactive`),
+`clinic_admins`, `doctors` and `patients` (`total`, `active`),
+`announcements` (`published`, `drafts`) and `generated_at` - and nothing
+per clinic. A platform announcement is one with a `super_admin_id`,
+published when `announcement_published_at` is set.
+
 Migration 36 adds a third announcement author: `announcement.doc_id`, a
 doctor writing for their own patients. An announcement still has exactly one
 author (`announcement_one_author`: a Clinic Admin, a doctor or a Super

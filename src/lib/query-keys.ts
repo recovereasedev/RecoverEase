@@ -168,6 +168,7 @@ export function queryKeysFor(userId: string) {
        * SuperAdminAssuranceGate.
        */
       assurance: () => [...queryKeys.platform.all, 'assurance'] as const,
+      overview: () => [...queryKeys.platform.all, 'overview'] as const,
       clinics: () => [...queryKeys.platform.all, 'clinics'] as const,
       announcements: () =>
         [...queryKeys.platform.all, 'announcements'] as const,

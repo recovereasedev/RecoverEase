@@ -305,6 +305,16 @@ whether to ask for an authenticator code, about the caller only.
 
 **What a Super Admin reaches** - nothing but these functions:
 
+- the platform overview (migration 46): platform totals only - clinics
+  (all, active, inactive), Clinic Admins, doctors and patients (all,
+  active), and platform announcements (published, drafts). Nothing is
+  broken out by clinic: no clinic's id, name or status and no clinic's own
+  figures. `count(*)` over rows, never a row: no person's name, email or
+  id, and nothing clinical. Active doctors and patients are counted as a
+  Clinic Admin's own dashboard counts them. `tests/db/platform-overview.test.ts`
+  plants every name, email, licence and id the fixture has, and every
+  clinic's id and name, and finds none in the answer. It writes and audits
+  nothing.
 - clinics: list (name, status, time zone, timestamps, Clinic Admin count),
   create (a validated, bounded name; a time zone PostgreSQL knows; the
   clinic's own default settings and nothing of another clinic's, in one
@@ -333,9 +343,10 @@ as a verified Super Admin and finds only their own account and profile and
 published platform announcements. Every Clinic Admin function refuses them.
 
 **The console, and its authenticator step.** A Super Admin signs in on the
-same sign-in page as everyone else and lands on `/platform`: clinics and
-their Clinic Admins, platform announcements and the platform audit log - the
-functions above and nothing else. No clinic route renders for them, and no
+same sign-in page as everyone else and lands on `/platform`, the overview's
+counts; then clinics and their Clinic Admins (`/platform/clinics`),
+platform announcements and the platform audit log - the functions above and
+nothing else. No clinic route renders for them, and no
 clinic role reaches `/platform`. Before any console screen renders, the
 navigation included, `SuperAdminAssuranceGate` asks for the authenticator:
 

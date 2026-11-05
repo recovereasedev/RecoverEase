@@ -3,7 +3,7 @@
 -- ===========================================================================
 -- Returns the schema to exactly what migration 32 left, catalog entry by
 -- catalog entry (tests/db/super-admin-rollback.test.ts). Applied as a new
--- migration, with approval, and only once migrations 38 and 34 have been
+-- migration, with approval, and only once migrations 46, 38 and 34 have been
 -- rolled back.
 --
 -- It refuses, changing nothing, while any of these exists - each would be
@@ -23,6 +23,12 @@ do $$
 begin
   if to_regclass('public.super_admin') is null then
     raise exception 'Migration 33 is not applied. Nothing was changed.';
+  end if;
+
+  -- Migration 46's overview starts with the Super Admin check removed below;
+  -- left installed, it would be broken, not gone.
+  if to_regprocedure('public.super_admin_platform_overview()') is not null then
+    raise exception 'Roll back migration 46 first: its platform overview relies on the Super Admin checks this removes. Nothing was changed.';
   end if;
 
   -- Migration 38's switch is changed only through the Super Admin's checks

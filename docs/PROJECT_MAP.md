@@ -70,7 +70,7 @@ treatment-plans. Module-to-folder mapping:
 | `patient` | `/patient` | Their own records |
 | `doctor` | `/doctor` | Their assigned patients |
 | `admin` (Clinic Admin) | `/admin` | Their clinic's accounts and settings; **cannot read patient records** |
-| `super_admin` | `/platform` | Clinics, Clinic Admins, platform announcements and audit; never patient care; behind an authenticator-app (TOTP) gate |
+| `super_admin` | `/platform` | Platform overview (platform totals only), clinics (`/platform/clinics`), Clinic Admins, platform announcements and audit; never patient care; behind an authenticator-app (TOTP) gate |
 
 Guards live in `src/app/routes/guards.tsx` and decide what is rendered. RLS
 decides what is readable: a user who bypasses a redirect still gets no rows.
@@ -87,7 +87,7 @@ decides what is readable: a user who bypasses a redirect still gets no rows.
 - **RLS helpers** live in the unexposed `app_private` schema with `EXECUTE`
   revoked from `PUBLIC`.
 - **Clinics** (migrations 28 to 31) scope Clinic Admin access; the Super Admin
-  (32 to 33) works through `SECURITY DEFINER` functions that re-check the
+  (32, 33, 38 and 46) works through `SECURITY DEFINER` functions that re-check the
   caller in the database.
 - **Audit log** is append-only for every role and records which columns
   changed on patient tables, never their values.

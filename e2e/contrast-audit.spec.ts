@@ -49,7 +49,7 @@ const SCREENS = {
     '/admin/announcements',
     '/admin/profile',
   ],
-  super_admin: ['/platform', '/platform/announcements', '/platform/audit'],
+  super_admin: ['/platform', '/platform/clinics', '/platform/announcements', '/platform/audit'],
 } as const
 
 async function contrastFailures(page: Page): Promise<string[]> {
@@ -208,7 +208,7 @@ for (const theme of ['light', 'dark'] as const) {
       stub.setRpcResult('super_admin_get_guidance_assistant', [
         { enabled: false, updated_at: new Date().toISOString() },
       ])
-      await page.goto('/platform')
+      await page.goto('/platform/clinics')
       await settled(page)
       await expect(page.getByText('Off for every clinic', { exact: true })).toBeVisible()
       expect(await contrastFailures(page)).toEqual([])
@@ -217,7 +217,7 @@ for (const theme of ['light', 'dark'] as const) {
     test('super_admin /platform confirming the assistant off', async ({ page, signInAs }) => {
       const stub = await signInAs('super_admin', {}, { mfa: { verifiedFactor: true, aal: 'aal2' } })
       stub.setRpcResult('super_admin_get_guidance_assistant', [{ enabled: true, updated_at: null }])
-      await page.goto('/platform')
+      await page.goto('/platform/clinics')
       await settled(page)
       await page.getByRole('button', { name: 'Turn off for every clinic' }).click()
       const dialog = page.getByRole('dialog')

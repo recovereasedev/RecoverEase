@@ -177,6 +177,11 @@ export const AdminProfilePage = lazy(() =>
 )
 
 // --- Platform (Super Admin) -------------------------------------------------
+export const PlatformOverviewPage = lazy(() =>
+  import('@/features/platform/pages/platform-overview-page').then((m) => ({
+    default: m.PlatformOverviewPage,
+  })),
+)
 export const PlatformClinicsPage = lazy(() =>
   import('@/features/platform/pages/platform-clinics-page').then((m) => ({
     default: m.PlatformClinicsPage,

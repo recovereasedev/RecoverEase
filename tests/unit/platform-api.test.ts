@@ -39,6 +39,71 @@ beforeEach(() => {
   client.invoke.mockReset()
 })
 
+const OVERVIEW = {
+  clinics: { total: 2, active: 1, inactive: 1 },
+  clinic_admins: 1,
+  doctors: { total: 5, active: 3 },
+  patients: { total: 6, active: 5 },
+  announcements: { published: 1, drafts: 0 },
+  generated_at: '2026-11-05T02:00:00Z',
+}
+
+describe('the platform overview', () => {
+  it('reads the counts through the Super Admin function, sending nothing', async () => {
+    client.rpc.mockResolvedValue({ data: OVERVIEW, error: null })
+
+    expect(await api.fetchPlatformOverview()).toEqual({
+      clinics: { total: 2, active: 1, inactive: 1 },
+      clinicAdmins: 1,
+      doctors: { total: 5, active: 3 },
+      patients: { total: 6, active: 5 },
+      announcements: { published: 1, drafts: 0 },
+      generatedAt: '2026-11-05T02:00:00Z',
+    })
+    expect(client.rpc).toHaveBeenCalledWith('super_admin_platform_overview')
+  })
+
+  it("passes the database's refusal through", async () => {
+    const refusal = { code: '42501', message: 'Super Admin privileges are required' }
+    client.rpc.mockResolvedValue({ data: null, error: refusal })
+
+    await expect(api.fetchPlatformOverview()).rejects.toBe(refusal)
+  })
+
+  it('refuses an answer that is not exactly counts, rather than showing it', () => {
+    const broken: unknown[] = [
+      null,
+      [],
+      'counts',
+      { ...OVERVIEW, clinic_admins: '1' },
+      { ...OVERVIEW, clinic_admins: -1 },
+      { ...OVERVIEW, clinic_admins: 1.5 },
+      { ...OVERVIEW, patients: { total: 6 } },
+      { ...OVERVIEW, doctors: { total: 5, active: null } },
+      { ...OVERVIEW, clinics: { total: 2, active: 1 } },
+      { ...OVERVIEW, announcements: { published: '1', drafts: 0 } },
+      { ...OVERVIEW, generated_at: undefined },
+    ]
+    for (const data of broken) {
+      expect(() => api.parsePlatformOverview(data), JSON.stringify(data)).toThrow(
+        'The platform overview could not be read.',
+      )
+    }
+  })
+
+  it('keeps platform totals only: any other field, a clinic list included, is dropped', () => {
+    const parsed = api.parsePlatformOverview({
+      ...OVERVIEW,
+      unexpected: 'ignored',
+      by_clinic: [{ clinic_id: 'clinic-1', clinic_name: 'Harbor Clinic', clinic_status: 'active' }],
+    })
+    expect(Object.keys(parsed).sort()).toEqual(
+      ['announcements', 'clinicAdmins', 'clinics', 'doctors', 'generatedAt', 'patients'],
+    )
+    expect(JSON.stringify(parsed)).not.toMatch(/ignored|Harbor Clinic|clinic-1/)
+  })
+})
+
 describe('clinics', () => {
   it('lists them through the Super Admin function', async () => {
     client.rpc.mockResolvedValue({ data: [CLINIC], error: null })

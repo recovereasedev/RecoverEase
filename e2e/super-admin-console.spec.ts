@@ -33,6 +33,7 @@ test.describe('the authenticator step', () => {
     await expect(page.getByRole('heading', { name: ENROL_HEADING })).toBeVisible()
     // No console, and no navigation into it, before the code.
     await expect(page.getByRole('navigation', { name: 'Main' })).toHaveCount(0)
+    await expect(page.getByRole('heading', { name: 'Platform overview' })).toHaveCount(0)
     await expect(page.getByRole('heading', { name: 'Clinics' })).toHaveCount(0)
 
     await page.getByRole('button', { name: 'Set up authenticator app' }).click()
@@ -53,12 +54,12 @@ test.describe('the authenticator step', () => {
     await code.fill(STUB_TOTP_CODE)
     await page.getByRole('button', { name: 'Verify and continue' }).click()
 
-    await expect(page.getByRole('heading', { level: 1, name: 'Clinics' })).toBeVisible()
-    await expect(page.getByRole('heading', { name: 'Harbor Clinic' })).toBeVisible()
+    await expect(page.getByRole('heading', { level: 1, name: 'Platform overview' })).toBeVisible()
+    await expect(page.getByLabel('Platform totals')).toBeVisible()
     expect(stub.factorsNow().map((factor) => factor.status)).toEqual(['verified'])
 
     const nav = page.getByRole('navigation', { name: 'Main' })
-    await expect(nav.getByRole('link')).toHaveText(['Clinics', 'Announcements', 'Audit log'])
+    await expect(nav.getByRole('link')).toHaveText(['Overview', 'Clinics', 'Announcements', 'Audit log'])
     // The platform sends no notifications, so there is no bell.
     await expect(page.getByRole('link', { name: /Notifications/ })).toHaveCount(0)
   })
@@ -108,6 +109,7 @@ test.describe('the authenticator step', () => {
     await expect(
       page.getByRole('heading', { name: 'This session cannot open the platform console' }),
     ).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Platform overview' })).toHaveCount(0)
     await expect(page.getByRole('heading', { name: 'Clinics' })).toHaveCount(0)
     expect(consoleCalls(stub.requests)).toEqual([])
   })
@@ -126,6 +128,54 @@ test.describe('the authenticator step', () => {
 })
 
 test.describe('the console', () => {
+  test('opens on the overview: platform totals only, asked of one function, with the way on to the clinics', async ({
+    page,
+    signInAs,
+  }) => {
+    const stub = await signInAs('super_admin', {}, { mfa: { verifiedFactor: true, aal: 'aal2' } })
+    await page.goto('/platform')
+
+    await expect(page.getByRole('heading', { level: 1, name: 'Platform overview' })).toBeVisible()
+    const totals = page.getByLabel('Platform totals')
+    await expect(totals).toContainText('Clinics')
+    await expect(totals).toContainText('1 active · 0 inactive')
+    await expect(totals).toContainText('Clinic Admins')
+    await expect(totals).toContainText('Doctors')
+    await expect(totals).toContainText('2 active')
+    await expect(totals).toContainText('Patients')
+    await expect(totals).toContainText('3 active')
+    // No clinic on its own: the overview names none.
+    await expect(page.getByText('Harbor Clinic')).toHaveCount(0)
+    await expect(page.getByRole('heading', { name: 'By clinic' })).toHaveCount(0)
+    // The overview's only console call is the overview itself.
+    expect(consoleCalls(stub.requests)).toEqual(['POST rpc/super_admin_platform_overview'])
+
+    // Nothing wider than the screen, on a phone as on a desktop.
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    )
+    expect(overflow).toBeLessThanOrEqual(0)
+
+    await page.getByRole('link', { name: 'Manage clinics' }).click()
+    await expect(page).toHaveURL(/\/platform\/clinics$/)
+    await expect(page.getByRole('heading', { level: 1, name: 'Clinics' })).toBeVisible()
+  })
+
+  test('says it could not count, rather than showing figures, when the answer is unreadable', async ({
+    page,
+    signInAs,
+  }) => {
+    const stub = await signInAs('super_admin', {}, { mfa: { verifiedFactor: true, aal: 'aal2' } })
+    stub.setRpcResult('super_admin_platform_overview', { clinics: 'many' })
+    await page.goto('/platform')
+
+    // The page's error state - its wording is the shared one, not this
+    // function's - with a way to ask again, and not one figure.
+    await expect(page.getByRole('alert')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Try again' })).toBeVisible()
+    await expect(page.getByLabel('Platform totals')).toHaveCount(0)
+  })
+
   test('adds a Clinic Admin by email invitation, handing over no password', async ({
     page,
     signInAs,
@@ -149,7 +199,7 @@ test.describe('the console', () => {
       })
     })
 
-    await page.goto('/platform')
+    await page.goto('/platform/clinics')
     await page.getByRole('button', { name: 'Add Clinic Admin to Harbor Clinic' }).click()
 
     const dialog = page.getByRole('dialog', { name: 'Add a Clinic Admin to Harbor Clinic' })

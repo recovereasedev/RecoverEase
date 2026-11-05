@@ -35,6 +35,68 @@ function messageOf(error: unknown): string {
   return typeof message === 'string' ? message : ''
 }
 
+// --- The platform overview ---------------------------------------------------
+
+/**
+ * How many - never who (migration 46). Platform totals only: every figure is
+ * a count the database computed across the whole platform. No clinic is
+ * broken out, no person's name, email or id is in it, and nothing clinical.
+ */
+export type PlatformOverview = {
+  clinics: { total: number; active: number; inactive: number }
+  clinicAdmins: number
+  doctors: { total: number; active: number }
+  patients: { total: number; active: number }
+  announcements: { published: number; drafts: number }
+  generatedAt: string
+}
+
+function isCount(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+/**
+ * The function returns `jsonb`, which the generated types cannot describe,
+ * so its shape is checked here: an answer that is not exactly counts is
+ * refused as an error rather than shown as figures that are not there. Only
+ * the fields below are kept; anything else in an answer is dropped, never
+ * passed on to the page.
+ */
+export function parsePlatformOverview(data: unknown): PlatformOverview {
+  const malformed = () => new Error('The platform overview could not be read.')
+  if (!isRecord(data)) throw malformed()
+  const { clinics, clinic_admins, doctors, patients, announcements, generated_at } = data
+  if (
+    !isRecord(clinics) || !isCount(clinics.total) || !isCount(clinics.active) || !isCount(clinics.inactive) ||
+    !isCount(clinic_admins) ||
+    !isRecord(doctors) || !isCount(doctors.total) || !isCount(doctors.active) ||
+    !isRecord(patients) || !isCount(patients.total) || !isCount(patients.active) ||
+    !isRecord(announcements) || !isCount(announcements.published) || !isCount(announcements.drafts) ||
+    typeof generated_at !== 'string'
+  ) {
+    throw malformed()
+  }
+
+  return {
+    clinics: { total: clinics.total, active: clinics.active, inactive: clinics.inactive },
+    clinicAdmins: clinic_admins,
+    doctors: { total: doctors.total, active: doctors.active },
+    patients: { total: patients.total, active: patients.active },
+    announcements: { published: announcements.published, drafts: announcements.drafts },
+    generatedAt: generated_at,
+  }
+}
+
+export async function fetchPlatformOverview(): Promise<PlatformOverview> {
+  const { data, error } = await supabase.rpc('super_admin_platform_overview')
+  if (error) throw error
+  return parsePlatformOverview(data)
+}
+
 // --- Clinics -----------------------------------------------------------------
 
 export async function fetchClinics(): Promise<PlatformClinic[]> {

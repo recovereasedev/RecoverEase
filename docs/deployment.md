@@ -16,9 +16,12 @@
 > - **Website** (at 17:38 UTC). The Vercel Production deployment
 >   `dpl_7P9bhug51rgRDPoKqh5kP4PZN7Kf`, built from `main` at `23af842` (the
 >   merge of PR #68), serves <https://recoverease-web.vercel.app>.
-> - **Database** (2026-11-04 at 19:42 UTC). The migration history has 43
+> - **Database** (2026-11-05 at 20:34 UTC). The migration history has 44
 >   entries. Every file in `supabase/migrations/` is in it except 34
->   (`lift_single_clinic_gate`), held for its own decision. 45
+>   (`lift_single_clinic_gate`), held for its own decision. 46
+>   (`super_admin_platform_overview`) was applied and verified on
+>   2026-11-05, ahead of the website that calls it (PR #74) - see
+>   "Platform overview (migration 46)". 45
 >   (`recovery_roadmap`) was applied and verified on 2026-11-04, ahead of
 >   the website that reads it (PR #71) - see "Recovery roadmap (migration
 >   45)". 43 (`system_report_snapshot`) is applied and verified; the
@@ -424,6 +427,10 @@ To roll back 31, go the other way, newest first. Each later migration is
 rolled back with its own down-script, applied as a new migration, and where
 deployed code depends on it, that code goes back first:
 
+1. **46**, where it is applied: the website from before migration 46, then
+   `supabase/rollbacks/20260902100046_super_admin_platform_overview.down.sql`.
+   It drops one read-only function; no row is lost. 33's down-script refuses
+   while 46 is installed.
 1. **45**: the website from before migration 45, then
    `supabase/rollbacks/20260902100045_recovery_roadmap.down.sql`. Every
    plan and goal stays with its status; the phases, the activities, every
@@ -1245,6 +1252,78 @@ afterwards on 2026-11-04 (`main` `5f53080`) and deployed to production.
   were left in place.
 
 Its down-script is in "To roll back 31": the website first.
+
+### Platform overview (migration 46)
+
+The Super Admin console's first page, `/platform`: platform totals only -
+counts of clinics, Clinic Admins, doctors, patients and platform
+announcements across the whole platform, never broken out by clinic - from
+one function, `super_admin_platform_overview()` (`docs/security.md`, "The
+Super Admin"). The clinic list moves from `/platform` to
+`/platform/clinics`.
+
+It goes in **before** the website that calls it is merged: merged first,
+the overview page shows its error state (every other console page keeps
+working, and nothing else on the site depends on it).
+
+**Applied to production on 2026-11-05 at 20:33:47 UTC** (history
+`20261105203347 super_admin_platform_overview`, whose one statement
+matches the file's MD5, `0d400e463dd9556ae6c128ef930e3fe9`), inside the
+:33-:42 window, with Kean's approval, after a read-only preflight at 20:33
+UTC found the function absent, migration 33's table and check in place, no
+open transaction older than 30 seconds, and the baseline counts below.
+**Verified** read-only at 20:34 UTC: history 43 to 44 entries; the
+function `SECURITY DEFINER` with `search_path=""` and `stable`; `anon` and
+`public` may not execute it, `authenticated` may; a direct call with no
+signed-in Super Admin refused with `42501` ("Super Admin access requires a
+current session verified with an authenticator app"), so the check runs
+before anything is counted; public Super Admin functions 14 to 15; the
+security advisors' `authenticated_security_definer_function_executable`
+warnings 25 to 26 - the one new one this function - and nothing else new;
+clinics 1, Clinic Admins 1, doctors 7, patients 7, announcements 1,
+accounts 16 and audit rows 101, all as before; `lock_timeout` back to `0`;
+and the pre-dose reminder job's runs at 20:33 and 20:34 succeeded. The
+website that calls it, PR #74, is not merged: until it is, nothing calls
+the function. Its own check - the Super Admin opening `/platform` and
+seeing the totals - comes after that merge.
+
+- **What it changes.** One new function, `stable` and `SECURITY DEFINER`
+  with an empty `search_path`, refused to `anon` and granted to
+  `authenticated`; its first statement is
+  `app_private.require_super_admin()`. It writes nothing - no row, no
+  audit entry - and changes no table, policy, trigger or other function.
+  It needs migration 33 and refuses to run without it; it is independent
+  of 34 (with one clinic or many it counts what is there).
+- **Locks.** Creating a function locks no table, but it starts with `set
+  lock_timeout = '3s'` and ends with `reset lock_timeout`, as every
+  migration from 41 does. It touches nothing a reminder job reads; any of
+  the windows above will do.
+- **Expected advisor change.** The security advisors gain exactly one
+  `authenticated_security_definer_function_executable` warning, for
+  `super_admin_platform_overview` - meant to be called by a signed-in user
+  and deciding inside who may, like every Super Admin function.
+- **Verify, read-only.** One history entry named
+  `super_admin_platform_overview`, whose statements match the file's MD5
+  (`0d400e463dd9556ae6c128ef930e3fe9` at the time of writing - recompute
+  from the file being applied); `to_regprocedure('public.super_admin_platform_overview()')`
+  present, `prosecdef` true, `proconfig` `search_path=""`, `provolatile`
+  `s`; `has_function_privilege('anon', …, 'execute')` false and
+  `'authenticated'` true; the advisors as above; every table unchanged by
+  count. The Super Admin then opens `/platform` themselves (Kean signs in;
+  never on a Vercel preview, which uses the production database) and sees
+  the totals; with one clinic in production, the doctor and patient totals
+  equal its Clinic Admin's own dashboard.
+- **Rollback.** "To roll back 31", step 46: the website first, then the
+  down-script, which only drops the function.
+
+Tests: `tests/db/platform-overview.test.ts` (platform totals across two clinics, with no clinic id, name or status in the answer;
+every caller but an assured Super Admin refused - anonymous, a patient, a
+doctor, a deactivated doctor and a Clinic Admin each with their own
+verified authenticator, and a Super Admin at `aal1`, with another user's
+factor or session, signed out, expired or banned; no name, email, licence
+or id in the answer; nothing written; the rollback); the overview added
+to `tests/db/super-admin.test.ts`'s every-operation checks; and
+`tests/db/super-admin-rollback.test.ts` rolling 46 back first.
 
 ## Bundle budget
 

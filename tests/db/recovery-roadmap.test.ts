@@ -1104,7 +1104,9 @@ describe('migration 45, before and after', () => {
     expect(lines.at(-1)).toBe('reset lock_timeout;')
 
     const [used, through44] = await Promise.all([
-      createTestDatabase(),
+      // Built only through 45, so its down-script is shown alone - as it
+      // runs, after 46's.
+      createTestDatabase({ stopAfter: MIGRATION_45 }),
       createTestDatabase({ stopAfter: MIGRATION_44 }),
     ])
     try {
