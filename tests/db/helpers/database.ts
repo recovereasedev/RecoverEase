@@ -29,6 +29,7 @@ const SUPABASE_COMPAT = `
     email             text not null,
     raw_app_meta_data jsonb not null default '{}'::jsonb,
     created_at        timestamptz not null default now(),
+    last_sign_in_at   timestamptz,
     banned_until      timestamptz,
     deleted_at        timestamptz
   );

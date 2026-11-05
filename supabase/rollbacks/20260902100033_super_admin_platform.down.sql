@@ -3,7 +3,7 @@
 -- ===========================================================================
 -- Returns the schema to exactly what migration 32 left, catalog entry by
 -- catalog entry (tests/db/super-admin-rollback.test.ts). Applied as a new
--- migration, with approval, and only once migrations 46, 38 and 34 have been
+-- migration, with approval, and only once migrations 47, 46, 38 and 34 have been
 -- rolled back.
 --
 -- It refuses, changing nothing, while any of these exists - each would be
@@ -23,6 +23,13 @@ do $$
 begin
   if to_regclass('public.super_admin') is null then
     raise exception 'Migration 33 is not applied. Nothing was changed.';
+  end if;
+
+  -- Migration 47's clinic details functions start with the Super Admin
+  -- check removed below; left installed, they would be broken, not gone.
+  if to_regprocedure('public.super_admin_update_clinic(uuid, text, text)') is not null
+     or to_regprocedure('public.super_admin_list_clinic_admins(uuid)') is not null then
+    raise exception 'Roll back migration 47 first: its clinic details functions rely on the Super Admin checks this removes. Nothing was changed.';
   end if;
 
   -- Migration 46's overview starts with the Super Admin check removed below;
