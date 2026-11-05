@@ -102,55 +102,44 @@ describe('the platform overview', () => {
     doctors: { total: 5, active: 3 },
     patients: { total: 6, active: 5 },
     announcements: { published: 1, drafts: 2 },
-    byClinic: [
-      {
-        clinicId: 'clinic-2',
-        clinicName: 'Alder Clinic',
-        clinicStatus: 'inactive' as const,
-        clinicAdmins: 0,
-        activeDoctors: 1,
-        activePatients: 1,
-      },
-      {
-        clinicId: 'clinic-1',
-        clinicName: 'Harbor Clinic',
-        clinicStatus: 'active' as const,
-        clinicAdmins: 1,
-        activeDoctors: 2,
-        activePatients: 4,
-      },
-    ],
     generatedAt: '2026-11-05T02:00:00Z',
   }
 
-  it('shows the platform totals, each clinic’s counts and the announcements', async () => {
+  it('shows the platform totals and the announcements, and no clinic on its own', async () => {
     api.fetchPlatformOverview.mockResolvedValue(OVERVIEW)
     renderPage(<PlatformOverviewPage />)
 
     const totals = await screen.findByLabelText('Platform totals')
+    expect(within(totals).getByText('Clinics')).toBeInTheDocument()
     expect(within(totals).getByText('1 active · 1 inactive')).toBeInTheDocument()
+    expect(within(totals).getByText('Clinic Admins')).toBeInTheDocument()
     expect(within(totals).getByText('3 active')).toBeInTheDocument()
     expect(within(totals).getByText('5 active')).toBeInTheDocument()
+    expect(screen.getByText('Published').nextElementSibling).toHaveTextContent('1')
+    expect(screen.getByText('Drafts').nextElementSibling).toHaveTextContent('2')
 
-    expect(screen.getByText('Alder Clinic')).toBeInTheDocument()
-    expect(screen.getByText('0 Clinic Admins · 1 active doctor · 1 active patient')).toBeInTheDocument()
-    expect(screen.getByText('1 Clinic Admin · 2 active doctors · 4 active patients')).toBeInTheDocument()
-    expect(screen.getByText('Inactive')).toBeInTheDocument()
-    expect(screen.getByText('Active')).toBeInTheDocument()
+    // Platform totals only: no per-clinic section, no clinic named.
+    expect(screen.queryByRole('heading', { name: 'By clinic' })).not.toBeInTheDocument()
+    expect(screen.queryByText(/Harbor Clinic|Alder Clinic/)).not.toBeInTheDocument()
 
     expect(screen.getByRole('link', { name: /Manage clinics/ })).toHaveAttribute('href', '/platform/clinics')
     expect(screen.getByRole('link', { name: /Announcements/ })).toHaveAttribute('href', '/platform/announcements')
   })
 
-  it('says so when there is no clinic yet', async () => {
+  it('shows a platform with nothing yet as zeros, not as an error', async () => {
     api.fetchPlatformOverview.mockResolvedValue({
       ...OVERVIEW,
       clinics: { total: 0, active: 0, inactive: 0 },
-      byClinic: [],
+      clinicAdmins: 0,
+      doctors: { total: 0, active: 0 },
+      patients: { total: 0, active: 0 },
+      announcements: { published: 0, drafts: 0 },
     })
     renderPage(<PlatformOverviewPage />)
 
-    expect(await screen.findByText('No clinics yet')).toBeInTheDocument()
+    const totals = await screen.findByLabelText('Platform totals')
+    expect(within(totals).getByText('0 active · 0 inactive')).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
   it('shows a refusal or an unreadable answer as an error, with a retry, and no figures', async () => {

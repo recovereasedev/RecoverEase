@@ -177,13 +177,11 @@ the fields an update changed (`{"changed_columns": [...]}`, or NULL), never a
 stored value; the entries themselves are unchanged.
 
 Migration 46 adds no table: `super_admin_platform_overview()` returns one
-`jsonb` of counts - `clinics` (`total`, `active`, `inactive`),
+`jsonb` of platform totals - `clinics` (`total`, `active`, `inactive`),
 `clinic_admins`, `doctors` and `patients` (`total`, `active`),
-`announcements` (`published`, `drafts`), `by_clinic` (each clinic's
-`clinic_id`, `clinic_name`, `clinic_status`, `clinic_admins`,
-`active_doctors`, `active_patients`, in name order) and `generated_at`. A
-patient is counted in their doctor's clinic; a platform announcement is one
-with a `super_admin_id`, published when `announcement_published_at` is set.
+`announcements` (`published`, `drafts`) and `generated_at` - and nothing
+per clinic. A platform announcement is one with a `super_admin_id`,
+published when `announcement_published_at` is set.
 
 Migration 36 adds a third announcement author: `announcement.doc_id`, a
 doctor writing for their own patients. An announcement still has exactly one

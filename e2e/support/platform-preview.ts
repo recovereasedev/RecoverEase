@@ -99,12 +99,12 @@ export async function installPlatformPreview(
   }
 
   // --- The platform overview (migration 46) -----------------------------------
-  // Counted from this preview's own state, as the real function counts the
-  // database. The preview keeps no doctors or patients - the console never
-  // reaches any - so those count none.
+  // Platform totals, counted from this preview's own state as the real
+  // function counts the database - no clinic broken out. The preview keeps
+  // no doctors or patients - the console never reaches any - so those count
+  // none.
 
   stub.setRpcHandler('super_admin_platform_overview', () => {
-    const sorted = [...clinics].sort((a, b) => a.clinic_name.localeCompare(b.clinic_name))
     const active = clinics.filter((clinic) => clinic.clinic_status === 'active').length
     return {
       result: {
@@ -116,14 +116,6 @@ export async function installPlatformPreview(
           published: announcements.filter((a) => a.announcement_published_at !== null).length,
           drafts: announcements.filter((a) => a.announcement_published_at === null).length,
         },
-        by_clinic: sorted.map((clinic) => ({
-          clinic_id: clinic.clinic_id,
-          clinic_name: clinic.clinic_name,
-          clinic_status: clinic.clinic_status,
-          clinic_admins: clinic.clinic_admin_count,
-          active_doctors: 0,
-          active_patients: 0,
-        })),
         generated_at: now(),
       },
     }

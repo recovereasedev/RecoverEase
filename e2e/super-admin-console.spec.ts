@@ -55,7 +55,7 @@ test.describe('the authenticator step', () => {
     await page.getByRole('button', { name: 'Verify and continue' }).click()
 
     await expect(page.getByRole('heading', { level: 1, name: 'Platform overview' })).toBeVisible()
-    await expect(page.getByText('Harbor Clinic')).toBeVisible()
+    await expect(page.getByLabel('Platform totals')).toBeVisible()
     expect(stub.factorsNow().map((factor) => factor.status)).toEqual(['verified'])
 
     const nav = page.getByRole('navigation', { name: 'Main' })
@@ -128,7 +128,7 @@ test.describe('the authenticator step', () => {
 })
 
 test.describe('the console', () => {
-  test('opens on the overview: counts only, asked of one function, with the way on to the clinics', async ({
+  test('opens on the overview: platform totals only, asked of one function, with the way on to the clinics', async ({
     page,
     signInAs,
   }) => {
@@ -139,8 +139,14 @@ test.describe('the console', () => {
     const totals = page.getByLabel('Platform totals')
     await expect(totals).toContainText('Clinics')
     await expect(totals).toContainText('1 active · 0 inactive')
+    await expect(totals).toContainText('Clinic Admins')
+    await expect(totals).toContainText('Doctors')
+    await expect(totals).toContainText('2 active')
     await expect(totals).toContainText('Patients')
-    await expect(page.getByText('1 Clinic Admin · 2 active doctors · 3 active patients')).toBeVisible()
+    await expect(totals).toContainText('3 active')
+    // No clinic on its own: the overview names none.
+    await expect(page.getByText('Harbor Clinic')).toHaveCount(0)
+    await expect(page.getByRole('heading', { name: 'By clinic' })).toHaveCount(0)
     // The overview's only console call is the overview itself.
     expect(consoleCalls(stub.requests)).toEqual(['POST rpc/super_admin_platform_overview'])
 

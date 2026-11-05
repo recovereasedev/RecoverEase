@@ -100,9 +100,15 @@ preview('Super Admin console, local preview', async ({ page, signInAs, previewSt
     await page.getByLabel(/6-digit code/).fill(STUB_TOTP_CODE)
     await page.getByRole('button', { name: 'Verify' }).click()
   }
-  // The console opens on the overview: counts from the preview's own state.
+  // The console opens on the overview: platform totals from the preview's
+  // own state, and no clinic named.
   await expect(page.getByRole('heading', { level: 1, name: 'Platform overview' })).toBeVisible()
-  await expect(page.getByText('1 Clinic Admin · 0 active doctors · 0 active patients')).toBeVisible()
+  const totals = page.getByLabel('Platform totals')
+  const total = (label: string) =>
+    totals.getByText(label, { exact: true }).locator('xpath=following-sibling::dd[1]')
+  await expect(total('Clinic Admins')).toHaveText('1')
+  await expect(total('Clinics')).toHaveText('1')
+  await expect(page.getByText('Harbor Clinic')).toHaveCount(0)
   await page.getByRole('link', { name: 'Manage clinics' }).click()
   await expect(page.getByRole('heading', { level: 1, name: 'Clinics' })).toBeVisible()
 
@@ -154,7 +160,7 @@ preview('Super Admin console, local preview', async ({ page, signInAs, previewSt
   // Back on the overview, the counts have followed: the new Clinic Admin and
   // the published announcement.
   await page.getByRole('link', { name: 'Overview' }).first().click()
-  await expect(page.getByText('2 Clinic Admins · 0 active doctors · 0 active patients')).toBeVisible()
+  await expect(total('Clinic Admins')).toHaveText('2')
   await expect(
     page.getByRole('region', { name: 'Platform announcements' }).getByText('1', { exact: true }),
   ).toBeVisible()

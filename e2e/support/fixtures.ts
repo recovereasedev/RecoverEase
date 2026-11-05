@@ -379,23 +379,13 @@ export function platformDataset(): TableRows {
   }
 }
 
-/** What `super_admin_platform_overview()` returns for the stub's one clinic. */
+/** What `super_admin_platform_overview()` returns: platform totals only. */
 export const PLATFORM_OVERVIEW = {
   clinics: { total: 1, active: 1, inactive: 0 },
   clinic_admins: 1,
   doctors: { total: 2, active: 2 },
   patients: { total: 3, active: 3 },
   announcements: { published: 0, drafts: 0 },
-  by_clinic: [
-    {
-      clinic_id: IDS.clinic,
-      clinic_name: 'Harbor Clinic',
-      clinic_status: 'active',
-      clinic_admins: 1,
-      active_doctors: 2,
-      active_patients: 3,
-    },
-  ],
   generated_at: '2026-01-01T00:00:00Z',
 }
 

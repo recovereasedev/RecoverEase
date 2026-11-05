@@ -1,25 +1,25 @@
 -- ===========================================================================
--- RecoverEase — 46. The platform overview: how many, never who
+-- RecoverEase — 46. The platform overview: platform totals, never who
 -- ===========================================================================
 -- The Super Admin console's first page. Until now the console opened on the
 -- clinic list, and the only figure it could show was each clinic's number of
 -- Clinic Admins (`super_admin_list_clinics`, migration 33). This adds one
--- function that counts the rest:
+-- function that counts the platform as a whole:
 --
 --   * clinics: all, active, inactive;
---   * Clinic Admins, doctors (all, active) and patients (all, active),
---     platform-wide;
+--   * Clinic Admins;
+--   * doctors: all, active;
+--   * patients: all, active;
 --   * platform announcements: published, drafts;
---   * for each clinic: its id, name and status, and its number of Clinic
---     Admins, active doctors and active patients.
+--   * when it counted.
 --
--- Counts only. No person's name, email, id or account is returned, nor any
--- clinical record: the function never returns a row of `patient`, `doctor`,
--- `admin` or anything clinical, only `count(*)` over them. A clinic's id and
--- name are already the Super Admin's (`super_admin_list_clinics`). Patients
--- are counted through their doctor's clinic, as `admin_dashboard_stats()`
--- (migration 30) counts a Clinic Admin's own, so a clinic's figures here are
--- the ones its own Clinic Admin already sees.
+-- Platform totals only. Nothing is broken down by clinic: no clinic's id,
+-- name or status, and no clinic's own figures. No person's name, email, id
+-- or account is returned, nor any clinical record: the function never
+-- returns a row of `clinic`, `patient`, `doctor`, `admin` or anything
+-- clinical, only `count(*)` over them. Active patients are those whose
+-- `pat_status` is `active`, and active doctors those with `doc_is_active`,
+-- as `admin_dashboard_stats()` (migration 30) counts a Clinic Admin's own.
 --
 -- Who may call it: an assured Super Admin only. Like every Super Admin
 -- function it is SECURITY DEFINER - a Super Admin has no profile in any
@@ -60,32 +60,10 @@ stable
 security definer
 set search_path = ''
 as $$
-declare
-  result jsonb;
 begin
   perform app_private.require_super_admin();
 
-  with clinic_counts as (
-    select c.clinic_id,
-           c.clinic_name,
-           c.clinic_status,
-           (select count(*)
-              from public.admin a
-              join public.user_account ua on ua.user_id = a.user_id
-             where a.clinic_id = c.clinic_id
-               and ua.user_role = 'admin') as clinic_admins,
-           (select count(*)
-              from public.doctor d
-             where d.clinic_id = c.clinic_id
-               and d.doc_is_active) as active_doctors,
-           (select count(*)
-              from public.patient p
-              join public.doctor d on d.doc_id = p.doc_id
-             where d.clinic_id = c.clinic_id
-               and p.pat_status = 'active') as active_patients
-      from public.clinic c
-  )
-  select jsonb_build_object(
+  return jsonb_build_object(
     'clinics', jsonb_build_object(
       'total',    (select count(*) from public.clinic),
       'active',   (select count(*) from public.clinic where clinic_status = 'active'),
@@ -113,31 +91,15 @@ begin
                      where super_admin_id is not null
                        and announcement_published_at is null)
     ),
-    'by_clinic', coalesce((
-      select jsonb_agg(
-               jsonb_build_object(
-                 'clinic_id',       cc.clinic_id,
-                 'clinic_name',     cc.clinic_name,
-                 'clinic_status',   cc.clinic_status,
-                 'clinic_admins',   cc.clinic_admins,
-                 'active_doctors',  cc.active_doctors,
-                 'active_patients', cc.active_patients
-               )
-               order by lower(cc.clinic_name), cc.clinic_id
-             )
-        from clinic_counts cc
-    ), '[]'::jsonb),
     'generated_at', now()
-  ) into result;
-
-  return result;
+  );
 end;
 $$;
 
 comment on function public.super_admin_platform_overview() is
-  'The Super Admin console''s overview: counts of clinics, Clinic Admins, '
-  'doctors, patients and platform announcements, platform-wide and per '
-  'clinic. Counts only - no person and no clinical record. Super Admin only '
+  'The Super Admin console''s overview: platform-wide counts of clinics, '
+  'Clinic Admins, doctors, patients and platform announcements. Totals only - '
+  'no clinic broken out, no person and no clinical record. Super Admin only '
   '(migration 46).';
 
 revoke all on function public.super_admin_platform_overview() from public, anon;

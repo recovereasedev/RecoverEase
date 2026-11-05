@@ -305,17 +305,16 @@ whether to ask for an authenticator code, about the caller only.
 
 **What a Super Admin reaches** - nothing but these functions:
 
-- the platform overview (migration 46): counts only - clinics (all, active,
-  inactive), Clinic Admins, doctors and patients (all, active), platform
-  announcements (published, drafts), and for each clinic its id, name,
-  status and number of Clinic Admins, active doctors and active patients.
-  `count(*)` over rows, never a row: no person's name, email or id, and
-  nothing clinical. Patients are counted through their doctor's clinic,
-  as a Clinic Admin's own dashboard counts them, so a clinic's figures
-  here are the ones its Clinic Admin already sees.
-  `tests/db/platform-overview.test.ts` plants every name, email, licence
-  and id the fixture has and finds none in the answer. It writes and
-  audits nothing.
+- the platform overview (migration 46): platform totals only - clinics
+  (all, active, inactive), Clinic Admins, doctors and patients (all,
+  active), and platform announcements (published, drafts). Nothing is
+  broken out by clinic: no clinic's id, name or status and no clinic's own
+  figures. `count(*)` over rows, never a row: no person's name, email or
+  id, and nothing clinical. Active doctors and patients are counted as a
+  Clinic Admin's own dashboard counts them. `tests/db/platform-overview.test.ts`
+  plants every name, email, licence and id the fixture has, and every
+  clinic's id and name, and finds none in the answer. It writes and audits
+  nothing.
 - clinics: list (name, status, time zone, timestamps, Clinic Admin count),
   create (a validated, bounded name; a time zone PostgreSQL knows; the
   clinic's own default settings and nothing of another clinic's, in one

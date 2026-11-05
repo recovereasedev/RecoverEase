@@ -45,16 +45,6 @@ const OVERVIEW = {
   doctors: { total: 5, active: 3 },
   patients: { total: 6, active: 5 },
   announcements: { published: 1, drafts: 0 },
-  by_clinic: [
-    {
-      clinic_id: 'clinic-1',
-      clinic_name: 'Harbor Clinic',
-      clinic_status: 'active',
-      clinic_admins: 1,
-      active_doctors: 2,
-      active_patients: 4,
-    },
-  ],
   generated_at: '2026-11-05T02:00:00Z',
 }
 
@@ -68,16 +58,6 @@ describe('the platform overview', () => {
       doctors: { total: 5, active: 3 },
       patients: { total: 6, active: 5 },
       announcements: { published: 1, drafts: 0 },
-      byClinic: [
-        {
-          clinicId: 'clinic-1',
-          clinicName: 'Harbor Clinic',
-          clinicStatus: 'active',
-          clinicAdmins: 1,
-          activeDoctors: 2,
-          activePatients: 4,
-        },
-      ],
       generatedAt: '2026-11-05T02:00:00Z',
     })
     expect(client.rpc).toHaveBeenCalledWith('super_admin_platform_overview')
@@ -99,9 +79,9 @@ describe('the platform overview', () => {
       { ...OVERVIEW, clinic_admins: -1 },
       { ...OVERVIEW, clinic_admins: 1.5 },
       { ...OVERVIEW, patients: { total: 6 } },
-      { ...OVERVIEW, by_clinic: null },
-      { ...OVERVIEW, by_clinic: [{ ...OVERVIEW.by_clinic[0], clinic_status: 'deleted' }] },
-      { ...OVERVIEW, by_clinic: [{ ...OVERVIEW.by_clinic[0], active_patients: null }] },
+      { ...OVERVIEW, doctors: { total: 5, active: null } },
+      { ...OVERVIEW, clinics: { total: 2, active: 1 } },
+      { ...OVERVIEW, announcements: { published: '1', drafts: 0 } },
       { ...OVERVIEW, generated_at: undefined },
     ]
     for (const data of broken) {
@@ -111,13 +91,16 @@ describe('the platform overview', () => {
     }
   })
 
-  it('keeps no field the page does not show', () => {
+  it('keeps platform totals only: any other field, a clinic list included, is dropped', () => {
     const parsed = api.parsePlatformOverview({
       ...OVERVIEW,
       unexpected: 'ignored',
-      by_clinic: [{ ...OVERVIEW.by_clinic[0], also_unexpected: 'ignored' }],
+      by_clinic: [{ clinic_id: 'clinic-1', clinic_name: 'Harbor Clinic', clinic_status: 'active' }],
     })
-    expect(JSON.stringify(parsed)).not.toContain('ignored')
+    expect(Object.keys(parsed).sort()).toEqual(
+      ['announcements', 'clinicAdmins', 'clinics', 'doctors', 'generatedAt', 'patients'],
+    )
+    expect(JSON.stringify(parsed)).not.toMatch(/ignored|Harbor Clinic|clinic-1/)
   })
 })
 

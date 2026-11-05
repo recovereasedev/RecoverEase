@@ -17,12 +17,13 @@ import {
 
 /**
  * The platform overview (migration 46): how many clinics, Clinic Admins,
- * doctors, patients and platform announcements there are, platform-wide and
- * per clinic - and never who.
+ * doctors, patients and platform announcements there are - platform totals
+ * only, never broken out by clinic, and never who.
  *
  * Called directly, as the Data API would, by an assured Super Admin and by
  * everyone who must be refused. The fixture's people all carry names, emails
- * and licence numbers; none of them, nor any of their ids, may come back.
+ * and licence numbers, and its clinics names and ids; none of them may come
+ * back.
  */
 
 const REFUSED = { code: '42501' }
@@ -40,14 +41,6 @@ type Overview = {
   doctors: { total: number; active: number }
   patients: { total: number; active: number }
   announcements: { published: number; drafts: number }
-  by_clinic: {
-    clinic_id: string
-    clinic_name: string
-    clinic_status: string
-    clinic_admins: number
-    active_doctors: number
-    active_patients: number
-  }[]
   generated_at: string
 }
 
@@ -65,13 +58,11 @@ const counts = (database: TestDatabase) =>
 describe('the platform overview', () => {
   let database: TestDatabase
   let fx: Fixture
-  let harborview: string
   let superAdmin: { userId: string; superAdminId: string; claims: Claims }
 
   beforeAll(async () => {
     database = await createTestDatabase()
     fx = await seedFixture(database)
-    harborview = await one<string>(database, 'select clinic_id from public.clinic')
     superAdmin = await assuredSuperAdmin(database)
   })
 
@@ -79,7 +70,7 @@ describe('the platform overview', () => {
     await database?.close()
   })
 
-  it('counts one clinic’s people as its own Clinic Admin’s dashboard does', async () => {
+  it('counts the platform’s people as its one clinic’s Clinic Admin dashboard does', async () => {
     // The fixture: one Clinic Admin; doctors A and B active, C deactivated;
     // Alice and Bob with A, Carol with B, Dave with C - all four active.
     const result = await overview(database, superAdmin.claims)
@@ -89,20 +80,10 @@ describe('the platform overview', () => {
       doctors: { total: 3, active: 2 },
       patients: { total: 4, active: 4 },
       announcements: { published: 0, drafts: 0 },
-      by_clinic: [
-        {
-          clinic_id: harborview,
-          clinic_name: 'Harborview Recovery Clinic',
-          clinic_status: 'active',
-          clinic_admins: 1,
-          active_doctors: 2,
-          active_patients: 4,
-        },
-      ],
     })
     expect(Number.isNaN(Date.parse(result.generated_at))).toBe(false)
 
-    // The same figures the clinic's own Clinic Admin is shown.
+    // With one clinic, the same figures its own Clinic Admin is shown.
     const [stats] = await database.asUser<{ s: { patients: { total: number; active: number }; doctors: { total: number; active: number } } }>(
       fx.adminUserId,
       'select public.admin_dashboard_stats() as s',
@@ -111,7 +92,7 @@ describe('the platform overview', () => {
     expect(stats!.s.doctors).toEqual(result.doctors)
   })
 
-  it('keeps each clinic’s figures to that clinic, with platform announcements counted apart', async () => {
+  it('totals every clinic together, with platform announcements counted apart from a clinic’s', async () => {
     const as = (sql: string, params: unknown[] = []) => database.asClaims(superAdmin.claims, sql, params)
     const [second] = await database.asClaims<{ clinic_id: string }>(
       superAdmin.claims,
@@ -177,47 +158,50 @@ describe('the platform overview', () => {
       [fx.adminId],
     )
 
-    const result = await overview(database, superAdmin.claims)
-    expect(result).toMatchObject({
+    // Both clinics' people in one total each - Alder's inactive status and
+    // all - and nothing said of either clinic on its own.
+    expect(await overview(database, superAdmin.claims)).toMatchObject({
       clinics: { total: 2, active: 1, inactive: 1 },
       clinic_admins: 1,
       doctors: { total: 5, active: 3 },
       patients: { total: 6, active: 5 },
       announcements: { published: 1, drafts: 1 },
     })
-    // In name order: Alder before Harborview.
-    expect(result.by_clinic).toEqual([
-      {
-        clinic_id: alder,
-        clinic_name: 'Alder Clinic',
-        clinic_status: 'inactive',
-        clinic_admins: 0,
-        active_doctors: 1,
-        active_patients: 1,
-      },
-      {
-        clinic_id: harborview,
-        clinic_name: 'Harborview Recovery Clinic',
-        clinic_status: 'active',
-        clinic_admins: 1,
-        active_doctors: 2,
-        active_patients: 4,
-      },
-    ])
   })
 
-  it('returns counts and clinics only: no person’s name, email, licence or id', async () => {
+  it('returns platform totals only: no clinic broken out, and no person’s name, email, licence or id', async () => {
     const result = await overview(database, superAdmin.claims)
+    // Exactly these fields, each a count (or the time it counted) - no list,
+    // no per-clinic entry.
     expect(Object.keys(result).sort()).toEqual(
-      ['announcements', 'by_clinic', 'clinic_admins', 'clinics', 'doctors', 'generated_at', 'patients'],
+      ['announcements', 'clinic_admins', 'clinics', 'doctors', 'generated_at', 'patients'],
     )
-    for (const clinic of result.by_clinic) {
-      expect(Object.keys(clinic).sort()).toEqual(
-        ['active_doctors', 'active_patients', 'clinic_admins', 'clinic_id', 'clinic_name', 'clinic_status'],
-      )
-    }
+    expect(Object.keys(result.clinics).sort()).toEqual(['active', 'inactive', 'total'])
+    expect(Object.keys(result.doctors).sort()).toEqual(['active', 'total'])
+    expect(Object.keys(result.patients).sort()).toEqual(['active', 'total'])
+    expect(Object.keys(result.announcements).sort()).toEqual(['drafts', 'published'])
+    const counts = [
+      ...Object.values(result.clinics),
+      result.clinic_admins,
+      ...Object.values(result.doctors),
+      ...Object.values(result.patients),
+      ...Object.values(result.announcements),
+    ]
+    for (const count of counts) expect(Number.isInteger(count)).toBe(true)
 
     const text = JSON.stringify(result)
+    // No clinic's id or name: the second test's Alder Clinic and Harborview
+    // are both here by now.
+    const clinics = await database.asService<{ id: string; name: string }>(
+      'select clinic_id::text as id, clinic_name as name from public.clinic',
+    )
+    expect(clinics).toHaveLength(2)
+    for (const clinic of clinics) {
+      expect(text, clinic.name).not.toContain(clinic.id)
+      expect(text, clinic.name).not.toContain(clinic.name)
+    }
+    expect(text).not.toMatch(/clinic_(id|name|status)/)
+
     const people = await database.asService<Record<string, string>>(
       `select ua.user_id::text as user_id, ua.user_email as email from public.user_account ua`,
     )

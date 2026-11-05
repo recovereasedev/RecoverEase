@@ -1252,11 +1252,12 @@ Its down-script is in "To roll back 31": the website first.
 
 ### Platform overview (migration 46)
 
-The Super Admin console's first page, `/platform`: counts of clinics,
-Clinic Admins, doctors, patients and platform announcements, platform-wide
-and per clinic, from one function, `super_admin_platform_overview()`
-(`docs/security.md`, "The Super Admin"). The clinic list moves from
-`/platform` to `/platform/clinics`.
+The Super Admin console's first page, `/platform`: platform totals only -
+counts of clinics, Clinic Admins, doctors, patients and platform
+announcements across the whole platform, never broken out by clinic - from
+one function, `super_admin_platform_overview()` (`docs/security.md`, "The
+Super Admin"). The clinic list moves from `/platform` to
+`/platform/clinics`.
 
 **Not applied to production.** It needs its own approval, like every
 migration, and goes in **before** the website that calls it is merged:
@@ -1280,19 +1281,19 @@ console page keeps working, and nothing else on the site depends on it).
   and deciding inside who may, like every Super Admin function.
 - **Verify, read-only.** One history entry named
   `super_admin_platform_overview`, whose statements match the file's MD5
-  (`1f03b5c2b55a5e628db232d4b17dd4a4` at the time of writing - recompute
+  (`0d400e463dd9556ae6c128ef930e3fe9` at the time of writing - recompute
   from the file being applied); `to_regprocedure('public.super_admin_platform_overview()')`
   present, `prosecdef` true, `proconfig` `search_path=""`, `provolatile`
   `s`; `has_function_privilege('anon', …, 'execute')` false and
   `'authenticated'` true; the advisors as above; every table unchanged by
   count. The Super Admin then opens `/platform` themselves (Kean signs in;
   never on a Vercel preview, which uses the production database) and sees
-  the counts; with one clinic in production, the per-clinic figures equal
-  its Clinic Admin's own dashboard.
+  the totals; with one clinic in production, the doctor and patient totals
+  equal its Clinic Admin's own dashboard.
 - **Rollback.** "To roll back 31", step 46: the website first, then the
   down-script, which only drops the function.
 
-Tests: `tests/db/platform-overview.test.ts` (counts across two clinics;
+Tests: `tests/db/platform-overview.test.ts` (platform totals across two clinics, with no clinic id, name or status in the answer;
 every caller but an assured Super Admin refused - anonymous, a patient, a
 doctor, a deactivated doctor and a Clinic Admin each with their own
 verified authenticator, and a Super Admin at `aal1`, with another user's
