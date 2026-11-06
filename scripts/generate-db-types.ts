@@ -378,7 +378,7 @@ async function main(): Promise<void> {
       ['super_admin_set_guidance_assistant', '{ enabled: boolean }', 'boolean'],
       // Migration 46: jsonb, checked by parsePlatformOverview.
       ['super_admin_platform_overview', 'Record<PropertyKey, never>', 'Json'],
-      // Migration 47: clinic details.
+      // Migration 47: clinic details (rename only; no time zone).
       [
         'super_admin_list_clinic_admins',
         '{ target_clinic_id: string }',
@@ -386,8 +386,8 @@ async function main(): Promise<void> {
           'has_signed_in: boolean; last_signed_in_at: string | null }[]',
       ],
       [
-        'super_admin_update_clinic',
-        '{ target_clinic_id: string; new_clinic_name: string; new_clinic_timezone: string }',
+        'super_admin_rename_clinic',
+        '{ target_clinic_id: string; new_clinic_name: string }',
         clinicRow,
       ],
     ]

@@ -6,8 +6,8 @@ import type { SupabaseStub } from './support/supabase-stub'
 
 /**
  * Phase 2 of the Super Admin console: the clinic list's search and status
- * filter, a clinic's details page, its Clinic Admins, and editing its name
- * and time zone - in a real browser, against the production build and the
+ * filter, a clinic's details page, its Clinic Admins, and renaming a clinic
+ * (its time zone is shown read-only) - in a real browser, against the production build and the
  * in-memory platform (e2e/support/platform-preview.ts).
  *
  * The stand-in answers as the database does; it does not decide who may
@@ -165,8 +165,8 @@ test.describe('editing a clinic', () => {
     await page.getByRole('button', { name: 'Edit clinic' }).click()
 
     const dialog = page.getByRole('dialog', { name: 'Edit clinic' })
-    await expect(dialog.getByLabel(/Time zone/)).toHaveValue('Asia/Manila')
-    await expect(dialog).toContainText('Saved now: Asia/Manila')
+    await expect(dialog.getByLabel(/Clinic name/)).toHaveValue('Harbor Clinic')
+    expect(await noHorizontalOverflow(page)).toBeLessThanOrEqual(0)
 
     // Checked before anything is sent.
     await dialog.getByLabel(/Clinic name/).fill('   ')
@@ -175,7 +175,7 @@ test.describe('editing a clinic', () => {
     await dialog.getByLabel(/Clinic name/).fill('x'.repeat(121))
     await dialog.getByRole('button', { name: 'Save changes' }).click()
     await expect(dialog.getByText('A clinic name can be at most 120 characters.')).toBeVisible()
-    expect(stub.requests).not.toContain('POST rpc/super_admin_update_clinic')
+    expect(stub.requests).not.toContain('POST rpc/super_admin_rename_clinic')
 
     // Refused by the database: the message it wrote is shown.
     await dialog.getByLabel(/Clinic name/).fill('alder wellness')
@@ -187,6 +187,11 @@ test.describe('editing a clinic', () => {
     await expect(dialog).toHaveCount(0)
     await expect(page.getByRole('status').filter({ hasText: 'The clinic’s details were saved.' })).toBeVisible()
     await expect(page.getByRole('heading', { level: 1, name: 'Harbor Recovery Centre' })).toBeVisible()
+    // The refused name and the saved one: two renames, and the zone is as
+    // it was.
+    const sent = stub.requests.filter((r) => r === 'POST rpc/super_admin_rename_clinic')
+    expect(sent).toHaveLength(2)
+    await expect(page.getByRole('definition').filter({ hasText: /^Asia\/Manila$/ })).toBeVisible()
 
     await page.reload()
     await expect(page.getByRole('heading', { level: 1, name: 'Harbor Recovery Centre' })).toBeVisible()
@@ -194,42 +199,32 @@ test.describe('editing a clinic', () => {
     await expect(page.getByRole('heading', { level: 2, name: 'Harbor Recovery Centre' })).toBeVisible()
   })
 
-  test('changes the time zone only after a confirmation that explains what it does to doses', async ({
-    page,
-    signInAs,
-  }) => {
+  test('shows the time zone read-only, with no control that could change it', async ({ page, signInAs }) => {
     const stub = await openConsole(page, signInAs)
+    const bodies: unknown[] = []
+    page.on('request', (request) => {
+      if (request.url().includes('/rpc/super_admin_rename_clinic')) bodies.push(request.postDataJSON())
+    })
     await page.goto(`/platform/clinics/${HARBOR}`)
+    await expect(page.getByRole('definition').filter({ hasText: /^Asia\/Manila$/ })).toBeVisible()
     await page.getByRole('button', { name: 'Edit clinic' }).click()
 
-    const edit = page.getByRole('dialog', { name: 'Edit clinic' })
-    await edit.getByLabel(/Time zone/).fill('Mars/Olympus')
-    await edit.getByRole('button', { name: 'Save changes' }).click()
-    await expect(edit.getByText(/Enter a time zone name/)).toBeVisible()
+    const dialog = page.getByRole('dialog', { name: 'Edit clinic' })
+    await expect(dialog).toContainText('Asia/Manila')
+    await expect(dialog).toContainText('Read-only here')
+    // The name is the only thing that can be typed into.
+    await expect(dialog.getByLabel(/Time zone/)).toHaveCount(0)
+    await expect(dialog.getByRole('textbox')).toHaveCount(1)
+    await expect(dialog.getByRole('combobox')).toHaveCount(0)
+    await expect(dialog.locator('datalist')).toHaveCount(0)
 
-    await edit.getByLabel(/Time zone/).fill('UTC')
-    await edit.getByRole('button', { name: 'Save changes' }).click()
-
-    const confirm = page.getByRole('dialog', { name: "Change the clinic's time zone?" })
-    await expect(confirm).toContainText('from Asia/Manila to UTC')
-    await expect(confirm).toContainText('Medication doses already scheduled keep their exact times')
-    await expect(confirm).toContainText('not moved, regenerated or deleted')
-    await expect(confirm).toContainText('read times such as 08:00 as 08:00 in UTC')
-    await expect(confirm).toContainText('Check active medication schedules afterwards')
-    // Nothing is sent before the confirmation.
+    await dialog.getByLabel(/Clinic name/).fill('Harbor Renamed')
+    await dialog.getByRole('button', { name: 'Save changes' }).click()
+    await expect(page.getByRole('heading', { level: 1, name: 'Harbor Renamed' })).toBeVisible()
+    await expect(page.getByRole('dialog', { name: "Change the clinic's time zone?" })).toHaveCount(0)
+    expect(bodies).toEqual([{ target_clinic_id: HARBOR, new_clinic_name: 'Harbor Renamed' }])
     expect(stub.requests).not.toContain('POST rpc/super_admin_update_clinic')
-
-    await confirm.getByRole('button', { name: 'Go back' }).click()
-    await expect(page.getByRole('dialog', { name: 'Edit clinic' }).getByLabel(/Time zone/)).toHaveValue('UTC')
-    await page.getByRole('dialog', { name: 'Edit clinic' }).getByRole('button', { name: 'Save changes' }).click()
-    await page.getByRole('dialog', { name: "Change the clinic's time zone?" }).getByRole('button', { name: 'Change time zone' }).click()
-
-    await expect(page.getByRole('status').filter({ hasText: 'The clinic’s details were saved.' })).toBeVisible()
-    await expect(page.getByRole('definition').filter({ hasText: /^UTC$/ })).toBeVisible()
-    expect(stub.requests.filter((r) => r === 'POST rpc/super_admin_update_clinic')).toHaveLength(1)
-
-    await page.reload()
-    await expect(page.getByRole('definition').filter({ hasText: /^UTC$/ })).toBeVisible()
+    await expect(page.getByRole('definition').filter({ hasText: /^Asia\/Manila$/ })).toBeVisible()
   })
 
   test('says so, and sends nothing, when nothing changed', async ({ page, signInAs }) => {
@@ -239,7 +234,7 @@ test.describe('editing a clinic', () => {
     const dialog = page.getByRole('dialog', { name: 'Edit clinic' })
     await dialog.getByRole('button', { name: 'Save changes' }).click()
     await expect(dialog.getByText('Nothing has changed, so there is nothing to save.')).toBeVisible()
-    expect(stub.requests).not.toContain('POST rpc/super_admin_update_clinic')
+    expect(stub.requests).not.toContain('POST rpc/super_admin_rename_clinic')
   })
 })
 
@@ -272,7 +267,9 @@ test.describe('on a phone', () => {
     expect(await noHorizontalOverflow(page)).toBeLessThanOrEqual(0)
 
     await page.getByRole('button', { name: 'Edit clinic' }).click()
-    await expect(page.getByRole('dialog', { name: 'Edit clinic' }).getByLabel(/Clinic name/)).toBeVisible()
+    const dialog = page.getByRole('dialog', { name: 'Edit clinic' })
+    await expect(dialog.getByLabel(/Clinic name/)).toBeVisible()
+    await expect(dialog).toContainText('Read-only here')
     expect(await noHorizontalOverflow(page)).toBeLessThanOrEqual(0)
   })
 })

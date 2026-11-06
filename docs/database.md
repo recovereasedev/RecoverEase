@@ -188,15 +188,17 @@ returns, for one clinic, each Clinic Admin's `admin_first_name`,
 `admin_last_name`, `admin_created_at`, `has_signed_in` and
 `last_signed_in_at` (from `auth.users.last_sign_in_at`) - only profiles of
 that clinic whose account role is `admin`, as `super_admin_list_clinics`
-counts them. `super_admin_update_clinic(clinic, name, time zone)` returns
-the same row as the other clinic functions; it updates `clinic_name` and
-`clinic_timezone` (never `clinic_id` or `clinic_status`) and, in the same
-transaction, the clinic's legacy `app.timezone` row in `system_setting`.
-It never writes `medication_log`, `medication_schedule`, `prescription` or
-`appointment`: a dose already scheduled is an exact `timestamptz` and keeps
-it, while doses generated afterwards read their wall-clock times in the new
-zone (`docs/deployment.md`, "Clinic details (migration 47)", including the
-nightly job's known limitation).
+counts them. `super_admin_rename_clinic(clinic, name)` returns the same
+row as the other clinic functions and updates `clinic_name` only - never
+`clinic_id`, `clinic_status` or `clinic_timezone`, never the legacy
+`app.timezone` row in `system_setting`, and never `medication_log`,
+`medication_schedule`, `prescription` or `appointment`. It takes no time
+zone: a clinic's zone is read-only to the Super Admin, because a zone
+change to a different UTC offset makes the nightly
+`extend_all_medication_log_slots` add doses beside those already scheduled
+(`docs/deployment.md`, "Clinic details (migration 47)", "Known
+limitation"). The Clinic Admin's own `admin_set_clinic_timezone`
+(migration 31) is unchanged and has that same limitation.
 
 Migration 36 adds a third announcement author: `announcement.doc_id`, a
 doctor writing for their own patients. An announcement still has exactly one

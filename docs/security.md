@@ -326,13 +326,15 @@ whether to ask for an authenticator code, about the caller only.
   for the clinic named and no other; no email, account or profile id,
   nothing from Supabase Auth's sessions, factors or tokens, and nothing
   clinical (`tests/db/super-admin-clinic-details.test.ts` plants every
-  id, email and patient and doctor name and finds none) - and editing its
-  name and time zone with the same validation as creating it, never its
-  id or status. The time zone and the legacy `app.timezone` setting move
-  in one transaction. Audited by the clinic's trigger as a `platform`
-  entry (before and after values, under the Super Admin) and, for the
-  setting, an `administration` entry its own Clinic Admin sees. It writes
-  no dose, schedule, prescription or appointment. The caller is checked
+  id, email and patient and doctor name and finds none) - and renaming it
+  (`super_admin_rename_clinic`) with the same name validation as creating
+  it. Only the name: never its id, status or time zone, never the legacy
+  `app.timezone` setting, and no dose, schedule, prescription or
+  appointment. The function takes no time zone argument, so the Super
+  Admin has no way to change a clinic's zone (deferred until the
+  medication scheduler is fixed; `docs/deployment.md`, "Clinic details
+  (migration 47)"). Audited by the clinic's trigger as a `platform` entry
+  (before and after name, under the Super Admin). The caller is checked
   before the clinic is looked up, so an unknown clinic id tells anyone
   else nothing.
 - Clinic Admins: provisioned with `create-account` (below).

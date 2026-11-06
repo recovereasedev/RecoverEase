@@ -27,7 +27,7 @@ begin
 
   -- Migration 47's clinic details functions start with the Super Admin
   -- check removed below; left installed, they would be broken, not gone.
-  if to_regprocedure('public.super_admin_update_clinic(uuid, text, text)') is not null
+  if to_regprocedure('public.super_admin_rename_clinic(uuid, text)') is not null
      or to_regprocedure('public.super_admin_list_clinic_admins(uuid)') is not null then
     raise exception 'Roll back migration 47 first: its clinic details functions rely on the Super Admin checks this removes. Nothing was changed.';
   end if;

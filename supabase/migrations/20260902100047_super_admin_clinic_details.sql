@@ -1,6 +1,6 @@
 -- ===========================================================================
--- RecoverEase — 47. Clinic details: a clinic's Clinic Admins, and editing
--- its name and time zone
+-- RecoverEase — 47. Clinic details: a clinic's Clinic Admins, and renaming
+-- a clinic
 -- ===========================================================================
 -- The Super Admin console's clinic details page (Phase 2). Two functions:
 --
@@ -19,41 +19,29 @@
 --     active/inactive flag either (only doctors have one), so none is
 --     returned.
 --
---   * super_admin_update_clinic(clinic, name, time zone) - renames a clinic
---     and/or changes its time zone. Its id and status never change. The
---     name follows the same rules as super_admin_create_clinic: trimmed, not
+--   * super_admin_rename_clinic(clinic, name) - renames a clinic, and does
+--     nothing else. Its id, status and time zone never change. The name
+--     follows the same rules as super_admin_create_clinic: trimmed, not
 --     blank, at most 120 characters, no other clinic with the same name in
---     any case. The time zone is trimmed and must be one PostgreSQL knows
---     (the clinic_validate_timezone trigger, migration 28).
---
---     In the same transaction the legacy `app.timezone` setting of that
---     clinic, where it still exists (migration 31 keeps it as an alias), is
---     brought to the same zone, exactly as admin_set_clinic_timezone does
---     for a Clinic Admin. Its own trigger then finds the clinic already in
---     that zone and changes nothing more.
+--     any case.
 --
 --     Audited by the clinic row's own trigger (migration 28,
---     `audit_row_change('clinic', ..., 'values')`): the changed columns with
---     their before and after values, under the Super Admin's user id, and
---     classified `platform` by app_private.audit_scope_for. The alias, when
---     it changes, is audited by its own trigger as a `system_setting`
---     (administration) entry, so the clinic's own Clinic Admin sees that the
---     zone was changed. Nothing changed, nothing written, nothing audited.
+--     `audit_row_change('clinic', ..., 'values')`): the changed name with its
+--     before and after values, under the Super Admin's user id, and
+--     classified `platform` by app_private.audit_scope_for. The same name
+--     again writes nothing and audits nothing.
 --
--- What a time zone change does to medication doses and reminders:
---
---   * Nothing to any dose that is already scheduled. Each one is stored as
---     an exact moment (`medication_log.medication_log_scheduled_at`,
---     timestamptz), and this function never touches medication_log,
---     medication_schedule, prescriptions or appointments. Reminders for
---     those doses are sent at those same moments.
---   * Dose times generated from now on - a new or edited schedule, and the
---     nightly job that keeps 30 days ahead - read the schedule's times
---     (such as 08:00) as wall-clock times in the new zone. So do "today",
---     appointment-reminder days and every other date the clinic's zone is
---     used for (app_private.clinic_timezone, migration 31).
---   * It does not regenerate or move existing doses. That is deliberate:
---     no medication record is changed without someone choosing to.
+-- Why there is no time zone edit here: a clinic's time zone is read-only in
+-- the Super Admin console. When a clinic's zone moves to one with a
+-- different UTC offset, the nightly extend_all_medication_log_slots job
+-- adds the next 30 days' doses at the new local times next to the doses
+-- already scheduled, because a dose slot is only skipped at an identical
+-- moment. That duplicates doses and reminders. The Clinic Admin's own time
+-- zone setting (admin_set_clinic_timezone, migration 31) has the same
+-- limitation; fixing the scheduler is separate work with its own migration.
+-- Until then this function takes no time zone and never writes
+-- clinic_timezone, the legacy `app.timezone` setting, or any medication
+-- schedule, dose, prescription or appointment.
 --
 -- Who may call them: an assured Super Admin only. SECURITY DEFINER - a Super
 -- Admin has no profile in any clinic, so RLS would show them nothing - with
@@ -133,13 +121,12 @@ revoke all on function public.super_admin_list_clinic_admins(uuid) from public, 
 grant execute on function public.super_admin_list_clinic_admins(uuid) to authenticated;
 
 -- ---------------------------------------------------------------------------
--- Editing a clinic's name and time zone
+-- Renaming a clinic
 -- ---------------------------------------------------------------------------
 
-create or replace function public.super_admin_update_clinic(
-  target_clinic_id    uuid,
-  new_clinic_name     text,
-  new_clinic_timezone text
+create or replace function public.super_admin_rename_clinic(
+  target_clinic_id uuid,
+  new_clinic_name  text
 )
 returns table (
   clinic_id          uuid,
@@ -158,15 +145,12 @@ as $$
 #variable_conflict use_column
 declare
   wanted_name   text := btrim(new_clinic_name);
-  wanted_zone   text := btrim(new_clinic_timezone);
   previous_name text;
-  previous_zone text;
 begin
   perform app_private.require_super_admin();
 
-  -- Locked, so a second edit, or a Clinic Admin's own time zone change,
-  -- waits for this one rather than overwrite it.
-  select c.clinic_name, c.clinic_timezone into previous_name, previous_zone
+  -- Locked, so a second rename waits for this one rather than overwrite it.
+  select c.clinic_name into previous_name
     from public.clinic c
    where c.clinic_id = target_clinic_id
    for update;
@@ -184,10 +168,6 @@ begin
     raise exception 'A clinic''s name can be at most 120 characters'
       using errcode = 'check_violation';
   end if;
-  if wanted_zone is null or wanted_zone = '' then
-    raise exception 'Enter the clinic''s time zone, such as Asia/Manila'
-      using errcode = 'check_violation';
-  end if;
   if exists (
     select 1 from public.clinic c
      where lower(btrim(c.clinic_name)) = lower(wanted_name)
@@ -197,24 +177,13 @@ begin
       using errcode = 'unique_violation';
   end if;
 
-  if wanted_name is distinct from previous_name
-     or wanted_zone is distinct from previous_zone then
-    -- clinic_validate_timezone refuses a zone PostgreSQL does not know;
-    -- clinic_audit records the change; clinic_set_updated_at stamps it.
+  -- The name, and only the name. clinic_audit records it;
+  -- clinic_set_updated_at stamps it.
+  if wanted_name is distinct from previous_name then
     update public.clinic
-       set clinic_name = wanted_name,
-           clinic_timezone = wanted_zone
+       set clinic_name = wanted_name
      where clinic.clinic_id = target_clinic_id;
   end if;
-
-  -- The legacy alias, in this same transaction: kept in step - or brought
-  -- back into it - whether or not the zone changed, as
-  -- admin_set_clinic_timezone does. Its author is left as it was.
-  update public.system_setting
-     set system_setting_value = wanted_zone
-   where system_setting.clinic_id = target_clinic_id
-     and system_setting_key = 'app.timezone'
-     and system_setting_value is distinct from wanted_zone;
 
   return query
     select c.clinic_id, c.clinic_name, c.clinic_status, c.clinic_timezone,
@@ -229,12 +198,12 @@ begin
 end;
 $$;
 
-comment on function public.super_admin_update_clinic(uuid, text, text) is
-  'Renames a clinic and/or changes its time zone, validated, keeping its id '
-  'and status and its legacy app.timezone setting in step. Existing doses are '
-  'not moved. Super Admin only; audited through the clinic''s own trigger.';
+comment on function public.super_admin_rename_clinic(uuid, text) is
+  'Renames a clinic, validated, keeping its id, status and time zone. Never '
+  'changes a time zone or any medication record. Super Admin only; audited '
+  'through the clinic''s own trigger.';
 
-revoke all on function public.super_admin_update_clinic(uuid, text, text) from public, anon;
-grant execute on function public.super_admin_update_clinic(uuid, text, text) to authenticated;
+revoke all on function public.super_admin_rename_clinic(uuid, text) from public, anon;
+grant execute on function public.super_admin_rename_clinic(uuid, text) to authenticated;
 
 reset lock_timeout;

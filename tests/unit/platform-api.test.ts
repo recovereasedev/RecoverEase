@@ -338,16 +338,17 @@ describe('one clinic’s details (migration 47)', () => {
     await expect(api.fetchClinicAdmins('clinic-404')).rejects.toMatchObject({ code: 'P0002' })
   })
 
-  it('updates a clinic with the id, name and zone given, and nothing else', async () => {
+  it('renames a clinic with only its id and new name: no time zone is ever sent', async () => {
     client.rpc.mockResolvedValue({ data: [{ ...CLINIC, clinic_name: 'Harbor Recovery' }], error: null })
-    await expect(api.updateClinic({ clinicId: 'clinic-1', name: 'Harbor Recovery', timezone: 'UTC' })).resolves.toMatchObject({
+    await expect(api.renameClinic({ clinicId: 'clinic-1', name: 'Harbor Recovery' })).resolves.toMatchObject({
       clinic_name: 'Harbor Recovery',
     })
-    expect(client.rpc).toHaveBeenCalledWith('super_admin_update_clinic', {
+    expect(client.rpc).toHaveBeenCalledWith('super_admin_rename_clinic', {
       target_clinic_id: 'clinic-1',
       new_clinic_name: 'Harbor Recovery',
-      new_clinic_timezone: 'UTC',
     })
+    expect(client.rpc).not.toHaveBeenCalledWith('super_admin_update_clinic', expect.anything())
+    expect(JSON.stringify(client.rpc.mock.calls)).not.toMatch(/timezone/)
   })
 
   it("explains a name taken in a race in words rather than the index's name, and passes other refusals through", async () => {
@@ -355,16 +356,14 @@ describe('one clinic’s details (migration 47)', () => {
       data: null,
       error: { code: '23505', message: 'duplicate key value violates unique constraint "clinic_name_key"' },
     })
-    await expect(api.updateClinic({ clinicId: 'clinic-1', name: 'Alder', timezone: 'UTC' })).rejects.toThrow(
+    await expect(api.renameClinic({ clinicId: 'clinic-1', name: 'Alder' })).rejects.toThrow(
       'A clinic with that name already exists.',
     )
-    client.rpc.mockResolvedValueOnce({ data: null, error: { code: '23514', message: 'Unknown time zone: Mars/Olympus' } })
-    await expect(api.updateClinic({ clinicId: 'clinic-1', name: 'Harbor', timezone: 'Mars/Olympus' })).rejects.toMatchObject({
-      code: '23514',
-    })
+    client.rpc.mockResolvedValueOnce({ data: null, error: { code: '23514', message: "Enter the clinic's name" } })
+    await expect(api.renameClinic({ clinicId: 'clinic-1', name: ' ' })).rejects.toMatchObject({ code: '23514' })
     client.rpc.mockResolvedValueOnce({ data: [], error: null })
-    await expect(api.updateClinic({ clinicId: 'clinic-1', name: 'Harbor', timezone: 'UTC' })).rejects.toThrow(
-      'The clinic could not be updated.',
+    await expect(api.renameClinic({ clinicId: 'clinic-1', name: 'Harbor' })).rejects.toThrow(
+      'The clinic could not be renamed.',
     )
   })
 })

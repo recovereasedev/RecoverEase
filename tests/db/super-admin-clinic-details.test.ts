@@ -17,8 +17,11 @@ import {
 } from './helpers/super-admin'
 
 /**
- * Clinic details (migration 47): a clinic's Clinic Admins, and editing a
- * clinic's name and time zone.
+ * Clinic details (migration 47): a clinic's Clinic Admins, and renaming a
+ * clinic. Renaming only: a clinic's time zone is read-only to the Super
+ * Admin until the medication scheduler can follow a zone change without
+ * duplicating doses, so the rename must never touch the zone, the legacy
+ * app.timezone setting or any clinical row.
  *
  * Called directly, as the Data API would, by an assured Super Admin and by
  * everyone who must be refused. A second clinic (Alder) is created so that
@@ -66,7 +69,7 @@ const clinics = (database: TestDatabase) =>
        from public.clinic c order by c.clinic_name`,
   )
 
-/** The medication, appointment and dose rows a time zone change must never touch. */
+/** The medication, appointment and dose rows a rename must never touch. */
 const clinicalRows = async (database: TestDatabase) =>
   (await database.asService<Record<string, unknown>>(
     `select
@@ -90,12 +93,8 @@ describe('clinic details', () => {
   const listAdmins = (claims: Claims, clinicId: string | null) =>
     database.asClaims<AdminRow>(claims, 'select * from public.super_admin_list_clinic_admins($1)', [clinicId])
 
-  const update = (claims: Claims, clinicId: string | null, name: string | null, zone: string | null) =>
-    database.asClaims<ClinicRow>(claims, 'select * from public.super_admin_update_clinic($1, $2, $3)', [
-      clinicId,
-      name,
-      zone,
-    ])
+  const rename = (claims: Claims, clinicId: string | null, name: string | null) =>
+    database.asClaims<ClinicRow>(claims, 'select * from public.super_admin_rename_clinic($1, $2)', [clinicId, name])
 
   beforeAll(async () => {
     database = await createTestDatabase()
@@ -183,7 +182,7 @@ describe('clinic details', () => {
     })
   })
 
-  describe('editing a clinic', () => {
+  describe('renaming a clinic', () => {
     let before: Record<string, unknown>[]
 
     beforeEach(async () => {
@@ -192,7 +191,7 @@ describe('clinic details', () => {
 
     it('renames a clinic, trimmed, keeping its id, status, time zone and creation time, and audits it as a platform entry', async () => {
       const audits = await auditCount(database)
-      const [row] = await update(superAdmin.claims, harborview, '  Harborview Recovery Centre  ', 'Asia/Manila')
+      const [row] = await rename(superAdmin.claims, harborview, '  Harborview Recovery Centre  ')
       expect(row).toMatchObject({
         clinic_id: harborview,
         clinic_name: 'Harborview Recovery Centre',
@@ -210,7 +209,7 @@ describe('clinic details', () => {
       expect(after.find((c) => c.clinic_id === alder)).toEqual(before.find((c) => c.clinic_id === alder))
 
       // One entry, the clinic row's own, under the Super Admin, in the
-      // platform's audit trail - and readable there.
+      // platform's audit trail - and readable there. Only the name changed.
       expect(await auditCount(database)).toBe(audits + 1)
       const [entry] = await database.asService<Record<string, unknown>>(
         `select user_id, audit_log_action as action, audit_log_entity as entity, audit_log_entity_id as entity_id,
@@ -229,6 +228,9 @@ describe('clinic details', () => {
         before: { clinic_name: was.clinic_name },
         after: { clinic_name: 'Harborview Recovery Centre' },
       })
+      const details = entry!.details as { before: Record<string, unknown>; after: Record<string, unknown> }
+      expect(details.after.clinic_timezone ?? details.before.clinic_timezone ?? 'Asia/Manila').toBe('Asia/Manila')
+      expect(details.before.clinic_status ?? 'active').toBe(details.after.clinic_status ?? 'active')
       const trail = await database.asClaims<{ entity: string; entity_id: string }>(
         superAdmin.claims,
         `select audit_log_entity as entity, audit_log_entity_id as entity_id from public.super_admin_list_audit() where audit_log_entity = 'clinic'`,
@@ -236,174 +238,145 @@ describe('clinic details', () => {
       expect(trail.some((e) => e.entity_id === harborview)).toBe(true)
     })
 
-    it('accepts a change of case to the clinic’s own name', async () => {
-      const [row] = await update(superAdmin.claims, harborview, 'HARBORVIEW Recovery Centre', 'Asia/Manila')
-      expect(row!.clinic_name).toBe('HARBORVIEW Recovery Centre')
-      await update(superAdmin.claims, harborview, 'Harborview Recovery Centre', 'Asia/Manila')
+    it('renames an inactive clinic and leaves it inactive', async () => {
+      await database.asClaims(superAdmin.claims, `select * from public.super_admin_set_clinic_status($1, 'inactive')`, [alder])
+      try {
+        const [row] = await rename(superAdmin.claims, alder, 'Alder Recovery Clinic')
+        expect(row).toMatchObject({ clinic_id: alder, clinic_name: 'Alder Recovery Clinic', clinic_status: 'inactive', clinic_timezone: 'Asia/Singapore' })
+      } finally {
+        await rename(superAdmin.claims, alder, 'Alder Clinic')
+        await database.asClaims(superAdmin.claims, `select * from public.super_admin_set_clinic_status($1, 'active')`, [alder])
+      }
     })
 
-    it('refuses an empty, blank, too long or taken name and an unknown time zone, changing and auditing nothing', async () => {
+    it('accepts a change of case to the clinic’s own name', async () => {
+      const [row] = await rename(superAdmin.claims, harborview, 'HARBORVIEW Recovery Centre')
+      expect(row!.clinic_name).toBe('HARBORVIEW Recovery Centre')
+      await rename(superAdmin.claims, harborview, 'Harborview Recovery Centre')
+    })
+
+    it('refuses an empty, blank, too long or taken name, changing and auditing nothing', async () => {
       const audits = await auditCount(database)
       const clinical = await clinicalRows(database)
-      const cases: [string, string | null, string | null, { code: string }][] = [
-        ['no name', null, 'Asia/Manila', INVALID],
-        ['an empty name', '', 'Asia/Manila', INVALID],
-        ['a blank name', '   ', 'Asia/Manila', INVALID],
-        ['a name of 121 characters', 'x'.repeat(121), 'Asia/Manila', INVALID],
-        ['another clinic’s name, in another case', '  alder clinic ', 'Asia/Manila', DUPLICATE],
-        ['no time zone', 'Harborview Recovery Centre', null, INVALID],
-        ['a blank time zone', 'Harborview Recovery Centre', '  ', INVALID],
-        ['a made-up time zone', 'Harborview Recovery Centre', 'Mars/Olympus_Mons', INVALID],
-        ['an SQL fragment as a time zone', 'Harborview Recovery Centre', "UTC'; drop table public.clinic; --", INVALID],
+      const cases: [string, string | null, { code: string }][] = [
+        ['no name', null, INVALID],
+        ['an empty name', '', INVALID],
+        ['a blank name', '   ', INVALID],
+        ['a name of 121 characters', 'x'.repeat(121), INVALID],
+        ['another clinic’s name, in another case', '  alder clinic ', DUPLICATE],
       ]
-      for (const [why, name, zone, error] of cases) {
-        await expect(update(superAdmin.claims, harborview, name, zone), why).rejects.toMatchObject(error)
+      for (const [why, name, error] of cases) {
+        await expect(rename(superAdmin.claims, harborview, name), why).rejects.toMatchObject(error)
       }
       expect(await clinics(database)).toEqual(before)
       expect(await clinicalRows(database)).toEqual(clinical)
       expect(await auditCount(database)).toBe(audits)
     })
 
+    it('stores a name that looks like SQL as plain text', async () => {
+      const odd = `Harbor'; drop table public.clinic; --`
+      expect((await rename(superAdmin.claims, harborview, odd))[0]!.clinic_name).toBe(odd)
+      expect((await clinics(database)).length).toBe(before.length)
+      await rename(superAdmin.claims, harborview, 'Harborview Recovery Centre')
+    })
+
     it('accepts a name of exactly 120 characters', async () => {
       const long = 'H'.repeat(120)
-      expect((await update(superAdmin.claims, harborview, long, 'Asia/Manila'))[0]!.clinic_name).toBe(long)
-      await update(superAdmin.claims, harborview, 'Harborview Recovery Centre', 'Asia/Manila')
+      expect((await rename(superAdmin.claims, harborview, long))[0]!.clinic_name).toBe(long)
+      await rename(superAdmin.claims, harborview, 'Harborview Recovery Centre')
     })
 
     it('says an unknown clinic could not be found, creating nothing', async () => {
-      await expect(update(superAdmin.claims, MISSING_CLINIC, 'Ghost Clinic', 'UTC')).rejects.toMatchObject(NOT_FOUND)
-      await expect(update(superAdmin.claims, null, 'Ghost Clinic', 'UTC')).rejects.toMatchObject(NOT_FOUND)
+      await expect(rename(superAdmin.claims, MISSING_CLINIC, 'Ghost Clinic')).rejects.toMatchObject(NOT_FOUND)
+      await expect(rename(superAdmin.claims, null, 'Ghost Clinic')).rejects.toMatchObject(NOT_FOUND)
       expect(await clinics(database)).toEqual(before)
     })
 
-    it('writes and audits nothing when nothing changes', async () => {
+    it('writes and audits nothing when the name does not change', async () => {
       const audits = await auditCount(database)
       const current = before.find((c) => c.clinic_id === harborview)!
-      await update(superAdmin.claims, harborview, `  ${current.clinic_name as string} `, ` ${current.clinic_timezone as string}`)
+      await rename(superAdmin.claims, harborview, `  ${current.clinic_name as string} `)
       expect(await clinics(database)).toEqual(before)
       expect(await auditCount(database)).toBe(audits)
     })
   })
 
-  describe('changing a clinic’s time zone', () => {
-    it('moves the clinic and its legacy app.timezone setting together, auditing both', async () => {
-      const audits = await auditCount(database)
-      const [row] = await update(superAdmin.claims, harborview, 'Harborview Recovery Centre', ' UTC ')
-      expect(row!.clinic_timezone).toBe('UTC')
-      const now = (await clinics(database)).find((c) => c.clinic_id === harborview)!
-      expect(now).toMatchObject({ clinic_timezone: 'UTC', alias: 'UTC' })
-
-      // The clinic row's platform entry, and the setting's administration
-      // entry its Clinic Admin can read.
-      const entries = await database.asService<Record<string, unknown>>(
-        `select audit_log_entity as entity, audit_scope::text as scope, user_id, audit_log_details as details
-           from public.audit_log order by audit_log_timestamp desc, audit_log_id desc limit 2`,
-      )
-      expect(await auditCount(database)).toBe(audits + 2)
-      expect(entries.map((e) => [e.entity, e.scope, e.user_id]).sort()).toEqual(
-        [
-          ['clinic', 'platform', superAdmin.userId],
-          ['system_setting', 'administration', superAdmin.userId],
-        ].sort(),
-      )
-      expect(entries.find((e) => e.entity === 'clinic')!.details).toMatchObject({
-        before: { clinic_timezone: 'Asia/Manila' },
-        after: { clinic_timezone: 'UTC' },
-      })
-      const adminTrail = await database.asUser<{ entity: string }>(
-        fx.adminUserId,
-        `select audit_log_entity as entity from public.audit_log where audit_log_entity = 'system_setting'`,
-      )
-      expect(adminTrail.length).toBeGreaterThan(0)
-
-      await update(superAdmin.claims, harborview, 'Harborview Recovery Centre', 'Asia/Manila')
+  describe('a clinic’s time zone stays read-only to the Super Admin', () => {
+    it('offers no way to change it: no time zone parameter, and no three-argument edit function', async () => {
+      expect(
+        await database.asService(
+          `select to_regprocedure('public.super_admin_update_clinic(uuid, text, text)') is null as no_edit,
+                  (select array_agg(n order by n) from unnest(p.proargnames) n) as args, p.pronargs as arity
+             from pg_proc p where p.oid = 'public.super_admin_rename_clinic(uuid, text)'::regprocedure`,
+        ),
+      ).toEqual([{ no_edit: true, args: ['clinic_admin_count', 'clinic_created_at', 'clinic_id', 'clinic_name', 'clinic_status', 'clinic_timezone', 'clinic_updated_at', 'new_clinic_name', 'target_clinic_id'], arity: 2 }])
+      // A third argument, as the earlier draft took, is not a function at all.
+      await expect(
+        database.asClaims(superAdmin.claims, `select * from public.super_admin_rename_clinic($1, 'Harborview Recovery Centre', 'UTC')`, [harborview]),
+      ).rejects.toMatchObject({ code: '42883' })
+      expect((await clinics(database)).find((c) => c.clinic_id === harborview)).toMatchObject({ clinic_timezone: 'Asia/Manila', alias: 'Asia/Manila' })
     })
 
-    it('changes neither of them when the alias cannot be written: one transaction', async () => {
-      const before = await clinics(database)
-      // Only this test's database: a setting write that fails part-way.
-      await database.db.exec(`
-        create function public.zz_refuse_setting() returns trigger language plpgsql as $$
-        begin raise exception 'setting write failed' using errcode = 'P0001'; end $$;
-        create trigger zz_refuse_setting before update on public.system_setting
-          for each row execute function public.zz_refuse_setting();`)
-      try {
-        await expect(update(superAdmin.claims, harborview, 'Harborview Recovery Centre', 'UTC')).rejects.toThrow(
-          /setting write failed/,
-        )
-      } finally {
-        await database.db.exec(`drop trigger zz_refuse_setting on public.system_setting; drop function public.zz_refuse_setting();`)
-      }
-      expect(await clinics(database)).toEqual(before)
-    })
-
-    it('brings a stale alias back into step even when the clinic’s zone is unchanged', async () => {
-      // Written by the owner, below the triggers that would otherwise sync it.
+    it('never writes the clinic’s time zone or the legacy app.timezone setting, even when they disagree', async () => {
+      // Out of step on purpose, written by the owner below the triggers that
+      // would otherwise sync it: a rename must leave both exactly as found.
       await database.asService(`alter table public.system_setting disable trigger system_setting_sync_clinic_timezone`)
       await database.asService(
         `update public.system_setting set system_setting_value = 'Asia/Tokyo' where clinic_id = $1 and system_setting_key = 'app.timezone'`,
         [harborview],
       )
       await database.asService(`alter table public.system_setting enable trigger system_setting_sync_clinic_timezone`)
-      await update(superAdmin.claims, harborview, 'Harborview Recovery Centre', 'Asia/Manila')
-      expect((await clinics(database)).find((c) => c.clinic_id === harborview)).toMatchObject({
-        clinic_timezone: 'Asia/Manila',
-        alias: 'Asia/Manila',
-      })
+      const settings = async () =>
+        database.asService<Record<string, unknown>>(
+          `select clinic_id, system_setting_key, system_setting_value, system_setting_updated_at::text as updated
+             from public.system_setting order by clinic_id, system_setting_key`,
+        )
+      try {
+        const settingsBefore = await settings()
+        const audits = await auditCount(database)
+        await rename(superAdmin.claims, harborview, 'Harborview Renamed')
+        expect((await clinics(database)).find((c) => c.clinic_id === harborview)).toMatchObject({
+          clinic_name: 'Harborview Renamed',
+          clinic_timezone: 'Asia/Manila',
+          alias: 'Asia/Tokyo',
+        })
+        expect(await settings()).toEqual(settingsBefore)
+        // Only the clinic's own entry: no system_setting entry.
+        expect(await auditCount(database)).toBe(audits + 1)
+        const [last] = await database.asService<{ entity: string }>(
+          `select audit_log_entity as entity from public.audit_log order by audit_log_timestamp desc, audit_log_id desc limit 1`,
+        )
+        expect(last!.entity).toBe('clinic')
+      } finally {
+        await rename(superAdmin.claims, harborview, 'Harborview Recovery Centre')
+        await database.asService(`alter table public.system_setting disable trigger system_setting_sync_clinic_timezone`)
+        await database.asService(
+          `update public.system_setting set system_setting_value = 'Asia/Manila' where clinic_id = $1 and system_setting_key = 'app.timezone'`,
+          [harborview],
+        )
+        await database.asService(`alter table public.system_setting enable trigger system_setting_sync_clinic_timezone`)
+      }
     })
 
     it('leaves every scheduled dose, schedule, prescription and appointment exactly as it was', async () => {
       const before = await clinicalRows(database)
       expect(before.dose_count).toBeGreaterThan(0)
-      const [{ at }] = await database.asService<{ at: string }>(
-        `select min(medication_log_scheduled_at)::text as at from public.medication_log where medication_schedule_id = $1`,
-        [fx.aliceScheduleId],
-      )
-
-      await update(superAdmin.claims, harborview, 'Harborview Recovery Centre', 'UTC')
-      // Every dose keeps its exact moment and status: nothing is moved,
-      // regenerated, added or removed by the change itself.
+      await rename(superAdmin.claims, harborview, 'Harborview Dose Check')
       expect(await clinicalRows(database)).toEqual(before)
-      expect(
-        await database.asService<{ at: string }>(
-          `select min(medication_log_scheduled_at)::text as at from public.medication_log where medication_schedule_id = $1`,
-          [fx.aliceScheduleId],
-        ),
-      ).toEqual([{ at }])
-
-      await update(superAdmin.claims, harborview, 'Harborview Recovery Centre', 'Asia/Manila')
-      expect(await clinicalRows(database)).toEqual(before)
-    })
-
-    it('reads dose times generated afterwards as wall-clock times in the new zone', async () => {
-      await update(superAdmin.claims, harborview, 'Harborview Recovery Centre', 'UTC')
-      try {
-        // A schedule started after the change: 08:00 is 08:00 UTC, where it
-        // was 08:00 in Manila (00:00 UTC) before.
-        const [{ id }] = await database.asService<{ id: string }>(
-          `insert into public.medication_schedule
-             (prescription_id, medication_schedule_name, medication_schedule_dosage,
-              medication_schedule_frequency, medication_schedule_times, medication_schedule_start_date)
-           values ($1, 'Ibuprofen', '200mg', 1, '{08:00}'::time[], current_date + 3)
-           returning medication_schedule_id as id`,
-          [fx.alicePrescriptionId],
-        )
-        const hours = await database.asService<{ h: number }>(
-          `select distinct extract(hour from medication_log_scheduled_at at time zone 'UTC')::int as h
-             from public.medication_log where medication_schedule_id = $1`,
-          [id],
-        )
-        expect(hours).toEqual([{ h: 8 }])
-      } finally {
-        await update(superAdmin.claims, harborview, 'Harborview Recovery Centre', 'Asia/Manila')
-      }
+      // Nor does the nightly extension afterwards add anything a rename
+      // caused: the zone the doses were made in is unchanged.
+      await database.asService('select public.extend_all_medication_log_slots(30)')
+      const extended = await clinicalRows(database)
+      expect(extended.dose_count).toBe(before.dose_count)
+      await rename(superAdmin.claims, harborview, 'Harborview Recovery Centre')
+      expect(await clinicalRows(database)).toEqual(extended)
     })
   })
 
   describe('who may call them', () => {
     const everyCall = (clinicId: string): [string, string, unknown[]][] => [
       ['list Clinic Admins', 'select * from public.super_admin_list_clinic_admins($1)', [clinicId]],
-      ['edit a clinic', `select * from public.super_admin_update_clinic($1, 'Refused Name', 'UTC')`, [clinicId]],
+      ['rename a clinic', `select * from public.super_admin_rename_clinic($1, 'Refused Name')`, [clinicId]],
     ]
 
     it('refuses anonymous callers outright', async () => {
@@ -466,12 +439,12 @@ describe('clinic details', () => {
                   p.provolatile as volatility
              from pg_proc p
             where p.oid in ('public.super_admin_list_clinic_admins(uuid)'::regprocedure,
-                            'public.super_admin_update_clinic(uuid, text, text)'::regprocedure)
+                            'public.super_admin_rename_clinic(uuid, text)'::regprocedure)
             order by p.proname`,
         ),
       ).toEqual([
         { name: 'super_admin_list_clinic_admins', definer: true, path: 'search_path=""', anon: false, public: false, authenticated: true, volatility: 's' },
-        { name: 'super_admin_update_clinic', definer: true, path: 'search_path=""', anon: false, public: false, authenticated: true, volatility: 'v' },
+        { name: 'super_admin_rename_clinic', definer: true, path: 'search_path=""', anon: false, public: false, authenticated: true, volatility: 'v' },
       ])
     })
   })
@@ -496,12 +469,12 @@ describe('rolling back migration 47', () => {
     await seedFixture(database)
     const superAdmin = await assuredSuperAdmin(database)
     const [{ id }] = await database.asService<{ id: string }>('select clinic_id as id from public.clinic')
-    await database.asClaims(superAdmin.claims, `select * from public.super_admin_update_clinic($1, 'Renamed Clinic', 'UTC')`, [id])
+    await database.asClaims(superAdmin.claims, `select * from public.super_admin_rename_clinic($1, 'Renamed Clinic')`, [id])
 
     await database.db.exec(await script(ROLLBACK_47))
     expect(await catalog(database)).toEqual(await catalog(without47))
     expect(await database.asService('select clinic_name, clinic_timezone from public.clinic')).toEqual([
-      { clinic_name: 'Renamed Clinic', clinic_timezone: 'UTC' },
+      { clinic_name: 'Renamed Clinic', clinic_timezone: 'Asia/Manila' },
     ])
     expect(
       await database.asService(`select count(*)::int as n from public.audit_log where audit_log_entity = 'clinic' and audit_log_action = 'update'`),
@@ -516,9 +489,9 @@ describe('rolling back migration 47', () => {
     await database.db.exec(await script(MIGRATION_47))
     expect(
       await database.asService(
-        `select to_regprocedure('public.super_admin_update_clinic(uuid, text, text)') is not null as edit,
+        `select to_regprocedure('public.super_admin_rename_clinic(uuid, text)') is not null as rename,
                 to_regprocedure('public.super_admin_list_clinic_admins(uuid)') is not null as list`,
       ),
-    ).toEqual([{ edit: true, list: true }])
+    ).toEqual([{ rename: true, list: true }])
   })
 })

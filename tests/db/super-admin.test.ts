@@ -61,7 +61,7 @@ function everyOperation(clinicId: string, someUserId: string, announcementId: st
     ['read the platform audit', 'select * from public.super_admin_list_audit()', []],
     ['read the platform overview', 'select public.super_admin_platform_overview()', []],
     ['list a clinic’s Clinic Admins', 'select * from public.super_admin_list_clinic_admins($1)', [clinicId]],
-    ['edit a clinic', `select * from public.super_admin_update_clinic($1, 'Refused Name', 'UTC')`, [clinicId]],
+    ['rename a clinic', `select * from public.super_admin_rename_clinic($1, 'Refused Name')`, [clinicId]],
   ]
 }
 

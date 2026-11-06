@@ -7,7 +7,7 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 /**
  * Phase 2 of the platform console: the clinic list's search and status
  * filter, a clinic's details page with its Clinic Admins, and the edit
- * dialog with its time zone confirmation.
+ * dialog, which renames a clinic and shows its time zone read-only.
  *
  * The data layer is replaced; tests/db/super-admin-clinic-details.test.ts
  * covers what the database allows and stores.
@@ -16,7 +16,7 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 const api = vi.hoisted(() => ({
   fetchClinics: vi.fn(),
   fetchClinicAdmins: vi.fn(),
-  updateClinic: vi.fn(),
+  renameClinic: vi.fn(),
   createClinic: vi.fn(),
   setClinicStatus: vi.fn(),
   createClinicAdmin: vi.fn(),
@@ -43,7 +43,7 @@ const { PlatformClinicsPage, filterClinics } = await import(
 const { PlatformClinicDetailsPage } = await import(
   '@/features/platform/pages/platform-clinic-details-page'
 )
-const { validateClinicEdit } = await import('@/features/platform/components/edit-clinic-dialog')
+const { validateClinicName } = await import('@/features/platform/components/edit-clinic-dialog')
 
 const HARBOR = {
   clinic_id: 'clinic-1',
@@ -128,30 +128,18 @@ describe('filterClinics', () => {
   })
 })
 
-describe('validateClinicEdit', () => {
-  it('trims both values and accepts a name of 120 characters', () => {
-    expect(validateClinicEdit({ name: '  Harbor  ', timezone: ' Asia/Manila ' })).toEqual({
-      ok: true,
-      value: { name: 'Harbor', timezone: 'Asia/Manila' },
-    })
-    expect(validateClinicEdit({ name: 'x'.repeat(120), timezone: 'UTC' }).ok).toBe(true)
+describe('validateClinicName', () => {
+  it('trims the name and accepts one of 120 characters', () => {
+    expect(validateClinicName('  Harbor  ')).toEqual({ ok: true, value: 'Harbor' })
+    expect(validateClinicName('x'.repeat(120)).ok).toBe(true)
   })
 
-  it('refuses an empty or too long name and a time zone that is not a zone', () => {
-    expect(validateClinicEdit({ name: '   ', timezone: 'UTC' })).toEqual({
+  it('refuses an empty or too long name', () => {
+    expect(validateClinicName('   ')).toEqual({ ok: false, problem: "Enter the clinic's name." })
+    expect(validateClinicName('x'.repeat(121))).toEqual({
       ok: false,
-      problems: { name: "Enter the clinic's name." },
+      problem: 'A clinic name can be at most 120 characters.',
     })
-    expect(validateClinicEdit({ name: 'x'.repeat(121), timezone: 'UTC' })).toMatchObject({
-      ok: false,
-      problems: { name: 'A clinic name can be at most 120 characters.' },
-    })
-    for (const zone of ['', 'Mars/Olympus', 'Asia/Manila; drop table clinic']) {
-      expect(validateClinicEdit({ name: 'Harbor', timezone: zone }), zone).toMatchObject({
-        ok: false,
-        problems: { timezone: expect.any(String) },
-      })
-    }
   })
 })
 
@@ -233,7 +221,7 @@ describe('a clinic’s details', () => {
 
 describe('editing a clinic', () => {
   it('checks the form before sending, then saves a new name at once', async () => {
-    api.updateClinic.mockResolvedValue({ ...HARBOR, clinic_name: 'Harbor Recovery' })
+    api.renameClinic.mockResolvedValue({ ...HARBOR, clinic_name: 'Harbor Recovery' })
     const user = userEvent.setup()
     renderAt('/platform/clinics/clinic-1')
     await user.click(await screen.findByRole('button', { name: 'Edit clinic' }))
@@ -243,50 +231,36 @@ describe('editing a clinic', () => {
     await user.clear(name)
     await user.click(within(dialog).getByRole('button', { name: 'Save changes' }))
     expect(within(dialog).getByText("Enter the clinic's name.")).toBeInTheDocument()
-    expect(api.updateClinic).not.toHaveBeenCalled()
+    expect(api.renameClinic).not.toHaveBeenCalled()
 
     await user.type(name, '  Harbor Recovery ')
     await user.click(within(dialog).getByRole('button', { name: 'Save changes' }))
     await waitFor(() =>
-      expect(api.updateClinic).toHaveBeenCalledWith({
-        clinicId: 'clinic-1',
-        name: 'Harbor Recovery',
-        timezone: 'Asia/Manila',
-      }),
+      expect(api.renameClinic).toHaveBeenCalledWith({ clinicId: 'clinic-1', name: 'Harbor Recovery' }),
     )
     expect(await screen.findByText('The clinic’s details were saved.')).toBeInTheDocument()
     // Read again from the database after the save.
     await waitFor(() => expect(api.fetchClinics.mock.calls.length).toBeGreaterThan(1))
   })
 
-  it('asks for confirmation before a time zone change, explaining what happens to doses', async () => {
-    api.updateClinic.mockResolvedValue({ ...HARBOR, clinic_timezone: 'UTC' })
+  it('shows the time zone read-only, with no way to change it', async () => {
     const user = userEvent.setup()
     renderAt('/platform/clinics/clinic-1')
     await user.click(await screen.findByRole('button', { name: 'Edit clinic' }))
 
-    const zone = within(openDialog()).getByLabelText(/Time zone/)
-    await user.clear(zone)
-    await user.type(zone, 'UTC')
-    await user.click(within(openDialog()).getByRole('button', { name: 'Save changes' }))
-
-    const confirm = openDialog()
-    expect(within(confirm).getByRole('heading', { name: "Change the clinic's time zone?" })).toBeInTheDocument()
-    expect(confirm).toHaveTextContent('from Asia/Manila to UTC')
-    expect(confirm).toHaveTextContent('Medication doses already scheduled keep their exact times')
-    expect(confirm).toHaveTextContent('not moved, regenerated or deleted')
-    expect(confirm).toHaveTextContent('08:00 as 08:00 in UTC')
-    expect(api.updateClinic).not.toHaveBeenCalled()
-
-    await user.click(within(confirm).getByRole('button', { name: 'Change time zone' }))
-    await waitFor(() =>
-      expect(api.updateClinic).toHaveBeenCalledWith({ clinicId: 'clinic-1', name: 'Harbor Clinic', timezone: 'UTC' }),
-    )
-    expect(api.updateClinic).toHaveBeenCalledTimes(1)
+    const dialog = openDialog()
+    expect(dialog).toHaveTextContent('Asia/Manila')
+    expect(dialog).toHaveTextContent('Read-only here')
+    // One field only, the name: no time zone input, list or picker.
+    expect(within(dialog).queryByLabelText(/Time zone/)).not.toBeInTheDocument()
+    expect(within(dialog).getAllByRole('textbox')).toHaveLength(1)
+    expect(within(dialog).queryByRole('combobox')).not.toBeInTheDocument()
+    expect(dialog.querySelector('datalist')).toBeNull()
+    expect(screen.queryByText("Change the clinic's time zone?")).not.toBeInTheDocument()
   })
 
   it('keeps the dialog open and says why when the database refuses the change', async () => {
-    api.updateClinic.mockRejectedValue(new Error('A clinic with that name already exists.'))
+    api.renameClinic.mockRejectedValue(new Error('A clinic with that name already exists.'))
     const user = userEvent.setup()
     renderAt('/platform/clinics/clinic-1')
     await user.click(await screen.findByRole('button', { name: 'Edit clinic' }))
@@ -307,6 +281,6 @@ describe('editing a clinic', () => {
     await user.click(await screen.findByRole('button', { name: 'Edit clinic' }))
     await user.click(within(openDialog()).getByRole('button', { name: 'Save changes' }))
     expect(within(openDialog()).getByText('Nothing has changed, so there is nothing to save.')).toBeInTheDocument()
-    expect(api.updateClinic).not.toHaveBeenCalled()
+    expect(api.renameClinic).not.toHaveBeenCalled()
   })
 })

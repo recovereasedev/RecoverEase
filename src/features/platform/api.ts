@@ -191,23 +191,18 @@ export async function fetchClinicAdmins(clinicId: string): Promise<ClinicAdminSu
 }
 
 /**
- * Renames a clinic and/or changes its time zone. The database validates
- * both again, keeps the legacy time zone setting in step in the same
- * transaction, and never moves a dose that is already scheduled.
+ * Renames a clinic. Only its name: the database function takes no time
+ * zone, and never changes the clinic's zone, its legacy time zone setting
+ * or any medication record. It validates the name again.
  */
-export async function updateClinic(input: {
-  clinicId: string
-  name: string
-  timezone: string
-}): Promise<PlatformClinic> {
-  const { data, error } = await supabase.rpc('super_admin_update_clinic', {
+export async function renameClinic(input: { clinicId: string; name: string }): Promise<PlatformClinic> {
+  const { data, error } = await supabase.rpc('super_admin_rename_clinic', {
     target_clinic_id: input.clinicId,
     new_clinic_name: input.name,
-    new_clinic_timezone: input.timezone,
   })
 
   if (error) {
-    // Two edits racing for the same name: the unique index refuses the
+    // Two renames racing for the same name: the unique index refuses the
     // second, and its message names the index rather than the problem.
     if (codeOf(error) === UNIQUE_VIOLATION && messageOf(error).includes('clinic_name_key')) {
       throw new Error('A clinic with that name already exists.')
@@ -216,7 +211,7 @@ export async function updateClinic(input: {
   }
 
   const updated = data?.[0]
-  if (!updated) throw new Error('The clinic could not be updated.')
+  if (!updated) throw new Error('The clinic could not be renamed.')
   return updated
 }
 

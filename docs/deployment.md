@@ -431,8 +431,8 @@ deployed code depends on it, that code goes back first:
 
 1. **47**, where it is applied: the website from before migration 47, then
    `supabase/rollbacks/20260902100047_super_admin_clinic_details.down.sql`.
-   It drops two functions; no row is lost, and a clinic keeps the name and
-   time zone it was given. 33's down-script refuses while 47 is installed.
+   It drops two functions; no row is lost, and a renamed clinic keeps its
+   name. 33's down-script refuses while 47 is installed.
 1. **46**, where it is applied: the website from before migration 46, then
    `supabase/rollbacks/20260902100046_super_admin_platform_overview.down.sql`.
    It drops one read-only function; no row is lost. 33's down-script refuses
@@ -1345,31 +1345,29 @@ Admin"):
   Auth's recovery email, which RecoverEase does not record, and opening
   that link already counts as a sign-in. There is no Clinic Admin
   active/inactive flag (only doctors have one), so none is shown.
-- `super_admin_update_clinic(clinic, name, time zone)`: renames a clinic
-  and/or changes its time zone. Its id and status never change. The name
-  is trimmed, not blank, at most 120 characters and not another clinic's
-  in any case; the time zone is trimmed and must be one PostgreSQL knows
-  (`clinic_validate_timezone`). In the same transaction it brings the
-  clinic's legacy `app.timezone` setting to the same zone, as
-  `admin_set_clinic_timezone` does for a Clinic Admin (production still
-  has that row). Audited by the clinic's own trigger as a `platform`
-  entry with the before and after values, and, when the alias changes, by
-  the setting's trigger as an `administration` entry its Clinic Admin can
-  read. Nothing changed, nothing written.
+- `super_admin_rename_clinic(clinic, name)`: renames a clinic, and only
+  that. Its id, status and time zone never change. The name is trimmed,
+  not blank, at most 120 characters and not another clinic's in any case.
+  Audited by the clinic's own trigger as a `platform` entry with the
+  before and after name. The same name again writes nothing.
 
-**What a time zone change does to doses.** It moves, regenerates or
-deletes nothing: each dose already scheduled is an exact moment
-(`medication_log_scheduled_at`) and keeps it, and its reminder goes at that
-moment. What is worked out from then on - a new or edited schedule's
-doses, the nightly job that keeps 30 days ahead, "today", appointment
-reminder days - reads wall-clock times in the new zone. **Known
-limitation:** where the new zone has a different UTC offset, the nightly
-job adds the next 30 days' doses at the new local times beside the doses
-already scheduled at the old ones (on conflict it skips only an identical
-moment), so those days can show the same dose twice until a doctor reviews
-the schedule. The Clinic Admin's own time zone change (migration 31) has
-always behaved the same way. The edit dialog says so and asks for
-confirmation; fixing the job itself is a separate decision.
+**The time zone is read-only in the Super Admin console.** Changing a
+clinic's time zone is deferred: the rename function takes no time zone and
+never writes `clinic_timezone`, the legacy `app.timezone` setting, or any
+dose, schedule, prescription or appointment, and the details page and edit
+dialog show the zone as text with no control for it.
+
+**Known limitation (not fixed by this migration).** Where a clinic's zone
+changes to one with a different UTC offset, the nightly
+`extend_all_medication_log_slots` job adds the next 30 days' doses at the
+new local times beside the doses already scheduled at the old ones (a dose
+slot is skipped only at an identical moment), so a patient can see the same
+dose twice, with extra reminders and extra "missed" doses. The Clinic
+Admin's own time zone setting (`admin_set_clinic_timezone`, migration 31,
+the Settings page) still allows such a change and has this limitation; it is
+left exactly as it was. Fixing it needs its own investigation, a
+scheduler fix, tests and a migration (the next free number is 48). Only
+after that can Super Admin time zone editing come back.
 
 It goes in **before** the website that calls it is merged: merged first,
 the details page shows its error state (the clinic list and every other
@@ -1394,31 +1392,31 @@ window ("Migration timing and run history").
   who may.
 - **Verify, read-only.** One history entry named
   `super_admin_clinic_details`, whose statements match the file's MD5
-  (`9890e558ddf566f37bcce681f0a96721` at the time of writing - recompute
+  (`c855b08a624b345bc2bac8f7f7303548` at the time of writing - recompute
   from the file being applied); both functions present with `prosecdef`
   true and `proconfig` `search_path=""`; `anon` may not execute either,
   `authenticated` may; a direct call with no Super Admin refused with
   `42501`; public Super Admin functions 15 to 17; every table unchanged by
   count. The Super Admin then opens a clinic's details page themselves
   (Kean signs in; never on a Vercel preview, which uses the production
-  database). Editing the production clinic is a real change to a real
+  database). Renaming the production clinic is a real change to a real
   clinic: do it only if Kean wants to, and never just to test.
 - **Rollback.** "To roll back 31", step 47: the website first, then the
-  down-script, which drops only the two functions. A clinic renamed or
-  moved to another zone keeps its new values, and their audit entries
-  stay.
+  down-script, which drops only the two functions. A renamed clinic keeps
+  its new name, and the audit entries stay.
 
 Tests: `tests/db/super-admin-clinic-details.test.ts` (a clinic's Clinic
 Admins only, never another clinic's, with no email or id; unknown clinic
-reported; rename trimmed, with id, status and creation time kept, audited
-as `platform` and readable in the platform trail; empty, blank, 121-
-character, taken and SQL-fragment names and unknown zones refused with
-nothing changed or audited; a 120-character name and a change of case
-accepted; nothing written when nothing changes; the clinic and its alias
-moved together and both audited, a failed alias write leaving neither
-changed, a stale alias brought back in step; every dose, schedule,
-prescription and appointment byte-for-byte unchanged by a zone change;
-doses generated afterwards at the new zone's wall-clock time; every caller
+reported; rename trimmed, with id, status, time zone and creation time
+kept, audited as `platform` and readable in the platform trail; an
+inactive clinic renamed and left inactive; empty, blank, 121-character and
+taken names refused with nothing changed or audited; an SQL-looking name
+stored as text; a 120-character name and a change of case accepted;
+nothing written when nothing changes; no time zone parameter and no
+three-argument edit function; the clinic's zone and the legacy
+`app.timezone` setting never written, even when out of step; every dose,
+schedule, prescription and appointment byte-for-byte unchanged by a
+rename, and the nightly extension adding nothing afterwards; every caller
 but an assured Super Admin refused before the clinic is looked up; the
 rollback); both functions added to `tests/db/super-admin.test.ts`'s
 every-operation checks; `tests/db/super-admin-rollback.test.ts` rolling 47

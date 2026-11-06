@@ -220,17 +220,18 @@ export async function installPlatformPreview(
     }
   })
 
-  stub.setRpcHandler('super_admin_update_clinic', (args) => {
+  // Rename only, as migration 47: no time zone argument, and the clinic's
+  // zone is never written.
+  stub.setRpcHandler('super_admin_rename_clinic', (args) => {
     const clinic = clinics.find((c) => c.clinic_id === args['target_clinic_id'])
     if (!clinic) return refusal(404, 'P0002', 'That clinic could not be found')
+    if (Object.keys(args).some((key) => key !== 'target_clinic_id' && key !== 'new_clinic_name')) {
+      return refusal(404, 'PGRST202', 'Could not find the function public.super_admin_rename_clinic with those arguments')
+    }
     const name = String(args['new_clinic_name'] ?? '').trim()
-    const zone = String(args['new_clinic_timezone'] ?? '').trim()
     if (!name) return refusal(400, '23514', "Enter the clinic's name")
     if (name.length > 120) {
       return refusal(400, '23514', "A clinic's name can be at most 120 characters")
-    }
-    if (!zone) {
-      return refusal(400, '23514', "Enter the clinic's time zone, such as Asia/Manila")
     }
     if (
       clinics.some(
@@ -239,20 +240,14 @@ export async function installPlatformPreview(
     ) {
       return refusal(409, '23505', 'A clinic with that name already exists')
     }
-    if (!isTimeZone(zone)) return refusal(400, '23514', `Unknown time zone: ${zone}`)
-    const changed = [
-      ...(name !== clinic.clinic_name ? ['clinic_name'] : []),
-      ...(zone !== clinic.clinic_timezone ? ['clinic_timezone'] : []),
-    ]
-    if (changed.length > 0) {
-      const before = { clinic_name: clinic.clinic_name, clinic_timezone: clinic.clinic_timezone }
+    if (name !== clinic.clinic_name) {
+      const before = clinic.clinic_name
       clinic.clinic_name = name
-      clinic.clinic_timezone = zone
       clinic.clinic_updated_at = now()
       record('update', 'clinic', clinic.clinic_id, clinic.clinic_id, {
-        changed_columns: [...changed, 'clinic_updated_at'],
-        before: Object.fromEntries(changed.map((key) => [key, before[key as keyof typeof before]])),
-        after: Object.fromEntries(changed.map((key) => [key, clinic[key as keyof Clinic]])),
+        changed_columns: ['clinic_name', 'clinic_updated_at'],
+        before: { clinic_name: before },
+        after: { clinic_name: name },
       })
     }
     return { result: [{ ...clinic }] }

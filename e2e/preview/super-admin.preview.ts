@@ -123,8 +123,8 @@ preview('Super Admin console, local preview', async ({ page, signInAs, previewSt
   await invite.getByRole('button', { name: 'Done' }).click()
   await expect(page.getByText(/2 Clinic Admins/)).toBeVisible()
 
-  // The clinic's details: both its Clinic Admins, then a time zone change
-  // made only after its confirmation, kept after a reload.
+  // The clinic's details: both its Clinic Admins, then a rename. The time
+  // zone is shown, read-only, and stays as it was.
   await page.getByRole('link', { name: 'View details of Harbor Clinic' }).click()
   await expect(page.getByRole('heading', { level: 1, name: 'Harbor Clinic' })).toBeVisible()
   const admins = page.getByRole('list', { name: 'Clinic Admins of Harbor Clinic' })
@@ -132,21 +132,18 @@ preview('Super Admin console, local preview', async ({ page, signInAs, previewSt
   await expect(admins).toContainText('Preview Admin')
   await page.getByRole('button', { name: 'Edit clinic' }).click()
   const edit = page.getByRole('dialog', { name: 'Edit clinic' })
-  await edit.getByLabel(/Time zone/).fill('Asia/Singapore')
+  await expect(edit).toContainText('Read-only here')
+  await expect(edit.getByLabel(/Time zone/)).toHaveCount(0)
+  await edit.getByLabel(/Clinic name/).fill('Harbor Recovery Clinic')
   await edit.getByRole('button', { name: 'Save changes' }).click()
-  const confirmZone = page.getByRole('dialog', { name: "Change the clinic's time zone?" })
-  await expect(confirmZone).toContainText('Medication doses already scheduled keep their exact times')
-  await confirmZone.getByRole('button', { name: 'Change time zone' }).click()
   await expect(page.getByText('The clinic’s details were saved.')).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1, name: 'Harbor Recovery Clinic' })).toBeVisible()
   // Away and back rather than a reload, which in the enrol and verify
   // states asks for the authenticator code again: read again, all the same.
   await page.getByRole('link', { name: 'Clinics' }).first().click()
   await expect(page.getByRole('heading', { level: 1, name: 'Clinics' })).toBeVisible()
-  await expect(page.getByText(/Asia\/Singapore · 2 Clinic Admins/)).toBeVisible()
-  await page.getByRole('link', { name: 'View details of Harbor Clinic' }).click()
-  await expect(page.getByRole('definition').filter({ hasText: /^Asia\/Singapore$/ })).toBeVisible()
-  await page.getByRole('link', { name: 'Clinics' }).first().click()
-  await expect(page.getByRole('heading', { level: 1, name: 'Clinics' })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 2, name: 'Harbor Recovery Clinic' })).toBeVisible()
+  await expect(page.getByText(/Asia\/Manila · 2 Clinic Admins/)).toBeVisible()
 
   // A second clinic is refused while the single-clinic gate stands.
   await page.getByRole('button', { name: 'New clinic' }).click()
