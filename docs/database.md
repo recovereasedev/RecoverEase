@@ -183,6 +183,23 @@ Migration 46 adds no table: `super_admin_platform_overview()` returns one
 per clinic. A platform announcement is one with a `super_admin_id`,
 published when `announcement_published_at` is set.
 
+Migration 47 adds no table either. `super_admin_list_clinic_admins(clinic)`
+returns, for one clinic, each Clinic Admin's `admin_first_name`,
+`admin_last_name`, `admin_created_at`, `has_signed_in` and
+`last_signed_in_at` (from `auth.users.last_sign_in_at`) - only profiles of
+that clinic whose account role is `admin`, as `super_admin_list_clinics`
+counts them. `super_admin_rename_clinic(clinic, name)` returns the same
+row as the other clinic functions and updates `clinic_name` only - never
+`clinic_id`, `clinic_status` or `clinic_timezone`, never the legacy
+`app.timezone` row in `system_setting`, and never `medication_log`,
+`medication_schedule`, `prescription` or `appointment`. It takes no time
+zone: a clinic's zone is read-only to the Super Admin, because a zone
+change to a different UTC offset makes the nightly
+`extend_all_medication_log_slots` add doses beside those already scheduled
+(`docs/deployment.md`, "Clinic details (migration 47)", "Known
+limitation"). The Clinic Admin's own `admin_set_clinic_timezone`
+(migration 31) is unchanged and has that same limitation.
+
 Migration 36 adds a third announcement author: `announcement.doc_id`, a
 doctor writing for their own patients. An announcement still has exactly one
 author (`announcement_one_author`: a Clinic Admin, a doctor or a Super

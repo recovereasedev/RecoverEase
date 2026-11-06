@@ -25,6 +25,14 @@ type Clinic = {
   clinic_admin_count: number
 }
 
+type ClinicAdmin = {
+  admin_first_name: string
+  admin_last_name: string
+  admin_created_at: string
+  has_signed_in: boolean
+  last_signed_in_at: string | null
+}
+
 type Announcement = {
   announcement_id: string
   announcement_title: string
@@ -49,6 +57,11 @@ export type PlatformPreviewOptions = {
   actorUserId: string
   clinics: Clinic[]
   /**
+   * Each clinic's Clinic Admins, by clinic id. A clinic left out gets as
+   * many placeholder Clinic Admins as its count says, none signed in.
+   */
+  clinicAdmins?: Record<string, ClinicAdmin[]>
+  /**
    * Whether a second clinic is refused, as production refuses it until
    * migration 34 lifts the single-clinic gate. On by default.
    */
@@ -62,7 +75,8 @@ function refusal(status: number, code: string, message: string): RpcReply {
 function isTimeZone(zone: string): boolean {
   try {
     new Intl.DateTimeFormat('en-US', { timeZone: zone })
-    return /^[A-Za-z_]+(\/[A-Za-z0-9_+-]+)+$/.test(zone)
+    // A single name such as UTC, or Area/Location: PostgreSQL knows both.
+    return /^[A-Za-z_]+(\/[A-Za-z0-9_+-]+)*$/.test(zone)
   } catch {
     return false
   }
@@ -76,6 +90,19 @@ export async function installPlatformPreview(
   const clinics: Clinic[] = options.clinics.map((clinic) => ({ ...clinic }))
   const announcements: Announcement[] = []
   const audit: AuditEntry[] = []
+  const admins = new Map<string, ClinicAdmin[]>(
+    clinics.map((clinic) => [
+      clinic.clinic_id,
+      options.clinicAdmins?.[clinic.clinic_id]?.map((admin) => ({ ...admin })) ??
+        Array.from({ length: clinic.clinic_admin_count }, (_, index) => ({
+          admin_first_name: 'Clinic',
+          admin_last_name: `Admin ${index + 1}`,
+          admin_created_at: clinic.clinic_created_at,
+          has_signed_in: false,
+          last_signed_in_at: null,
+        })),
+    ]),
+  )
   const gate = options.singleClinicGate ?? true
   const now = () => new Date().toISOString()
 
@@ -158,6 +185,7 @@ export async function installPlatformPreview(
       clinic_admin_count: 0,
     }
     clinics.push(clinic)
+    admins.set(clinic.clinic_id, [])
     record('insert', 'clinic', clinic.clinic_id, clinic.clinic_id)
     return { result: [clinic] }
   })
@@ -177,6 +205,51 @@ export async function installPlatformPreview(
     record('update', 'clinic', clinic.clinic_id, clinic.clinic_id, {
       changed_columns: ['clinic_status', 'clinic_updated_at'],
     })
+    return { result: [{ ...clinic }] }
+  })
+
+  // --- One clinic's details (migration 47) ------------------------------------
+
+  stub.setRpcHandler('super_admin_list_clinic_admins', (args) => {
+    const list = admins.get(String(args['target_clinic_id'] ?? ''))
+    if (!list) return refusal(404, 'P0002', 'That clinic could not be found')
+    return {
+      result: [...list].sort((a, b) =>
+        `${a.admin_last_name} ${a.admin_first_name}`.localeCompare(`${b.admin_last_name} ${b.admin_first_name}`),
+      ),
+    }
+  })
+
+  // Rename only, as migration 47: no time zone argument, and the clinic's
+  // zone is never written.
+  stub.setRpcHandler('super_admin_rename_clinic', (args) => {
+    const clinic = clinics.find((c) => c.clinic_id === args['target_clinic_id'])
+    if (!clinic) return refusal(404, 'P0002', 'That clinic could not be found')
+    if (Object.keys(args).some((key) => key !== 'target_clinic_id' && key !== 'new_clinic_name')) {
+      return refusal(404, 'PGRST202', 'Could not find the function public.super_admin_rename_clinic with those arguments')
+    }
+    const name = String(args['new_clinic_name'] ?? '').trim()
+    if (!name) return refusal(400, '23514', "Enter the clinic's name")
+    if (name.length > 120) {
+      return refusal(400, '23514', "A clinic's name can be at most 120 characters")
+    }
+    if (
+      clinics.some(
+        (c) => c.clinic_id !== clinic.clinic_id && c.clinic_name.toLowerCase() === name.toLowerCase(),
+      )
+    ) {
+      return refusal(409, '23505', 'A clinic with that name already exists')
+    }
+    if (name !== clinic.clinic_name) {
+      const before = clinic.clinic_name
+      clinic.clinic_name = name
+      clinic.clinic_updated_at = now()
+      record('update', 'clinic', clinic.clinic_id, clinic.clinic_id, {
+        changed_columns: ['clinic_name', 'clinic_updated_at'],
+        before: { clinic_name: before },
+        after: { clinic_name: name },
+      })
+    }
     return { result: [{ ...clinic }] }
   })
 
@@ -232,6 +305,13 @@ export async function installPlatformPreview(
       return
     }
     clinic.clinic_admin_count += 1
+    admins.get(clinic.clinic_id)?.push({
+      admin_first_name: String(body['firstName'] ?? '').trim(),
+      admin_last_name: String(body['lastName'] ?? '').trim(),
+      admin_created_at: now(),
+      has_signed_in: false,
+      last_signed_in_at: null,
+    })
     const profileId = crypto.randomUUID()
     // No details: of a created row's, the browser is sent none (migration 35).
     record('create', 'clinic_admin_account', profileId, clinic.clinic_id)

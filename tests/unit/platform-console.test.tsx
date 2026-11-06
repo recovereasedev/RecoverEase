@@ -162,7 +162,8 @@ describe('clinics', () => {
 
     expect(await screen.findByRole('heading', { name: 'Harbor Clinic' })).toBeInTheDocument()
     expect(screen.getByText(/Asia\/Manila · 1 Clinic Admin/)).toBeInTheDocument()
-    expect(screen.getByText('Active')).toBeInTheDocument()
+    // The badge in the clinic's own row: the status filter has an Active too.
+    expect(screen.getByRole('heading', { name: 'Harbor Clinic' }).closest('article')).toHaveTextContent('Active')
   })
 
   it('refuses a time zone that is not one before anything is sent', async () => {

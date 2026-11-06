@@ -1290,6 +1290,14 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: Json
       }
+      super_admin_list_clinic_admins: {
+        Args: { target_clinic_id: string }
+        Returns: { admin_first_name: string; admin_last_name: string; admin_created_at: string; has_signed_in: boolean; last_signed_in_at: string | null }[]
+      }
+      super_admin_rename_clinic: {
+        Args: { target_clinic_id: string; new_clinic_name: string }
+        Returns: { clinic_id: string; clinic_name: string; clinic_status: Database['public']['Enums']['clinic_status']; clinic_timezone: string; clinic_created_at: string; clinic_updated_at: string; clinic_admin_count: number }[]
+      }
     }
     Enums: {
       appointment_status: 'scheduled' | 'confirmed' | 'completed' | 'cancelled' | 'no_show'
