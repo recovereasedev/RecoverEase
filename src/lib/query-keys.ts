@@ -96,6 +96,9 @@ export function queryKeysFor(userId: string) {
         [...queryKeys.medications.all, 'all-doses', patientId, from, to] as const,
       adherenceFor: (patientId: string) =>
         [...queryKeys.medications.all, 'adherence', patientId] as const,
+      /** A patient's dose conflicts (migration 48). Under `all`: a decision can add a dose. */
+      conflictsFor: (patientId: string) =>
+        [...queryKeys.medications.all, 'conflicts', patientId] as const,
     },
 
     prescriptions: {

@@ -59,6 +59,8 @@ function dose(
     medication_log_status: status,
     medication_log_follow_up_sent_at: null,
     medication_log_pre_dose_sent_at: null,
+    medication_log_dose_date: when.toISOString().slice(0, 10),
+    medication_log_dose_time: `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00`,
   }
 }
 

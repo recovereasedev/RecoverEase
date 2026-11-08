@@ -12,6 +12,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const doses = vi.hoisted(() => ({ today: [] as unknown[] }))
 
 vi.mock('@/features/medications/hooks', () => ({
+  // Dose conflicts (migration 48): none here.
+  useMedicationConflicts: () => ({ data: [], isPending: false, error: null, refetch: vi.fn() }),
   // Only the "today" window is filled, so each badge appears once.
   useDoses: (_patientId: string, from: string) => {
     const startOfToday = new Date()
