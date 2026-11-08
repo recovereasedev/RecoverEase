@@ -24,13 +24,25 @@ begin
   if to_regclass('public.medication_dose_conflict') is null then
     raise exception 'Migration 48 is not applied. Nothing was changed.';
   end if;
+end
+$$;
+
+set lock_timeout = '3s';
+
+-- No conflict can be written between the check below and the table being
+-- dropped: the scheduler, a schedule's trigger and a doctor's decision all
+-- wait for this lock, held until the rollback commits, and the check waits
+-- for any of them already writing. LOCK TABLE also refuses to run outside a
+-- transaction, so this script cannot be run one statement at a time.
+lock table public.medication_dose_conflict in exclusive mode;
+
+do $$
+begin
   if exists (select 1 from public.medication_dose_conflict) then
     raise exception 'Medication dose conflicts exist. They are clinical records and a rollback never deletes them. Nothing was changed.';
   end if;
 end
 $$;
-
-set lock_timeout = '3s';
 
 do $$
 begin

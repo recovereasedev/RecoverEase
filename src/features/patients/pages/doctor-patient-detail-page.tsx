@@ -37,6 +37,8 @@ import { createDoctorNote, fetchDoctorNotes } from '@/features/doctor-notes/api'
 import { AdherenceSummary } from '@/features/medications/components/adherence-summary'
 import {
   ConflictSummaryLines,
+  ConflictSummaryUnavailable,
+  ConflictsLoadError,
   DoctorConflictPanel,
 } from '@/features/medications/components/dose-conflicts'
 import { summariseConflicts } from '@/features/medications/conflicts'
@@ -426,7 +428,11 @@ export function DoctorPatientDetailPage() {
                         ) : (
                           <p className="text-sm text-muted">Loading…</p>
                         )}
-                        <ConflictSummaryLines summary={weekConflicts} />
+                        {conflictsQuery.isError ? (
+                          <ConflictSummaryUnavailable />
+                        ) : (
+                          <ConflictSummaryLines summary={weekConflicts} />
+                        )}
                       </CardBody>
                     </Card>
 
@@ -875,7 +881,16 @@ export function DoctorPatientDetailPage() {
                     what="prescription"
                     className="px-4 pb-2 sm:px-5"
                   />
-                  <DoctorConflictPanel patientId={patientId} conflicts={conflicts} now={now} />
+                  {conflictsQuery.isError ? (
+                    <div className="px-4 py-4 sm:px-5">
+                      <ConflictsLoadError
+                        error={conflictsQuery.error}
+                        onRetry={() => void conflictsQuery.refetch()}
+                      />
+                    </div>
+                  ) : (
+                    <DoctorConflictPanel patientId={patientId} conflicts={conflicts} now={now} />
+                  )}
                   <CardBody className="p-0">
                     <div ref={medicationFocusRecovery}>
                       <StateView

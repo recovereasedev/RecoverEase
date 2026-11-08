@@ -991,6 +991,21 @@ describe('the per-schedule lock', () => {
     expect(await heldElsewhere()).toBe(true)
     await database.db.exec(`commit prepared 'end'`)
   })
+
+  it('is taken on the conflict table by the rollback before it checks the table is empty', async () => {
+    // PGlite runs one connection and cannot time out a lock wait, so the race
+    // itself (a conflict written between the check and the drop) cannot be
+    // staged here. What closes it is the order: an exclusive lock on the
+    // table, which the scheduler's and a decision's writes wait for, before
+    // the emptiness check, both inside the rollback's one transaction.
+    const sql = (await script(ROLLBACK_48)).replace(/--.*$/gm, '')
+    const lock = sql.indexOf('lock table public.medication_dose_conflict in exclusive mode')
+    const check = sql.indexOf('exists (select 1 from public.medication_dose_conflict)')
+    const drop = sql.indexOf('drop table public.medication_dose_conflict')
+    expect(lock).toBeGreaterThan(-1)
+    expect(check).toBeGreaterThan(lock)
+    expect(drop).toBeGreaterThan(check)
+  })
 })
 
 // ---------------------------------------------------------------------------

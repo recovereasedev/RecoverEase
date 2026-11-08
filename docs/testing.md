@@ -191,6 +191,24 @@ ignores `startParams`, so prepared transactions stay disabled, and its
 checked on production's 17.6 with a read-only expression that reads no
 table.
 
+What migration 48's tests do **not** prove (implementation review,
+2026-11-09), because PGlite is one connection with no pg_cron and no lock
+timeouts:
+
+- **No two transactions ever run at the same moment.** The lock tests prove
+  each writer takes the per-schedule lock and holds it until it commits
+  (prepared transactions), and that a second decision is refused after the
+  first commits; a real race is left to PostgreSQL's lock rules.
+- **The rollback's table lock** is checked by its order in the script (lock,
+  then the emptiness check, then the drop), not by staging a write in the
+  window between them.
+- **The resolution's re-check under the lock** (the conflict still exists, the
+  caller is still the treating doctor) cannot be reached with a change
+  made while the call waits.
+- **The alert job's pg_cron schedule** and the rollback's unschedule never
+  run in a test; production verification checks `cron.job_run_details`
+  (`docs/deployment.md`, migration 48).
+
 ## Test environment configuration
 
 `src/lib/env.ts` validates configuration at import time and throws when it is

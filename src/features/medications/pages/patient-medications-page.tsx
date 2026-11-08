@@ -16,6 +16,8 @@ import { summariseAdherence } from '@/features/medications/api'
 import { AdherenceSummary } from '@/features/medications/components/adherence-summary'
 import {
   ConflictSummaryLines,
+  ConflictSummaryUnavailable,
+  ConflictsLoadError,
   PatientConflictNotices,
 } from '@/features/medications/components/dose-conflicts'
 import { PhoneReminders } from '@/features/medications/components/phone-reminders'
@@ -389,7 +391,14 @@ export function PatientMedicationsPage() {
           </PageSection>
 
           {/* --- Dose times held for the doctor's review (migration 48) --- */}
-          {conflicts.length > 0 ? (
+          {conflictsQuery.isError ? (
+            <div className="print:hidden">
+              <ConflictsLoadError
+                error={conflictsQuery.error}
+                onRetry={() => void conflictsQuery.refetch()}
+              />
+            </div>
+          ) : conflicts.length > 0 ? (
             <PageSection
               className="print:hidden"
               title="Dose times your doctor is reviewing"
@@ -530,7 +539,11 @@ export function PatientMedicationsPage() {
                 ) : (
                   <p className="text-sm text-muted">Loading…</p>
                 )}
-                <ConflictSummaryLines summary={weekConflicts} />
+                {conflictsQuery.isError ? (
+                  <ConflictSummaryUnavailable />
+                ) : (
+                  <ConflictSummaryLines summary={weekConflicts} />
+                )}
               </CardBody>
             </Card>
           </PageSection>

@@ -163,8 +163,61 @@ test.describe('a dose time held for review', () => {
       medication_dose_conflict: [heldConflict()],
     })
     await page.goto(`/doctor/patients/${IDS.alicePat}?tab=medication`)
-    await expect(page.getByText(/time zone could not be loaded/)).toBeVisible()
+    // The website retries the failed read twice before it says so.
+    await expect(page.getByText(/time zone could not be loaded/)).toBeVisible({ timeout: 15_000 })
     await expect(page.getByRole('button', { name: /Review the 08:00 dose time/ })).toBeDisabled()
+  })
+
+  /** Fails every read of the conflicts, as a network or server error would. */
+  const failConflicts = (page: Page) =>
+    page.route('**/rest/v1/medication_dose_conflict**', (route) =>
+      route.request().method() === 'GET'
+        ? route.fulfill({
+            status: 500,
+            contentType: 'application/json',
+            body: JSON.stringify({ message: 'upstream unavailable' }),
+          })
+        : route.fallback(),
+    )
+
+  test('a failed load is shown as an error to the patient, never as no conflicts', async ({ page, signInAs }) => {
+    await signInAs('patient', {
+      prescription: [PRESCRIPTION],
+      medication_schedule: [SCHEDULE],
+      medication_dose_conflict: [heldConflict()],
+    })
+    await failConflicts(page)
+    await page.goto('/patient/medications')
+
+    // The website retries a failed read twice before it says so.
+    await expect(page.getByRole('heading', { name: 'Clock-change dose reviews could not be loaded' })).toBeVisible({
+      timeout: 15_000,
+    })
+    await expect(page.getByText(/so any are missing here/)).toBeVisible()
+    await expect(page.getByRole('button', { name: /try again/i }).first()).toBeVisible()
+  })
+
+  test('a failed load is shown as an error to the doctor, never as no conflicts', async ({ page, signInAs }) => {
+    await signInAs('doctor', {
+      clinic: CLINIC,
+      prescription: [PRESCRIPTION],
+      medication_schedule: [SCHEDULE],
+      medication_dose_conflict: [heldConflict()],
+    })
+    await failConflicts(page)
+    await page.goto(`/doctor/patients/${IDS.alicePat}?tab=medication`)
+
+    // The website retries a failed read twice before it says so.
+    await expect(page.getByRole('heading', { name: 'Clock-change dose reviews could not be loaded' })).toBeVisible({
+      timeout: 15_000,
+    })
+    await expect(page.getByText('1 dose time needs your review')).toHaveCount(0)
+
+    // Once the database answers again, "Try again" brings the review back.
+    await page.unroute('**/rest/v1/medication_dose_conflict**')
+    const section = page.getByRole('region', { name: 'Clock-change dose reviews could not be loaded' })
+    await section.getByRole('button', { name: /try again/i }).click()
+    await expect(page.getByText('1 dose time needs your review')).toBeVisible()
   })
 
   test('shows nothing about conflicts when there are none', async ({ page, signInAs }) => {

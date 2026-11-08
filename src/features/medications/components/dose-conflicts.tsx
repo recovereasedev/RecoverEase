@@ -3,6 +3,7 @@ import { CalendarClock } from 'lucide-react'
 import { useId, useState } from 'react'
 
 import { FormError } from '@/components/feedback/form-error'
+import { ErrorState } from '@/components/feedback/state-view'
 import { Button } from '@/components/ui/button'
 import { Dialog } from '@/components/ui/dialog'
 import { Field, Input, Textarea } from '@/components/ui/field'
@@ -57,6 +58,35 @@ export function ConflictSummaryLines({ summary }: { summary: ConflictSummary }) 
       ))}
       <li className="text-xs text-muted">Not counted in the adherence figure above.</li>
     </ul>
+  )
+}
+
+/**
+ * The conflicts could not be loaded. Said plainly, never shown as "none": a
+ * dose time awaiting review must not disappear from the page because a
+ * request failed.
+ */
+export function ConflictsLoadError({ error, onRetry }: { error: unknown; onRetry: () => void }) {
+  return (
+    <section aria-labelledby="dose-conflicts-error-heading" className="space-y-2">
+      <h3 id="dose-conflicts-error-heading" className="text-base font-semibold text-heading">
+        Clock-change dose reviews could not be loaded
+      </h3>
+      <p className="text-sm text-body">
+        Some dose times may be awaiting a doctor&apos;s review because of a clock change. They are not shown until
+        this loads.
+      </p>
+      <ErrorState error={error} onRetry={onRetry} className="py-6" />
+    </section>
+  )
+}
+
+/** Under the adherence figure, when the conflicts could not be loaded. */
+export function ConflictSummaryUnavailable() {
+  return (
+    <p role="status" className="mt-4 border-t border-[var(--color-border)] pt-3 text-sm text-muted">
+      Clock-change dose reviews could not be loaded, so any are missing here.
+    </p>
   )
 }
 

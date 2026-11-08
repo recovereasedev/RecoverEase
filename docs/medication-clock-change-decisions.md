@@ -25,7 +25,8 @@ marked missed, never counted as taken, and never deleted.
 3. If the answer differs from what migration 48 implements, the change is a
    new reviewed migration (for A and B: `app_private.medication_clock_policy`)
    or a website change, with its own tests, before production.
-4. Change the status line at the top only when every decision is approved.
+4. Change the status line at the top only when every decision is approved,
+   including the open questions G1, H1 and J1 below.
 
 ## Decision matrix
 
@@ -42,6 +43,19 @@ marked missed, never counted as taken, and never deleted.
 | **I** | The treating doctor's account is deactivated | No alert is sent to anyone; the conflict stays visible. (Overlaps PR #62's open question about held alerts.) | Alerts require `doc_is_active`. | Unchanged notice. | A reassigned doctor sees the conflicts on the patient. | Yes: who, if anyone, is told | **PENDING** | — | — |
 | **J** | Whether a reason is required | Required for both options, 1–1,000 characters. | Database check. | — | One more field. | Yes | **PENDING** | — | — |
 | **K** | Wording of the time picker for a repeated time | "Before the clocks go back (GMT-04:00)" / "After the clocks go back (GMT-05:00)", neither selected. | Website only. | — | Must choose explicitly. | Yes: wording | **PENDING** | — | — |
+
+## Open questions from the implementation review (2026-11-09)
+
+The review of migration 48 found three behaviours the briefing did not put
+to the adviser. Each belongs to a decision above and is **PENDING** with it.
+Migration 48 does what the "Behaviour now" column says until an answer is
+recorded here; a different answer is a new reviewed change.
+
+| | Belongs to | Question for the adviser | Behaviour now (provisional) | Answer | Approval date | Evidence |
+|---|---|---|---|---|---|---|
+| **G1** | G | After a clinic changes time zone, doses of the old and new zone can fall close together without sharing a moment. Moving from Los Angeles to Manila, a medicine at 08:00, 14:00 and 20:00 has doses **2 hours apart**, and 20 January's 20:00 dose comes after 21 January's 08:00. Should a new dose within some minimum interval of another dose of the same medicine also be held for the doctor, and what interval? | Only a dose at **exactly** another dose's moment is held. Doses close together are created and reminded as normal. | **PENDING** | — | — |
+| **H1** | H | When a course is ended early and then extended again, the doses removed at the end come back, but a conflict closed as `course_ended` stays closed: that dose time gets neither a dose nor a review, and the patient reads "Course ended before review". Should extending the course reopen those conflicts for the doctor? | Not reopened. Visible to patient and doctor as "Course ended before review". | **PENDING** | — | — |
+| **J1** | C, J | The doctor's written reason is stored with the conflict. The patient's page does not show it, but the patient's own account can read it through the database's interface. Is the reason meant for the patient to read, or for clinicians only? | Readable by the patient and the treating doctor; shown on screen to the doctor only; never written to the audit log. | **PENDING** | — | — |
 
 ## Not clinical decisions (technical, for Kean)
 

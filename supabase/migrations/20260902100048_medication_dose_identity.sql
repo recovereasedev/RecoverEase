@@ -269,8 +269,9 @@ comment on table public.medication_dose_conflict is
 
 alter table public.medication_dose_conflict enable row level security;
 
--- Read: whoever may read the patient's doses (the patient, their treating
--- doctor, their clinic's Clinic Admin). Written only by the functions below.
+-- Read: whoever may read the patient's doses - the patient and their active
+-- treating doctor (can_access_patient), and not the Clinic Admin, exactly as
+-- medication_log. Written only by the functions below.
 create policy medication_dose_conflict_select
   on public.medication_dose_conflict for select to authenticated
   using (
@@ -918,6 +919,15 @@ begin
     from public.medication_dose_conflict mc
    where mc.medication_dose_conflict_id = target_conflict_id
    for update;
+
+  -- Checked again under the lock: the schedule may have been deleted, or the
+  -- patient given another doctor, while this call waited for it.
+  if not found
+     or not app_private.is_my_patient(
+          app_private.patient_of_medication_schedule(conflict.medication_schedule_id)) then
+    raise exception 'That dose conflict could not be found'
+      using errcode = 'no_data_found';
+  end if;
 
   if conflict.conflict_resolution is not null then
     raise exception 'This dose conflict has already been resolved'

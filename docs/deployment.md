@@ -1392,9 +1392,15 @@ clinic changes time zone (Asia/Manila has no daylight saving).
   exact only then.
 - Every dose row joins to a clinic (raw count equals joined count).
 - No schedule lists a time twice.
+- Every dose's `taken_at` agrees with its status: expect 0 rows where
+  `(medication_log_status = 'taken') <> (medication_log_taken_at is not null)`.
+  The backfill is an `UPDATE`, so it fires `medication_log_protect_slot`,
+  which would rewrite `taken_at` on any row that disagrees (set it to now on
+  a taken dose without one, clear it on any other). Any row found stops the
+  apply until it is understood.
 - Record the MD5 of (id, schedule, moment, status, `taken_at`, both reminder
   stamps) across `medication_log`, to compare after.
-- The migration file's MD5: `51f528ba85f15bb44b392fb4de3b5ae9` at the time of writing - recompute from
+- The migration file's MD5: `b3793b5193d37626f32ce6f279e5e0cc` at the time of writing - recompute from
   the file being applied.
 
 **Locks.** Adding the columns takes `medication_log`'s lock briefly, and the
@@ -1407,12 +1413,34 @@ run history"), not across 01:00 UTC.
 checksum; both columns `NOT NULL` and the occurrence index present; the
 dose-column MD5 unchanged; 0 conflicts; `prosecdef` and an empty
 `search_path` on every new function; `anon` cannot execute
-`doctor_resolve_medication_conflict`; the alert job scheduled; after the next
-01:00 UTC run, only new days added and still 0 duplicate occurrences.
+`doctor_resolve_medication_conflict`; the alert job scheduled, and its first
+runs succeeded in `cron.job_run_details` (no test can run pg_cron: PGlite has
+none); after the next 01:00 UTC run, only new days added and still 0
+duplicate occurrences.
+
+**Known limits (not fixed by migration 48).**
+
+- **Doses close together after a time zone change.** Only an occurrence at
+  *exactly* another dose's moment is held. Around the changeover, doses of
+  the old and new zone can still fall hours apart and out of order: moving
+  from Los Angeles to Manila, a medicine at 08:00, 14:00 and 20:00 has doses
+  2 hours apart, and 20 January's 20:00 dose after 21 January's 08:00. This
+  is better than before (every dose was duplicated), but it is not clinically
+  reviewed: decision G's open question in
+  `docs/medication-clock-change-decisions.md`.
+- **Scale of the nightly run.** `extend_all_medication_log_slots` takes each
+  live schedule's lock and holds all of them until it commits. PostgreSQL's
+  shared lock table holds about `max_locks_per_transaction` (64) ×
+  (`max_connections` + `max_prepared_transactions`) locks, so with several
+  thousand live schedules the nightly run could fail with "out of shared
+  memory" and add nothing that night. Far above today's size; batch the run
+  before approaching it.
 
 **Rollback.** "To roll back 31", step 48: the website first, then
 `supabase/rollbacks/20260902100048_medication_dose_identity.down.sql`. It
-refuses while any conflict exists (a clinical record is never deleted), and
+refuses while any conflict exists (a clinical record is never deleted) -
+checked after locking the conflict table, so none can be written between the
+check and the drop; it must run as one transaction, as a migration does - and
 otherwise restores the six replaced functions word for word, drops the new
 objects and the two columns, and keeps every dose. 33's and 37's
 down-scripts refuse while 48 is installed. After a rollback the duplicate-dose
