@@ -183,6 +183,23 @@ Migration 46 adds no table: `super_admin_platform_overview()` returns one
 per clinic. A platform announcement is one with a `super_admin_id`,
 published when `announcement_published_at` is set.
 
+Migration 48 (not applied; its clinical decisions are PENDING in
+`docs/medication-clock-change-decisions.md`) gives each dose an identity:
+`medication_log_dose_date` and `medication_log_dose_time`, the clinic-local
+date and wall-clock time it was created for, unique per schedule
+(`medication_log_occurrence_key`) and never changed. The generator creates a
+dose only for an occurrence that is not already a dose or a
+`medication_dose_conflict` - one held for the treating doctor because the
+time does not exist or happens twice that day (a clock change), or because
+its moment is already another dose of the schedule (after a time zone
+change). A conflict has the same identity columns, a reason, the moment
+PostgreSQL would give it, and, once decided, the resolution
+(`rescheduled`, `not_given_separately` or `course_ended`), the doctor, the
+time and the reason. A rescheduled conflict's dose is an ordinary
+`medication_log` row. A schedule's times, frequency, start date and
+prescription can no longer be edited. See `docs/deployment.md`, "Medication
+dose identity and clock-change conflicts (migration 48)".
+
 Migration 36 adds a third announcement author: `announcement.doc_id`, a
 doctor writing for their own patients. An announcement still has exactly one
 author (`announcement_one_author`: a Clinic Admin, a doctor or a Super

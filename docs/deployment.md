@@ -427,6 +427,10 @@ To roll back 31, go the other way, newest first. Each later migration is
 rolled back with its own down-script, applied as a new migration, and where
 deployed code depends on it, that code goes back first:
 
+1. **48**, where it is applied: the website from before migration 48, then
+   `supabase/rollbacks/20260902100048_medication_dose_identity.down.sql`. It
+   refuses while any medication dose conflict exists, and otherwise keeps
+   every dose. 33's and 37's down-scripts refuse while 48 is installed.
 1. **46**, where it is applied: the website from before migration 46, then
    `supabase/rollbacks/20260902100046_super_admin_platform_overview.down.sql`.
    It drops one read-only function; no row is lost. 33's down-script refuses
@@ -1324,6 +1328,102 @@ factor or session, signed out, expired or banned; no name, email, licence
 or id in the answer; nothing written; the rollback); the overview added
 to `tests/db/super-admin.test.ts`'s every-operation checks; and
 `tests/db/super-admin-rollback.test.ts` rolling 46 back first.
+
+### Medication dose identity and clock-change conflicts (migration 48)
+
+> **NOT APPLIED. Clinically gated.** Every clinical decision this migration
+> relies on is **PENDING** in `docs/medication-clock-change-decisions.md`.
+> Do not apply it to production, merge its website or run its conflict
+> workflow there until (1) the clinical adviser's approval is recorded there
+> for every decision the deployed behaviour relies on, (2) a complete
+> implementation review, (3) a read-only production preflight with the
+> migration's checksum, and (4) this rollback and verification plan - each
+> with Kean's separate approval.
+
+**Why.** A dose was recognised only by its exact moment
+(`medication_log_slot_key`). After a clinic's time zone changes to a
+different UTC offset, the nightly `extend_all_medication_log_slots` added a
+second dose beside each existing one for up to 30 days (the Clinic Admin's
+own time zone setting, live since migration 31, can trigger it). On a
+spring-forward day a dose time that does not exist could land on another
+dose's moment and be silently dropped; on a fall-back day PostgreSQL chose
+the second occurrence of a repeated time without anyone deciding.
+
+**What it changes.**
+
+- `medication_log` gets `medication_log_dose_date` and
+  `medication_log_dose_time`: the clinic-local date and wall-clock time a
+  dose was created for, unique per schedule (`medication_log_occurrence_key`)
+  and never changed (`medication_log_guard_occurrence`). Existing rows are
+  backfilled from their moment in their clinic's zone. No moment, status,
+  `taken_at` or reminder stamp changes.
+- `medication_dose_conflict`: occurrences held for the treating doctor -
+  `nonexistent_local_time`, `ambiguous_local_time` (both by the provisional
+  `app_private.medication_clock_policy`) and `same_moment_collision`. RLS:
+  the patient and their treating doctor read them, as with doses; nobody
+  writes them directly. Audited as clinical entries of the patient's clinic,
+  without the doctor's reason text (`audit_clinic_for` gains a case).
+- `generate_medication_log_slots` creates a dose only for an occurrence that
+  is neither a dose nor a conflict yet; one per-schedule transaction lock
+  (`app_private.lock_medication_schedule`) serialises it with
+  `doctor_resolve_medication_conflict` and the end-of-course trigger.
+- `doctor_resolve_medication_conflict(conflict, resolution, moment, reason)`:
+  the treating, active doctor only; a future moment on the same clinic-local
+  date at no other dose's moment, or no separate dose; reason required.
+- `dispatch_medication_conflict_alerts()` on a new pg_cron job,
+  `recoverease-medication-conflict-alerts` (`*/15 * * * *`).
+- A schedule's times, frequency, start date and prescription can no longer
+  be edited, and a time cannot be listed twice
+  (`medication_schedule_guard_shape`). Ending a schedule closes its
+  unresolved conflicts after the end date as `course_ended`.
+- The follow-up reminder, the pre-dose reminder and the overdue job compare
+  a dose's own date with the course's end date.
+
+**Expected data change when applied.** Two columns filled on every existing
+dose row (224 rows at the 2026-11-08 audit) and nothing else. In production
+no conflict can arise until a clinic in a daylight-saving zone exists or a
+clinic changes time zone (Asia/Manila has no daylight saving).
+
+**Read-only preflight (before any apply).**
+
+- Every dose's local time in its clinic's zone is one of its schedule's times
+  (expect 0 off-schedule rows), no duplicate (schedule, local date, local
+  time), one zone in use, and no recorded time zone change - the backfill is
+  exact only then.
+- Every dose row joins to a clinic (raw count equals joined count).
+- No schedule lists a time twice.
+- Record the MD5 of (id, schedule, moment, status, `taken_at`, both reminder
+  stamps) across `medication_log`, to compare after.
+- The migration file's MD5: `51f528ba85f15bb44b392fb4de3b5ae9` at the time of writing - recompute from
+  the file being applied.
+
+**Locks.** Adding the columns takes `medication_log`'s lock briefly, and the
+backfill updates every row once; the pre-dose job writes `medication_log`
+every minute, so the migration waits at most 3 seconds (`lock_timeout`) and
+fails rather than queue. Apply inside a quiet window ("Migration timing and
+run history"), not across 01:00 UTC.
+
+**Read-only verification (after an approved apply).** The history entry and
+checksum; both columns `NOT NULL` and the occurrence index present; the
+dose-column MD5 unchanged; 0 conflicts; `prosecdef` and an empty
+`search_path` on every new function; `anon` cannot execute
+`doctor_resolve_medication_conflict`; the alert job scheduled; after the next
+01:00 UTC run, only new days added and still 0 duplicate occurrences.
+
+**Rollback.** "To roll back 31", step 48: the website first, then
+`supabase/rollbacks/20260902100048_medication_dose_identity.down.sql`. It
+refuses while any conflict exists (a clinical record is never deleted), and
+otherwise restores the six replaced functions word for word, drops the new
+objects and the two columns, and keeps every dose. 33's and 37's
+down-scripts refuse while 48 is installed. After a rollback the duplicate-dose
+risk is back.
+
+Tests: `tests/db/medication-dose-identity.test.ts` (backfill, identity,
+time zone changes Manila/UTC/Los Angeles and several in a row, New York and
+Lord Howe clock changes, resolution, access, reminders, alerts, end dates,
+schedule shape, the per-schedule lock, rollback and reapply);
+`tests/unit/dose-conflicts.test.tsx`; `e2e/medication-dose-conflicts.spec.ts`.
+Also run on PostgreSQL 17.5 (PGlite 0.3) - see `docs/testing.md`.
 
 ## Bundle budget
 
