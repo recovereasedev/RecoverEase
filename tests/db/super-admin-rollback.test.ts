@@ -22,6 +22,7 @@ import { assuredSuperAdmin, createSignIn, type Claims } from './helpers/super-ad
  * the comparison includes the enum, so it shows that is all that remains.
  */
 
+const ROLLBACK_48 = 'supabase/rollbacks/20260902100048_medication_dose_identity.down.sql'
 const ROLLBACK_46 = 'supabase/rollbacks/20260902100046_super_admin_platform_overview.down.sql'
 const ROLLBACK_45 = 'supabase/rollbacks/20260902100045_recovery_roadmap.down.sql'
 const ROLLBACK_44 = 'supabase/rollbacks/20260902100044_notification_created_at_server_time.down.sql'
@@ -54,7 +55,7 @@ const rows = async (database: TestDatabase) => ({
   ),
 })
 
-describe('rolling back migrations 46, 45, 43, 44, 41, 42, 38, 37, 36, 35, 34 and 33 with their down-scripts', () => {
+describe('rolling back migrations 48, 46, 45, 43, 44, 41, 42, 38, 37, 36, 35, 34 and 33 with their down-scripts', () => {
   let used: TestDatabase
   let through32: TestDatabase
   let fx: Fixture
@@ -98,6 +99,7 @@ describe('rolling back migrations 46, 45, 43, 44, 41, 42, 38, 37, 36, 35, 34 and
   it('returns the schema to exactly what 32 left, and keeps every row', async () => {
     const before = await rows(used)
 
+    await used.db.exec(await script(ROLLBACK_48))
     await used.db.exec(await script(ROLLBACK_46))
     await used.db.exec(await script(ROLLBACK_45))
     await used.db.exec(await script(ROLLBACK_43))
@@ -140,7 +142,7 @@ describe('the down-scripts refuse, changing nothing, when they cannot be undone 
     expect(await catalog(database)).toEqual(before)
   }
 
-  it('33’s, while 46 is still applied, then while 38 is, and then while 34 is', async () => {
+  it('33’s, while 46 is still applied, then while 38 is, then while 48 is, and then while 34 is', async () => {
     // 46's overview starts with the Super Admin check 33's down-script
     // removes; newest first, 46 goes before it.
     await refusedUnchanged(ROLLBACK_33, /Roll back migration 46 first/)
@@ -151,6 +153,11 @@ describe('the down-scripts refuse, changing nothing, when they cannot be undone 
     await refusedUnchanged(ROLLBACK_33, /Roll back migration 38 first/)
     // Only to let the next refusal show: the test's own database.
     await database.db.exec(await script(ROLLBACK_38))
+    // 48's dose conflicts are audited through the function 33's down-script
+    // rewrites; newest first, 48 goes before it.
+    await refusedUnchanged(ROLLBACK_33, /Roll back migration 48 first/)
+    // Only to let the next refusal show: the test's own database.
+    await database.db.exec(await script(ROLLBACK_48))
     await refusedUnchanged(ROLLBACK_33, /Roll back migration 34 first/)
   })
 
