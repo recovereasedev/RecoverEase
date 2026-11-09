@@ -173,6 +173,9 @@ export function queryKeysFor(userId: string) {
       assurance: () => [...queryKeys.platform.all, 'assurance'] as const,
       overview: () => [...queryKeys.platform.all, 'overview'] as const,
       clinics: () => [...queryKeys.platform.all, 'clinics'] as const,
+      /** One clinic's Clinic Admins, on its details page. */
+      clinicAdmins: (clinicId: string) =>
+        [...queryKeys.platform.all, 'clinics', clinicId, 'admins'] as const,
       announcements: () =>
         [...queryKeys.platform.all, 'announcements'] as const,
       audit: () => [...queryKeys.platform.all, 'audit'] as const,

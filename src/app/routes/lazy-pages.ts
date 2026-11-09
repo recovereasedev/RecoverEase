@@ -187,6 +187,11 @@ export const PlatformClinicsPage = lazy(() =>
     default: m.PlatformClinicsPage,
   })),
 )
+export const PlatformClinicDetailsPage = lazy(() =>
+  import('@/features/platform/pages/platform-clinic-details-page').then((m) => ({
+    default: m.PlatformClinicDetailsPage,
+  })),
+)
 export const PlatformAnnouncementsPage = lazy(() =>
   import('@/features/platform/pages/platform-announcements-page').then((m) => ({
     default: m.PlatformAnnouncementsPage,

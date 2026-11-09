@@ -183,6 +183,21 @@ Migration 46 adds no table: `super_admin_platform_overview()` returns one
 per clinic. A platform announcement is one with a `super_admin_id`,
 published when `announcement_published_at` is set.
 
+Migration 47 adds no table either. `super_admin_list_clinic_admins(clinic)`
+returns, for one clinic, each Clinic Admin's `admin_first_name`,
+`admin_last_name`, `admin_created_at`, `has_signed_in` and
+`last_signed_in_at` (from `auth.users.last_sign_in_at`) - only profiles of
+that clinic whose account role is `admin`, as `super_admin_list_clinics`
+counts them. `super_admin_rename_clinic(clinic, name)` returns the same
+row as the other clinic functions and updates `clinic_name` only - never
+`clinic_id`, `clinic_status` or `clinic_timezone`, never the legacy
+`app.timezone` row in `system_setting`, and never `medication_log`,
+`medication_schedule`, `prescription` or `appointment`. It takes no time
+zone: a clinic's zone stays read-only to the Super Admin in this change.
+The duplicate doses that kept it read-only are prevented by migration 48
+(below); Super Admin zone editing is a separate change. The Clinic Admin's
+own `admin_set_clinic_timezone` (migration 31) is unchanged.
+
 Migration 48 (not applied; its clinical decisions are PENDING in
 `docs/medication-clock-change-decisions.md`) gives each dose an identity:
 `medication_log_dose_date` and `medication_log_dose_time`, the clinic-local

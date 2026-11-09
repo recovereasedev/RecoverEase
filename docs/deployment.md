@@ -18,7 +18,9 @@
 >   merge of PR #68), serves <https://recoverease-web.vercel.app>.
 > - **Database** (2026-11-05 at 20:34 UTC). The migration history has 44
 >   entries. Every file in `supabase/migrations/` is in it except 34
->   (`lift_single_clinic_gate`), held for its own decision. 46
+>   (`lift_single_clinic_gate`), held for its own decision, and 47
+>   (`super_admin_clinic_details`), not yet applied - see "Clinic details
+>   (migration 47)". 46
 >   (`super_admin_platform_overview`) was applied and verified on
 >   2026-11-05, ahead of the website that calls it (PR #74) - see
 >   "Platform overview (migration 46)". 45
@@ -427,6 +429,10 @@ To roll back 31, go the other way, newest first. Each later migration is
 rolled back with its own down-script, applied as a new migration, and where
 deployed code depends on it, that code goes back first:
 
+1. **47**, where it is applied: the website from before migration 47, then
+   `supabase/rollbacks/20260902100047_super_admin_clinic_details.down.sql`.
+   It drops two functions; no row is lost, and a renamed clinic keeps its
+   name. 33's down-script refuses while 47 is installed.
 1. **48**, where it is applied: the website from before migration 48, then
    `supabase/rollbacks/20260902100048_medication_dose_identity.down.sql`. It
    refuses while any medication dose conflict exists, and otherwise keeps
@@ -1287,9 +1293,9 @@ warnings 25 to 26 - the one new one this function - and nothing else new;
 clinics 1, Clinic Admins 1, doctors 7, patients 7, announcements 1,
 accounts 16 and audit rows 101, all as before; `lock_timeout` back to `0`;
 and the pre-dose reminder job's runs at 20:33 and 20:34 succeeded. The
-website that calls it, PR #74, is not merged: until it is, nothing calls
-the function. Its own check - the Super Admin opening `/platform` and
-seeing the totals - comes after that merge.
+website that calls it, PR #74, was merged on 2026-11-05 (`main` `4704eb4`)
+and deployed to production by Vercel at 20:37 UTC. Its own check - the
+Super Admin opening `/platform` and seeing the totals - is Kean's to do.
 
 - **What it changes.** One new function, `stable` and `SECURITY DEFINER`
   with an empty `search_path`, refused to `anon` and granted to
@@ -1328,6 +1334,95 @@ factor or session, signed out, expired or banned; no name, email, licence
 or id in the answer; nothing written; the rollback); the overview added
 to `tests/db/super-admin.test.ts`'s every-operation checks; and
 `tests/db/super-admin-rollback.test.ts` rolling 46 back first.
+
+### Clinic details (migration 47)
+
+The Super Admin console's clinic details page, `/platform/clinics/:clinicId`
+(Phase 2), and two functions it calls (`docs/security.md`, "The Super
+Admin"):
+
+- `super_admin_list_clinic_admins(clinic)`: one clinic's Clinic Admins -
+  first and last name, when the account was made, and whether (and when)
+  it has ever signed in. No email, account id, profile id or Auth secret,
+  and nothing clinical. "Has signed in" is the only setup fact the
+  database records: a Clinic Admin chooses their password through Supabase
+  Auth's recovery email, which RecoverEase does not record, and opening
+  that link already counts as a sign-in. There is no Clinic Admin
+  active/inactive flag (only doctors have one), so none is shown.
+- `super_admin_rename_clinic(clinic, name)`: renames a clinic, and only
+  that. Its id, status and time zone never change. The name is trimmed,
+  not blank, at most 120 characters and not another clinic's in any case.
+  Audited by the clinic's own trigger as a `platform` entry with the
+  before and after name. The same name again writes nothing.
+
+**The time zone is read-only in the Super Admin console.** Changing a
+clinic's time zone is deferred: the rename function takes no time zone and
+never writes `clinic_timezone`, the legacy `app.timezone` setting, or any
+dose, schedule, prescription or appointment, and the details page and edit
+dialog show the zone as text with no control for it.
+
+**Why the zone stayed read-only here.** When this change was written, a
+zone change to a different UTC offset made the nightly
+`extend_all_medication_log_slots` job add the next 30 days' doses beside
+those already scheduled. Migration 48 (applied 2026-11-09) gives each dose
+an identity and stops those duplicates; see "Medication dose identity and
+clock-change conflicts (migration 48)" below. Super Admin time zone editing
+is still outside this change: allowing it is a separate decision and
+change of its own. The Clinic Admin's own `admin_set_clinic_timezone`
+(migration 31) is unchanged.
+
+It goes in **before** the website that calls it is merged: merged first,
+the details page shows its error state (the clinic list and every other
+console page keep working).
+
+**Not applied.** Production applies need Kean's approval and a quiet
+window ("Migration timing and run history").
+
+- **What it changes.** Two new functions, `SECURITY DEFINER` with an empty
+  `search_path`, refused to `anon` and `public` and granted to
+  `authenticated`; the first statement of each is
+  `app_private.require_super_admin()`. No table, policy, trigger or other
+  function changes. It needs migration 33 and refuses to run without it;
+  it is independent of 34 - it creates no clinic and leaves the
+  single-clinic gate as it is.
+- **Locks.** Creating a function locks no table; it starts with `set
+  lock_timeout = '3s'` and ends with `reset lock_timeout`, as every
+  migration from 41 does. Any of the windows above will do.
+- **Expected advisor change.** Exactly two new
+  `authenticated_security_definer_function_executable` warnings, one per
+  function - meant to be called by a signed-in user and deciding inside
+  who may.
+- **Verify, read-only.** One history entry named
+  `super_admin_clinic_details`, whose statements match the file's MD5
+  (`c855b08a624b345bc2bac8f7f7303548` at the time of writing - recompute
+  from the file being applied); both functions present with `prosecdef`
+  true and `proconfig` `search_path=""`; `anon` may not execute either,
+  `authenticated` may; a direct call with no Super Admin refused with
+  `42501`; public Super Admin functions 15 to 17; every table unchanged by
+  count. The Super Admin then opens a clinic's details page themselves
+  (Kean signs in; never on a Vercel preview, which uses the production
+  database). Renaming the production clinic is a real change to a real
+  clinic: do it only if Kean wants to, and never just to test.
+- **Rollback.** "To roll back 31", step 47: the website first, then the
+  down-script, which drops only the two functions. A renamed clinic keeps
+  its new name, and the audit entries stay.
+
+Tests: `tests/db/super-admin-clinic-details.test.ts` (a clinic's Clinic
+Admins only, never another clinic's, with no email or id; unknown clinic
+reported; rename trimmed, with id, status, time zone and creation time
+kept, audited as `platform` and readable in the platform trail; an
+inactive clinic renamed and left inactive; empty, blank, 121-character and
+taken names refused with nothing changed or audited; an SQL-looking name
+stored as text; a 120-character name and a change of case accepted;
+nothing written when nothing changes; no time zone parameter and no
+three-argument edit function; the clinic's zone and the legacy
+`app.timezone` setting never written, even when out of step; every dose,
+schedule, prescription and appointment byte-for-byte unchanged by a
+rename, and the nightly extension adding nothing afterwards; every caller
+but an assured Super Admin refused before the clinic is looked up; the
+rollback); both functions added to `tests/db/super-admin.test.ts`'s
+every-operation checks; `tests/db/super-admin-rollback.test.ts` rolling 47
+back first.
 
 ### Medication dose identity and clock-change conflicts (migration 48)
 
