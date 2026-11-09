@@ -87,6 +87,7 @@ vi.mock('@/features/treatment-plans/hooks', () => ({
   useTreatmentPlans: () => fixture.ok([]),
 }))
 vi.mock('@/features/medications/hooks', () => ({
+  useMedicationConflicts: () => fixture.ok([]),
   useMedicationSchedules: () => fixture.ok([]),
   useDoses: () => fixture.ok([]),
 }))

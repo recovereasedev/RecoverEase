@@ -302,7 +302,7 @@ describe('rolling back migration 46', () => {
 
   beforeAll(async () => {
     ;[database, without46] = await Promise.all([
-      createTestDatabase(),
+      createTestDatabase({ stopAfter: '20260902100046' }),
       createTestDatabase({ stopAfter: '20260902100045' }),
     ])
   })

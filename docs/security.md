@@ -452,6 +452,8 @@ the columns that decide their own privileges, so triggers close that gap:
 | `report_guard_snapshot` | Any signed-in user or visitor writing or changing the figures a system-wide report kept - a Clinic Admin included. Only `admin_record_system_report()`, which computes them with `admin_dashboard_stats()`, and the service role write them (migration 43). |
 | `appointment_guard_patient_transitions` | A patient marking their own appointment `completed` (a clinical assertion), or moving its time instead of using the reschedule flow. |
 | `medication_log_guard_slot` | Anyone moving when a dose was due, which would make the adherence history meaningless. |
+| `medication_log_guard_occurrence` | Anyone - the service role included - changing which date and wall-clock time a dose was created for, its identity (migration 48, not applied). |
+| `medication_schedule_guard_shape` | Anyone changing a schedule's times, frequency, start date or prescription, which would leave its existing doses behind, or listing a time twice (migration 48, not applied). |
 | `user_account_guard_writes` | Any browser session writing an account — a role, a sign-in address, a login — even if a later policy allowed it; and anyone re-pointing an account at a different login. |
 | `profile_matches_account_role` | A doctor or patient profile being created for an account of a different role — a doctor profile on a patient's account, a patient profile on an administrator's. Applies to the service role too. |
 | `patient_guard_reassignment` | A patient being reassigned to a deactivated doctor, or to a doctor row whose account is not a doctor's, where no active clinician could see them. |
@@ -838,3 +840,19 @@ Recorded honestly rather than left for someone to discover:
    so the security advisors list two more
    `authenticated_security_definer_function_executable` warnings; each
    checks the caller is the plan's own patient before writing.
+
+## Medication dose conflicts (migration 48, not applied)
+
+- **Who reads them:** the patient and their treating doctor, through the same
+  `can_access_patient` rule as doses. The Clinic Admin does not, as for doses.
+- **Who writes them:** nobody directly. The generator and the end-of-course
+  trigger create and close them; only
+  `doctor_resolve_medication_conflict` decides one - SECURITY DEFINER, empty
+  `search_path`, the caller must be the patient's active treating doctor
+  (another doctor is told it does not exist), and the decision is final.
+- **Audit:** every conflict found, decided or closed is a clinical audit
+  entry of the patient's clinic. The doctor's reason is never written to the
+  audit log, only that it changed.
+- **No clinical instruction:** nothing suggests a time, a dose or a change to
+  a prescription. The clinical rules are PENDING the adviser
+  (`docs/medication-clock-change-decisions.md`).

@@ -18,6 +18,8 @@ const endSchedule = vi.hoisted(() => ({
 const schedules = vi.hoisted(() => ({ data: [] as unknown[] }))
 
 vi.mock('@/features/medications/hooks', () => ({
+  // Dose conflicts (migration 48): none here.
+  useMedicationConflicts: () => ({ data: [], isPending: false, error: null, refetch: vi.fn() }),
   useEndMedicationSchedule: () => endSchedule,
   useMedicationSchedules: () => ({
     data: schedules.data,

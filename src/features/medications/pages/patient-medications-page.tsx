@@ -14,12 +14,20 @@ import { PageSection } from '@/components/ui/section-heading'
 import { useCurrentUser } from '@/features/auth/auth-context'
 import { summariseAdherence } from '@/features/medications/api'
 import { AdherenceSummary } from '@/features/medications/components/adherence-summary'
+import {
+  ConflictSummaryLines,
+  ConflictSummaryUnavailable,
+  ConflictsLoadError,
+  PatientConflictNotices,
+} from '@/features/medications/components/dose-conflicts'
 import { PhoneReminders } from '@/features/medications/components/phone-reminders'
 import { PrescriptionPrintHeader } from '@/features/medications/components/prescription-print-header'
+import { summariseConflicts } from '@/features/medications/conflicts'
 import { patientDoseState } from '@/features/medications/dose-status'
 import { prescribedBy } from '@/features/medications/prescriber'
 import {
   useDoses,
+  useMedicationConflicts,
   useMedicationSchedules,
   useSetDoseStatus,
 } from '@/features/medications/hooks'
@@ -83,6 +91,9 @@ export function PatientMedicationsPage() {
     addDays(endOfToday(), 3).toISOString(),
   )
   const schedulesQuery = useMedicationSchedules(patientId)
+  // Dose times held for the doctor's review (migration 48). Never doses: they
+  // have no reminder and no "Mark taken", and are not in the adherence figure.
+  const conflictsQuery = useMedicationConflicts(patientId)
   const setDoseStatus = useSetDoseStatus(patientId)
   // Re-evaluated every minute, so a dose turns Overdue while the page is open.
   const now = useNow()
@@ -135,6 +146,16 @@ export function PatientMedicationsPage() {
   const adherence = weekDoses.data
     ? summariseAdherence(weekDoses.data)
     : null
+  const conflicts = conflictsQuery.data ?? []
+  const weekStart = subDays(startOfToday(), 6).getTime()
+  const weekEnd = endOfToday().getTime()
+  const weekConflicts = summariseConflicts(
+    conflicts.filter((conflict) => {
+      const at = new Date(conflict.conflict_at).getTime()
+      return at >= weekStart && at <= weekEnd
+    }),
+    now,
+  )
 
   const doses = todayDoses.data ?? []
   const takenCount = doses.filter(
@@ -369,6 +390,24 @@ export function PatientMedicationsPage() {
             </Card>
           </PageSection>
 
+          {/* --- Dose times held for the doctor's review (migration 48) --- */}
+          {conflictsQuery.isError ? (
+            <div className="print:hidden">
+              <ConflictsLoadError
+                error={conflictsQuery.error}
+                onRetry={() => void conflictsQuery.refetch()}
+              />
+            </div>
+          ) : conflicts.length > 0 ? (
+            <PageSection
+              className="print:hidden"
+              title="Dose times your doctor is reviewing"
+              description="A clock change affected these dose times. Your doctor decides each one."
+            >
+              <PatientConflictNotices conflicts={conflicts} now={now} />
+            </PageSection>
+          ) : null}
+
           {/* --- Coming up ------------------------------------------------ */}
           <PageSection
             className="print:hidden"
@@ -499,6 +538,11 @@ export function PatientMedicationsPage() {
                   <AdherenceSummary adherence={adherence} />
                 ) : (
                   <p className="text-sm text-muted">Loading…</p>
+                )}
+                {conflictsQuery.isError ? (
+                  <ConflictSummaryUnavailable />
+                ) : (
+                  <ConflictSummaryLines summary={weekConflicts} />
                 )}
               </CardBody>
             </Card>

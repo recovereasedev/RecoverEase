@@ -10,7 +10,15 @@ import {
   type Adherence,
   type ScheduleWithPrescription,
 } from '@/features/medications/api'
-import { useDoses, useMedicationSchedules } from '@/features/medications/hooks'
+import {
+  summariseConflicts,
+  type ConflictSummary,
+} from '@/features/medications/conflicts'
+import {
+  useDoses,
+  useMedicationConflicts,
+  useMedicationSchedules,
+} from '@/features/medications/hooks'
 import type { Patient } from '@/features/patients/api'
 import { usePatient } from '@/features/patients/hooks'
 import type { RecoveryLog } from '@/features/recovery-logs/api'
@@ -20,6 +28,7 @@ import {
   type PlanWithGoals,
 } from '@/features/treatment-plans/api'
 import { useTreatmentPlans } from '@/features/treatment-plans/hooks'
+import { useNow } from '@/hooks/use-now'
 import { toDateKey } from '@/lib/format'
 
 /**
@@ -37,6 +46,11 @@ export type PatientReportData = {
   appointments: Appointment[]
   /** Doses over the last seven days, the window the patient record shows. */
   weekAdherence: Adherence
+  /**
+   * Clock-change dose reviews in the same window (migration 48), shown
+   * beside the adherence figure and never in it, as on the patient record.
+   */
+  weekConflicts?: ConflictSummary
   /**
    * Clinical notes. Readable by clinicians only — the table has no patient
    * SELECT policy — and printed only on the clinical copy.
@@ -61,13 +75,15 @@ export function usePatientReportData(patientId: string): {
     subDays(startOfToday(), 6).toISOString(),
     endOfToday().toISOString(),
   )
+  const conflicts = useMedicationConflicts(patientId)
+  const now = useNow()
   const notes = useQuery({
     queryKey: queryKeys.doctorNotes.forPatient(patientId),
     queryFn: () => fetchDoctorNotes(patientId),
     enabled: Boolean(patientId),
   })
 
-  const queries = [patient, logs, plans, schedules, appointments, weekDoses, notes]
+  const queries = [patient, logs, plans, schedules, appointments, weekDoses, conflicts, notes]
   const failed = queries.find((query) => query.error)
 
   const data: PatientReportData | undefined =
@@ -77,6 +93,7 @@ export function usePatientReportData(patientId: string): {
     schedules.data &&
     appointments.data &&
     weekDoses.data &&
+    conflicts.data &&
     notes.data
       ? {
           patient: patient.data,
@@ -85,6 +102,13 @@ export function usePatientReportData(patientId: string): {
           schedules: schedules.data,
           appointments: appointments.data,
           weekAdherence: summariseAdherence(weekDoses.data),
+          weekConflicts: summariseConflicts(
+            conflicts.data.filter((conflict) => {
+              const at = new Date(conflict.conflict_at).getTime()
+              return at >= subDays(startOfToday(), 6).getTime() && at <= endOfToday().getTime()
+            }),
+            now,
+          ),
           notes: notes.data,
         }
       : undefined

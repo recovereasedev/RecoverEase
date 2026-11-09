@@ -89,6 +89,10 @@ decides what is readable: a user who bypasses a redirect still gets no rows.
 - **Clinics** (migrations 28 to 31) scope Clinic Admin access; the Super Admin
   (32, 33, 38 and 46) works through `SECURITY DEFINER` functions that re-check the
   caller in the database.
+- **Medication doses** (migration 48, not applied, clinically gated) have an
+  identity - schedule, clinic-local date, wall-clock time - and occurrences
+  the scheduler will not create are held as `medication_dose_conflict` rows
+  for the treating doctor (`docs/medication-clock-change-decisions.md`).
 - **Audit log** is append-only for every role and records which columns
   changed on patient tables, never their values.
 

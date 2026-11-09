@@ -22,6 +22,8 @@ function dose(
     medication_log_status: status,
     medication_log_follow_up_sent_at: null,
     medication_log_pre_dose_sent_at: null,
+    medication_log_dose_date: '2026-09-02',
+    medication_log_dose_time: '16:00:00',
   }
 }
 
