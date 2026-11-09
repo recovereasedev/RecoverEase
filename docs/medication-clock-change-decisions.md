@@ -26,7 +26,7 @@ marked missed, never counted as taken, and never deleted.
    new reviewed migration (for A and B: `app_private.medication_clock_policy`)
    or a website change, with its own tests, before production.
 4. Change the status line at the top only when every decision is approved,
-   including the open questions G1, H1 and J1 below.
+   including the open questions F1, G1, H1 and J1 below.
 
 ## Decision matrix
 
@@ -46,14 +46,15 @@ marked missed, never counted as taken, and never deleted.
 
 ## Open questions from the implementation review (2026-11-09)
 
-The review of migration 48 found three behaviours the briefing did not put
+The reviews of migration 48 found four behaviours the briefing did not put
 to the adviser. Each belongs to a decision above and is **PENDING** with it.
 Migration 48 does what the "Behaviour now" column says until an answer is
 recorded here; a different answer is a new reviewed change.
 
 | | Belongs to | Question for the adviser | Behaviour now (provisional) | Answer | Approval date | Evidence |
 |---|---|---|---|---|---|---|
-| **G1** | G | After a clinic changes time zone, doses of the old and new zone can fall close together without sharing a moment. Moving from Los Angeles to Manila, a medicine at 08:00, 14:00 and 20:00 has doses **2 hours apart**, and 20 January's 20:00 dose comes after 21 January's 08:00. Should a new dose within some minimum interval of another dose of the same medicine also be held for the doctor, and what interval? | Only a dose at **exactly** another dose's moment is held. Doses close together are created and reminded as normal. | **PENDING** | — | — |
+| **F1** | F, H | The doctor sets a time for a held dose, and the course is then ended before that time. Ending a course removes the doses still to come after its end, so the doctor's dose is removed too; the decision stays recorded. Extending the course again does not bring that dose back. What should the patient and doctor read? | Shown as "Rescheduled, then the course ended before it". The patient reads: "Your doctor reviewed your … dose time on … and set a time for it, but the course ended before that time, so it is not among your doses." | **PENDING** | — | — |
+| **G1** | G, C | After a clinic changes time zone, doses of the old and new zone can fall close together without sharing a moment. Moving from Los Angeles to Manila, a medicine at 08:00, 14:00 and 20:00 has doses **2 hours apart**, and 20 January's 20:00 dose comes after 21 January's 08:00. Should a new dose within some minimum interval of another dose of the same medicine also be held for the doctor, and what interval? The same question applies to the time a doctor chooses under C: should it also keep that interval from the medicine's other doses? | Only a dose at **exactly** another dose's moment is held, and a doctor's chosen time is refused only at exactly another dose's moment. Doses close together are created and reminded as normal. | **PENDING** | — | — |
 | **H1** | H | When a course is ended early and then extended again, the doses removed at the end come back, but a conflict closed as `course_ended` stays closed: that dose time gets neither a dose nor a review, and the patient reads "Course ended before review". Should extending the course reopen those conflicts for the doctor? | Not reopened. Visible to patient and doctor as "Course ended before review". | **PENDING** | — | — |
 | **J1** | C, J | The doctor's written reason is stored with the conflict. The patient's page does not show it, but the patient's own account can read it through the database's interface. Is the reason meant for the patient to read, or for clinicians only? | Readable by the patient and the treating doctor; shown on screen to the doctor only; never written to the audit log. | **PENDING** | — | — |
 

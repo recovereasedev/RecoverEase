@@ -130,5 +130,9 @@ export function useResolveConflict(patientId: string) {
       void queryClient.invalidateQueries({ queryKey: queryKeys.medications.all })
       void queryClient.invalidateQueries({ queryKey: queryKeys.medications.conflictsFor(patientId) })
     },
+    onError: () => {
+      // A refusal can mean someone already decided: show the list as it is now.
+      void queryClient.invalidateQueries({ queryKey: queryKeys.medications.conflictsFor(patientId) })
+    },
   })
 }

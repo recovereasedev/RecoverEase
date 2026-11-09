@@ -71,9 +71,11 @@ function conflict(overrides: Partial<Conflict> = {}): Conflict {
 const ALL_STATES: Conflict[] = [
   conflict({ medication_dose_conflict_id: 'a' }),
   conflict({ medication_dose_conflict_id: 'b', conflict_at: '2030-02-01T00:00:00Z' }),
-  conflict({ medication_dose_conflict_id: 'c', conflict_resolution: 'rescheduled' }),
+  conflict({ medication_dose_conflict_id: 'c', conflict_resolution: 'rescheduled', resolved_log_id: 'dose-1' }),
   conflict({ medication_dose_conflict_id: 'd', conflict_resolution: 'not_given_separately' }),
   conflict({ medication_dose_conflict_id: 'e', conflict_resolution: 'course_ended' }),
+  // Rescheduled, then the course was ended before that dose, which removed it.
+  conflict({ medication_dose_conflict_id: 'f', conflict_resolution: 'rescheduled', resolved_log_id: null }),
 ]
 
 describe('a conflict’s state', () => {
@@ -84,15 +86,25 @@ describe('a conflict’s state', () => {
       'rescheduled',
       'not_given_separately',
       'course_ended',
+      'rescheduled_course_ended',
     ])
     expect(summariseConflicts(ALL_STATES, NOW)).toEqual({
       awaiting_review: 1,
       not_scheduled_unresolved: 1,
       rescheduled: 1,
+      rescheduled_course_ended: 1,
       not_given_separately: 1,
       course_ended: 1,
-      total: 5,
+      total: 6,
     })
+  })
+
+  it('never tells the patient a removed dose is listed with their doses', () => {
+    const removed = patientConflictText(ALL_STATES[5]!, NOW)
+    expect(removed).toContain('the course ended before that time')
+    expect(removed).not.toContain('listed with your doses')
+    expect(patientConflictText(ALL_STATES[2]!, NOW)).toContain('It is listed with your doses.')
+    expect(CONFLICT_STATE_LABEL[conflictState(ALL_STATES[5]!, NOW)]).toBe('Rescheduled, then the course ended before it')
   })
 
   it('is described to the patient without any instruction to take or skip a dose', () => {
@@ -130,7 +142,7 @@ describe('what the patient sees', () => {
   it('is one neutral notice per conflict, with no action to take', () => {
     render(<PatientConflictNotices conflicts={ALL_STATES} now={NOW} />)
     const list = screen.getByRole('list', { name: 'Dose times reviewed because of a clock change' })
-    expect(within(list).getAllByRole('listitem')).toHaveLength(5)
+    expect(within(list).getAllByRole('listitem')).toHaveLength(ALL_STATES.length)
     expect(screen.queryByRole('button')).not.toBeInTheDocument()
     expect(list).toHaveTextContent(CONFLICT_STATE_LABEL.awaiting_review)
   })
@@ -141,6 +153,7 @@ describe('what the patient sees', () => {
     expect(lines).toHaveTextContent('Awaiting doctor review1')
     expect(lines).toHaveTextContent('Not scheduled: unresolved clock-change review1')
     expect(lines).toHaveTextContent('Doctor decided: not given separately1')
+    expect(lines).toHaveTextContent('Rescheduled, then the course ended before it1')
     expect(lines).toHaveTextContent('Not counted in the adherence figure above.')
   })
 

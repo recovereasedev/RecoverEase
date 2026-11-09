@@ -904,6 +904,38 @@ describe('a schedule’s shape, and its end', () => {
       ['2030-03-12', 'course_ended'],
     ])
   })
+
+  it('keeps a rescheduled decision when ending the course removes its dose, clearing only the link to it', async () => {
+    await setZone(database, 'America/New_York')
+    const id = await schedule(database, fx, ['02:30'], '2030-03-09')
+    await generateThrough(database, id, '2030-03-10')
+    const conflict = await one<string>(
+      database,
+      `select medication_dose_conflict_id::text from public.medication_dose_conflict
+        where medication_schedule_id = $1 and conflict_dose_date = '2030-03-10'`,
+      [id],
+    )
+    await database.asUser(
+      fx.doctorAUserId,
+      `select 1 from public.doctor_resolve_medication_conflict($1, 'rescheduled', '2030-03-10 08:15+00', 'Reason')`,
+      [conflict],
+    )
+    await database.asUser(fx.doctorAUserId, 'update public.medication_schedule set medication_schedule_end_date = $2 where medication_schedule_id = $1', [
+      id,
+      '2030-03-09',
+    ])
+
+    // The doctor's dose on 10 March is gone with the course; the decision is
+    // kept, and the website reads the cleared link as "the course ended
+    // before it" (src/features/medications/conflicts.ts).
+    expect((await doses(database, id)).map((d) => d.date)).toEqual(['2030-03-09'])
+    const [row] = await database.asService<{ resolution: string; linked: boolean }>(
+      `select conflict_resolution::text as resolution, resolved_log_id is not null as linked
+         from public.medication_dose_conflict where medication_dose_conflict_id = $1`,
+      [conflict],
+    )
+    expect(row).toEqual({ resolution: 'rescheduled', linked: false })
+  })
 })
 
 // ---------------------------------------------------------------------------

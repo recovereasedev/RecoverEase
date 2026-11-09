@@ -76,14 +76,20 @@ export type ConflictState =
   | 'awaiting_review'
   | 'not_scheduled_unresolved'
   | 'rescheduled'
+  | 'rescheduled_course_ended'
   | 'not_given_separately'
   | 'course_ended'
 
-/** Unresolved conflicts are awaiting review until their moment passes, then not scheduled. */
+/**
+ * Unresolved conflicts are awaiting review until their moment passes, then
+ * not scheduled. A rescheduled conflict whose dose is gone (resolved_log_id
+ * cleared) lost that dose when the course was ended before it: it is no
+ * longer among the patient's doses, so it has its own state.
+ */
 export function conflictState(conflict: MedicationConflict, now: number): ConflictState {
   switch (conflict.conflict_resolution) {
     case 'rescheduled':
-      return 'rescheduled'
+      return conflict.resolved_log_id === null ? 'rescheduled_course_ended' : 'rescheduled'
     case 'not_given_separately':
       return 'not_given_separately'
     case 'course_ended':
@@ -107,6 +113,7 @@ export function summariseConflicts(conflicts: MedicationConflict[], now: number)
     awaiting_review: 0,
     not_scheduled_unresolved: 0,
     rescheduled: 0,
+    rescheduled_course_ended: 0,
     not_given_separately: 0,
     course_ended: 0,
     total: conflicts.length,
@@ -121,6 +128,7 @@ export const CONFLICT_STATE_LABEL: Record<ConflictState, string> = {
   awaiting_review: 'Awaiting doctor review',
   not_scheduled_unresolved: 'Not scheduled: unresolved clock-change review',
   rescheduled: 'Rescheduled by the doctor',
+  rescheduled_course_ended: 'Rescheduled, then the course ended before it',
   not_given_separately: 'Doctor decided: not given separately',
   course_ended: 'Course ended before review',
 }
@@ -140,6 +148,8 @@ export function patientConflictText(conflict: MedicationConflict, now: number): 
       return `Your ${medicineOf(conflict)} dose time on ${when} was not scheduled: your doctor's review of the clock change was not completed.`
     case 'rescheduled':
       return `Your doctor reviewed your ${medicineOf(conflict)} dose time on ${when} and set a time for it. It is listed with your doses.`
+    case 'rescheduled_course_ended':
+      return `Your doctor reviewed your ${medicineOf(conflict)} dose time on ${when} and set a time for it, but the course ended before that time, so it is not among your doses.`
     case 'not_given_separately':
       return `Your doctor reviewed your ${medicineOf(conflict)} dose time on ${when} and decided it is not given separately.`
     case 'course_ended':
@@ -169,6 +179,7 @@ export function conflictSummarySentence(summary: ConflictSummary): string {
     'not_scheduled_unresolved',
     'not_given_separately',
     'course_ended',
+    'rescheduled_course_ended',
     'rescheduled',
   ]
   const parts = order

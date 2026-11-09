@@ -117,6 +117,8 @@ test.describe('a dose time held for review', () => {
       Object.assign(row, {
         conflict_resolution: args['resolution'],
         conflict_resolution_note: args['resolution_note'],
+        // The dose the chosen time became.
+        resolved_log_id: 'log-rescheduled',
         conflict_resolved_at: new Date().toISOString(),
         resolved_by_doc_id: IDS.doctorA,
       })
@@ -154,6 +156,38 @@ test.describe('a dose time held for review', () => {
     ])
     await expect(page.getByText(/Rescheduled by the doctor · Reason: Given later that morning/)).toBeVisible()
     await expect(page.getByRole('button', { name: /Review the 08:00 dose time/ })).toHaveCount(0)
+  })
+
+  test('when someone already decided, says so and refreshes the list', async ({ page, signInAs }) => {
+    const stub = await signInAs('doctor', {
+      clinic: CLINIC,
+      prescription: [PRESCRIPTION],
+      medication_schedule: [SCHEDULE],
+      medication_dose_conflict: [heldConflict()],
+    })
+    // Another decision lands first, so the database refuses this one.
+    stub.setRpcHandler('doctor_resolve_medication_conflict', () => {
+      Object.assign(stub.rowsIn('medication_dose_conflict')[0]!, {
+        conflict_resolution: 'not_given_separately',
+        conflict_resolution_note: 'Decided earlier',
+        conflict_resolved_at: new Date().toISOString(),
+        resolved_by_doc_id: IDS.doctorA,
+      })
+      return { status: 400, error: { code: '55000', message: 'This dose conflict has already been resolved' } }
+    })
+
+    await page.goto(`/doctor/patients/${IDS.alicePat}?tab=medication`)
+    await page.getByRole('button', { name: /Review the 08:00 dose time/ }).click()
+    const dialog = page.getByRole('dialog', { name: 'Review a dose time' })
+    await dialog.getByRole('radio', { name: /No separate dose/ }).check()
+    await dialog.getByLabel(/Reason for this decision/).fill('Reason')
+    await dialog.getByRole('button', { name: 'Record decision' }).click()
+
+    await expect(dialog).toContainText('This dose conflict has already been resolved')
+    // Behind the dialog (outside the accessibility tree while it is open), the
+    // list already shows the earlier decision and no Review button.
+    await expect(page.getByText(/Doctor decided: not given separately · Reason: Decided earlier/)).toBeAttached()
+    await expect(page.locator('button[aria-label^="Review the 08:00 dose time"]')).toHaveCount(0)
   })
 
   test('says so, and offers no review, when the clinic’s time zone cannot be read', async ({ page, signInAs }) => {

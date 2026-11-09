@@ -1390,6 +1390,11 @@ clinic changes time zone (Asia/Manila has no daylight saving).
   (expect 0 off-schedule rows), no duplicate (schedule, local date, local
   time), one zone in use, and no recorded time zone change - the backfill is
   exact only then.
+- Every clinic's zone has no clock change from 30 days before the apply to
+  30 days after it (Asia/Manila has none). The backfill keeps each existing
+  dose's moment, so a dose already scheduled at a time that happens twice
+  keeps the moment PostgreSQL chose for it, without a review; a zone with a
+  clock change in that window stops the apply until it is understood.
 - Every dose row joins to a clinic (raw count equals joined count).
 - No schedule lists a time twice.
 - Every dose's `taken_at` agrees with its status: expect 0 rows where

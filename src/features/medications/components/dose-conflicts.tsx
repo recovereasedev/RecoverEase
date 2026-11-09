@@ -36,6 +36,7 @@ const SUMMARY_ORDER: ConflictState[] = [
   'not_scheduled_unresolved',
   'not_given_separately',
   'course_ended',
+  'rescheduled_course_ended',
   'rescheduled',
 ]
 
