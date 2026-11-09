@@ -433,6 +433,10 @@ deployed code depends on it, that code goes back first:
    `supabase/rollbacks/20260902100047_super_admin_clinic_details.down.sql`.
    It drops two functions; no row is lost, and a renamed clinic keeps its
    name. 33's down-script refuses while 47 is installed.
+1. **48**, where it is applied: the website from before migration 48, then
+   `supabase/rollbacks/20260902100048_medication_dose_identity.down.sql`. It
+   refuses while any medication dose conflict exists, and otherwise keeps
+   every dose. 33's and 37's down-scripts refuse while 48 is installed.
 1. **46**, where it is applied: the website from before migration 46, then
    `supabase/rollbacks/20260902100046_super_admin_platform_overview.down.sql`.
    It drops one read-only function; no row is lost. 33's down-script refuses
@@ -1357,17 +1361,15 @@ never writes `clinic_timezone`, the legacy `app.timezone` setting, or any
 dose, schedule, prescription or appointment, and the details page and edit
 dialog show the zone as text with no control for it.
 
-**Known limitation (not fixed by this migration).** Where a clinic's zone
-changes to one with a different UTC offset, the nightly
-`extend_all_medication_log_slots` job adds the next 30 days' doses at the
-new local times beside the doses already scheduled at the old ones (a dose
-slot is skipped only at an identical moment), so a patient can see the same
-dose twice, with extra reminders and extra "missed" doses. The Clinic
-Admin's own time zone setting (`admin_set_clinic_timezone`, migration 31,
-the Settings page) still allows such a change and has this limitation; it is
-left exactly as it was. Fixing it needs its own investigation, a
-scheduler fix, tests and a migration (the next free number is 48). Only
-after that can Super Admin time zone editing come back.
+**Why the zone stayed read-only here.** When this change was written, a
+zone change to a different UTC offset made the nightly
+`extend_all_medication_log_slots` job add the next 30 days' doses beside
+those already scheduled. Migration 48 (applied 2026-11-09) gives each dose
+an identity and stops those duplicates; see "Medication dose identity and
+clock-change conflicts (migration 48)" below. Super Admin time zone editing
+is still outside this change: allowing it is a separate decision and
+change of its own. The Clinic Admin's own `admin_set_clinic_timezone`
+(migration 31) is unchanged.
 
 It goes in **before** the website that calls it is merged: merged first,
 the details page shows its error state (the clinic list and every other
@@ -1421,6 +1423,134 @@ but an assured Super Admin refused before the clinic is looked up; the
 rollback); both functions added to `tests/db/super-admin.test.ts`'s
 every-operation checks; `tests/db/super-admin-rollback.test.ts` rolling 47
 back first.
+
+### Medication dose identity and clock-change conflicts (migration 48)
+
+> **NOT APPLIED.** Every clinical decision this migration relies on was
+> **owner-accepted without clinical adviser review** on 2026-11-09 (see
+> `docs/medication-clock-change-decisions.md`); production runs on
+> Asia/Manila only. Applying it to production, merging its website and
+> running its conflict workflow still each need (1) a read-only production
+> preflight with the migration's checksum and (2) this rollback and
+> verification plan, with Kean's separate approval.
+
+**Why.** A dose was recognised only by its exact moment
+(`medication_log_slot_key`). After a clinic's time zone changes to a
+different UTC offset, the nightly `extend_all_medication_log_slots` added a
+second dose beside each existing one for up to 30 days (the Clinic Admin's
+own time zone setting, live since migration 31, can trigger it). On a
+spring-forward day a dose time that does not exist could land on another
+dose's moment and be silently dropped; on a fall-back day PostgreSQL chose
+the second occurrence of a repeated time without anyone deciding.
+
+**What it changes.**
+
+- `medication_log` gets `medication_log_dose_date` and
+  `medication_log_dose_time`: the clinic-local date and wall-clock time a
+  dose was created for, unique per schedule (`medication_log_occurrence_key`)
+  and never changed (`medication_log_guard_occurrence`). Existing rows are
+  backfilled from their moment in their clinic's zone. No moment, status,
+  `taken_at` or reminder stamp changes.
+- `medication_dose_conflict`: occurrences held for the treating doctor -
+  `nonexistent_local_time`, `ambiguous_local_time` (both by the provisional
+  `app_private.medication_clock_policy`) and `same_moment_collision`. RLS:
+  the patient and their treating doctor read them, as with doses; nobody
+  writes them directly. Audited as clinical entries of the patient's clinic,
+  without the doctor's reason text (`audit_clinic_for` gains a case).
+- `generate_medication_log_slots` creates a dose only for an occurrence that
+  is neither a dose nor a conflict yet; one per-schedule transaction lock
+  (`app_private.lock_medication_schedule`) serialises it with
+  `doctor_resolve_medication_conflict` and the end-of-course trigger.
+- `doctor_resolve_medication_conflict(conflict, resolution, moment, reason)`:
+  the treating, active doctor only; a future moment on the same clinic-local
+  date at no other dose's moment, or no separate dose; reason required.
+- `dispatch_medication_conflict_alerts()` on a new pg_cron job,
+  `recoverease-medication-conflict-alerts` (`*/15 * * * *`).
+- A schedule's times, frequency, start date and prescription can no longer
+  be edited, and a time cannot be listed twice
+  (`medication_schedule_guard_shape`). Ending a schedule closes its
+  unresolved conflicts after the end date as `course_ended`.
+- The follow-up reminder, the pre-dose reminder and the overdue job compare
+  a dose's own date with the course's end date.
+
+**Expected data change when applied.** Two columns filled on every existing
+dose row (224 rows at the 2026-11-08 audit) and nothing else. In production
+no conflict can arise until a clinic in a daylight-saving zone exists or a
+clinic changes time zone (Asia/Manila has no daylight saving).
+
+**Read-only preflight (before any apply).**
+
+- Every dose's local time in its clinic's zone is one of its schedule's times
+  (expect 0 off-schedule rows), no duplicate (schedule, local date, local
+  time), one zone in use, and no recorded time zone change - the backfill is
+  exact only then.
+- Every clinic's zone has no clock change from 30 days before the apply to
+  30 days after it (Asia/Manila has none). The backfill keeps each existing
+  dose's moment, so a dose already scheduled at a time that happens twice
+  keeps the moment PostgreSQL chose for it, without a review; a zone with a
+  clock change in that window stops the apply until it is understood.
+- Every dose row joins to a clinic (raw count equals joined count).
+- No schedule lists a time twice.
+- Every dose's `taken_at` agrees with its status: expect 0 rows where
+  `(medication_log_status = 'taken') <> (medication_log_taken_at is not null)`.
+  The backfill is an `UPDATE`, so it fires `medication_log_protect_slot`,
+  which would rewrite `taken_at` on any row that disagrees (set it to now on
+  a taken dose without one, clear it on any other). Any row found stops the
+  apply until it is understood.
+- Record the MD5 of (id, schedule, moment, status, `taken_at`, both reminder
+  stamps) across `medication_log`, to compare after.
+- The migration file's MD5: `b3793b5193d37626f32ce6f279e5e0cc` at the time of writing - recompute from
+  the file being applied.
+
+**Locks.** Adding the columns takes `medication_log`'s lock briefly, and the
+backfill updates every row once; the pre-dose job writes `medication_log`
+every minute, so the migration waits at most 3 seconds (`lock_timeout`) and
+fails rather than queue. Apply inside a quiet window ("Migration timing and
+run history"), not across 01:00 UTC.
+
+**Read-only verification (after an approved apply).** The history entry and
+checksum; both columns `NOT NULL` and the occurrence index present; the
+dose-column MD5 unchanged; 0 conflicts; `prosecdef` and an empty
+`search_path` on every new function; `anon` cannot execute
+`doctor_resolve_medication_conflict`; the alert job scheduled, and its first
+runs succeeded in `cron.job_run_details` (no test can run pg_cron: PGlite has
+none); after the next 01:00 UTC run, only new days added and still 0
+duplicate occurrences.
+
+**Known limits (not fixed by migration 48).**
+
+- **Doses close together after a time zone change.** Only an occurrence at
+  *exactly* another dose's moment is held. Around the changeover, doses of
+  the old and new zone can still fall hours apart and out of order: moving
+  from Los Angeles to Manila, a medicine at 08:00, 14:00 and 20:00 has doses
+  2 hours apart, and 20 January's 20:00 dose after 21 January's 08:00. This
+  is better than before (every dose was duplicated), but it is not clinically
+  reviewed: decision G's open question in
+  `docs/medication-clock-change-decisions.md`.
+- **Scale of the nightly run.** `extend_all_medication_log_slots` takes each
+  live schedule's lock and holds all of them until it commits. PostgreSQL's
+  shared lock table holds about `max_locks_per_transaction` (64) ×
+  (`max_connections` + `max_prepared_transactions`) locks, so with several
+  thousand live schedules the nightly run could fail with "out of shared
+  memory" and add nothing that night. Far above today's size; batch the run
+  before approaching it.
+
+**Rollback.** "To roll back 31", step 48: the website first, then
+`supabase/rollbacks/20260902100048_medication_dose_identity.down.sql`. It
+refuses while any conflict exists (a clinical record is never deleted) -
+checked after locking the conflict table, so none can be written between the
+check and the drop; it must run as one transaction, as a migration does - and
+otherwise restores the six replaced functions word for word, drops the new
+objects and the two columns, and keeps every dose. 33's and 37's
+down-scripts refuse while 48 is installed. After a rollback the duplicate-dose
+risk is back.
+
+Tests: `tests/db/medication-dose-identity.test.ts` (backfill, identity,
+time zone changes Manila/UTC/Los Angeles and several in a row, New York and
+Lord Howe clock changes, resolution, access, reminders, alerts, end dates,
+schedule shape, the per-schedule lock, rollback and reapply);
+`tests/unit/dose-conflicts.test.tsx`; `e2e/medication-dose-conflicts.spec.ts`.
+Also run on PostgreSQL 17.5 (PGlite 0.3) - see `docs/testing.md`.
 
 ## Bundle budget
 

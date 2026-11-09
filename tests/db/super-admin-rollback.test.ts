@@ -10,10 +10,10 @@ import { assuredSuperAdmin, createSignIn, type Claims } from './helpers/super-ad
 
 /**
  * The down-scripts for migrations 34 and 33 (supabase/rollbacks), after
- * 47's, 46's, 45's, 43's, 44's, 41's, 42's, 38's, 37's, 36's and 35's, which go
- * first - newest applied first, as production applied them: 42, 41, 44 and
- * 43 on 2026-10-29, 45 on 2026-11-04, 46 on 2026-11-05, with 47 the next to
- * come.
+ * 47's, 48's, 46's, 45's, 43's, 44's, 41's, 42's, 38's, 37's, 36's and 35's,
+ * which go first - newest applied first, as production applied them: 42, 41,
+ * 44 and 43 on 2026-10-29, 45 on 2026-11-04, 46 on 2026-11-05, 48 on
+ * 2026-11-09, with 47 the next to come.
  *
  * Run against a database that has been used - a Super Admin, a clinic's
  * status changed back and forth, a platform announcement written and
@@ -24,6 +24,7 @@ import { assuredSuperAdmin, createSignIn, type Claims } from './helpers/super-ad
  */
 
 const ROLLBACK_47 = 'supabase/rollbacks/20260902100047_super_admin_clinic_details.down.sql'
+const ROLLBACK_48 = 'supabase/rollbacks/20260902100048_medication_dose_identity.down.sql'
 const ROLLBACK_46 = 'supabase/rollbacks/20260902100046_super_admin_platform_overview.down.sql'
 const ROLLBACK_45 = 'supabase/rollbacks/20260902100045_recovery_roadmap.down.sql'
 const ROLLBACK_44 = 'supabase/rollbacks/20260902100044_notification_created_at_server_time.down.sql'
@@ -56,7 +57,7 @@ const rows = async (database: TestDatabase) => ({
   ),
 })
 
-describe('rolling back migrations 47, 46, 45, 43, 44, 41, 42, 38, 37, 36, 35, 34 and 33 with their down-scripts', () => {
+describe('rolling back migrations 47, 48, 46, 45, 43, 44, 41, 42, 38, 37, 36, 35, 34 and 33 with their down-scripts', () => {
   let used: TestDatabase
   let through32: TestDatabase
   let fx: Fixture
@@ -101,6 +102,7 @@ describe('rolling back migrations 47, 46, 45, 43, 44, 41, 42, 38, 37, 36, 35, 34
     const before = await rows(used)
 
     await used.db.exec(await script(ROLLBACK_47))
+    await used.db.exec(await script(ROLLBACK_48))
     await used.db.exec(await script(ROLLBACK_46))
     await used.db.exec(await script(ROLLBACK_45))
     await used.db.exec(await script(ROLLBACK_43))
@@ -143,7 +145,7 @@ describe('the down-scripts refuse, changing nothing, when they cannot be undone 
     expect(await catalog(database)).toEqual(before)
   }
 
-  it('33’s, while 47 is still applied, then 46, then 38, and then 34', async () => {
+  it('33’s, while 47 is still applied, then while 46 is, then while 38 is, then while 48 is, and then while 34 is', async () => {
     // 47's clinic details functions start with the Super Admin check 33's
     // down-script removes; newest first, 47 goes before it.
     await refusedUnchanged(ROLLBACK_33, /Roll back migration 47 first/)
@@ -159,6 +161,11 @@ describe('the down-scripts refuse, changing nothing, when they cannot be undone 
     await refusedUnchanged(ROLLBACK_33, /Roll back migration 38 first/)
     // Only to let the next refusal show: the test's own database.
     await database.db.exec(await script(ROLLBACK_38))
+    // 48's dose conflicts are audited through the function 33's down-script
+    // rewrites; newest first, 48 goes before it.
+    await refusedUnchanged(ROLLBACK_33, /Roll back migration 48 first/)
+    // Only to let the next refusal show: the test's own database.
+    await database.db.exec(await script(ROLLBACK_48))
     await refusedUnchanged(ROLLBACK_33, /Roll back migration 34 first/)
   })
 

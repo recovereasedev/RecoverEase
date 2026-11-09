@@ -44,6 +44,12 @@ begin
     raise exception 'Roll back migration 38 first: its guidance assistant switch relies on the Super Admin checks this removes. Nothing was changed.';
   end if;
 
+  -- Migration 48 extended the audit clinic function this rewrites; left
+  -- installed, its dose conflicts would be audited under no clinic.
+  if to_regclass('public.medication_dose_conflict') is not null then
+    raise exception 'Roll back migration 48 first: its dose conflicts are audited through the function this rewrites. Nothing was changed.';
+  end if;
+
   if to_regclass('public.clinic_single_clinic_gate') is null then
     raise exception 'Roll back migration 34 first: the single-clinic gate must be back before the Super Admin goes. Nothing was changed.';
   end if;

@@ -35,11 +35,22 @@ import { useCurrentUser } from '@/features/auth/auth-context'
 import { PatientChatTranscript } from '@/features/chat/components/patient-chat-transcript'
 import { createDoctorNote, fetchDoctorNotes } from '@/features/doctor-notes/api'
 import { AdherenceSummary } from '@/features/medications/components/adherence-summary'
+import {
+  ConflictSummaryLines,
+  ConflictSummaryUnavailable,
+  ConflictsLoadError,
+  DoctorConflictPanel,
+} from '@/features/medications/components/dose-conflicts'
+import { summariseConflicts } from '@/features/medications/conflicts'
 import { EndMedicationAction } from '@/features/medications/components/end-medication'
 import { MedicationForm } from '@/features/medications/components/medication-form'
 import { PrescriptionPrintHeader } from '@/features/medications/components/prescription-print-header'
 import { summariseAdherence, type Adherence } from '@/features/medications/api'
-import { useDoses, useMedicationSchedules } from '@/features/medications/hooks'
+import {
+  useDoses,
+  useMedicationConflicts,
+  useMedicationSchedules,
+} from '@/features/medications/hooks'
 import { NotifyPatient } from '@/features/notifications/components/notify-patient'
 import { ConsultationFlow } from '@/features/patients/components/consultation-flow'
 import { PatientDetailsCard } from '@/features/patients/components/patient-details-card'
@@ -184,6 +195,8 @@ export function DoctorPatientDetailPage() {
     document.getElementById(`edit-plan-${firstPlanId}`)?.focus()
   }, [firstPlanId])
   const schedulesQuery = useMedicationSchedules(patientId)
+  // Dose times held for this doctor's review (migration 48).
+  const conflictsQuery = useMedicationConflicts(patientId)
 
   const weekDoses = useDoses(
     patientId,
@@ -218,6 +231,16 @@ export function DoctorPatientDetailPage() {
   })
 
   const adherence = weekDoses.data ? summariseAdherence(weekDoses.data) : null
+  const conflicts = conflictsQuery.data ?? []
+  const weekStart = subDays(startOfToday(), 6).getTime()
+  const weekEnd = endOfToday().getTime()
+  const weekConflicts = summariseConflicts(
+    conflicts.filter((conflict) => {
+      const at = new Date(conflict.conflict_at).getTime()
+      return at >= weekStart && at <= weekEnd
+    }),
+    now,
+  )
 
   // Module 4.10 as a file, from the record this page has loaded: one sheet
   // per prescription. Each names its own prescriber - here, the signed-in
@@ -404,6 +427,11 @@ export function DoctorPatientDetailPage() {
                           <AdherenceSummary adherence={adherence} />
                         ) : (
                           <p className="text-sm text-muted">Loading…</p>
+                        )}
+                        {conflictsQuery.isError ? (
+                          <ConflictSummaryUnavailable />
+                        ) : (
+                          <ConflictSummaryLines summary={weekConflicts} />
                         )}
                       </CardBody>
                     </Card>
@@ -853,6 +881,16 @@ export function DoctorPatientDetailPage() {
                     what="prescription"
                     className="px-4 pb-2 sm:px-5"
                   />
+                  {conflictsQuery.isError ? (
+                    <div className="px-4 py-4 sm:px-5">
+                      <ConflictsLoadError
+                        error={conflictsQuery.error}
+                        onRetry={() => void conflictsQuery.refetch()}
+                      />
+                    </div>
+                  ) : (
+                    <DoctorConflictPanel patientId={patientId} conflicts={conflicts} now={now} />
+                  )}
                   <CardBody className="p-0">
                     <div ref={medicationFocusRecovery}>
                       <StateView

@@ -119,6 +119,7 @@ succeeds and returns rows**.
 | Escalation | Patient cannot change their doctor, status, or role; deactivated doctor cannot reactivate themselves; nobody can forge or delete audit rows |
 | Workflow | Patient cannot approve their own reschedule; approving moves the appointment; doctor cannot edit adherence; patient cannot book with another doctor or on another patient's behalf |
 | Notifications | Users see only their own; a doctor may notify their own patient but not someone else's |
+| Dose identity and clock changes (migration 48, `medication-dose-identity.test.ts`) | Existing doses keep every value through the backfill and any later time zone change; each occurrence appears once as a dose or a conflict through Manila/UTC/Los Angeles changes and several in a row, with repeated runs; New York spring-forward (02:30 held, 03:30 kept, either order) and fall-back (01:30 held), Lord Howe half-hour changes; only the active treating doctor resolves, with a reason, a future moment on the same date at no other dose's moment, once; patient and treating doctor read conflicts, nobody writes them; no reminder or missed marking for a conflict, one reminder for a rescheduled dose, one doctor alert when found and one 24 hours before; end dates by a dose's own date; schedule shape fixed; the per-schedule lock held by the generator, a resolution and the end-of-course trigger (prepared transactions); rollback refuses while conflicts exist, otherwise returns to exactly 47 and reapplies |
 | Medication reminders | One reminder per dose however often the scheduler fires; honours the opt-out and preferred time; reaches only the dose owner; slot generation idempotent; doses generated at clinic-local wall-clock time; the functions refuse `authenticated` and `anon` |
 | Recovery roadmap (migration 45, `recovery-roadmap.test.ts`) | The assigned doctor builds phases and activities, numbered in order; another doctor, a deactivated one and one in another clinic are refused, and Bob, the Clinic Admin and a visitor read nothing; dates in order and inside the plan; one-call reordering, refusing a partial or foreign order; the patient marks their own activity done at the server's time, with an event, once - a second press is refused and writes nothing - and can undo it; nobody else may, and nobody writes a completion or an event directly; archived rows and inactive plans refused, history kept; goals link only to a current phase of their own plan, and every status change is recorded with who; the migration leaves doses, appointments, check-ins, plans and goals unchanged, invents no history, runs again from the top, and rolls back to exactly what 44 left. Under concurrency (PGlite has one connection, so the locks are read off the page with `pageinspect` inside the transaction): placing a goal holds its phase `FOR SHARE`; a reorder locks the current rows before checking and leaves an archived or moved-out row alone; a reorder that goes through holds its rows until it ends (one refused after a savepoint shows only that the lock was taken, since rolling back to the savepoint releases it); marking or undoing holds the phase and plan `FOR SHARE`, and an activity added, moved or restored holds its phase, each checked to be the open transaction's own lock; with a prepared transaction as a second lock holder (NOWAIT checks only; PGlite cannot run two waiting transactions), an archive in progress holds its phase and goals and a goal joining that phase is refused at once, goals joining a phase hold it back from an archive, and a patient's mark holds back an archive and a plan change; another user's completion attempt is refused before taking any lock; restoring keeps what was done, and an activity comes back only into a current phase |
 
@@ -175,6 +176,38 @@ associated with its input.
 **Route guards** — `loading` waits instead of redirecting; a deactivated
 clinician gets an explanation rather than the login form; a patient on an
 admin route is sent home.
+
+### PostgreSQL 17 (production's major version)
+
+Production runs PostgreSQL 17; the project's PGlite runs 18. Before a
+migration that changes scheduling or time arithmetic goes to production, the
+`db` suite is also run on PGlite 0.3.16 (PostgreSQL 17.5) from outside the
+repository, by aliasing `@electric-sql/pglite` in a throwaway Vitest config.
+For migration 48 (2026-11-08): 853 of 869 passed; the 3 per-schedule-lock
+tests and migration 45's concurrency suite cannot run there (PGlite 0.3
+ignores `startParams`, so prepared transactions stay disabled, and its
+`pageinspect` is a different build) and pass on PostgreSQL 18. The lock key
+(`hashtextextended`) is identical on both, and the DST conversions were also
+checked on production's 17.6 with a read-only expression that reads no
+table.
+
+What migration 48's tests do **not** prove (implementation review,
+2026-11-09), because PGlite is one connection with no pg_cron and no lock
+timeouts:
+
+- **No two transactions ever run at the same moment.** The lock tests prove
+  each writer takes the per-schedule lock and holds it until it commits
+  (prepared transactions), and that a second decision is refused after the
+  first commits; a real race is left to PostgreSQL's lock rules.
+- **The rollback's table lock** is checked by its order in the script (lock,
+  then the emptiness check, then the drop), not by staging a write in the
+  window between them.
+- **The resolution's re-check under the lock** (the conflict still exists, the
+  caller is still the treating doctor) cannot be reached with a change
+  made while the call waits.
+- **The alert job's pg_cron schedule** and the rollback's unschedule never
+  run in a test; production verification checks `cron.job_run_details`
+  (`docs/deployment.md`, migration 48).
 
 ## Test environment configuration
 

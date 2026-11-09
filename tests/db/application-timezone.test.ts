@@ -145,17 +145,22 @@ describe('calendar dates resolve in the clinic timezone, not the server one', ()
     // The dose window opened at the server's today. With the clinic a day
     // ahead, every dose for the day the patient is actually living fell
     // before the window and was never created.
-    await database.asService(
-      `update public.medication_schedule
-          set medication_schedule_start_date = public.app_today(),
-              medication_schedule_end_date = public.app_today()
-        where medication_schedule_id = $1`,
-      [fixture.aliceScheduleId],
+    // A course for the clinic's today alone. Its start date is set when it is
+    // created: from migration 48 a schedule's start date cannot be edited.
+    const [created] = await database.asService<{ id: string }>(
+      `insert into public.medication_schedule
+         (prescription_id, medication_schedule_name, medication_schedule_dosage,
+          medication_schedule_frequency, medication_schedule_times,
+          medication_schedule_start_date, medication_schedule_end_date)
+       values ($1, 'Clinic day', '1 tablet', 2, '{08:00,20:00}'::time[],
+               public.app_today(), public.app_today())
+       returning medication_schedule_id as id`,
+      [fixture.alicePrescriptionId],
     )
 
     await database.asService(
       `select public.generate_medication_log_slots($1, 30)`,
-      [fixture.aliceScheduleId],
+      [created!.id],
     )
 
     const [row] = await database.asService<{ doses_for_clinic_today: string }>(
@@ -164,7 +169,7 @@ describe('calendar dates resolve in the clinic timezone, not the server one', ()
         where medication_schedule_id = $1
           and (medication_log_scheduled_at at time zone $2)::date
               = public.app_today()`,
-      [fixture.aliceScheduleId, CLINIC_ZONE],
+      [created!.id, CLINIC_ZONE],
     )
 
     expect(Number(row?.doses_for_clinic_today)).toBeGreaterThan(0)

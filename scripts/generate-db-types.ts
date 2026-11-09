@@ -335,6 +335,13 @@ async function main(): Promise<void> {
     lines.push('        Args: { target_phase_id: string; activity_ids: string[] }')
     lines.push('        Returns: undefined')
     lines.push('      }')
+    // Migration 48: the treating doctor's decision on a dose conflict.
+    lines.push('      doctor_resolve_medication_conflict: {')
+    lines.push(
+      "        Args: { target_conflict_id: string; resolution: 'rescheduled' | 'not_given_separately'; new_scheduled_at: string | null; resolution_note: string }",
+    )
+    lines.push("        Returns: Database['public']['Tables']['medication_dose_conflict']['Row'][]")
+    lines.push('      }')
 
     // The Super Admin's operations (migration 33). Each refuses anyone but a
     // Super Admin in a session verified with their authenticator app.

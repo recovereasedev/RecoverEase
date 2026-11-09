@@ -30,6 +30,8 @@ function dose(
     medication_log_status: status,
     medication_log_follow_up_sent_at: null,
     medication_log_pre_dose_sent_at: null,
+    medication_log_dose_date: scheduledAt.slice(0, 10),
+    medication_log_dose_time: scheduledAt.slice(11, 19),
   }
 }
 

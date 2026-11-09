@@ -193,12 +193,27 @@ row as the other clinic functions and updates `clinic_name` only - never
 `clinic_id`, `clinic_status` or `clinic_timezone`, never the legacy
 `app.timezone` row in `system_setting`, and never `medication_log`,
 `medication_schedule`, `prescription` or `appointment`. It takes no time
-zone: a clinic's zone is read-only to the Super Admin, because a zone
-change to a different UTC offset makes the nightly
-`extend_all_medication_log_slots` add doses beside those already scheduled
-(`docs/deployment.md`, "Clinic details (migration 47)", "Known
-limitation"). The Clinic Admin's own `admin_set_clinic_timezone`
-(migration 31) is unchanged and has that same limitation.
+zone: a clinic's zone stays read-only to the Super Admin in this change.
+The duplicate doses that kept it read-only are prevented by migration 48
+(below); Super Admin zone editing is a separate change. The Clinic Admin's
+own `admin_set_clinic_timezone` (migration 31) is unchanged.
+
+Migration 48 (not applied; its clinical decisions are PENDING in
+`docs/medication-clock-change-decisions.md`) gives each dose an identity:
+`medication_log_dose_date` and `medication_log_dose_time`, the clinic-local
+date and wall-clock time it was created for, unique per schedule
+(`medication_log_occurrence_key`) and never changed. The generator creates a
+dose only for an occurrence that is not already a dose or a
+`medication_dose_conflict` - one held for the treating doctor because the
+time does not exist or happens twice that day (a clock change), or because
+its moment is already another dose of the schedule (after a time zone
+change). A conflict has the same identity columns, a reason, the moment
+PostgreSQL would give it, and, once decided, the resolution
+(`rescheduled`, `not_given_separately` or `course_ended`), the doctor, the
+time and the reason. A rescheduled conflict's dose is an ordinary
+`medication_log` row. A schedule's times, frequency, start date and
+prescription can no longer be edited. See `docs/deployment.md`, "Medication
+dose identity and clock-change conflicts (migration 48)".
 
 Migration 36 adds a third announcement author: `announcement.doc_id`, a
 doctor writing for their own patients. An announcement still has exactly one

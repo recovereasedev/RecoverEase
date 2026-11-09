@@ -1,6 +1,7 @@
 import type { ScheduleWithPrescription } from '@/features/medications/api'
 import type { Doctor } from '@/features/patients/api'
 import { MOOD_OPTIONS } from '@/features/recovery-logs/components/mood-scale'
+import { conflictSummarySentence } from '@/features/medications/conflicts'
 import { summariseGoals } from '@/features/treatment-plans/api'
 import { calculateAge, formatScheduleTime } from '@/lib/format'
 import {
@@ -105,7 +106,7 @@ export function PatientReport({
 
   const goalsShare =
     overview.goals.total > 0 ? (overview.goals.percentage ?? 0) : null
-  const { weekAdherence } = data
+  const { weekAdherence, weekConflicts } = data
 
   return (
     <ReportSheet label={isClinical ? 'Clinical copy' : 'Patient copy'}>
@@ -470,6 +471,11 @@ export function PatientReport({
                   ? `Doses due in the last 7 days: ${weekAdherence.taken} taken, ${weekAdherence.missed} missed, ${weekAdherence.skipped} skipped of ${weekAdherence.resolved}${weekAdherence.rate !== null ? ` (${weekAdherence.rate}% taken)` : ''}.`
                   : `In the last 7 days you took ${weekAdherence.taken} of the ${weekAdherence.resolved} doses that were due.`}
             </p>
+            {weekConflicts && weekConflicts.total > 0 ? (
+              <p className="break-inside-avoid text-[10.5px] text-body" data-numeric>
+                {conflictSummarySentence(weekConflicts)}
+              </p>
+            ) : null}
           </div>
         )}
       </ReportSection>

@@ -22,6 +22,12 @@ begin
   ) then
     raise exception 'Migration 37 is not applied. Nothing was changed.';
   end if;
+
+  -- Migration 48 replaced the pre-dose reminder this restores, and its dose
+  -- identity relies on the column this drops.
+  if to_regclass('public.medication_dose_conflict') is not null then
+    raise exception 'Roll back migration 48 first: it replaced the pre-dose reminder this removes. Nothing was changed.';
+  end if;
 end
 $$;
 

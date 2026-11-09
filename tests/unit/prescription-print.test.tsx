@@ -46,6 +46,8 @@ vi.mock('@/features/patients/hooks', () => ({
 }))
 
 vi.mock('@/features/medications/hooks', () => ({
+  // Dose conflicts (migration 48): none here.
+  useMedicationConflicts: () => ({ data: [], isPending: false, error: null, refetch: vi.fn() }),
   useDoses: () => ({ data: [], isPending: false, error: null, refetch: vi.fn() }),
   useMedicationSchedules: () => ({
     data: schedules.data,

@@ -40,6 +40,7 @@ describe('database schema', () => {
       'clinic',
       'doctor',
       'doctor_note',
+      'medication_dose_conflict',
       'medication_log',
       'medication_schedule',
       'notification',

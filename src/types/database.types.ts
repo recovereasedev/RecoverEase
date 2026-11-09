@@ -412,6 +412,89 @@ export type Database = {
           },
         ]
       }
+      medication_dose_conflict: {
+        Row: {
+          medication_dose_conflict_id: string
+          medication_schedule_id: string
+          conflict_dose_date: string
+          conflict_dose_time: string
+          conflict_reason: Database['public']['Enums']['medication_conflict_reason']
+          conflict_at: string
+          conflicting_log_id: string | null
+          conflict_detected_at: string
+          conflict_resolution: Database['public']['Enums']['medication_conflict_resolution'] | null
+          resolved_log_id: string | null
+          resolved_by_doc_id: string | null
+          conflict_resolved_at: string | null
+          conflict_resolution_note: string | null
+          conflict_doctor_alerted_at: string | null
+          conflict_doctor_final_alert_at: string | null
+        }
+        Insert: {
+          medication_dose_conflict_id?: string
+          medication_schedule_id: string
+          conflict_dose_date: string
+          conflict_dose_time: string
+          conflict_reason: Database['public']['Enums']['medication_conflict_reason']
+          conflict_at: string
+          conflicting_log_id?: string | null
+          conflict_detected_at?: string
+          conflict_resolution?: Database['public']['Enums']['medication_conflict_resolution'] | null
+          resolved_log_id?: string | null
+          resolved_by_doc_id?: string | null
+          conflict_resolved_at?: string | null
+          conflict_resolution_note?: string | null
+          conflict_doctor_alerted_at?: string | null
+          conflict_doctor_final_alert_at?: string | null
+        }
+        Update: {
+          medication_dose_conflict_id?: string
+          medication_schedule_id?: string
+          conflict_dose_date?: string
+          conflict_dose_time?: string
+          conflict_reason?: Database['public']['Enums']['medication_conflict_reason']
+          conflict_at?: string
+          conflicting_log_id?: string | null
+          conflict_detected_at?: string
+          conflict_resolution?: Database['public']['Enums']['medication_conflict_resolution'] | null
+          resolved_log_id?: string | null
+          resolved_by_doc_id?: string | null
+          conflict_resolved_at?: string | null
+          conflict_resolution_note?: string | null
+          conflict_doctor_alerted_at?: string | null
+          conflict_doctor_final_alert_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'medication_dose_conflict_conflicting_log_id_fkey'
+            columns: ['conflicting_log_id']
+            isOneToOne: false
+            referencedRelation: 'medication_log'
+            referencedColumns: ['medication_log_id']
+          },
+          {
+            foreignKeyName: 'medication_dose_conflict_medication_schedule_id_fkey'
+            columns: ['medication_schedule_id']
+            isOneToOne: false
+            referencedRelation: 'medication_schedule'
+            referencedColumns: ['medication_schedule_id']
+          },
+          {
+            foreignKeyName: 'medication_dose_conflict_resolved_by_doc_id_fkey'
+            columns: ['resolved_by_doc_id']
+            isOneToOne: false
+            referencedRelation: 'doctor'
+            referencedColumns: ['doc_id']
+          },
+          {
+            foreignKeyName: 'medication_dose_conflict_resolved_log_id_fkey'
+            columns: ['resolved_log_id']
+            isOneToOne: false
+            referencedRelation: 'medication_log'
+            referencedColumns: ['medication_log_id']
+          },
+        ]
+      }
       medication_log: {
         Row: {
           medication_log_id: string
@@ -421,6 +504,8 @@ export type Database = {
           medication_log_status: Database['public']['Enums']['medication_log_status']
           medication_log_follow_up_sent_at: string | null
           medication_log_pre_dose_sent_at: string | null
+          medication_log_dose_date: string
+          medication_log_dose_time: string
         }
         Insert: {
           medication_log_id?: string
@@ -430,6 +515,8 @@ export type Database = {
           medication_log_status?: Database['public']['Enums']['medication_log_status']
           medication_log_follow_up_sent_at?: string | null
           medication_log_pre_dose_sent_at?: string | null
+          medication_log_dose_date: string
+          medication_log_dose_time: string
         }
         Update: {
           medication_log_id?: string
@@ -439,6 +526,8 @@ export type Database = {
           medication_log_status?: Database['public']['Enums']['medication_log_status']
           medication_log_follow_up_sent_at?: string | null
           medication_log_pre_dose_sent_at?: string | null
+          medication_log_dose_date?: string
+          medication_log_dose_time?: string
         }
         Relationships: [
           {
@@ -1230,6 +1319,10 @@ export type Database = {
         Args: { target_phase_id: string; activity_ids: string[] }
         Returns: undefined
       }
+      doctor_resolve_medication_conflict: {
+        Args: { target_conflict_id: string; resolution: 'rescheduled' | 'not_given_separately'; new_scheduled_at: string | null; resolution_note: string }
+        Returns: Database['public']['Tables']['medication_dose_conflict']['Row'][]
+      }
       super_admin_assured: {
         Args: Record<PropertyKey, never>
         Returns: boolean
@@ -1303,6 +1396,8 @@ export type Database = {
       appointment_status: 'scheduled' | 'confirmed' | 'completed' | 'cancelled' | 'no_show'
       audit_scope: 'platform' | 'administration' | 'clinical'
       clinic_status: 'active' | 'inactive'
+      medication_conflict_reason: 'nonexistent_local_time' | 'ambiguous_local_time' | 'same_moment_collision'
+      medication_conflict_resolution: 'rescheduled' | 'not_given_separately' | 'course_ended'
       medication_log_status: 'pending' | 'taken' | 'missed' | 'skipped'
       notification_type: 'appointment' | 'medication' | 'treatment' | 'chat_critical' | 'announcement' | 'general'
       patient_status: 'active' | 'inactive' | 'discharged'
