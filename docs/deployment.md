@@ -1331,14 +1331,13 @@ to `tests/db/super-admin.test.ts`'s every-operation checks; and
 
 ### Medication dose identity and clock-change conflicts (migration 48)
 
-> **NOT APPLIED. Clinically gated.** Every clinical decision this migration
-> relies on is **PENDING** in `docs/medication-clock-change-decisions.md`.
-> Do not apply it to production, merge its website or run its conflict
-> workflow there until (1) the clinical adviser's approval is recorded there
-> for every decision the deployed behaviour relies on, (2) a complete
-> implementation review, (3) a read-only production preflight with the
-> migration's checksum, and (4) this rollback and verification plan - each
-> with Kean's separate approval.
+> **NOT APPLIED.** Every clinical decision this migration relies on was
+> **owner-accepted without clinical adviser review** on 2026-11-09 (see
+> `docs/medication-clock-change-decisions.md`); production runs on
+> Asia/Manila only. Applying it to production, merging its website and
+> running its conflict workflow still each need (1) a read-only production
+> preflight with the migration's checksum and (2) this rollback and
+> verification plan, with Kean's separate approval.
 
 **Why.** A dose was recognised only by its exact moment
 (`medication_log_slot_key`). After a clinic's time zone changes to a
