@@ -10,15 +10,20 @@
 > | Repository | `recovereasedev/RecoverEase` |
 >
 > **Production, read-only checks** - the website and Edge Functions on
-> 2026-10-29 at 17:38 UTC, the database on 2026-11-04 at 19:42 UTC. A dated
+> 2026-10-29 at 17:38 UTC, the database on 2026-11-09 at 08:45 UTC. A dated
 > snapshot, not the current state - check again before relying on it:
 >
 > - **Website** (at 17:38 UTC). The Vercel Production deployment
 >   `dpl_7P9bhug51rgRDPoKqh5kP4PZN7Kf`, built from `main` at `23af842` (the
 >   merge of PR #68), serves <https://recoverease-web.vercel.app>.
-> - **Database** (2026-11-05 at 20:34 UTC). The migration history has 44
->   entries. Every file in `supabase/migrations/` is in it except 34
->   (`lift_single_clinic_gate`), held for its own decision. 46
+> - **Database** (2026-11-09, after 08:45 UTC). The migration history has
+>   45 entries. Every file in `supabase/migrations/` is in it except 34
+>   (`lift_single_clinic_gate`), held for its own decision. 48
+>   (`medication_dose_identity`) was applied and verified on 2026-11-09 at
+>   08:45:39 UTC (history `20261109084539 medication_dose_identity`), and
+>   its website (PR #76) merged and deployed to production the same day -
+>   see "Medication dose identity and clock-change conflicts (migration
+>   48)". 46
 >   (`super_admin_platform_overview`) was applied and verified on
 >   2026-11-05, ahead of the website that calls it (PR #74) - see
 >   "Platform overview (migration 46)". 45
@@ -427,7 +432,8 @@ To roll back 31, go the other way, newest first. Each later migration is
 rolled back with its own down-script, applied as a new migration, and where
 deployed code depends on it, that code goes back first:
 
-1. **48**, where it is applied: the website from before migration 48, then
+1. **48**, applied to production on 2026-11-09: the website from before
+   migration 48, then
    `supabase/rollbacks/20260902100048_medication_dose_identity.down.sql`. It
    refuses while any medication dose conflict exists, and otherwise keeps
    every dose. 33's and 37's down-scripts refuse while 48 is installed.
@@ -1331,13 +1337,23 @@ to `tests/db/super-admin.test.ts`'s every-operation checks; and
 
 ### Medication dose identity and clock-change conflicts (migration 48)
 
-> **NOT APPLIED.** Every clinical decision this migration relies on was
-> **owner-accepted without clinical adviser review** on 2026-11-09 (see
-> `docs/medication-clock-change-decisions.md`); production runs on
-> Asia/Manila only. Applying it to production, merging its website and
-> running its conflict workflow still each need (1) a read-only production
-> preflight with the migration's checksum and (2) this rollback and
-> verification plan, with Kean's separate approval.
+> **APPLIED to production on 2026-11-09 at 08:45:39 UTC - do not apply it
+> again.** History entry `20261109084539 medication_dose_identity`; the
+> migration file's MD5 is `b3793b5193d37626f32ce6f279e5e0cc`. It was applied
+> with Kean's approval after the read-only preflight below, and verified
+> read-only afterwards. Its website, PR #76, was merged (`main` `c0721d8`)
+> and the Vercel production deployment succeeded the same day. A second
+> apply would stop at its own check ("Migration 48 has already been
+> applied. Nothing was changed.").
+>
+> Every clinical decision this migration relies on was **owner-accepted
+> without clinical adviser review** on 2026-11-09 (see
+> `docs/medication-clock-change-decisions.md`); they are not clinically
+> approved. Production runs on Asia/Manila only.
+>
+> The preflight, lock and verification notes below are kept as the record
+> of how it was applied, and as the procedure for any other environment
+> that does not have it yet. The rollback stays as written.
 
 **Why.** A dose was recognised only by its exact moment
 (`medication_log_slot_key`). After a clinic's time zone changes to a
@@ -1378,12 +1394,14 @@ the second occurrence of a repeated time without anyone deciding.
 - The follow-up reminder, the pre-dose reminder and the overdue job compare
   a dose's own date with the course's end date.
 
-**Expected data change when applied.** Two columns filled on every existing
+**Expected data change when applied** (as planned before the
+2026-11-09 apply). Two columns filled on every existing
 dose row (224 rows at the 2026-11-08 audit) and nothing else. In production
 no conflict can arise until a clinic in a daylight-saving zone exists or a
 clinic changes time zone (Asia/Manila has no daylight saving).
 
-**Read-only preflight (before any apply).**
+**Read-only preflight (before any apply; run for production before the
+2026-11-09 apply).**
 
 - Every dose's local time in its clinic's zone is one of its schedule's times
   (expect 0 off-schedule rows), no duplicate (schedule, local date, local
@@ -1404,8 +1422,8 @@ clinic changes time zone (Asia/Manila has no daylight saving).
   apply until it is understood.
 - Record the MD5 of (id, schedule, moment, status, `taken_at`, both reminder
   stamps) across `medication_log`, to compare after.
-- The migration file's MD5: `b3793b5193d37626f32ce6f279e5e0cc` at the time of writing - recompute from
-  the file being applied.
+- The migration file's MD5: `b3793b5193d37626f32ce6f279e5e0cc` (the file
+  applied to production) - recompute from the file being applied.
 
 **Locks.** Adding the columns takes `medication_log`'s lock briefly, and the
 backfill updates every row once; the pre-dose job writes `medication_log`
@@ -1413,7 +1431,8 @@ every minute, so the migration waits at most 3 seconds (`lock_timeout`) and
 fails rather than queue. Apply inside a quiet window ("Migration timing and
 run history"), not across 01:00 UTC.
 
-**Read-only verification (after an approved apply).** The history entry and
+**Read-only verification (after an approved apply; done for production on
+2026-11-09).** The history entry and
 checksum; both columns `NOT NULL` and the occurrence index present; the
 dose-column MD5 unchanged; 0 conflicts; `prosecdef` and an empty
 `search_path` on every new function; `anon` cannot execute

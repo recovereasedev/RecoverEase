@@ -183,8 +183,10 @@ Migration 46 adds no table: `super_admin_platform_overview()` returns one
 per clinic. A platform announcement is one with a `super_admin_id`,
 published when `announcement_published_at` is set.
 
-Migration 48 (not applied; its clinical decisions are PENDING in
-`docs/medication-clock-change-decisions.md`) gives each dose an identity:
+Migration 48 (applied to production on 2026-11-09 - do not apply it
+again; its clinical decisions were owner-accepted without clinical adviser
+review, not clinically approved - `docs/medication-clock-change-decisions.md`)
+gives each dose an identity:
 `medication_log_dose_date` and `medication_log_dose_time`, the clinic-local
 date and wall-clock time it was created for, unique per schedule
 (`medication_log_occurrence_key`) and never changed. The generator creates a
