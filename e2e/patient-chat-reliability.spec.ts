@@ -180,8 +180,9 @@ test.describe('the guidance chat when a reply does not come back', () => {
     await page.clock.fastForward(13_000)
     await expect(page.getByRole('status')).toContainText('This is taking longer than usual.')
 
-    // Then the browser gives up, and the waiting state ends.
-    await page.clock.fastForward(30_000)
+    // Then the browser gives up (REPLY_TIMEOUT_MS, 75 s), and the waiting
+    // state ends.
+    await page.clock.fastForward(63_000)
     await expect(processing(page)).toHaveCount(0)
     await expect(page.getByRole('status')).toContainText('took too long to reply')
     await expect(page.getByRole('status')).toContainText('Your message has been saved.')

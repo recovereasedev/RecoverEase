@@ -34,14 +34,19 @@ export type ReplyFailure =
 /**
  * How long the browser waits for a reply before giving up.
  *
- * Longer than the server's own budget - `chatbot-reply` stops waiting for
- * Gemini after 30 s, and the rest of the request took up to 4.7 s in
- * production - so a reply the server is still preparing is not abandoned by
- * the browser, with about 5 s to spare on the slowest request measured. Without
- * any limit, a request that is never answered (a dropped connection, a phone
- * that suspended the tab) left the page waiting indefinitely.
+ * Longer than the server's own budget, so a reply the server is still
+ * preparing is not abandoned by the browser. `chatbot-reply` gives Gemini
+ * what is left of a 55 s window (at most 50 s, `_shared/reply-outcome.ts`)
+ * and normally answers within about 57 s of starting; on top of that come
+ * the CORS preflight (3.7 s measured on a cold start in production), the
+ * session token and the network. 75 s leaves roughly 12 s to spare, and
+ * stays well inside Supabase's 150 s request limit. Should the browser give
+ * up first anyway, a reply saved meanwhile is found by the retry
+ * (`already_answered`), never saved twice. Without any limit, a request
+ * that is never answered (a dropped connection, a phone that suspended the
+ * tab) left the page waiting indefinitely.
  */
-export const REPLY_TIMEOUT_MS = 40_000
+export const REPLY_TIMEOUT_MS = 75_000
 
 /** How long a reply may take before the patient is told it is slow. */
 export const SLOW_REPLY_MS = 12_000

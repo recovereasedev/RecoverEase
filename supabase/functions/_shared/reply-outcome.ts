@@ -31,6 +31,12 @@ export type ReplyErrorCode =
   /** The reply could not be saved. */
   | 'save_failed'
   /**
+   * The reply raised a critical concern and the flag or the doctor's alert
+   * could not be written, so the reply was not saved and the patient can ask
+   * again (`critical-escalation.ts`). The browser treats it as unavailable.
+   */
+  | 'escalation_failed'
+  /**
    * The guidance assistant is switched off, for the platform or for the
    * patient's clinic (migration 38). Trying again cannot help.
    */
@@ -129,24 +135,120 @@ export function providerErrorSummary(status: number, body: string): string {
   })
 }
 
+/**
+ * The parts of a request timed separately, so a slow reply can be placed:
+ * the database before the provider, the provider's headers, its body, or
+ * the work after it.
+ */
+export const REPLY_PHASES = [
+  'auth',
+  'ownership',
+  'switch',
+  'history',
+  'prompt',
+  'gemini_headers',
+  'gemini_body',
+  'validation',
+  'escalation',
+  'persistence',
+] as const
+
+export type ReplyPhase = (typeof REPLY_PHASES)[number]
+
 export type ReplyLogEntry = {
   requestId: string
   status: number
   code: ReplyErrorCode | null
   durationMs: number
+  /** Milliseconds per phase; phases that did not run are left out. */
+  phases?: Partial<Record<ReplyPhase, number | null>>
+  /** The HTTP status Gemini answered with, or null when it never answered. */
+  providerStatus?: number | null
+  model?: string
+  /** Sizes only - never the content. */
+  requestBytes?: number
+  responseBytes?: number
+  historyMessages?: number
+  /** Which step of escalation failed, when one did. */
+  escalationStep?: string
 }
 
+const isMs = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isFinite(value) && value >= 0
+
+const count = (value: unknown): number | null =>
+  typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : null
+
 /**
- * One line per request: an id to find it by, how it ended and how long it
- * took. Built from these four fields only, so nothing a patient wrote, no
- * reply, no token and no key can reach the log by accident.
+ * One line per request: an id to find it by, how it ended, how long it and
+ * each phase took, and the sizes involved. Every field is a number, a code
+ * from a fixed list, or the model id - built field by field rather than by
+ * spreading an object, so nothing a patient wrote, no reply, no token and no
+ * key can reach the log by accident.
  */
 export function replyLogLine(entry: ReplyLogEntry): string {
+  const phases: Record<string, number> = {}
+  for (const phase of REPLY_PHASES) {
+    const value = entry.phases?.[phase]
+    if (isMs(value)) phases[phase] = Math.round(value)
+  }
+  const step = entry.escalationStep
   return JSON.stringify({
     event: 'chatbot_reply',
     request_id: entry.requestId,
     status: entry.status,
     outcome: entry.code ?? 'replied',
+    timed_out: entry.code === 'timeout',
     duration_ms: Math.round(entry.durationMs),
+    phases_ms: phases,
+    provider_status: count(entry.providerStatus),
+    model: typeof entry.model === 'string' && /^[a-z0-9.-]{1,64}$/.test(entry.model) ? entry.model : null,
+    request_bytes: count(entry.requestBytes),
+    response_bytes: count(entry.responseBytes),
+    history_messages: count(entry.historyMessages),
+    escalation_step:
+      step === 'flag' || step === 'doctor' || step === 'dedupe' || step === 'alert' ? step : null,
   })
+}
+
+// ---------------------------------------------------------------------------
+// The time budget
+// ---------------------------------------------------------------------------
+
+/**
+ * How long Gemini may take, at most. Healthy replies measured 8-13 s in
+ * production (October 2026); this is about four times the slowest, so a
+ * slow-but-working provider is waited for, and still a finite deadline.
+ */
+export const PROVIDER_TIMEOUT_MS = 50_000
+
+/**
+ * The whole request, from the moment the function starts handling it, aims
+ * to answer within this. Supabase ends a request that has sent no response
+ * after 150 s (the request idle timeout; Free plan wall clock 150 s, paid
+ * 400 s), so 65 s leaves the platform limit far away.
+ */
+export const SERVER_BUDGET_MS = 65_000
+
+/**
+ * Kept back from the provider for what comes after it: validation,
+ * escalation, saving the reply, or the review request after a failure -
+ * each bounded by `DB_TIMEOUT_MS`.
+ */
+export const POST_PROVIDER_RESERVE_MS = 10_000
+
+/** Any single database call. Healthy calls take milliseconds. */
+export const DB_TIMEOUT_MS = 5_000
+
+/** The least the provider is given, even when the checks before it ran slowly. */
+const MIN_PROVIDER_MS = 5_000
+
+/**
+ * The provider's deadline for a request that has already spent `elapsedMs`:
+ * whatever is left of the server budget after the reserve, never more than
+ * `PROVIDER_TIMEOUT_MS`.
+ */
+export function providerDeadlineMs(elapsedMs: number): number {
+  const left = SERVER_BUDGET_MS - POST_PROVIDER_RESERVE_MS - Math.max(0, elapsedMs)
+  return Math.max(MIN_PROVIDER_MS, Math.min(PROVIDER_TIMEOUT_MS, left))
 }

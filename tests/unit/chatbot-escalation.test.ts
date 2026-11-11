@@ -167,11 +167,11 @@ describe('chatbot-reply', () => {
   )
   const answerStep = source.slice(
     source.indexOf('await answerOrRequestReview('),
-    source.indexOf('const critical = raisesCriticalConcern(parsed)'),
+    source.indexOf('if (answeredElsewhere)'),
   )
   const store = source.slice(
     source.indexOf('function reviewStore('),
-    source.indexOf('Deno.serve('),
+    source.indexOf('function criticalStore('),
   )
 
   it('asks for a review only once the patient is owed an answer', () => {
@@ -185,24 +185,25 @@ describe('chatbot-reply', () => {
     )
   })
 
-  it('covers every way of failing to answer: configuration, the provider, the reply and saving it', () => {
-    expect(answerStep).toContain("Deno.env.get('GEMINI_API_KEY')")
-    expect(answerStep).toContain('fetch(GEMINI_ENDPOINT')
-    expect(answerStep).toContain('AbortSignal.timeout(REQUEST_TIMEOUT_MS)')
-    expect(answerStep).toContain('parseAssistantReply(extractOutputText(payload))')
+  it('covers every way of failing to answer: configuration, the provider, escalation and saving it', () => {
+    expect(answerStep).toContain("apiKey: Deno.env.get('GEMINI_API_KEY')")
+    expect(answerStep).toContain('requestGeminiReply(')
+    expect(answerStep).toContain('timeoutMs: providerDeadlineMs(Date.now() - startedAt)')
+    expect(answerStep).toContain('escalateCriticalConcern(')
     expect(answerStep).toContain("chat_message_role: 'assistant'")
     expect(answerStep).toContain(
       "() => requestReview(reviewStore(admin, patient.doc_id, chatSessionId))",
     )
   })
 
-  it('treats a body that is not JSON as an unusable reply, unless it stopped arriving in time', () => {
-    // A timeout during the body read is reported as one
-    // (tests/unit/chatbot-provider-errors.test.ts); every other failure to
-    // read it is the same as a reply that fails the schema.
-    expect(answerStep).toMatch(
-      /payload = await response\.json\(\)\s*\} catch \(cause\) \{\s*(\/\/[^\n]*\n\s*)*if \(isProviderTimeout\(cause\)\) \{[^}]*\}\s*throw new AssistantReplyError/,
+  it('escalates a critical concern before the reply is saved, never after', () => {
+    // A saved reply ends every retry (already_answered), so a concern left
+    // unescalated behind one would be lost (_shared/critical-escalation.ts).
+    expect(answerStep.indexOf('escalateCriticalConcern(')).toBeGreaterThan(0)
+    expect(answerStep.indexOf('escalateCriticalConcern(')).toBeLessThan(
+      answerStep.indexOf("chat_message_role: 'assistant'"),
     )
+    expect(answerStep).toContain("'escalation_failed'")
   })
 
   it('writes an assistant message in one place only: the real reply', () => {
@@ -215,11 +216,16 @@ describe('chatbot-reply', () => {
   })
 
   it('leaves the critical-concern flag and summary to a real concern', () => {
+    // The review request never flags; only the critical store does, and it
+    // is reached only through escalateCriticalConcern with a validated reply.
     expect(store).not.toContain("from('chat_session')")
     expect(store).not.toContain('chat_session_has_critical_flag')
-    expect(source.indexOf('chat_session_has_critical_flag: true')).toBeGreaterThan(
-      source.indexOf('const critical = raisesCriticalConcern(parsed)'),
+    const critical = source.slice(
+      source.indexOf('function criticalStore('),
+      source.indexOf('Deno.serve('),
     )
+    expect(critical).toContain('chat_session_has_critical_flag: true')
+    expect(source.match(/chat_session_has_critical_flag: true/g)).toHaveLength(1)
   })
 
   it('sends the review request to the assigned, active doctor, about this conversation, once', () => {
