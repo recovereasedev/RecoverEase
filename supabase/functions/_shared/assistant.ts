@@ -123,6 +123,18 @@ export const GEMINI_ENDPOINT =
 /** Pins the request/response shape; the API is versioned by date. */
 export const GEMINI_API_REVISION = '2026-05-20'
 
+/**
+ * How much the model reasons before it answers. Left unset, Gemini 3.8 Flash
+ * reasons at `medium`, and from 20 October 2026 every production request at
+ * that level went past 30 s without even sending its response headers - the
+ * same deployment and clinic prompt had answered in 8-13 s days before. The
+ * provider documents `low` as the setting for latency-critical work
+ * (`minimal` is rejected by this model). The rules the assistant follows are
+ * unchanged: they are in the system instruction, the reply is still held to
+ * the schema, and every reply is still checked for a critical concern.
+ */
+export const GEMINI_THINKING_LEVEL = 'low'
+
 export type StoredMessage = {
   chat_message_role: string | null
   chat_message_content: string | null
@@ -225,6 +237,7 @@ export function buildInteractionRequest(input: {
     // it per request is what keeps the provider from retaining a copy of a
     // patient's conversation. Supplying history in `input` requires this.
     store: false,
+    generation_config: { thinking_level: GEMINI_THINKING_LEVEL },
     response_format: {
       type: 'text',
       mime_type: 'application/json',

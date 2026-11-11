@@ -5,8 +5,13 @@ import { describe, expect, it } from 'vitest'
 
 import {
   codeForStatus,
+  DB_TIMEOUT_MS,
   isProviderTimeout,
+  POST_PROVIDER_RESERVE_MS,
+  providerDeadlineMs,
+  PROVIDER_TIMEOUT_MS,
   replyLogLine,
+  SERVER_BUDGET_MS,
 } from '../../supabase/functions/_shared/reply-outcome'
 
 /**
@@ -54,7 +59,15 @@ describe('replyLogLine', () => {
       request_id: 'r-1',
       status: 504,
       outcome: 'timeout',
+      timed_out: true,
       duration_ms: 27_523,
+      phases_ms: {},
+      provider_status: null,
+      model: null,
+      request_bytes: null,
+      response_bytes: null,
+      history_messages: null,
+      escalation_step: null,
     })
     expect(
       JSON.parse(replyLogLine({ requestId: 'r-2', status: 200, code: null, durationMs: 9_000 })),
@@ -73,10 +86,93 @@ describe('replyLogLine', () => {
     expect(line).not.toContain('swelling')
     expect(line).not.toContain('secret')
     expect(Object.keys(JSON.parse(line)).sort()).toEqual(
-      ['duration_ms', 'event', 'outcome', 'request_id', 'status'].sort(),
+      [
+        'duration_ms',
+        'escalation_step',
+        'event',
+        'history_messages',
+        'model',
+        'outcome',
+        'phases_ms',
+        'provider_status',
+        'request_bytes',
+        'request_id',
+        'response_bytes',
+        'status',
+        'timed_out',
+      ].sort(),
     )
   })
+
+  it('times each phase separately and keeps only numbers, sizes and known names', () => {
+    const line = replyLogLine({
+      requestId: 'r-4',
+      status: 200,
+      code: null,
+      durationMs: 9_412.6,
+      phases: {
+        auth: 120.4,
+        gemini_headers: 8_000,
+        gemini_body: 12,
+        persistence: 30,
+        escalation: null,
+        // A phase name nobody declared, carrying text.
+        ...({ 'Is swelling normal?': 5 } as object),
+      },
+      providerStatus: 200,
+      model: 'gemini-3.8-flash',
+      requestBytes: 7_210,
+      responseBytes: 512,
+      historyMessages: 3,
+    })
+    const parsed = JSON.parse(line)
+    expect(parsed.phases_ms).toEqual({ auth: 120, gemini_headers: 8_000, gemini_body: 12, persistence: 30 })
+    expect(parsed).toMatchObject({
+      provider_status: 200,
+      model: 'gemini-3.8-flash',
+      request_bytes: 7_210,
+      response_bytes: 512,
+      history_messages: 3,
+      timed_out: false,
+    })
+    expect(line).not.toContain('swelling')
+  })
+
+  it('drops a model or escalation step that is not one of its own values', () => {
+    const parsed = JSON.parse(
+      replyLogLine({
+        requestId: 'r-5',
+        status: 503,
+        code: 'escalation_failed',
+        durationMs: 1,
+        model: 'Is swelling normal?',
+        escalationStep: 'patient said: I feel faint',
+      }),
+    )
+    expect(parsed.model).toBeNull()
+    expect(parsed.escalation_step).toBeNull()
+    expect(parsed.outcome).toBe('escalation_failed')
+  })
 })
+
+describe('the time budget', () => {
+  it('gives the provider what is left of the budget, within finite bounds', () => {
+    expect(providerDeadlineMs(0)).toBe(PROVIDER_TIMEOUT_MS)
+    expect(providerDeadlineMs(3_000)).toBe(PROVIDER_TIMEOUT_MS)
+    // Checks before the provider ran slowly: it gets only what remains.
+    expect(providerDeadlineMs(20_000)).toBe(SERVER_BUDGET_MS - POST_PROVIDER_RESERVE_MS - 20_000)
+    // Never nothing, never unbounded.
+    expect(providerDeadlineMs(10 * 60_000)).toBe(5_000)
+    expect(providerDeadlineMs(-5)).toBe(PROVIDER_TIMEOUT_MS)
+  })
+
+  it('stays far inside the 150 s Supabase request limit, with time kept back for saving', () => {
+    expect(SERVER_BUDGET_MS).toBeLessThan(150_000)
+    expect(PROVIDER_TIMEOUT_MS + POST_PROVIDER_RESERVE_MS).toBeLessThanOrEqual(SERVER_BUDGET_MS)
+    expect(DB_TIMEOUT_MS).toBeLessThanOrEqual(POST_PROVIDER_RESERVE_MS)
+  })
+})
+
 
 describe('chatbot-reply', () => {
   const source = readFileSync(
@@ -95,8 +191,9 @@ describe('chatbot-reply', () => {
   })
 
   it('reports the provider being too slow as a timeout, not as unavailable', () => {
-    expect(source).toContain('isProviderTimeout(cause)')
-    expect(source).toContain("504, 'timeout'")
+    // The provider module decides (tests/unit/gemini-call.test.ts); the
+    // handler passes its code and status through unchanged.
+    expect(source).toContain('throw new ReplyError(error.message, error.status, error.code)')
   })
 
   it('tells a retry that the message has been answered, rather than failing it', () => {
@@ -108,7 +205,7 @@ describe('chatbot-reply', () => {
   it('saves at most one reply per question, enforced by the primary key', () => {
     const answerStep = source.slice(
       source.indexOf('await answerOrRequestReview('),
-      source.indexOf('const critical = raisesCriticalConcern(parsed)'),
+      source.indexOf('if (answeredElsewhere)'),
     )
     // The reply is saved under the id derived from the message it answers,
     // and a duplicate-key refusal adopts the reply already there.
@@ -121,15 +218,16 @@ describe('chatbot-reply', () => {
     expect(answerStep).toContain('saveReplyOnce<ChatMessageRow>(')
     // No check-then-insert left for a concurrent request to slip past.
     expect(answerStep).not.toContain("latest?.chat_message_role === 'assistant'")
-    // The other request dealt with its own reply's concerns.
-    expect(source.indexOf('if (answeredElsewhere)')).toBeLessThan(
-      source.indexOf('const critical = raisesCriticalConcern(parsed)'),
+    // A request whose reply lost the race reports no concern of its own:
+    // the reply shown is the other request's.
+    expect(source).toMatch(
+      /if \(answeredElsewhere\) \{\s*return respond\(\{ message: inserted, raisedCriticalConcern: false \}/,
     )
   })
 
   it('reads the answered message’s id without sending it to the provider', () => {
     expect(source).toContain(
-      ".select('chat_message_id, chat_message_role, chat_message_content')",
+      ".select('chat_message_id, chat_message_role, chat_message_content, chat_message_created_at')",
     )
     // The provider still receives role and text only.
     expect(source).toContain('const turns = toInteractionInput(history)')

@@ -1,5 +1,3 @@
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
 
 import {
   FunctionsFetchError,
@@ -14,6 +12,11 @@ import {
   MAX_REPLY_RETRIES,
   REPLY_TIMEOUT_MS,
 } from '@/features/chat/reply-failure'
+import {
+  POST_PROVIDER_RESERVE_MS,
+  PROVIDER_TIMEOUT_MS,
+  SERVER_BUDGET_MS,
+} from '../../supabase/functions/_shared/reply-outcome'
 
 /**
  * How the browser reads a request for the guidance assistant's reply that
@@ -102,6 +105,17 @@ describe('classifyReplyError', () => {
     expect(await classifyReplyError(new Error('surprise'))).toBe('unavailable')
     expect(await classifyReplyError(undefined)).toBe('unavailable')
   })
+
+  it('reads a failed critical-concern escalation as unavailable, and offers to try again', async () => {
+    // The reply was not saved, so asking again produces and escalates it
+    // afresh (supabase/functions/_shared/critical-escalation.ts). Nothing
+    // about it suggests a concern to the patient, and it is not "answered".
+    const failure = await classifyReplyError(
+      httpError(503, { error: 'The guidance assistant is unavailable.', code: 'escalation_failed' }),
+    )
+    expect(failure).toBe('unavailable')
+    expect(canRetry(failure as 'unavailable')).toBe(true)
+  })
 })
 
 describe('retrying', () => {
@@ -121,26 +135,18 @@ describe('retrying', () => {
 
   it('gives the server time to answer before the browser gives up', () => {
     // The browser's limit runs from just before `functions.invoke` sends the
-    // request until the response is read. chatbot-reply's limit is only its
-    // wait for Gemini, so the browser's must also cover everything else - the
-    // session token, the CORS preflight, the checks before the Gemini call,
-    // the review request after a timeout, the network. That measured 4.7 s on
-    // the slowest request in production (2026-10-20, a cold start).
-    //
-    // This compares the configured limits with that one measurement; it does
-    // not measure the overhead, which a slower cold start or network can
-    // raise. What it keeps is at least 5 s spare beyond what was measured.
-    const MEASURED_OVERHEAD_MS = 4_700
-    const source = readFileSync(
-      join(process.cwd(), 'supabase/functions/chatbot-reply/index.ts'),
-      'utf8',
-    )
-    const declared = source.match(/const REQUEST_TIMEOUT_MS = ([\d_]+)/)?.[1]
-    expect(declared).toBeDefined()
-    const serverTimeout = Number(declared!.replaceAll('_', ''))
-    const spare = REPLY_TIMEOUT_MS - serverTimeout - MEASURED_OVERHEAD_MS
-    expect(spare).toBeGreaterThanOrEqual(5_000)
-    expect(REPLY_TIMEOUT_MS).toBeGreaterThan(30_000)
-    expect(REPLY_TIMEOUT_MS).toBeLessThanOrEqual(60_000)
+    // request until the response is read. It must cover the server's whole
+    // budget (the provider gets what is left of SERVER_BUDGET_MS less the
+    // post-provider reserve), plus what happens outside the function: the
+    // session token, the CORS preflight and the network. The preflight alone
+    // measured 3.7 s on a production cold start (2026-11-08); the whole
+    // overhead outside the provider call measured 4.7 s (2026-10-20).
+    const MEASURED_OUTSIDE_MS = 4_700
+    const serverAnswersWithin = SERVER_BUDGET_MS - POST_PROVIDER_RESERVE_MS + 2_000
+    expect(REPLY_TIMEOUT_MS - serverAnswersWithin - MEASURED_OUTSIDE_MS).toBeGreaterThanOrEqual(5_000)
+    // Never beyond Supabase's 150 s request idle timeout, and finite.
+    expect(SERVER_BUDGET_MS).toBeLessThan(150_000)
+    expect(REPLY_TIMEOUT_MS).toBeLessThanOrEqual(90_000)
+    expect(PROVIDER_TIMEOUT_MS).toBeLessThanOrEqual(SERVER_BUDGET_MS - POST_PROVIDER_RESERVE_MS)
   })
 })

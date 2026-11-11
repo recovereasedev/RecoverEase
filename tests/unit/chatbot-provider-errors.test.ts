@@ -1,8 +1,6 @@
 import { once } from 'node:events'
-import { readFileSync } from 'node:fs'
 import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { join } from 'node:path'
 
 import { afterEach, describe, expect, it } from 'vitest'
 
@@ -157,30 +155,5 @@ describe('a provider that stalls after its headers', () => {
   })
 })
 
-describe('chatbot-reply', () => {
-  const source = readFileSync(
-    join(process.cwd(), 'supabase/functions/chatbot-reply/index.ts'),
-    'utf8',
-  )
-  const bodyRead = source.slice(
-    source.indexOf('payload = await response.json()'),
-    source.indexOf('parseAssistantReply(extractOutputText(payload))'),
-  )
-
-  it('reports a body that stops arriving as a timeout, and anything else unreadable as malformed', () => {
-    expect(bodyRead).toMatch(
-      /catch \(cause\) \{[\s\S]*if \(isProviderTimeout\(cause\)\) \{[\s\S]*504, 'timeout'\)[\s\S]*\}\s*throw new AssistantReplyError/,
-    )
-  })
-
-  it('logs a provider error only through its summary', () => {
-    // The body is read once and used once: nothing else can log or forward it.
-    const code = source
-      .split('\n')
-      .filter((line) => !/^\s*(\/\/|\*|\/\*)/.test(line))
-      .join('\n')
-    expect(code.match(/\bdetail\b/g)).toHaveLength(2)
-    expect(source).toContain("const detail = await response.text().catch(() => '')")
-    expect(source).toContain('console.error(providerErrorSummary(response.status, detail))')
-  })
-})
+// How chatbot-reply reads the provider's body and logs its errors is tested
+// against a fake provider in tests/unit/gemini-call.test.ts.

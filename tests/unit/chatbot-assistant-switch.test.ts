@@ -52,16 +52,17 @@ describe('where chatbot-reply asks', () => {
   it('asks the database’s rule, for the patient’s assigned doctor', async () => {
     const code = await source()
     expect(ASSISTANT_SWITCH_FUNCTION).toBe('guidance_assistant_on_for_doctor')
-    expect(code).toContain('admin.rpc(ASSISTANT_SWITCH_FUNCTION, { target_doc_id: patient.doc_id })')
+    expect(code).toContain('.rpc(ASSISTANT_SWITCH_FUNCTION, { target_doc_id: patient.doc_id })')
   })
 
   it('asks after proving the conversation the caller’s, and before reading it or calling the provider', async () => {
     const code = await source()
     const ownership = code.indexOf("throw new AuthError('This conversation is not yours', 403)")
-    const theSwitch = code.indexOf('admin.rpc(ASSISTANT_SWITCH_FUNCTION')
-    const transcript = code.indexOf(".from('chat_message')")
-    const prompt = code.indexOf('loadClinicPrompt(')
-    const provider = code.indexOf('fetch(GEMINI_ENDPOINT')
+    const theSwitch = code.indexOf('.rpc(ASSISTANT_SWITCH_FUNCTION')
+    const handler = code.indexOf('Deno.serve(')
+    const transcript = code.indexOf(".from('chat_message')", handler)
+    const prompt = code.indexOf('loadClinicPrompt(', handler)
+    const provider = code.indexOf('requestGeminiReply({')
 
     for (const position of [ownership, theSwitch, transcript, prompt, provider]) {
       expect(position).toBeGreaterThan(-1)
