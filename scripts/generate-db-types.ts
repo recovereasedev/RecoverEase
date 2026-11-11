@@ -343,6 +343,17 @@ async function main(): Promise<void> {
     lines.push("        Returns: Database['public']['Tables']['medication_dose_conflict']['Row'][]")
     lines.push('      }')
 
+    // Migration 53: this device's Web Push subscription, for the signed-in
+    // patient. The queue's own functions are service-role only and absent.
+    lines.push('      register_push_subscription: {')
+    lines.push('        Args: { endpoint: string; p256dh: string; auth_key: string; user_agent?: string | null }')
+    lines.push('        Returns: string')
+    lines.push('      }')
+    lines.push('      unregister_push_subscription: {')
+    lines.push('        Args: { endpoint: string }')
+    lines.push('        Returns: boolean')
+    lines.push('      }')
+
     // The Super Admin's operations (migration 33). Each refuses anyone but a
     // Super Admin in a session verified with their authenticator app.
     const clinicRow =

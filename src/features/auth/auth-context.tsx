@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from 'react'
 
+import { forgetPushOnSignOut } from '@/features/push/push-device'
 import { supabase } from '@/lib/supabase/client'
 
 import { loadAppUser, signOut as signOutRequest } from './api'
@@ -145,6 +146,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     requestSequence.current += 1
     commit({ state: 'signed-out' })
     try {
+      // This phone stops receiving the account's reminders before the
+      // session that may remove it is gone (migration 53). Never waits
+      // more than three seconds; the screen is already signed out.
+      await Promise.race([
+        forgetPushOnSignOut(),
+        new Promise((resolve) => setTimeout(resolve, 3_000)),
+      ])
       await signOutRequest()
     } catch {
       // The local session is already gone; a failed server round trip must

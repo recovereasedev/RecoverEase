@@ -1476,6 +1476,147 @@ schedule shape, the per-schedule lock, rollback and reapply);
 `tests/unit/dose-conflicts.test.tsx`; `e2e/medication-dose-conflicts.spec.ts`.
 Also run on PostgreSQL 17.5 (PGlite 0.3) - see `docs/testing.md`.
 
+### Web Push for patients (migration 53)
+
+> **NOT APPLIED, NOT DEPLOYED.** Migration 53, the `send-push` Edge Function,
+> the Vercel variable and the activation script below are all still to do,
+> each only with Kean's approval. Applying migration 53 alone sends nothing.
+
+**What it does.** A patient who switches on **My profile → Phone
+notifications → Reminders on this phone** gets a notification on that
+Android phone when a medication or appointment reminder is stored for them,
+even with RecoverEase closed. The lock screen always says only
+"RecoverEase - You have a reminder in RecoverEase." Tapping it opens
+`/patient/medications` or `/patient/appointments` (the app's normal sign-in
+applies). Nothing is recorded from the notification.
+
+**How it fits together.**
+
+```
+reminder job (unchanged) --> INSERT notification (medication | appointment, for a patient)
+        |  trigger notification_enqueue_push (migration 53)
+        v
+push_delivery (one row per notification x device, unique)
+        |  pg_cron every minute --> app_private.request_push_dispatch()
+        |                           '-- pg_net POST --> Edge Function send-push
+        v
+send-push: claim_push_deliveries() --> encrypt + VAPID-sign --> push service
+           complete_push_delivery(sent | retry | failed | gone)
+```
+
+- Retries: 30 s, 1, 2, 4 min (or the push service's `Retry-After`, up to
+  1 h); after the 5th attempt `failed`. Unsent after 6 h: `expired` (no late
+  reminders). Finished rows are deleted after 30 days.
+- 404/410 from the push service: the device's subscription is deleted.
+- Idempotency: unique `(notification_id, subscription_id)`; claims use
+  `FOR UPDATE SKIP LOCKED`; an outcome is recorded only from `sending`; the
+  push `Topic` header and the notification `tag` keep a retried message to
+  one on the phone.
+- Patients only; doctors' notifications (including `chat_critical`) are
+  never pushed. The queue never holds the notification's text.
+- Signing out removes this phone's subscription. A phone that changes
+  account moves to the new account, and anything queued for the previous
+  one on it is dropped.
+
+**Files.** `supabase/migrations/20260902100053_web_push_notifications.sql`;
+rollback `supabase/rollbacks/20260902100053_web_push_notifications.down.sql`;
+`supabase/manual/web_push_activate.sql` and `web_push_deactivate.sql` (not
+migrations); `supabase/functions/send-push/`;
+`supabase/functions/_shared/web-push.ts` (RFC 8291 encryption + RFC 8292
+VAPID, WebCrypto only, no library); `public/sw.js` (`push`,
+`notificationclick`, VERSION v2); `src/features/push/`.
+
+#### 1. Generate the VAPID key pair (once)
+
+On any computer with Node:
+
+```bash
+npx --yes web-push@3.6.7 generate-vapid-keys --json
+```
+
+It prints `publicKey` and `privateKey` (base64url). The private key is a
+secret: it goes only into Supabase secrets, never into Vercel or git. The
+public key is not secret. Changing the pair later means every patient has
+to switch phone reminders on again (old subscriptions are refused with 403
+and fail).
+
+Also make a long random dispatch secret:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
+```
+
+#### 2. Order of steps (each needs approval)
+
+1. **Apply migration 53** in a quiet window (it waits at most 3 s for the
+   `notification` lock, like 41 and 44; see "Migration timing and run
+   history"). Read-only checks afterwards:
+
+   ```sql
+   select to_regclass('public.push_subscription'), to_regclass('public.push_delivery');
+   select tgname from pg_trigger where tgname = 'notification_enqueue_push';
+   select app_private.request_push_dispatch();   -- 'nothing due'
+   ```
+
+   Nothing is sent yet: no job exists and pg_net is not installed.
+
+2. **Set the Edge Function secrets and deploy `send-push`:**
+
+   ```bash
+   npx supabase@2.121.0 secrets set --project-ref <ref> VAPID_PUBLIC_KEY=<publicKey> VAPID_PRIVATE_KEY=<privateKey> VAPID_SUBJECT=mailto:<ops address> PUSH_DISPATCH_SECRET=<dispatch secret>
+   ```
+
+   ```bash
+   npx supabase@2.121.0 functions deploy send-push --project-ref <ref> --no-verify-jwt --use-api
+   ```
+
+   `--no-verify-jwt` because the caller is the database (pg_net), which has
+   no user token; the function refuses any request without the right
+   `x-push-dispatch-secret` header. Missing configuration answers 503 and
+   names the missing secret (never its value).
+
+3. **Set `VITE_VAPID_PUBLIC_KEY`** (the public key only) in Vercel for
+   Production, then redeploy the frontend. Until then the switch says "Phone
+   reminders are not available yet."
+
+4. **Turn delivery on** with `supabase/manual/web_push_activate.sql` in the
+   SQL editor, its two placeholders filled. This **installs pg_net** (a
+   production extension change), stores the function URL and the dispatch
+   secret in Vault, and schedules `recoverease-push-deliveries` every
+   minute.
+
+5. **Smoke test** with a `@smoke.invalid` patient on an Android phone with
+   RecoverEase installed: switch on, then create a medication or
+   appointment notification for that patient. Check
+   `select delivery_status, attempt_count, last_status_code, last_error from public.push_delivery order by delivery_created_at desc limit 5;`
+   and the function logs (`push_dispatched` logs counts only; no endpoint
+   or text).
+
+#### 3. Turning it off, and rollback
+
+- **Stop sending, keep everything:** `supabase/manual/web_push_deactivate.sql`
+  (unschedules the job, removes the Vault secrets). Queued rows expire after
+  6 h. Patients' switches keep their state.
+- **Hide the switch:** remove `VITE_VAPID_PUBLIC_KEY` from Vercel and
+  redeploy.
+- **Remove it entirely:** deactivate, then apply
+  `supabase/rollbacks/20260902100053_web_push_notifications.down.sql` as a
+  new migration (it also unschedules the job if it is still there). It
+  deletes every saved device and the queue; no notification row changes.
+  Then delete the `send-push` function and its secrets. pg_net can stay.
+- Reminder jobs, the in-app bell and tray, and the calendar (.ics) file are
+  untouched by every step above.
+
+Tests: `tests/db/web-push.test.ts` (access, queueing, idempotency, back-off,
+give-up, expiry, cleanup, gone devices, account switch, rollback);
+`tests/unit/web-push-crypto.test.ts` (encryption decrypted as a browser
+would, VAPID verified); `tests/unit/send-push-handler.test.ts`;
+`tests/unit/web-push-service-worker.test.ts`;
+`tests/unit/push-setting.test.tsx`; `e2e/push-notifications.spec.ts`. Not
+covered: a real phone receiving a real push (needs the steps above), and
+the worker's handlers in a real browser (headless Chromium refuses
+notification permission to service workers).
+
 ## Bundle budget
 
 Measured on the built output, gzipped, for a first-time visitor to the landing
