@@ -69,6 +69,10 @@ export default defineConfig({
     env: {
       VITE_SUPABASE_URL: 'https://stub.supabase.co',
       VITE_SUPABASE_PUBLISHABLE_KEY: 'stub-publishable-key',
+      // A placeholder VAPID public key (65 bytes, base64url): the push
+      // switch is offered, and e2e/push-notifications.spec.ts stands in for
+      // the browser's push service, so nothing is ever sent with it.
+      VITE_VAPID_PUBLIC_KEY: `B${'A'.repeat(86)}`,
     },
   },
 })

@@ -11,6 +11,7 @@ import { Field, Input } from '@/components/ui/field'
 import { PageSection } from '@/components/ui/section-heading'
 import { useAuth, useCurrentUser } from '@/features/auth/auth-context'
 import { useMyDoctor, useUpdatePatient } from '@/features/patients/hooks'
+import { PushSetting } from '@/features/push/components/push-setting'
 import { useDocumentTitle } from '@/hooks/use-document-title'
 import { calculateAge, formatDate } from '@/lib/format'
 import { fullName } from '@/lib/utils'
@@ -220,6 +221,20 @@ export function PatientProfilePage() {
               </form>
             </CardBody>
           </Card>
+          </PageSection>
+
+          {/* Its own section, outside the form: it belongs to this phone,
+              not to the record, and acts on a tap rather than on Save. */}
+          <PageSection
+            title="Phone notifications"
+            description="Get a reminder on this phone, even when RecoverEase is closed."
+            className="mt-section"
+          >
+            <Card>
+              <CardBody>
+                <PushSetting />
+              </CardBody>
+            </Card>
           </PageSection>
         </div>
 

@@ -592,6 +592,10 @@ export type Database = {
           notification_message: string
           notification_is_read: boolean
           notification_created_at: string
+          notification_source: string | null
+          notification_purpose: string | null
+          notification_medication_log_id: string | null
+          notification_appointment_id: string | null
         }
         Insert: {
           notification_id?: string
@@ -601,6 +605,10 @@ export type Database = {
           notification_message: string
           notification_is_read?: boolean
           notification_created_at?: string
+          notification_source?: string | null
+          notification_purpose?: string | null
+          notification_medication_log_id?: string | null
+          notification_appointment_id?: string | null
         }
         Update: {
           notification_id?: string
@@ -610,6 +618,10 @@ export type Database = {
           notification_message?: string
           notification_is_read?: boolean
           notification_created_at?: string
+          notification_source?: string | null
+          notification_purpose?: string | null
+          notification_medication_log_id?: string | null
+          notification_appointment_id?: string | null
         }
         Relationships: [
           {
@@ -1322,6 +1334,18 @@ export type Database = {
       doctor_resolve_medication_conflict: {
         Args: { target_conflict_id: string; resolution: 'rescheduled' | 'not_given_separately'; new_scheduled_at: string | null; resolution_note: string }
         Returns: Database['public']['Tables']['medication_dose_conflict']['Row'][]
+      }
+      register_push_subscription: {
+        Args: { endpoint: string; p256dh: string; auth_key: string; user_agent?: string | null }
+        Returns: boolean
+      }
+      push_device_registered: {
+        Args: { endpoint: string }
+        Returns: boolean
+      }
+      unregister_push_subscription: {
+        Args: { endpoint: string }
+        Returns: boolean
       }
       super_admin_assured: {
         Args: Record<PropertyKey, never>

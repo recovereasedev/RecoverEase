@@ -133,6 +133,12 @@ export function queryKeysFor(userId: string) {
         [...queryKeys.notifications.all, 'unread-count'] as const,
     },
 
+    pushDevice: {
+      // This device's push switch (migration 53): per device, filed under
+      // the account so another account on the same phone reads it afresh.
+      state: () => [userId, 'push-device', 'state'] as const,
+    },
+
     announcements: {
       all: [userId, 'announcements'] as const,
       list: () => [...queryKeys.announcements.all, 'list'] as const,

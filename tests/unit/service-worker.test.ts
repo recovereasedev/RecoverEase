@@ -96,7 +96,7 @@ describe('installing', () => {
     expect(worker.added.map((request) => [request.url, request.cache])).toEqual([
       ['/offline.html', 'reload'],
     ])
-    expect([...worker.stores.keys()]).toEqual(['recoverease-offline-v1'])
+    expect([...worker.stores.keys()]).toEqual(['recoverease-offline-v2'])
     expect(worker.self.skipWaiting).toHaveBeenCalledTimes(1)
   })
 })
@@ -105,11 +105,11 @@ describe('taking over from an older worker', () => {
   it('removes older RecoverEase storage, leaves anything else, and takes control', async () => {
     const worker = loadWorker({
       network: async () => ({}),
-      existingCaches: ['recoverease-offline-v0', 'recoverease-offline-v1', 'unrelated-cache'],
+      existingCaches: ['recoverease-offline-v0', 'recoverease-offline-v1', 'recoverease-offline-v2', 'unrelated-cache'],
     })
     await worker.lifecycle('activate')
 
-    expect([...worker.stores.keys()].sort()).toEqual(['recoverease-offline-v1', 'unrelated-cache'])
+    expect([...worker.stores.keys()].sort()).toEqual(['recoverease-offline-v2', 'unrelated-cache'])
     expect(worker.self.clients.claim).toHaveBeenCalledTimes(1)
   })
 })
@@ -142,7 +142,7 @@ describe('page loads', () => {
     expect(answered).toBe(true)
     expect(response).toBe(live)
     expect(worker.put).not.toHaveBeenCalled()
-    expect([...(worker.stores.get('recoverease-offline-v1') as Map<string, unknown>).keys()]).toEqual([
+    expect([...(worker.stores.get('recoverease-offline-v2') as Map<string, unknown>).keys()]).toEqual([
       '/offline.html',
     ])
   })
