@@ -1478,9 +1478,48 @@ Also run on PostgreSQL 17.5 (PGlite 0.3) - see `docs/testing.md`.
 
 ### Web Push for patients (migration 53)
 
-> **NOT APPLIED, NOT DEPLOYED.** Migration 53, the `send-push` Edge Function,
-> the Vercel variable and the activation script below are all still to do,
-> each only with Kean's approval. Applying migration 53 alone sends nothing.
+> **MIGRATION 53 APPLIED; DELIVERY NOT SWITCHED ON.** Step 1 below is done.
+> The `send-push` Edge Function, its secrets, the Vercel variable and the
+> activation script are all still to do, each only with Kean's approval. No
+> phone can receive a push until they are.
+>
+> **Where it stood on 2026-11-12** (read-only checks of production that day;
+> a dated snapshot, not the current state - check again before relying on
+> it):
+>
+> - **Applied 2026-11-12 05:03:14 UTC** with Kean's approval, in the history
+>   as `20261112050314 web_push_notifications`. Like every entry in this
+>   project's history, the version is the time it was applied, not the
+>   file's number, so the Supabase CLI's `migration list` matches no local
+>   file to any production entry. Never run `supabase db push` against
+>   production: it would try to run every file again, the held migration 34
+>   included.
+> - **The entry's statement is this file byte for byte** (MD5
+>   `4a21f14aeb624176d7f953d190e48d71`, 46,810 bytes, the file at commit
+>   `e63ecdd`). It was run with `supabase db query --linked -f`, which sends
+>   the file itself, as one transaction together with its history row; the
+>   row was written by that same script rather than by `apply_migration`.
+> - **Before it**, the four functions it redefines matched the "before"
+>   copies in the rollback file (MD5 and length), so the rollback restores
+>   what was live. **After it**, their bodies match this file, with the same
+>   owner and access (owner and `service_role`).
+> - **In place:** both `app_private` tables with row level security on and
+>   no grant to any role but the owner; the four `notification` columns and
+>   two constraints; the trigger `notification_enqueue_push`; the
+>   doctor-message policy with its four extra conditions.
+>   `app_private.request_push_dispatch()` returns `nothing due`.
+> - **Reminder jobs:** all six active, schedules and commands unchanged. By
+>   05:19 UTC the pre-dose, follow-up, conflict-alert and overdue-dose jobs
+>   had run on the new functions without a failure.
+> - **Not yet observed by 05:19 UTC:** the hourly appointment-reminder job
+>   (first run on the new function due 06:00 UTC), and a tagged
+>   notification: no notification of any kind had been written since the
+>   apply, because no dose or appointment had come due. Neither is a
+>   failure; both are still to be confirmed.
+> - **Delivery is off:** `send-push` is not deployed, no VAPID or dispatch
+>   secret is set (Edge Function secrets or Vault), `pg_net` is not
+>   installed, there is no `recoverease-push-deliveries` job, and there are
+>   no saved devices and no deliveries.
 
 **What it does.** A patient who switches on **My profile → Phone
 notifications → Reminders on this phone** gets a notification on that
@@ -1633,8 +1672,9 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
 
 #### 2. Order of steps (each needs approval)
 
-1. **Apply migration 53** in a quiet window, clear of the minute and
-   quarter-hour marks: it alters `notification` and replaces the four
+1. **Apply migration 53** - **done 2026-11-12 05:03:14 UTC** (see the
+   snapshot above). It was applied in a quiet window, clear of the minute
+   and quarter-hour marks: it alters `notification` and replaces the four
    functions the reminder jobs call, waiting at most 3 s for the lock (see
    "Migration timing and run history"). Read-only checks afterwards:
 
