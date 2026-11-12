@@ -108,6 +108,19 @@ describe('a push arriving', () => {
     ])
   })
 
+  it('a repeated message is shown under the same tag, so it replaces one still on screen', async () => {
+    // The worker keeps no record of what it has shown: a retry that arrives
+    // after the first was dismissed is displayed again. The shared tag is
+    // what stops two copies sitting side by side.
+    const worker = loadWorker()
+    const message = { purpose: 'reminder', url: '/patient/medications', tag: 'recoverease-abc' }
+    await worker.push(message)
+    await worker.push(message)
+    expect(worker.shown).toHaveLength(2)
+    expect(worker.shown[0]!.options.tag).toBe('recoverease-abc')
+    expect(worker.shown[1]!.options.tag).toBe('recoverease-abc')
+  })
+
   it('shows the appointment-update sentence for a cancellation, never "reminder"', async () => {
     const worker = loadWorker()
     await worker.push({ purpose: 'appointment_update', url: '/patient/appointments', tag: 'recoverease-def' })

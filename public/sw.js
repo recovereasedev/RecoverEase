@@ -75,6 +75,11 @@ self.addEventListener('fetch', (event) => {
 // ignored, an unknown or unreadable message gets the neutral sentence, and a
 // tap can only open a page on this list. So no message, however malformed,
 // can put clinical words on a lock screen or send the patient somewhere else.
+//
+// The tag is the notification's id. A message can arrive more than once (the
+// server retries when it cannot tell whether the first got through), and the
+// same tag makes the second replace the first if it is still on screen. If
+// the patient already dismissed it, it shows again: nothing here remembers.
 
 const PUSH_TITLE = 'RecoverEase'
 const PUSH_BODIES = {

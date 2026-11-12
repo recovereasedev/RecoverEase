@@ -267,6 +267,20 @@ describe('sendPush', () => {
     expect(JSON.stringify(result)).not.toContain('googleapis')
   })
 
+  it('cannot tell a lost reply from a message that never arrived: both are a retry', async () => {
+    const d = await device()
+    const { vapid } = await vapidKeys()
+    let received = 0
+    // The push service has the message; the connection drops before its reply.
+    const replyLost = vi.fn(async () => {
+      received++
+      throw new TypeError('connection reset')
+    })
+    const result = await sendPush(d.subscription, 'x', vapid, { topic: 'abc', fetcher: replyLost })
+    expect(received).toBe(1)
+    expect(result).toEqual({ outcome: 'retry', status: null, errorCode: 'network_error', retryAfterSeconds: null })
+  })
+
   it('keeps nothing of what the push service says back', async () => {
     const d = await device()
     const { vapid } = await vapidKeys()

@@ -134,6 +134,37 @@ describe('dispatchPushes', () => {
     expect(completed.find(([id]) => id.endsWith('2'))![1]).toMatchObject({ errorCode: 'network_timeout' })
   })
 
+  it('a reply lost after the push service accepted the message leads to a second send, with the same Topic and tag', async () => {
+    // The push service takes the message, then the reply never arrives: all
+    // RecoverEase can know is "timed out". The delivery is retried, so the
+    // push service is handed the message twice. That is the real guarantee -
+    // one queue row, sent at least once - and the stable Topic and tag are
+    // what let the push service and the phone fold the repeat away when
+    // they can. Nothing here can promise the phone shows it only once.
+    const accepted: { topic: string; tag: string }[] = []
+    const send = vi.fn(async (_subscription: unknown, payload: string, options: { topic: string }): Promise<PushResult> => {
+      accepted.push({ topic: options.topic, tag: (JSON.parse(payload) as { tag: string }).tag })
+      return accepted.length === 1
+        ? { outcome: 'retry', status: null, errorCode: 'network_timeout', retryAfterSeconds: null }
+        : { outcome: 'sent', status: 201 }
+    })
+    const first = queue([[delivery(7)]])
+    const second = queue([[{ ...delivery(7), attempt_count: 2 }]])
+
+    expect(await dispatchPushes({ store: first.store, send })).toMatchObject({ retry: 1, sent: 0 })
+    expect(await dispatchPushes({ store: second.store, send })).toMatchObject({ retry: 0, sent: 1 })
+
+    // One logical delivery: the same queue row both times, never a second row.
+    expect(first.completed[0]![0]).toBe(second.completed[0]![0])
+    expect(first.completed[0]![1]).toMatchObject({ outcome: 'retry', errorCode: 'network_timeout' })
+    expect(second.completed[0]![1]).toMatchObject({ outcome: 'sent' })
+    // Handed to the push service twice, identically labelled.
+    expect(accepted).toHaveLength(2)
+    expect(accepted[0]).toEqual(accepted[1])
+    expect(accepted[0]!.topic).toMatch(/^[0-9a-f]{32}$/)
+    expect(accepted[0]!.tag).toBe(`recoverease-${delivery(7).notification_id}`)
+  })
+
   it('one delivery that throws does not stop the others in its batch', async () => {
     const { store, completed } = queue([[delivery(1), delivery(2), delivery(3)]])
     const send = vi.fn(async (subscription: { endpoint: string }): Promise<PushResult> => {

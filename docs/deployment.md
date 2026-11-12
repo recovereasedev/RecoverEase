@@ -1572,6 +1572,27 @@ Retries: 30 s, 1, 2, 4 min (or `Retry-After`, up to 1 h); after the 5th
 attempt `failed` (`gave_up`). Unsent after 6 h: `expired`. Finished rows are
 deleted after 30 days. 404/410: the device is deleted.
 
+**What "once" means here.** The queue holds one row per notification and
+device (a unique key), and a row is claimed by one run at a time, so there
+is exactly one logical delivery. Sending it is *at least once*, not exactly
+once: the push service can accept a message whose reply never reaches
+`send-push` (a timeout, a dropped connection, a run that ends before the
+outcome is recorded), and that delivery is then retried. Every attempt
+carries the same `Topic` (the delivery's id) and the same notification tag
+(the notification's id). These suppress most repeats - a message still
+waiting at the push service is replaced, and a notification still on the
+screen is replaced - but they are best effort: a notification the patient
+has already seen and dismissed can appear a second time. Retries are
+bounded (five attempts, six hours), and the repeat says the same generic
+sentence and opens the same page.
+
+**Switching off always works.** A phone the server still holds shows as on
+and can be switched off even when `VITE_VAPID_PUBLIC_KEY` is missing or the
+patient has blocked notifications in the browser; only switching *on* needs
+the key and the permission. The server copy is removed first, and if that
+fails the switch stays on and says so. The phone is identified by the
+subscription its own browser holds, so one device can never remove another.
+
 **What migration 53 changes outside push.** `notification` gains four
 nullable columns (`notification_source`, `notification_purpose`,
 `notification_medication_log_id`, `notification_appointment_id`), and

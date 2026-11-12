@@ -117,16 +117,37 @@ async function workerRegistration(env: PushEnvironment) {
   return env.serviceWorker ? env.serviceWorker.getRegistration() : undefined
 }
 
-/** The state the switch shows. Reads only; never prompts. */
+/**
+ * The state the switch shows. Reads only; never prompts.
+ *
+ * A device the server still holds is 'on' whatever else is true - a missing
+ * VAPID key or a blocked permission stops it being switched ON, never OFF.
+ * So the saved device is looked for first, and only when there is none do
+ * the reasons it cannot be switched on apply. The device is identified by
+ * the subscription this browser holds; without one there is nothing here to
+ * remove, and no other device's subscription is ever reachable from here.
+ */
 export async function readPushState(env: PushEnvironment = browserPushEnvironment()): Promise<PushState> {
-  if (!env.serviceWorker || !env.hasPushManager || !env.notification) return 'unsupported'
+  if (!env.serviceWorker || !env.hasPushManager) return 'unsupported'
+  const registration = await workerRegistration(env)
+  const subscription = registration ? await registration.pushManager.getSubscription() : null
+  if (subscription && (await env.isRegistered(subscription.endpoint))) return 'on'
+
+  if (!env.notification) return 'unsupported'
   if (!env.vapidPublicKey) return 'unavailable'
   if (env.notification.permission === 'denied') return 'blocked'
-  const registration = await workerRegistration(env)
   if (!registration) return 'no-worker'
-  const subscription = await registration.pushManager.getSubscription()
-  if (!subscription || env.notification.permission !== 'granted') return 'off'
-  return (await env.isRegistered(subscription.endpoint)) ? 'on' : 'off'
+  return 'off'
+}
+
+/**
+ * Why a device that is 'on' may not actually be showing anything, so the
+ * switch can say so while still offering to switch it off.
+ */
+export function pushDeliveryProblem(env: PushEnvironment = browserPushEnvironment()): 'blocked' | 'unavailable' | null {
+  if (env.notification?.permission === 'denied') return 'blocked'
+  if (!env.vapidPublicKey) return 'unavailable'
+  return null
 }
 
 /**
@@ -185,7 +206,13 @@ export async function enablePush(env: PushEnvironment = browserPushEnvironment()
   })
 }
 
-/** Removes this device on the server first, then in the browser. */
+/**
+ * Removes this device on the server first, then in the browser. Needs
+ * neither the VAPID key nor notification permission - only the browser's
+ * own subscription, which says which device this is. If the server refuses
+ * or cannot be reached this throws and the browser's subscription is kept,
+ * so the switch stays on rather than claiming something that is not true.
+ */
 export async function disablePush(env: PushEnvironment = browserPushEnvironment()): Promise<void> {
   const registration = await workerRegistration(env)
   const subscription = registration ? await registration.pushManager.getSubscription() : null

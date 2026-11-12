@@ -20,7 +20,8 @@ vi.mock('@/features/auth/auth-context', () => ({
 }))
 
 const { PushSetting } = await import('@/features/push/components/push-setting')
-const { forgetPushOnSignOut, applicationServerKey, readPushState } = await import('@/features/push/push-device')
+const { forgetPushOnSignOut, applicationServerKey, readPushState, enablePush, disablePush, PushSetupError } =
+  await import('@/features/push/push-device')
 
 const VAPID = 'B' + 'A'.repeat(86)
 
@@ -197,6 +198,108 @@ describe('the switch', () => {
     renderSetting({ ...env, hasPushManager: false })
     expect(await screen.findByText(/cannot show RecoverEase notifications/)).toBeInTheDocument()
     expect(toggle()).toBeDisabled()
+  })
+})
+
+describe('a phone that is already saved can always be switched off', () => {
+  it('with no VAPID key configured: shows on, says why nothing arrives, and switches off', async () => {
+    const device = fakeDevice({ permission: 'granted', existing: true, saved: true, vapid: undefined })
+    renderSetting(device.env)
+    await waitFor(() => expect(toggle()).toHaveAttribute('aria-checked', 'true'))
+    expect(toggle()).toBeEnabled()
+    expect(screen.getByText(/not available right now/)).toBeInTheDocument()
+
+    await act(async () => {
+      fireEvent.click(toggle())
+    })
+
+    await waitFor(() => expect(toggle()).toHaveAttribute('aria-checked', 'false'))
+    expect(device.env.unregister).toHaveBeenCalledWith('https://fcm.googleapis.com/fcm/send/existing-device-token-0001')
+    expect(device.saved.size).toBe(0)
+    expect(device.current()).toBeNull()
+    // Off now, and with no key it cannot be switched back on.
+    expect(await screen.findByText(/not available yet/)).toBeInTheDocument()
+    expect(toggle()).toBeDisabled()
+  })
+
+  it('with notifications blocked in the browser: shows on, says so, and switches off', async () => {
+    const device = fakeDevice({ permission: 'denied', existing: true, saved: true })
+    renderSetting(device.env)
+    await waitFor(() => expect(toggle()).toHaveAttribute('aria-checked', 'true'))
+    expect(toggle()).toBeEnabled()
+    expect(screen.getByText(/still saved for them\. Switch this off/)).toBeInTheDocument()
+
+    await act(async () => {
+      fireEvent.click(toggle())
+    })
+
+    await waitFor(() => expect(toggle()).toHaveAttribute('aria-checked', 'false'))
+    expect(device.env.unregister).toHaveBeenCalledTimes(1)
+    expect(device.requestPermission).not.toHaveBeenCalled()
+    expect(device.saved.size).toBe(0)
+    expect(device.current()).toBeNull()
+    expect(toggle()).toBeDisabled()
+  })
+
+  it('switching off needs neither the key nor permission, and removes the server copy first', async () => {
+    const device = fakeDevice({ permission: 'denied', existing: true, saved: true, vapid: undefined })
+    const subscription = device.current()!
+    const order: string[] = []
+    device.env.unregister = vi.fn(async () => {
+      order.push('server')
+    })
+    ;(subscription.unsubscribe as ReturnType<typeof vi.fn>).mockImplementation(async () => {
+      order.push('browser')
+      return true
+    })
+    expect(await readPushState(device.env)).toBe('on')
+    await disablePush(device.env)
+    expect(order).toEqual(['server', 'browser'])
+  })
+
+  it('cannot be switched ON without a VAPID key, and saves nothing', async () => {
+    const device = fakeDevice({ vapid: undefined })
+    renderSetting(device.env)
+    expect(await screen.findByText(/not available yet/)).toBeInTheDocument()
+    expect(toggle()).toBeDisabled()
+    expect(toggle()).toHaveAttribute('aria-checked', 'false')
+
+    const refusal = await enablePush(device.env).catch((error: unknown) => error)
+    expect(refusal).toBeInstanceOf(PushSetupError)
+    expect((refusal as InstanceType<typeof PushSetupError>).reason).toBe('unavailable')
+    expect(device.requestPermission).not.toHaveBeenCalled()
+    expect(device.pushManager.subscribe).not.toHaveBeenCalled()
+    expect(device.env.register).not.toHaveBeenCalled()
+  })
+
+  it('does not say it is off when the server could not remove the device', async () => {
+    const device = fakeDevice({ permission: 'granted', existing: true, saved: true })
+    const subscription = device.current()!
+    device.env.unregister = vi.fn(async () => {
+      throw new Error('offline')
+    })
+    renderSetting(device.env)
+    await waitFor(() => expect(toggle()).toHaveAttribute('aria-checked', 'true'))
+
+    await act(async () => {
+      fireEvent.click(toggle())
+    })
+
+    expect(await screen.findByText(/could not switch phone reminders off, so they are still on/)).toBeInTheDocument()
+    await waitFor(() => expect(toggle()).toBeEnabled())
+    expect(toggle()).toHaveAttribute('aria-checked', 'true')
+    // The browser's subscription is kept: the server still has it.
+    expect(subscription.unsubscribe).not.toHaveBeenCalled()
+    expect(device.current()).toBe(subscription)
+    expect(device.saved.size).toBe(1)
+  })
+
+  it('with no subscription in this browser there is no device to name, and nothing is removed', async () => {
+    const device = fakeDevice({ permission: 'granted' })
+    await disablePush(device.env)
+    expect(device.env.unregister).not.toHaveBeenCalled()
+    expect(device.env.isRegistered).not.toHaveBeenCalled()
+    expect(await readPushState(device.env)).toBe('off')
   })
 })
 

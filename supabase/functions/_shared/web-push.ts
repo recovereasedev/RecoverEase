@@ -269,9 +269,11 @@ export async function sendPush(
     TTL: String(options.ttlSeconds ?? 60 * 60),
     Urgency: 'high',
   }
-  // A Topic replaces an undelivered message with the same topic at the push
-  // service: if a retry follows a send that did get through, the phone still
-  // shows it once.
+  // A Topic replaces a message with the same topic that is still waiting at
+  // the push service (the phone was offline). Best effort only: once a
+  // message has reached the phone, a retry of it is a new message, and it
+  // is the notification tag that then replaces the one on screen - if it is
+  // still there.
   if (options.topic) headers['Topic'] = options.topic
 
   const controller = new AbortController()

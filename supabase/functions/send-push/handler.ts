@@ -41,9 +41,19 @@ export type DispatchSummary = { sent: number; retry: number; failed: number; gon
  * else.
  *
  * Each delivery's outcome is recorded on its own; one that throws, or fails
- * to record, is left 'sending' and reclaimed after its lease, where the
- * Topic header and the notification tag keep the phone from showing it
- * twice.
+ * to record, is left 'sending' and reclaimed after its lease.
+ *
+ * What is and is not guaranteed. The queue holds one row per notification
+ * and device, and a row is claimed by one run at a time, so there is one
+ * logical delivery. The transport is "at least once": the push service can
+ * accept a message whose reply never reaches us (a timeout, a dropped
+ * connection, a run that dies before recording), and that delivery is then
+ * sent again. Every attempt carries the same Topic (the delivery's id) and
+ * the same notification tag (the notification's id), which suppress most
+ * repeats - a message still waiting at the push service is replaced, and a
+ * notification still on screen is replaced. They cannot undo one the
+ * patient has already seen and dismissed: that one can appear a second
+ * time. Retries are bounded (five attempts, six hours).
  */
 export async function dispatchPushes({
   store,

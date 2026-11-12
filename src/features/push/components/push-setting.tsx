@@ -7,6 +7,7 @@ import {
   browserPushEnvironment,
   disablePush,
   enablePush,
+  pushDeliveryProblem,
   PushSetupError,
   readPushState,
   type PushEnvironment,
@@ -87,12 +88,15 @@ export function PushSetting({ environment }: { environment?: PushEnvironment }) 
       </div>
 
       <StateNotice state={current} failed={state.isError} />
+      {isOn ? <OnButNotShowingNotice problem={pushDeliveryProblem(env)} /> : null}
 
       {change.isError ? (
         <Notice tone="danger" title="That did not work" live="assertive">
           {change.error instanceof PushSetupError
             ? change.error.message
-            : 'RecoverEase could not change phone reminders. Check your connection and try again.'}
+            : change.variables === false
+              ? 'RecoverEase could not switch phone reminders off, so they are still on for this phone. Check your connection and try again.'
+              : 'RecoverEase could not change phone reminders. Check your connection and try again.'}
         </Notice>
       ) : null}
 
@@ -102,6 +106,29 @@ export function PushSetting({ environment }: { environment?: PushEnvironment }) 
       </p>
     </div>
   )
+}
+
+/** This phone is still saved, but something stops it showing reminders. It can still be switched off. */
+function OnButNotShowingNotice({ problem }: { problem: 'blocked' | 'unavailable' | null }) {
+  if (problem === 'blocked') {
+    return (
+      <Notice tone="warning" title="Notifications are blocked">
+        Your browser is blocking notifications from RecoverEase, so this phone is not
+        showing reminders, but it is still saved for them. Switch this off to remove
+        this phone, or allow notifications in Chrome&rsquo;s site settings to see them
+        again.
+      </Notice>
+    )
+  }
+  if (problem === 'unavailable') {
+    return (
+      <Notice tone="info">
+        Phone reminders are not available right now. This phone is still saved for
+        them; you can switch it off here.
+      </Notice>
+    )
+  }
+  return null
 }
 
 function StateNotice({ state, failed }: { state: PushState | undefined; failed: boolean }) {
