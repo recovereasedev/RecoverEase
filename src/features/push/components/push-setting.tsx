@@ -55,9 +55,11 @@ export function PushSetting({ environment }: { environment?: PushEnvironment }) 
           </p>
           <p id="push-setting-description" className="text-sm text-muted">
             Your phone shows &ldquo;You have a reminder in RecoverEase.&rdquo; when a
-            medication or appointment reminder is sent, even with the app closed. It
-            never shows a medicine&rsquo;s name. Tap it to open RecoverEase and see the
-            details after signing in.
+            medication or appointment reminder is sent, and &ldquo;You have an
+            appointment update in RecoverEase.&rdquo; when an appointment is
+            cancelled, even with the app closed. It never shows a medicine&rsquo;s name
+            or any appointment details. Tap it to open RecoverEase and see the details
+            after signing in.
           </p>
         </div>
         <button

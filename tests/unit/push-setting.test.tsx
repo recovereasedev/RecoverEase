@@ -31,6 +31,8 @@ function fakeDevice(options: {
   vapid?: string | undefined
   existing?: boolean
   saved?: boolean
+  /** The endpoint the browser hands out on subscribe. */
+  issues?: string
 } = {}) {
   let permission = options.permission ?? 'default'
   let subscription: PushSubscription | null = null
@@ -47,13 +49,13 @@ function fakeDevice(options: {
       }),
     }) as unknown as PushSubscription
 
-  if (options.existing) subscription = makeSubscription('https://fcm.googleapis.com/fcm/send/existing')
+  if (options.existing) subscription = makeSubscription('https://fcm.googleapis.com/fcm/send/existing-device-token-0001')
   if (options.saved && subscription) saved.add(subscription.endpoint)
 
   const pushManager = {
     getSubscription: vi.fn(async () => subscription),
     subscribe: vi.fn(async () => {
-      subscription = makeSubscription('https://fcm.googleapis.com/fcm/send/new')
+      subscription = makeSubscription(options.issues ?? 'https://fcm.googleapis.com/fcm/send/new-device-token-000000002')
       return subscription
     }),
   }
@@ -81,7 +83,7 @@ function fakeDevice(options: {
     unregister: vi.fn(async (endpoint) => {
       saved.delete(endpoint)
     }),
-    savedEndpoints: vi.fn(async () => [...saved]),
+    isRegistered: vi.fn(async (endpoint) => saved.has(endpoint)),
   }
   return { env, pushManager, requestPermission, saved, current: () => subscription }
 }
@@ -101,6 +103,7 @@ describe('the switch', () => {
   it('says what the lock screen shows, before anything is switched on', async () => {
     renderSetting(fakeDevice().env)
     expect(screen.getByText(/You have a reminder in RecoverEase\./)).toBeInTheDocument()
+    expect(screen.getByText(/You have an appointment update in RecoverEase\./)).toBeInTheDocument()
     expect(screen.getByText(/never shows a medicine/i)).toBeInTheDocument()
     await waitFor(() => expect(toggle()).toBeEnabled())
     expect(toggle()).toHaveAttribute('aria-checked', 'false')
@@ -122,7 +125,7 @@ describe('the switch', () => {
       expect.objectContaining({ userVisibleOnly: true }),
     )
     expect(device.env.register).toHaveBeenCalledWith({
-      endpoint: 'https://fcm.googleapis.com/fcm/send/new',
+      endpoint: 'https://fcm.googleapis.com/fcm/send/new-device-token-000000002',
       p256dh: 'device-key',
       auth: 'device-auth',
       userAgent: 'Mozilla/5.0 (Linux; Android 14) Chrome/140',
@@ -139,13 +142,33 @@ describe('the switch', () => {
     })
 
     await waitFor(() => expect(toggle()).toHaveAttribute('aria-checked', 'false'))
-    expect(device.env.unregister).toHaveBeenCalledWith('https://fcm.googleapis.com/fcm/send/existing')
+    expect(device.env.unregister).toHaveBeenCalledWith('https://fcm.googleapis.com/fcm/send/existing-device-token-0001')
     expect(device.current()).toBeNull()
   })
 
   it('shows off when the browser has a subscription the server no longer has', async () => {
     const device = fakeDevice({ permission: 'granted', existing: true, saved: false })
     expect(await readPushState(device.env)).toBe('off')
+  })
+
+  it('asks the server only yes or no about this device, never for stored endpoints', async () => {
+    const device = fakeDevice({ permission: 'granted', existing: true, saved: true })
+    expect(await readPushState(device.env)).toBe('on')
+    expect(device.env.isRegistered).toHaveBeenCalledWith('https://fcm.googleapis.com/fcm/send/existing-device-token-0001')
+    expect(Object.keys(device.env)).not.toContain('savedEndpoints')
+  })
+
+  it('explains a browser whose push service is not supported, saving and leaving nothing', async () => {
+    const device = fakeDevice({ issues: 'https://updates.push.services.mozilla.com/wpush/v2/abcdefghijklmnopqrstuvwx' })
+    renderSetting(device.env)
+    await waitFor(() => expect(toggle()).toBeEnabled())
+    await act(async () => {
+      fireEvent.click(toggle())
+    })
+    expect(await screen.findByText(/Chrome on Android for now/)).toBeInTheDocument()
+    expect(device.env.register).not.toHaveBeenCalled()
+    expect(device.current()).toBeNull()
+    expect(toggle()).toHaveAttribute('aria-checked', 'false')
   })
 
   it('explains a refused permission and stays off', async () => {

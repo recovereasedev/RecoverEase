@@ -12,6 +12,8 @@
  * have `crypto.subtle`, `fetch` and `btoa`/`atob`.
  */
 
+import { isAllowedPushEndpoint } from './push-endpoint.ts'
+
 export type PushSubscriptionKeys = {
   endpoint: string
   /** The device's P-256 public key, base64url (65 bytes uncompressed). */
@@ -168,45 +170,100 @@ export async function vapidAuthorization(
   return `vapid t=${unsigned}.${base64UrlEncode(signature)}, k=${vapid.publicKey}`
 }
 
+/**
+ * Why a push did not go, as a category. Never a message: a network error's
+ * text can carry the endpoint, and a push service's reply is arbitrary
+ * text, so neither is kept or logged (migration 53 stores only these).
+ */
+export type PushErrorCode =
+  | 'network_timeout'
+  | 'network_error'
+  | 'provider_429'
+  | 'provider_5xx'
+  | 'provider_4xx'
+  | 'invalid_vapid'
+  | 'invalid_endpoint'
+  | 'invalid_subscription'
+  | 'payload_too_large'
+  | 'unexpected_redirect'
+
 export type PushResult =
   | { outcome: 'sent'; status: number }
   | { outcome: 'gone'; status: number }
-  | { outcome: 'retry'; status: number | null; error: string; retryAfterSeconds: number | null }
-  | { outcome: 'failed'; status: number; error: string }
+  | { outcome: 'retry'; status: number | null; errorCode: PushErrorCode; retryAfterSeconds: number | null }
+  | { outcome: 'failed'; status: number | null; errorCode: PushErrorCode }
 
 /**
  * What a push service's answer means for the queue:
- *   2xx           delivered to the push service;
+ *   2xx           accepted by the push service;
  *   404, 410      the subscription no longer exists - forget the device;
  *   429, 5xx      try again later (Retry-After honoured);
- *   anything else (400 bad request, 401/403 VAPID refused, 413 too large)
- *                 retrying the same request cannot help.
+ *   3xx           a redirect, which is never followed;
+ *   401, 403      our VAPID signature was refused;
+ *   413           too large;
+ *   anything else a request that retrying cannot fix.
+ * Only the status is read. The reply's body is never looked at.
  */
-export function classifyResponse(status: number, retryAfter: string | null, body: string): PushResult {
+export function classifyResponse(status: number, retryAfter: string | null): PushResult {
   if (status >= 200 && status < 300) return { outcome: 'sent', status }
   if (status === 404 || status === 410) return { outcome: 'gone', status }
-  const error = `push service answered ${status}${body ? `: ${body.slice(0, 200)}` : ''}`
   if (status === 429 || status >= 500) {
-    const seconds = retryAfter !== null && /^\d+$/.test(retryAfter.trim()) ? Number(retryAfter.trim()) : null
-    return { outcome: 'retry', status, error, retryAfterSeconds: seconds }
+    const seconds = retryAfter !== null && /^\d{1,6}$/.test(retryAfter.trim()) ? Number(retryAfter.trim()) : null
+    return {
+      outcome: 'retry',
+      status,
+      errorCode: status === 429 ? 'provider_429' : 'provider_5xx',
+      retryAfterSeconds: seconds,
+    }
   }
-  return { outcome: 'failed', status, error }
+  if (status === 0 || (status >= 300 && status < 400)) {
+    return { outcome: 'failed', status: status || null, errorCode: 'unexpected_redirect' }
+  }
+  if (status === 401 || status === 403) return { outcome: 'failed', status, errorCode: 'invalid_vapid' }
+  if (status === 413) return { outcome: 'failed', status, errorCode: 'payload_too_large' }
+  return { outcome: 'failed', status, errorCode: 'provider_4xx' }
 }
 
-/** Sends one encrypted message. Network errors are retryable. */
+/** No push request may take longer than this, whatever the other end does. */
+export const PUSH_REQUEST_TIMEOUT_MS = 10_000
+
+/**
+ * Sends one encrypted message.
+ *
+ * - The endpoint is checked against the allow-list again, here, immediately
+ *   before the request (`push-endpoint.ts`).
+ * - Redirects are not followed: `redirect: 'manual'`, and a 3xx is a
+ *   failure. The signed request goes to the allowed host or nowhere.
+ * - The request is aborted after `timeoutMs`. The timer also settles the
+ *   call by itself, so even a fetch that ignores its abort signal cannot
+ *   hold a batch up. A timeout or a network error is retryable.
+ */
 export async function sendPush(
   subscription: PushSubscriptionKeys,
   payload: string,
   vapid: VapidKeys,
-  options: { topic?: string; ttlSeconds?: number; fetcher?: typeof fetch } = {},
+  options: { topic?: string; ttlSeconds?: number; fetcher?: typeof fetch; timeoutMs?: number } = {},
 ): Promise<PushResult> {
-  const endpoint = new URL(subscription.endpoint)
-  if (endpoint.protocol !== 'https:') {
-    return { outcome: 'failed', status: 0, error: 'endpoint is not https' }
+  if (!isAllowedPushEndpoint(subscription.endpoint)) {
+    return { outcome: 'failed', status: null, errorCode: 'invalid_endpoint' }
   }
-  const body = await encryptPayload(subscription, encoder.encode(payload))
+
+  let body: Uint8Array
+  try {
+    body = await encryptPayload(subscription, encoder.encode(payload))
+  } catch {
+    // The device's stored keys are not usable keys.
+    return { outcome: 'failed', status: null, errorCode: 'invalid_subscription' }
+  }
+  let authorization: string
+  try {
+    authorization = await vapidAuthorization(subscription.endpoint, vapid)
+  } catch {
+    return { outcome: 'failed', status: null, errorCode: 'invalid_vapid' }
+  }
+
   const headers: Record<string, string> = {
-    Authorization: await vapidAuthorization(subscription.endpoint, vapid),
+    Authorization: authorization,
     'Content-Encoding': 'aes128gcm',
     'Content-Type': 'application/octet-stream',
     TTL: String(options.ttlSeconds ?? 60 * 60),
@@ -217,20 +274,44 @@ export async function sendPush(
   // shows it once.
   if (options.topic) headers['Topic'] = options.topic
 
-  try {
-    const response = await (options.fetcher ?? fetch)(subscription.endpoint, {
-      method: 'POST',
-      headers,
-      body: buf(body),
-    })
-    const text = response.ok ? '' : await response.text().catch(() => '')
-    return classifyResponse(response.status, response.headers.get('Retry-After'), text)
-  } catch (error) {
-    return {
-      outcome: 'retry',
-      status: null,
-      error: `network error: ${error instanceof Error ? error.message : String(error)}`.slice(0, 300),
-      retryAfterSeconds: null,
+  const controller = new AbortController()
+  const timeoutMs = options.timeoutMs ?? PUSH_REQUEST_TIMEOUT_MS
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const timedOut = new Promise<PushResult>((resolve) => {
+    timer = setTimeout(() => {
+      controller.abort()
+      resolve({ outcome: 'retry', status: null, errorCode: 'network_timeout', retryAfterSeconds: null })
+    }, timeoutMs)
+  })
+
+  const request = (async (): Promise<PushResult> => {
+    try {
+      const response = await (options.fetcher ?? fetch)(subscription.endpoint, {
+        method: 'POST',
+        headers,
+        body: buf(body),
+        redirect: 'manual',
+        signal: controller.signal,
+      })
+      // Nothing in the body is wanted; let the connection go.
+      void response.body?.cancel().catch(() => undefined)
+      if (response.type === 'opaqueredirect') {
+        return { outcome: 'failed', status: null, errorCode: 'unexpected_redirect' }
+      }
+      return classifyResponse(response.status, response.headers.get('Retry-After'))
+    } catch {
+      return {
+        outcome: 'retry',
+        status: null,
+        errorCode: controller.signal.aborted ? 'network_timeout' : 'network_error',
+        retryAfterSeconds: null,
+      }
     }
+  })()
+
+  try {
+    return await Promise.race([request, timedOut])
+  } finally {
+    clearTimeout(timer)
   }
 }

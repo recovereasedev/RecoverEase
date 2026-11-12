@@ -1484,46 +1484,110 @@ Also run on PostgreSQL 17.5 (PGlite 0.3) - see `docs/testing.md`.
 
 **What it does.** A patient who switches on **My profile → Phone
 notifications → Reminders on this phone** gets a notification on that
-Android phone when a medication or appointment reminder is stored for them,
-even with RecoverEase closed. The lock screen always says only
-"RecoverEase - You have a reminder in RecoverEase." Tapping it opens
-`/patient/medications` or `/patient/appointments` (the app's normal sign-in
-applies). Nothing is recorded from the notification.
+Android phone (Chrome, RecoverEase installed) even with RecoverEase closed:
+
+| When | The lock screen says | A tap opens |
+|---|---|---|
+| a medication reminder (before a dose, or the follow-up) | "You have a reminder in RecoverEase." | `/patient/medications` |
+| an appointment reminder | "You have a reminder in RecoverEase." | `/patient/appointments` |
+| an appointment is cancelled | "You have an appointment update in RecoverEase." | `/patient/appointments` |
+
+Never a medicine, dose, doctor, date or time. The app's normal sign-in
+applies after the tap, and nothing is recorded from the notification.
 
 **How it fits together.**
 
 ```
-reminder job (unchanged) --> INSERT notification (medication | appointment, for a patient)
-        |  trigger notification_enqueue_push (migration 53)
+reminder job / cancellation trigger
+        |  INSERT notification, tagged: notification_source, notification_purpose,
+        |  and the dose or appointment it is about (migration 53)
         v
-push_delivery (one row per notification x device, unique)
+trigger notification_enqueue_push --> app_private.push_delivery
+        (one row per notification x device, unique; only a patient's own
+         dose or appointment; never the message text)
+        |
         |  pg_cron every minute --> app_private.request_push_dispatch()
-        |                           '-- pg_net POST --> Edge Function send-push
+        |                           '-- pg_net POST (55 s) --> Edge Function send-push
         v
-send-push: claim_push_deliveries() --> encrypt + VAPID-sign --> push service
-           complete_push_delivery(sent | retry | failed | gone)
+send-push: claim_push_deliveries()   <- skips anything no longer true
+           --> FCM endpoint only, no redirects, 10 s limit, encrypted + VAPID-signed
+           complete_push_delivery(sent | retry | failed | gone, error category)
 ```
 
-- Retries: 30 s, 1, 2, 4 min (or the push service's `Retry-After`, up to
-  1 h); after the 5th attempt `failed`. Unsent after 6 h: `expired` (no late
-  reminders). Finished rows are deleted after 30 days.
-- 404/410 from the push service: the device's subscription is deleted.
-- Idempotency: unique `(notification_id, subscription_id)`; claims use
-  `FOR UPDATE SKIP LOCKED`; an outcome is recorded only from `sending`; the
-  push `Topic` header and the notification `tag` keep a retried message to
-  one on the phone.
-- Patients only; doctors' notifications (including `chat_critical`) are
-  never pushed. The queue never holds the notification's text.
-- Signing out removes this phone's subscription. A phone that changes
-  account moves to the new account, and anything queued for the previous
-  one on it is dropped.
+**Security boundaries.**
+
+- **Subscription credentials are private.** Devices (endpoint, `p256dh`,
+  `auth`) and the queue are in `app_private`, which the API does not expose,
+  and no role - `anon`, `authenticated` or `service_role` - holds any
+  privilege on either table. A browser has three functions:
+  `register_push_subscription` (returns `true`), `unregister_push_subscription`
+  and `push_device_registered(endpoint)` (returns `true`/`false` for the
+  caller's own device). Nothing stored is ever returned to a browser.
+- **The service role has two functions**, `claim_push_deliveries` and
+  `complete_push_delivery` (SECURITY DEFINER, `search_path = ''`), and no
+  access to the tables. `send-push` itself refuses any request without the
+  `x-push-dispatch-secret` header (compared in constant time; a secret
+  under 32 characters counts as not configured).
+- **Endpoints: FCM only (SSRF).** Only
+  `https://fcm.googleapis.com/fcm/send/<token>` and
+  `https://fcm.googleapis.com/wp/<token>` - the two forms Chrome issues
+  (Chromium `push_messaging_constants.cc`). Exact host, https, default port,
+  no user, query or fragment. Checked when a device registers (function and
+  table constraint), when a delivery is claimed, and again in `send-push`
+  immediately before the request. Redirects are never followed. Firefox,
+  Safari and desktop Edge subscriptions are refused for now; adding one
+  means adding its host to the three copies of the rule
+  (`tests/unit/push-endpoint.test.ts` keeps them identical).
+- **Only what is still true is sent.** At claim time the dose or appointment
+  is read again; the push is `skipped` if the appointment was cancelled,
+  completed, deleted or moved by an approved reschedule; if the dose was
+  recorded (taken/missed/skipped), removed, or falls outside its course's
+  dates; if the patient turned medication reminders off; or if the phone has
+  since changed account. A "due soon" reminder is not sent more than 30
+  minutes after the dose time. None of this reads the message text.
+- **A cancellation is never a reminder.** It is tagged
+  `appointment_cancellation` / `update` by the trigger that writes it and is
+  pushed as an appointment update.
+- **Patients only.** A notification is queued only when it is addressed to
+  the patient whose own dose or appointment it names. Doctors' appointment
+  reminders, cancellations, conflict alerts and `chat_critical` alerts are
+  never pushed; nor is anything untagged (messages, announcements, every
+  notification written before 53).
+- **Errors are categories.** `last_error_code` holds one of a fixed list
+  (`network_timeout`, `network_error`, `provider_429`, `provider_5xx`,
+  `provider_4xx`, `invalid_vapid`, `invalid_endpoint`, `invalid_subscription`,
+  `payload_too_large`, `unexpected_redirect`, `gave_up`,
+  `source_no_longer_valid`, `owner_changed`) plus the HTTP status. No
+  endpoint, no reply body and no error text is stored or logged.
+- **A phone changing account is atomic.** Registration is one
+  `INSERT ... ON CONFLICT (endpoint) DO UPDATE`; in the same transaction
+  everything pending or mid-send on that device for anyone else is deleted
+  and the device's `push_registered_at` is refreshed, so the ten-device
+  limit never drops it. Signing out removes the phone's subscription.
+
+**Time limits.** Each push request: 10 s (aborted). `send-push` claims new
+batches (25 at a time, sent side by side) for 40 s, so a run ends by about
+50 s. pg_net waits 55 s. The queue's lease on a claimed row is 2 minutes.
+Retries: 30 s, 1, 2, 4 min (or `Retry-After`, up to 1 h); after the 5th
+attempt `failed` (`gave_up`). Unsent after 6 h: `expired`. Finished rows are
+deleted after 30 days. 404/410: the device is deleted.
+
+**What migration 53 changes outside push.** `notification` gains four
+nullable columns (`notification_source`, `notification_purpose`,
+`notification_medication_log_id`, `notification_appointment_id`), and
+`dispatch_medication_reminders`, `dispatch_medication_pre_dose_reminders`,
+`dispatch_appointment_reminders` and `appointment_notify_cancellation` are
+redefined exactly as migrations 48, 42 and 31 left them, with only those
+columns added to their inserts. Message text, recipients and timing are
+unchanged. The doctor-message insert policy (migration 41) additionally
+requires the four columns to be null. No earlier migration file is edited.
 
 **Files.** `supabase/migrations/20260902100053_web_push_notifications.sql`;
 rollback `supabase/rollbacks/20260902100053_web_push_notifications.down.sql`;
 `supabase/manual/web_push_activate.sql` and `web_push_deactivate.sql` (not
 migrations); `supabase/functions/send-push/`;
-`supabase/functions/_shared/web-push.ts` (RFC 8291 encryption + RFC 8292
-VAPID, WebCrypto only, no library); `public/sw.js` (`push`,
+`supabase/functions/_shared/web-push.ts` (RFC 8291 + RFC 8292, WebCrypto
+only) and `_shared/push-endpoint.ts`; `public/sw.js` (`push`,
 `notificationclick`, VERSION v2); `src/features/push/`.
 
 #### 1. Generate the VAPID key pair (once)
@@ -1537,10 +1601,10 @@ npx --yes web-push@3.6.7 generate-vapid-keys --json
 It prints `publicKey` and `privateKey` (base64url). The private key is a
 secret: it goes only into Supabase secrets, never into Vercel or git. The
 public key is not secret. Changing the pair later means every patient has
-to switch phone reminders on again (old subscriptions are refused with 403
-and fail).
+to switch phone reminders on again.
 
-Also make a long random dispatch secret:
+Also make the dispatch secret (43 characters; `send-push` refuses one
+shorter than 32):
 
 ```bash
 node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
@@ -1548,14 +1612,16 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
 
 #### 2. Order of steps (each needs approval)
 
-1. **Apply migration 53** in a quiet window (it waits at most 3 s for the
-   `notification` lock, like 41 and 44; see "Migration timing and run
-   history"). Read-only checks afterwards:
+1. **Apply migration 53** in a quiet window, clear of the minute and
+   quarter-hour marks: it alters `notification` and replaces the four
+   functions the reminder jobs call, waiting at most 3 s for the lock (see
+   "Migration timing and run history"). Read-only checks afterwards:
 
    ```sql
-   select to_regclass('public.push_subscription'), to_regclass('public.push_delivery');
+   select to_regclass('app_private.push_subscription'), to_regclass('app_private.push_delivery');
    select tgname from pg_trigger where tgname = 'notification_enqueue_push';
    select app_private.request_push_dispatch();   -- 'nothing due'
+   select count(*) from public.notification where notification_source is not null;  -- grows as jobs run
    ```
 
    Nothing is sent yet: no job exists and pg_net is not installed.
@@ -1571,9 +1637,8 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
    ```
 
    `--no-verify-jwt` because the caller is the database (pg_net), which has
-   no user token; the function refuses any request without the right
-   `x-push-dispatch-secret` header. Missing configuration answers 503 and
-   names the missing secret (never its value).
+   no user token; the dispatch secret is the check. Missing configuration
+   answers 503 and names the missing secret (never its value).
 
 3. **Set `VITE_VAPID_PUBLIC_KEY`** (the public key only) in Vercel for
    Production, then redeploy the frontend. Until then the switch says "Phone
@@ -1586,11 +1651,11 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
    minute.
 
 5. **Smoke test** with a `@smoke.invalid` patient on an Android phone with
-   RecoverEase installed: switch on, then create a medication or
-   appointment notification for that patient. Check
-   `select delivery_status, attempt_count, last_status_code, last_error from public.push_delivery order by delivery_created_at desc limit 5;`
-   and the function logs (`push_dispatched` logs counts only; no endpoint
-   or text).
+   RecoverEase installed: switch on, then create a real reminder for that
+   patient (an appointment within 24 hours, or a dose within the lead
+   time). As the database owner:
+   `select push_kind, delivery_status, attempt_count, last_status_code, last_error_code from app_private.push_delivery order by delivery_created_at desc limit 5;`
+   and the function logs (`push_dispatched` logs counts only).
 
 #### 3. Turning it off, and rollback
 
@@ -1601,21 +1666,28 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
   redeploy.
 - **Remove it entirely:** deactivate, then apply
   `supabase/rollbacks/20260902100053_web_push_notifications.down.sql` as a
-  new migration (it also unschedules the job if it is still there). It
-  deletes every saved device and the queue; no notification row changes.
-  Then delete the `send-push` function and its secrets. pg_net can stay.
-- Reminder jobs, the in-app bell and tray, and the calendar (.ics) file are
-  untouched by every step above.
+  new migration, in the same kind of quiet window. It deletes every saved
+  device and the queue, puts the four functions and the doctor-message
+  policy back exactly as 48, 42, 31 and 41 left them, and drops the four
+  source columns; every notification keeps its message, type, time and read
+  state. It must be rolled back before 48, 42 or 31. Then delete the
+  `send-push` function and its secrets. pg_net can stay.
+- Reminder jobs, the in-app bell and tray, and the calendar (.ics) file work
+  the same through every step above.
 
-Tests: `tests/db/web-push.test.ts` (access, queueing, idempotency, back-off,
-give-up, expiry, cleanup, gone devices, account switch, rollback);
+Tests: `tests/db/web-push.test.ts` (credential access, tagging by the real
+jobs, cancellation vs reminder, every stale-at-dispatch case, endpoint
+allow-list, retries/back-off/expiry, sanitised errors, account switch and
+overlapping registrations, rollback and reapply);
 `tests/unit/web-push-crypto.test.ts` (encryption decrypted as a browser
-would, VAPID verified); `tests/unit/send-push-handler.test.ts`;
+would, VAPID verified, redirects, timeout, error categories);
+`tests/unit/push-endpoint.test.ts`; `tests/unit/send-push-handler.test.ts`;
 `tests/unit/web-push-service-worker.test.ts`;
 `tests/unit/push-setting.test.tsx`; `e2e/push-notifications.spec.ts`. Not
-covered: a real phone receiving a real push (needs the steps above), and
-the worker's handlers in a real browser (headless Chromium refuses
-notification permission to service workers).
+covered: a real phone receiving a real push (needs the steps above); the
+worker's handlers in a real browser (headless Chromium refuses notification
+permission to service workers); and truly simultaneous sessions (the test
+database has one connection, so overlap is a transaction left open).
 
 ## Bundle budget
 

@@ -592,6 +592,10 @@ export type Database = {
           notification_message: string
           notification_is_read: boolean
           notification_created_at: string
+          notification_source: string | null
+          notification_purpose: string | null
+          notification_medication_log_id: string | null
+          notification_appointment_id: string | null
         }
         Insert: {
           notification_id?: string
@@ -601,6 +605,10 @@ export type Database = {
           notification_message: string
           notification_is_read?: boolean
           notification_created_at?: string
+          notification_source?: string | null
+          notification_purpose?: string | null
+          notification_medication_log_id?: string | null
+          notification_appointment_id?: string | null
         }
         Update: {
           notification_id?: string
@@ -610,6 +618,10 @@ export type Database = {
           notification_message?: string
           notification_is_read?: boolean
           notification_created_at?: string
+          notification_source?: string | null
+          notification_purpose?: string | null
+          notification_medication_log_id?: string | null
+          notification_appointment_id?: string | null
         }
         Relationships: [
           {
@@ -733,107 +745,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: 'patient'
             referencedColumns: ['pat_id']
-          },
-        ]
-      }
-      push_delivery: {
-        Row: {
-          delivery_id: string
-          notification_id: string
-          subscription_id: string
-          push_kind: string
-          delivery_status: string
-          attempt_count: number
-          next_attempt_at: string
-          locked_until: string | null
-          last_status_code: number | null
-          last_error: string | null
-          delivery_created_at: string
-          delivered_at: string | null
-        }
-        Insert: {
-          delivery_id?: string
-          notification_id: string
-          subscription_id: string
-          push_kind: string
-          delivery_status?: string
-          attempt_count?: number
-          next_attempt_at?: string
-          locked_until?: string | null
-          last_status_code?: number | null
-          last_error?: string | null
-          delivery_created_at?: string
-          delivered_at?: string | null
-        }
-        Update: {
-          delivery_id?: string
-          notification_id?: string
-          subscription_id?: string
-          push_kind?: string
-          delivery_status?: string
-          attempt_count?: number
-          next_attempt_at?: string
-          locked_until?: string | null
-          last_status_code?: number | null
-          last_error?: string | null
-          delivery_created_at?: string
-          delivered_at?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: 'push_delivery_notification_id_fkey'
-            columns: ['notification_id']
-            isOneToOne: false
-            referencedRelation: 'notification'
-            referencedColumns: ['notification_id']
-          },
-          {
-            foreignKeyName: 'push_delivery_subscription_id_fkey'
-            columns: ['subscription_id']
-            isOneToOne: false
-            referencedRelation: 'push_subscription'
-            referencedColumns: ['subscription_id']
-          },
-        ]
-      }
-      push_subscription: {
-        Row: {
-          subscription_id: string
-          user_id: string
-          push_endpoint: string
-          push_p256dh: string
-          push_auth: string
-          push_user_agent: string | null
-          push_created_at: string
-          push_last_success_at: string | null
-        }
-        Insert: {
-          subscription_id?: string
-          user_id: string
-          push_endpoint: string
-          push_p256dh: string
-          push_auth: string
-          push_user_agent?: string | null
-          push_created_at?: string
-          push_last_success_at?: string | null
-        }
-        Update: {
-          subscription_id?: string
-          user_id?: string
-          push_endpoint?: string
-          push_p256dh?: string
-          push_auth?: string
-          push_user_agent?: string | null
-          push_created_at?: string
-          push_last_success_at?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: 'push_subscription_user_id_fkey'
-            columns: ['user_id']
-            isOneToOne: false
-            referencedRelation: 'user_account'
-            referencedColumns: ['user_id']
           },
         ]
       }
@@ -1426,7 +1337,11 @@ export type Database = {
       }
       register_push_subscription: {
         Args: { endpoint: string; p256dh: string; auth_key: string; user_agent?: string | null }
-        Returns: string
+        Returns: boolean
+      }
+      push_device_registered: {
+        Args: { endpoint: string }
+        Returns: boolean
       }
       unregister_push_subscription: {
         Args: { endpoint: string }

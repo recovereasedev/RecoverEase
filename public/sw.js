@@ -68,14 +68,20 @@ self.addEventListener('fetch', (event) => {
 // ---------------------------------------------------------------------------
 // Web Push (migration 53)
 // ---------------------------------------------------------------------------
-// The server sends { title, body, url, tag } (supabase/functions/send-push/
-// payload.ts). Whatever arrives, the words shown are always the generic ones
-// below - the message's own title and body are ignored - and a tap can only
-// open a page on this list. So no message, however malformed, can put
-// clinical words on a lock screen or send the patient somewhere else.
+// The server sends { purpose, url, tag } (supabase/functions/send-push/
+// payload.ts) - no words at all. The words shown are the fixed ones below,
+// chosen by `purpose`: a reminder, or an appointment update (a cancellation,
+// which is never worded as a reminder). A title or body in the message is
+// ignored, an unknown or unreadable message gets the neutral sentence, and a
+// tap can only open a page on this list. So no message, however malformed,
+// can put clinical words on a lock screen or send the patient somewhere else.
 
 const PUSH_TITLE = 'RecoverEase'
-const PUSH_BODY = 'You have a reminder in RecoverEase.'
+const PUSH_BODIES = {
+  reminder: 'You have a reminder in RecoverEase.',
+  appointment_update: 'You have an appointment update in RecoverEase.',
+}
+const PUSH_NEUTRAL_BODY = 'You have a new notification in RecoverEase.'
 const PUSH_FALLBACK_URL = '/patient/notifications'
 const PUSH_URLS = ['/patient/medications', '/patient/appointments', PUSH_FALLBACK_URL]
 
@@ -86,9 +92,10 @@ function readPush(data) {
   } catch {
     message = {}
   }
+  const known = typeof message.purpose === 'string' && Object.keys(PUSH_BODIES).includes(message.purpose)
   return {
     title: PUSH_TITLE,
-    body: PUSH_BODY,
+    body: known ? PUSH_BODIES[message.purpose] : PUSH_NEUTRAL_BODY,
     url: PUSH_URLS.includes(message.url) ? message.url : PUSH_FALLBACK_URL,
     tag: typeof message.tag === 'string' && /^recoverease-[\w-]{1,64}$/.test(message.tag)
       ? message.tag

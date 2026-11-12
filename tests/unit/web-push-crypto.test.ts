@@ -4,6 +4,7 @@ import {
   base64UrlDecode,
   base64UrlEncode,
   classifyResponse,
+  PUSH_REQUEST_TIMEOUT_MS,
   encryptPayload,
   sendPush,
   vapidAuthorization,
@@ -40,7 +41,7 @@ async function device() {
     publicKey,
     auth,
     subscription: {
-      endpoint: 'https://fcm.googleapis.com/fcm/send/abc',
+      endpoint: 'https://fcm.googleapis.com/fcm/send/dEvIcE-token_0123456789:APA91bExample',
       p256dh: base64UrlEncode(publicKey),
       auth: base64UrlEncode(auth),
     },
@@ -159,28 +160,34 @@ describe('vapidAuthorization (RFC 8292)', () => {
 
 describe('classifyResponse', () => {
   it.each([
-    [201, 'sent'],
-    [202, 'sent'],
-    [404, 'gone'],
-    [410, 'gone'],
-    [429, 'retry'],
-    [500, 'retry'],
-    [503, 'retry'],
-    [400, 'failed'],
-    [403, 'failed'],
-    [413, 'failed'],
-  ])('%i is %s', (status, outcome) => {
-    expect(classifyResponse(status, null, '').outcome).toBe(outcome)
+    [201, 'sent', undefined],
+    [202, 'sent', undefined],
+    [404, 'gone', undefined],
+    [410, 'gone', undefined],
+    [429, 'retry', 'provider_429'],
+    [500, 'retry', 'provider_5xx'],
+    [503, 'retry', 'provider_5xx'],
+    [301, 'failed', 'unexpected_redirect'],
+    [307, 'failed', 'unexpected_redirect'],
+    [0, 'failed', 'unexpected_redirect'],
+    [400, 'failed', 'provider_4xx'],
+    [401, 'failed', 'invalid_vapid'],
+    [403, 'failed', 'invalid_vapid'],
+    [413, 'failed', 'payload_too_large'],
+  ])('%i is %s (%s)', (status, outcome, errorCode) => {
+    const result = classifyResponse(status, null)
+    expect(result.outcome).toBe(outcome)
+    expect('errorCode' in result ? result.errorCode : undefined).toBe(errorCode)
   })
 
-  it('reads Retry-After seconds', () => {
-    const result = classifyResponse(429, '120', 'slow down')
-    expect(result).toMatchObject({ outcome: 'retry', retryAfterSeconds: 120 })
+  it('reads Retry-After seconds, and ignores anything that is not a plain number', () => {
+    expect(classifyResponse(429, '120')).toMatchObject({ outcome: 'retry', retryAfterSeconds: 120 })
+    expect(classifyResponse(503, 'Wed, 21 Oct 2026 07:28:00 GMT')).toMatchObject({ retryAfterSeconds: null })
   })
 })
 
 describe('sendPush', () => {
-  it('posts an encrypted, signed request with a Topic, and reports a network error as retryable', async () => {
+  it('posts an encrypted, signed request with a Topic, never following redirects', async () => {
     const d = await device()
     const { vapid } = await vapidKeys()
     const fetcher = vi.fn(async () => new Response(null, { status: 201 }))
@@ -189,27 +196,112 @@ describe('sendPush', () => {
 
     const [url, init] = fetcher.mock.calls[0] as unknown as [string, RequestInit]
     expect(url).toBe(d.subscription.endpoint)
+    expect(init.redirect).toBe('manual')
+    expect(init.signal).toBeInstanceOf(AbortSignal)
     const headers = init.headers as Record<string, string>
     expect(headers['Content-Encoding']).toBe('aes128gcm')
     expect(headers['Topic']).toBe('abc')
     expect(headers['Authorization']).toMatch(/^vapid t=/)
     const opened = await decrypt(new Uint8Array(init.body as ArrayBuffer), d)
     expect(opened.text).toBe('{"a":1}')
-
-    const offline = vi.fn(async () => {
-      throw new TypeError('fetch failed')
-    })
-    expect((await sendPush(d.subscription, 'x', vapid, { fetcher: offline })).outcome).toBe('retry')
   })
 
-  it('refuses a non-https endpoint without sending', async () => {
+  it('treats a redirect as a failure and does not go where it points', async () => {
+    const d = await device()
+    const { vapid } = await vapidKeys()
+    const fetcher = vi.fn(
+      async () => new Response(null, { status: 307, headers: { Location: 'http://169.254.169.254/latest/meta-data/' } }),
+    )
+    const result = await sendPush(d.subscription, 'x', vapid, { fetcher })
+    expect(result).toEqual({ outcome: 'failed', status: 307, errorCode: 'unexpected_redirect' })
+    expect(fetcher).toHaveBeenCalledTimes(1)
+
+    // What fetch hands back for `redirect: 'manual'` in a browser-like runtime.
+    const opaque = vi.fn(async () => ({ type: 'opaqueredirect', status: 0, headers: new Headers(), body: null }))
+    expect(await sendPush(d.subscription, 'x', vapid, { fetcher: opaque as unknown as typeof fetch })).toEqual({
+      outcome: 'failed',
+      status: null,
+      errorCode: 'unexpected_redirect',
+    })
+  })
+
+  it('aborts a request that never answers, and reports it as a retryable timeout', async () => {
+    const d = await device()
+    const { vapid } = await vapidKeys()
+    let signal: AbortSignal | undefined
+    // Honours the abort signal, as real fetch does.
+    const hanging = vi.fn(
+      (_url: unknown, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          signal = init?.signal ?? undefined
+          signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')))
+        }),
+    )
+    const started = Date.now()
+    const result = await sendPush(d.subscription, 'x', vapid, { fetcher: hanging as typeof fetch, timeoutMs: 50 })
+    expect(result).toEqual({ outcome: 'retry', status: null, errorCode: 'network_timeout', retryAfterSeconds: null })
+    expect(signal?.aborted).toBe(true)
+    expect(Date.now() - started).toBeLessThan(2_000)
+  })
+
+  it('returns on time even when the fetch ignores its abort signal', async () => {
+    const d = await device()
+    const { vapid } = await vapidKeys()
+    const deaf = vi.fn(() => new Promise<Response>(() => undefined))
+    const result = await sendPush(d.subscription, 'x', vapid, { fetcher: deaf as typeof fetch, timeoutMs: 50 })
+    expect(result).toMatchObject({ outcome: 'retry', errorCode: 'network_timeout' })
+  })
+
+  it('has a ten-second limit by default', () => {
+    expect(PUSH_REQUEST_TIMEOUT_MS).toBe(10_000)
+  })
+
+  it('reports a network error as a category, keeping nothing of its text', async () => {
+    const d = await device()
+    const { vapid } = await vapidKeys()
+    const offline = vi.fn(async () => {
+      throw new TypeError(`fetch failed: connect ECONNREFUSED ${d.subscription.endpoint}`)
+    })
+    const result = await sendPush(d.subscription, 'x', vapid, { fetcher: offline })
+    expect(result).toEqual({ outcome: 'retry', status: null, errorCode: 'network_error', retryAfterSeconds: null })
+    expect(JSON.stringify(result)).not.toContain('googleapis')
+  })
+
+  it('keeps nothing of what the push service says back', async () => {
+    const d = await device()
+    const { vapid } = await vapidKeys()
+    const fetcher = vi.fn(
+      async () => new Response(`<html>Internal error for ${d.subscription.endpoint}</html>`, { status: 500 }),
+    )
+    const result = await sendPush(d.subscription, 'x', vapid, { fetcher })
+    expect(result).toEqual({ outcome: 'retry', status: 500, errorCode: 'provider_5xx', retryAfterSeconds: null })
+  })
+
+  it.each([
+    'http://fcm.googleapis.com/fcm/send/abcdefghijklmnopqrstuvwx',
+    'https://127.0.0.1/fcm/send/abcdefghijklmnopqrstuvwx',
+    'https://169.254.169.254/latest/meta-data/iam/security-credentials',
+    'https://internal.service.local/fcm/send/abcdefghijklmnopqrstuvwx',
+    'https://fcm.googleapis.com.evil.example/fcm/send/abcdefghijklmnopqrstuvwx',
+  ])('refuses %s without making a request or signing anything', async (endpoint) => {
     const d = await device()
     const { vapid } = await vapidKeys()
     const fetcher = vi.fn()
-    const result = await sendPush({ ...d.subscription, endpoint: 'http://x.test/1' }, 'x', vapid, {
+    const result = await sendPush({ ...d.subscription, endpoint }, 'x', vapid, {
       fetcher: fetcher as unknown as typeof fetch,
     })
-    expect(result.outcome).toBe('failed')
+    expect(result).toEqual({ outcome: 'failed', status: null, errorCode: 'invalid_endpoint' })
+    expect(fetcher).not.toHaveBeenCalled()
+  })
+
+  it('fails a device whose stored keys are not keys, without sending', async () => {
+    const d = await device()
+    const { vapid } = await vapidKeys()
+    const fetcher = vi.fn()
+    const result = await sendPush({ ...d.subscription, p256dh: 'AAAA' }, 'x', vapid, {
+      fetcher: fetcher as unknown as typeof fetch,
+    })
+    expect(result).toEqual({ outcome: 'failed', status: null, errorCode: 'invalid_subscription' })
     expect(fetcher).not.toHaveBeenCalled()
   })
 })

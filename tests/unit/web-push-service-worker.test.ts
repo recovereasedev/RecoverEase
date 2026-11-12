@@ -5,7 +5,7 @@ import { runInNewContext } from 'node:vm'
 import { describe, expect, it, vi } from 'vitest'
 
 import {
-  PUSH_BODY,
+  PUSH_BODIES,
   PUSH_TITLE,
   PUSH_URLS,
 } from '../../supabase/functions/send-push/payload'
@@ -93,9 +93,9 @@ function loadWorker(windows: { url: string; navigate?: () => Promise<unknown> }[
 }
 
 describe('a push arriving', () => {
-  it('shows the generic words, with the page to open', async () => {
+  it('shows the reminder sentence for a reminder, with the page to open', async () => {
     const worker = loadWorker()
-    await worker.push({ title: 'RecoverEase', body: 'x', url: '/patient/medications', tag: 'recoverease-abc' })
+    await worker.push({ purpose: 'reminder', url: '/patient/medications', tag: 'recoverease-abc' })
     expect(worker.shown).toEqual([
       {
         title: 'RecoverEase',
@@ -108,25 +108,44 @@ describe('a push arriving', () => {
     ])
   })
 
+  it('shows the appointment-update sentence for a cancellation, never "reminder"', async () => {
+    const worker = loadWorker()
+    await worker.push({ purpose: 'appointment_update', url: '/patient/appointments', tag: 'recoverease-def' })
+    expect(worker.shown[0]).toEqual({
+      title: 'RecoverEase',
+      options: expect.objectContaining({
+        body: 'You have an appointment update in RecoverEase.',
+        data: { url: '/patient/appointments' },
+      }),
+    })
+    expect(JSON.stringify(worker.shown)).not.toMatch(/reminder in/i)
+  })
+
   it('never shows words the message carries', async () => {
     const worker = loadWorker()
     await worker.push({
+      purpose: 'reminder',
       title: 'Take your Sertraline 50mg',
       body: 'Amoxicillin 500mg is due at 08:00 - Dr. Reyes',
       url: '/patient/appointments',
     })
+    await worker.push({ purpose: 'Your appointment with Dr. Reyes on Monday is cancelled' })
     const text = JSON.stringify(worker.shown)
-    expect(text).not.toMatch(/Sertraline|Amoxicillin|mg|Reyes|08:00/)
-    expect(worker.shown[0]!.title).toBe('RecoverEase')
+    expect(text).not.toMatch(/Sertraline|Amoxicillin|mg|Reyes|08:00|Monday|cancelled/)
+    expect(worker.shown.map((s) => s.title)).toEqual(['RecoverEase', 'RecoverEase'])
   })
 
-  it('still shows a notification for an empty or unreadable message', async () => {
+  it('shows a neutral sentence - not "reminder" - for an empty, unknown or unreadable message', async () => {
     const worker = loadWorker()
     await worker.push(undefined)
     await worker.push(new Error('not JSON'))
-    expect(worker.shown).toHaveLength(2)
+    await worker.push({ purpose: 'something new' })
+    await worker.push({ purpose: 'constructor' })
+    await worker.push('just a string')
+    expect(worker.shown).toHaveLength(5)
     for (const { title, options } of worker.shown) {
       expect(title).toBe('RecoverEase')
+      expect(options['body']).toBe('You have a new notification in RecoverEase.')
       expect(options['data']).toEqual({ url: '/patient/notifications' })
       expect(options['tag']).toBe('recoverease-reminder')
     }
@@ -135,7 +154,7 @@ describe('a push arriving', () => {
   it('opens only the patient pages on its list', async () => {
     const worker = loadWorker()
     for (const url of ['https://evil.example/phish', '//evil.example', '/doctor/patients', 'javascript:alert(1)']) {
-      await worker.push({ url })
+      await worker.push({ purpose: 'reminder', url })
     }
     expect(worker.shown.map((s) => (s.options['data'] as { url: string }).url)).toEqual([
       '/patient/notifications',
@@ -147,8 +166,10 @@ describe('a push arriving', () => {
 
   it('agrees with the server on the words and the pages', () => {
     expect(source).toContain(`const PUSH_TITLE = '${PUSH_TITLE}'`)
-    expect(source).toContain(`const PUSH_BODY = '${PUSH_BODY}'`)
-    for (const url of Object.values(PUSH_URLS)) expect(source).toContain(`'${url}'`)
+    for (const [purpose, body] of Object.entries(PUSH_BODIES)) {
+      expect(source).toContain(`  ${purpose}: '${body}',`)
+    }
+    for (const url of PUSH_URLS) expect(source).toContain(`'${url}'`)
   })
 
   it('writes nothing: no fetch, no medication record', () => {

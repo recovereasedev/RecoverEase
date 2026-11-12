@@ -31,16 +31,24 @@ export type DispatchSummary = { sent: number; retry: number; failed: number; gon
 
 /**
  * Claims due deliveries and sends them until the queue is empty or the time
- * budget is spent, whichever is first. Each delivery's outcome is recorded
- * before the next batch is claimed; one that fails to record is left
- * 'sending' and reclaimed after its two-minute lock (migration 53), where
- * the Topic header and the notification tag keep the phone from showing it
+ * budget is spent, whichever is first.
+ *
+ * Time: a new batch is claimed only before `budgetMs` (40 s). Every request
+ * in a batch is cut off at 10 s (`sendPush`) and they run side by side, so a
+ * batch ends at most about 10 s after it starts - a run by about 50 s, inside
+ * pg_net's 55 s and well inside the queue's two-minute lease (migration 53).
+ * One endpoint that never answers costs its own delivery a retry and nothing
+ * else.
+ *
+ * Each delivery's outcome is recorded on its own; one that throws, or fails
+ * to record, is left 'sending' and reclaimed after its lease, where the
+ * Topic header and the notification tag keep the phone from showing it
  * twice.
  */
 export async function dispatchPushes({
   store,
   send,
-  batchSize = 50,
+  batchSize = 25,
   budgetMs = 40_000,
   now = () => Date.now(),
 }: {
@@ -60,19 +68,27 @@ export async function dispatchPushes({
 
     await Promise.all(
       batch.map(async (delivery) => {
-        const payload = buildPushPayload(delivery.push_kind, delivery.notification_id)
-        const result = await send(
-          {
-            endpoint: delivery.push_endpoint,
-            p256dh: delivery.push_p256dh,
-            auth: delivery.push_auth,
-          },
-          JSON.stringify(payload),
-          // 32 characters, the Topic header's maximum.
-          { topic: delivery.delivery_id.replace(/-/g, '') },
-        )
-        summary[result.outcome]++
-        await store.complete(delivery.delivery_id, result)
+        try {
+          const payload = buildPushPayload(delivery.push_kind, delivery.notification_id)
+          const result: PushResult = payload
+            ? await send(
+                {
+                  endpoint: delivery.push_endpoint,
+                  p256dh: delivery.push_p256dh,
+                  auth: delivery.push_auth,
+                },
+                JSON.stringify(payload),
+                // 32 characters, the Topic header's maximum.
+                { topic: delivery.delivery_id.replace(/-/g, '') },
+              )
+            : // A kind this version does not know is never guessed at.
+              { outcome: 'failed', status: null, errorCode: 'provider_4xx' }
+          summary[result.outcome]++
+          await store.complete(delivery.delivery_id, result)
+        } catch {
+          // Left 'sending'; the lease returns it. Nothing about it is logged
+          // here: an error's text could name the endpoint.
+        }
       }),
     )
 
@@ -104,7 +120,8 @@ export type SendPushConfig = {
 /** Names the missing secrets - never their values. */
 export function missingConfig(config: SendPushConfig): string[] {
   const missing: string[] = []
-  if (!config.dispatchSecret) missing.push('PUSH_DISPATCH_SECRET')
+  // Shorter than this could be guessed; the documented one is 43 characters.
+  if (config.dispatchSecret.length < 32) missing.push('PUSH_DISPATCH_SECRET')
   if (!config.vapidPublicKey) missing.push('VAPID_PUBLIC_KEY')
   if (!config.vapidPrivateKey) missing.push('VAPID_PRIVATE_KEY')
   if (!/^(mailto:|https:\/\/)/.test(config.vapidSubject)) missing.push('VAPID_SUBJECT')

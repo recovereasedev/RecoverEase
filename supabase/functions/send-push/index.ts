@@ -14,9 +14,16 @@ import {
  * Called once a minute by pg_cron through pg_net
  * (`app_private.request_push_dispatch()`), never by a browser: there is no
  * CORS, and a request without the shared secret in `x-push-dispatch-secret`
- * is refused before anything is read. It runs with the service role, claims
- * due deliveries, encrypts a fixed, generic message for each device and
- * records what the push service answered.
+ * is refused before anything is read.
+ *
+ * It runs with the service role, which can do exactly two things here: call
+ * `claim_push_deliveries` and `complete_push_delivery` (the tables
+ * themselves are closed to it). The database hands over only deliveries
+ * that are still true - not a cancelled appointment's reminder, not a dose
+ * already recorded. Each is sent to an allow-listed FCM endpoint only,
+ * without following redirects, within ten seconds; what is recorded and
+ * logged is a category and a status - never an endpoint, a reply body or a
+ * message.
  *
  * Deploy (only with approval - see docs/deployment.md, "Web Push"):
  *   supabase functions deploy send-push --no-verify-jwt
@@ -45,7 +52,7 @@ function store(): PushStore {
   return {
     async claim(batchSize) {
       const { data, error } = await admin.rpc('claim_push_deliveries', { batch_size: batchSize })
-      if (error) throw new Error(`claim_push_deliveries: ${error.message}`)
+      if (error) throw new Error(`claim_push_deliveries failed (${error.code ?? 'unknown'})`)
       return (data ?? []) as ClaimedDelivery[]
     },
     async complete(deliveryId, result: PushResult) {
@@ -53,11 +60,13 @@ function store(): PushStore {
         target_delivery_id: deliveryId,
         outcome: result.outcome,
         status_code: result.status,
-        error_text: 'error' in result ? result.error : null,
+        error_code: 'errorCode' in result ? result.errorCode : null,
         retry_after_seconds: result.outcome === 'retry' ? result.retryAfterSeconds : null,
       })
       // Logged, not thrown: the row stays 'sending' and is reclaimed later.
-      if (error) console.error(JSON.stringify({ event: 'push_complete_failed', deliveryId, error: error.message }))
+      if (error) {
+        console.error(JSON.stringify({ event: 'push_complete_failed', deliveryId, code: error.code ?? null }))
+      }
     },
   }
 }
@@ -90,10 +99,12 @@ Deno.serve(async (request) => {
     console.log(JSON.stringify({ event: 'push_dispatched', ...summary }))
     return json(summary, 200)
   } catch (error) {
+    // Only this function's own messages reach here (the claim's), which
+    // carry a Postgres error code and nothing else.
     console.error(
       JSON.stringify({
         event: 'push_dispatch_failed',
-        error: error instanceof Error ? error.message : String(error),
+        error: error instanceof Error ? error.message : 'unknown',
       }),
     )
     return json({ error: 'Dispatch failed' }, 500)

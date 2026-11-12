@@ -47,8 +47,11 @@ export type PushEnvironment = {
   userAgent: string
   register(subscription: { endpoint: string; p256dh: string; auth: string; userAgent: string }): Promise<void>
   unregister(endpoint: string): Promise<void>
-  /** The endpoints the server has for the signed-in user. */
-  savedEndpoints(): Promise<string[]>
+  /**
+   * Whether the server holds this endpoint under the signed-in user: a yes
+   * or a no. The browser never reads a stored endpoint or key back.
+   */
+  isRegistered(endpoint: string): Promise<boolean>
 }
 
 export function browserPushEnvironment(): PushEnvironment {
@@ -73,12 +76,25 @@ export function browserPushEnvironment(): PushEnvironment {
       const { error } = await supabase.rpc('unregister_push_subscription', { endpoint })
       if (error) throw error
     },
-    async savedEndpoints() {
-      const { data, error } = await supabase.from('push_subscription').select('push_endpoint')
+    async isRegistered(endpoint) {
+      const { data, error } = await supabase.rpc('push_device_registered', { endpoint })
       if (error) throw error
-      return (data ?? []).map((row) => row.push_endpoint)
+      return data === true
     },
   }
+}
+
+/**
+ * The push services RecoverEase sends to: Chrome on Android's, which is
+ * Firebase Cloud Messaging. The same rule as the server's
+ * (`supabase/functions/_shared/push-endpoint.ts`, and the database's in
+ * migration 53), repeated here only to explain an unsupported browser
+ * before asking; the server decides.
+ */
+const SUPPORTED_PUSH_ENDPOINT = /^https:\/\/fcm\.googleapis\.com\/(fcm\/send|wp)\/[A-Za-z0-9_:-]{16,}$/
+
+export function isSupportedPushEndpoint(endpoint: string): boolean {
+  return endpoint.length <= 1024 && SUPPORTED_PUSH_ENDPOINT.test(endpoint)
 }
 
 /** base64url (the VAPID key's form) to the bytes `subscribe` wants. */
@@ -110,8 +126,7 @@ export async function readPushState(env: PushEnvironment = browserPushEnvironmen
   if (!registration) return 'no-worker'
   const subscription = await registration.pushManager.getSubscription()
   if (!subscription || env.notification.permission !== 'granted') return 'off'
-  const saved = await env.savedEndpoints()
-  return saved.includes(subscription.endpoint) ? 'on' : 'off'
+  return (await env.isRegistered(subscription.endpoint)) ? 'on' : 'off'
 }
 
 /**
@@ -152,6 +167,15 @@ export async function enablePush(env: PushEnvironment = browserPushEnvironment()
   const json = subscription.toJSON()
   if (!json.endpoint || !json.keys?.['p256dh'] || !json.keys?.['auth']) {
     throw new Error('The browser returned an incomplete push subscription.')
+  }
+  if (!isSupportedPushEndpoint(json.endpoint)) {
+    // Another browser's push service. The server would refuse it too
+    // (migration 53); leave nothing half-set-up on this device.
+    await subscription.unsubscribe().catch(() => undefined)
+    throw new PushSetupError(
+      'unsupported',
+      'Phone reminders work in Chrome on Android for now. This browser is not supported yet.',
+    )
   }
   await env.register({
     endpoint: json.endpoint,

@@ -1,7 +1,7 @@
 import AxeBuilder from '@axe-core/playwright'
 import type { Page } from '@playwright/test'
 
-import { expect, IDS, test } from './support/fixtures'
+import { expect, test } from './support/fixtures'
 
 /**
  * The patient's "Reminders on this phone" switch (migration 53), in the
@@ -16,7 +16,7 @@ import { expect, IDS, test } from './support/fixtures'
  * worker's push and tap handling is tests/unit/web-push-service-worker.test.ts.
  */
 
-const ENDPOINT = 'https://fcm.googleapis.com/fcm/send/e2e-device'
+const ENDPOINT = 'https://fcm.googleapis.com/fcm/send/e2e-device-token-0123456789'
 
 async function standInForPush(page: Page, answer: 'granted' | 'denied') {
   await page.addInitScript(
@@ -55,16 +55,29 @@ test.describe('phone reminders', () => {
     await standInForPush(page, 'granted')
     const stub = await signInAs('patient')
 
+    // The database's side, as far as the browser can see it: register,
+    // remove, and a yes or no about one endpoint. Nothing stored is readable.
+    const saved = new Set<unknown>()
     const registered: Record<string, unknown>[] = []
     stub.setRpcHandler('register_push_subscription', (args) => {
       registered.push(args)
-      stub.addRows('push_subscription', [{ push_endpoint: args['endpoint'], user_id: IDS.aliceUser }])
-      return { result: 'sub-1' }
+      saved.add(args['endpoint'])
+      return { result: true }
     })
     const unregistered: Record<string, unknown>[] = []
     stub.setRpcHandler('unregister_push_subscription', (args) => {
       unregistered.push(args)
+      saved.delete(args['endpoint'])
       return { result: true }
+    })
+    const asked: Record<string, unknown>[] = []
+    stub.setRpcHandler('push_device_registered', (args) => {
+      asked.push(args)
+      return { result: saved.has(args['endpoint']) }
+    })
+    const tableReads: string[] = []
+    page.on('request', (request) => {
+      if (/\/rest\/v1\/push_/.test(request.url())) tableReads.push(request.url())
     })
 
     await page.goto('/patient/profile')
@@ -87,6 +100,10 @@ test.describe('phone reminders', () => {
     await toggle.click()
     await expect(toggle).toHaveAttribute('aria-checked', 'false')
     expect(unregistered).toEqual([{ endpoint: ENDPOINT }])
+    // The switch's state came from the yes/no function, never a table read.
+    expect(asked.length).toBeGreaterThan(0)
+    expect(asked.every((args) => Object.keys(args).join() === 'endpoint')).toBe(true)
+    expect(tableReads).toEqual([])
   })
 
   test('a refused permission is explained, and nothing is saved', async ({ page, signInAs }) => {
