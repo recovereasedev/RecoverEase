@@ -204,7 +204,7 @@ export function Tabs<T extends string>({
                 {tab.label}
                 {typeof tab.count === 'number' ? (
                   <span
-                    className="ml-1.5 rounded-full bg-neutral-100 px-1.5 py-0.5 text-xs text-neutral-600"
+                    className="ml-1.5 rounded-full bg-neutral-100 px-1.5 py-0.5 text-sm text-neutral-600"
                     data-numeric
                   >
                     {tab.count}

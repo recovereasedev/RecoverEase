@@ -149,7 +149,7 @@ export function ProgressRing({
       {children ? (
         <span
           aria-hidden="true"
-          className="absolute text-xs font-semibold text-heading"
+          className="absolute text-sm font-semibold text-heading"
           data-numeric
         >
           {children}

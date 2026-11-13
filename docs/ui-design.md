@@ -112,6 +112,27 @@ never degrades into an unlabelled coloured dot.
 Because the map is keyed on the generated database enum types, adding a value
 to a database enum without describing it here is a **compile error**.
 
+### What each tone means (Phase 2B)
+
+- **Red** is kept for an emergency or a critical signal the data can vouch
+  for, and for form errors that stop an action. None of the shared statuses
+  is one, so none is red (`tests/unit/status-tones.test.ts`): a cancelled
+  appointment, a declined request and a deactivated account are neutral
+  facts, and a missed dose is amber, apart from "Overdue" by its word and
+  icon.
+- **Amber** asks for clinical attention: an overdue or missed dose, a
+  possible concern raised in the guidance chat.
+- **Neutral grey** states a fact or a technical fault: a list that failed to
+  load, a guidance-chat message the assistant could not answer.
+- **Teal** says it went well.
+
+The two chat alerts share one notification type. They are told apart by the
+fixed message the backend writes for each
+([`src/features/notifications/chat-alert.ts`](../src/features/notifications/chat-alert.ts)),
+never by what the patient wrote: "Possible concern" in amber, "Unanswered
+message" in grey. A chat alert with any other wording is shown as a concern,
+so a real one is never played down.
+
 ## The gradient
 
 Royal blue `#2563EB`, sky `#1B8FCB`, teal `#14B8A6`: taken from the logo, and
@@ -245,11 +266,15 @@ prose.
 The tokens are the foundation. The design also asks for these, which are
 component work and are **not done**:
 
-- **The 14px floor.** `text-xs` and `text-label-sm` are still 12px, and a
-  few components set smaller sizes of their own: 78 uses in 26 files,
-  including the phone's bottom bar, the mood labels, the calendar and the
-  chat. The bottom bar's labels were measured to fit at 12px, so raising
-  them needs the bar redesigned, not a token change.
+- **The 14px floor, outside the shared components.** Phase 2B set the
+  shared components (badges, table headings, tab counts, the progress ring,
+  the theme switch, error details) at 15px
+  (`tests/unit/shared-text-floor.test.tsx`). `text-xs` and `text-label-sm`
+  themselves are still 12px, used by page-specific labels and by the app
+  shell: the phone's bottom bar, the sidebar's group labels and unread
+  count, the mood labels, the calendar and the chat. The bottom bar's labels
+  were measured to fit at 12px, so raising them needs the bar redesigned,
+  not a token change.
 - **The light-blue button in dark mode.** The design's dark primary is
   `#6B9BFF`, which needs dark text (`#0B1220` on it is 6.92:1). `Button`
   sets white text, so until it is restyled the dark theme's buttons are
@@ -257,8 +282,8 @@ component work and are **not done**:
 - **Button radius 14px and the 20px hero card.** `--radius-md` is still 8px.
 - **Status pills, the hero card, the pulse line, illustrated empty states.**
 - **"Not taken" and "Running late"** in place of "Missed" and "Overdue" on
-  patient screens, and red kept for emergencies: the labels and tones in
-  `src/lib/status.ts` are unchanged.
+  patient screens: the labels in `src/lib/status.ts` are unchanged. (Red is
+  now kept for emergencies: Phase 2B.)
 - **Illustrations.** The design shows a set of nine. No source files were
   supplied, so none are in the application.
 

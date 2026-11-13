@@ -73,7 +73,7 @@ export function THead({
   return (
     <thead
       className={cn(
-        'bg-surface-sunken text-label-sm uppercase tracking-wider text-muted',
+        'bg-surface-sunken text-sm font-semibold text-muted',
         className,
       )}
       {...props}
