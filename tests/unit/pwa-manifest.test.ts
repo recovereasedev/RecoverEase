@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest'
 /**
  * RecoverEase as an installable app (QA 9/12, "Integrate PWA"): the manifest,
  * its icons, the page head that points at them, and the offline page. The
- * colours and icons are the existing brand's, not new ones.
+ * colours are the design tokens'; the icons are the existing brand's.
  */
 
 const file = (path: string) => join(process.cwd(), path)
@@ -57,13 +57,23 @@ describe('the web app manifest', () => {
     })
   })
 
-  it('takes its colours from the existing design tokens', () => {
+  it('takes its colours from the design tokens', () => {
     const css = read('src/index.css').toString('utf8')
 
-    expect(manifest.theme_color).toBe('#004269')
-    expect(css).toContain('--color-brand-800: #004269')
-    expect(manifest.background_color).toBe('#f9f9ff')
-    expect(css).toContain('--color-canvas: #f9f9ff')
+    // The primary blue and the page, as the approved design names them.
+    expect(manifest.theme_color).toBe('#2563eb')
+    expect(css).toContain('--color-brand-600: #2563eb')
+    expect(manifest.background_color).toBe('#f5f8fc')
+    expect(css).toContain('--color-canvas: #f5f8fc')
+  })
+
+  it('gives the page head and the offline page the same colours', () => {
+    for (const page of ['index.html', 'public/offline.html']) {
+      const html = read(page).toString('utf8')
+      expect(html, page).toContain('<meta name="theme-color" content="#2563eb" />')
+      // Nothing left of the palette and typeface these replaced.
+      expect(html, page).not.toMatch(/#004269|#f9f9ff|#0e5a8a|#111c2d|#41474f|'Inter/)
+    }
   })
 
   it('declares only known members, each once', () => {

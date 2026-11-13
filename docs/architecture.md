@@ -159,7 +159,7 @@ site, not an offline copy of it.
 
 - **Manifest.** `public/manifest.webmanifest` names the app "RecoverEase",
   with `start_url` and `scope` of `/`, `display: standalone`, theme colour
-  `#004269`, background `#f9f9ff`, and 192 px, 512 px and 512 px maskable
+  `#2563eb`, background `#f5f8fc`, and 192 px, 512 px and 512 px maskable
   icons in `public/icons/`. It also declares a `related_applications` entry
   for itself — `platform: webapp`, pointing at the production manifest — which
   is the only thing a browser will match when asked whether RecoverEase is

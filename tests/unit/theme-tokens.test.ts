@@ -183,3 +183,152 @@ describe('the dark theme’s tokens', () => {
     expect(bare).toEqual([])
   })
 })
+
+/**
+ * The approved design (RecoverEase-Dashboard-Redesign.pdf). Its named
+ * colours are pinned here so a token cannot drift from the document; the
+ * steps between them are derived, and only their contrast is pinned.
+ */
+describe('the official palette', () => {
+  it('uses the design’s light values', () => {
+    const official: Record<string, string> = {
+      'brand-600': '#2563eb', // primary blue
+      'brand-700': '#1d4fc4', // blue dark: links, pressed
+      'accent-500': '#14b8a6', // teal accent: shapes only
+      'accent-600': '#0f766e', // teal text
+      'brand-50': '#e8f0fd', // soft blue
+      'surface-raised': '#e8f0fd',
+      'accent-50': '#e3f6f3', // soft teal
+      heading: '#0f2747', // ink
+      body: '#0f2747',
+      muted: '#4b5f7a',
+      canvas: '#f5f8fc', // page
+      surface: '#ffffff', // cards are white
+      border: '#dde6f0', // line
+      'warning-700': '#8a4b0a', // amber
+      'warning-50': '#fdf1e3',
+      'danger-700': '#8f2a17', // alert: emergencies only
+      'danger-50': '#fbe9e5',
+    }
+    for (const [name, value] of Object.entries(official)) expect(LIGHT[name], name).toBe(value)
+  })
+
+  it('uses the design’s dark values', () => {
+    const official: Record<string, string> = {
+      canvas: '#0b1220', // page
+      surface: '#121c2e',
+      'surface-raised': '#16264a', // soft blue
+      'brand-50': '#16264a',
+      'brand-600': '#6b9bff', // primary
+      'accent-600': '#3ccfbc', // teal
+      heading: '#e8eef8', // ink
+      body: '#e8eef8',
+      muted: '#a3b3cc',
+      border: '#243452', // line
+    }
+    for (const [name, value] of Object.entries(official)) expect(DARK[name], name).toBe(value)
+  })
+
+  it('has no green: success is teal, in both themes', () => {
+    for (const [theme, values] of [['light', LIGHT], ['dark', DARK]] as const) {
+      for (const step of [50, 100, 200, 600, 700, 800]) {
+        expect(values[`success-${step}`], `${theme}: success-${step}`).toBe(values[`accent-${step}`])
+      }
+      expect(values['fill-success-600'], `${theme}: fill-success-600`).toBe(values['fill-accent-600'])
+    }
+  })
+
+  it('gives patients and clinicians the blue accent, and administrators slate', () => {
+    for (const role of ['patient', 'doctor']) {
+      expect(blockAfter(`[data-role='${role}'] {`), role).toContain('--color-role: var(--color-brand-700)')
+    }
+    expect(blockAfter("[data-role='super_admin'] {")).toContain('--color-role: var(--color-neutral-800)')
+  })
+
+  it('keeps the logo gradient as tokens, for shapes', () => {
+    expect([LIGHT['gradient-from'], LIGHT['gradient-via'], LIGHT['gradient-to']]).toEqual(['#2563eb', '#1b8fcb', '#14b8a6'])
+  })
+
+  it('puts white text only on a gradient it clears 4.5:1 along, in both themes', () => {
+    // `.brand-gradient` carries text (the sign-in panel, the landing page's
+    // closing band); the logo gradient's teal end is 2.49:1 under white.
+    const stops = [...blockAfter('.brand-gradient {').matchAll(/var\(--color-([a-z0-9-]+)\)/g)].map((m) => m[1]!)
+    expect(stops.length).toBeGreaterThanOrEqual(2)
+    for (const [theme, values] of [['light', LIGHT], ['dark', { ...LIGHT, ...DARK }]] as const) {
+      for (let i = 0; i < stops.length - 1; i++) {
+        // Whole steps, so the far stop itself (t = 1) is always sampled.
+        for (let step = 0; step <= 20; step++) {
+          const t = step / 20
+          const colour = over(values[stops[i + 1]!]!, t, values[stops[i]!]!)
+          expect(contrast('#ffffff', colour), `${theme}: white at ${t.toFixed(2)} of ${stops[i]}-${stops[i + 1]}`).toBeGreaterThanOrEqual(4.5)
+        }
+      }
+    }
+  })
+})
+
+describe('the light theme’s tokens', () => {
+  it('keep every text step readable on every surface', () => {
+    const text = [
+      'heading',
+      'body',
+      'muted',
+      'neutral-600',
+      'neutral-700',
+      'neutral-800',
+      ...FAMILIES.flatMap((family) => [600, 700, 800].map((step) => `${family}-${step}`)),
+    ]
+    for (const step of text) {
+      for (const surface of SURFACES) {
+        expect(contrast(LIGHT[step]!, LIGHT[surface]!), `${step} on ${surface}`).toBeGreaterThanOrEqual(4.5)
+      }
+    }
+  })
+
+  it('keep status and brand text readable on their own tints', () => {
+    // The 600 step is the design's own colour (primary blue, teal text) and
+    // the 50 tint is its own soft fill; on the deeper 100 tint, text is the
+    // 700 or 800 step.
+    for (const family of FAMILIES) {
+      for (const [step, tint] of [[600, 50], [700, 50], [800, 50], [700, 100], [800, 100]] as const) {
+        expect(
+          contrast(LIGHT[`${family}-${step}`]!, LIGHT[`${family}-${tint}`]!),
+          `${family}-${step} on ${family}-${tint}`,
+        ).toBeGreaterThanOrEqual(4.5)
+      }
+    }
+    for (const step of ['heading', 'body', 'muted']) {
+      for (const tint of ['neutral-100', 'neutral-200']) {
+        expect(contrast(LIGHT[step]!, LIGHT[tint]!), `${step} on ${tint}`).toBeGreaterThanOrEqual(4.5)
+      }
+    }
+  })
+
+  it('keep icons at 3:1', () => {
+    for (const surface of SURFACES) {
+      expect(contrast(LIGHT['neutral-500']!, LIGHT[surface]!)).toBeGreaterThanOrEqual(3)
+    }
+  })
+})
+
+describe('type', () => {
+  const value = (name: string) => css.match(new RegExp(`--${name}:\\s*([^;]+);`))?.[1]?.trim()
+
+  it('is Figtree, bundled with the application', () => {
+    expect(css).toContain("@import '@fontsource-variable/figtree';")
+    expect(value('font-sans')).toMatch(/^'Figtree Variable', 'Figtree',/)
+    expect(css).not.toMatch(/\bInter\b/)
+  })
+
+  it('sets the design’s four sizes', () => {
+    // Page title 36/700, section title 22/700, body 17, helper 15.
+    expect(value('text-title')).toBe('2.25rem')
+    expect(value('text-title--font-weight')).toBe('700')
+    expect(value('text-headline-md')).toBe('1.375rem')
+    expect(value('text-headline-md--font-weight')).toBe('700')
+    expect(value('text-base')).toBe('1.0625rem')
+    expect(value('text-body-md')).toBe('1.0625rem')
+    expect(value('text-sm')).toBe('0.9375rem')
+    expect(value('text-body-sm')).toBe('0.9375rem')
+  })
+})

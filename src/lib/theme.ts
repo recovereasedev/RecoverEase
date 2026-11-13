@@ -29,8 +29,8 @@ export type ResolvedTheme = 'light' | 'dark'
 export const THEME_STORAGE_KEY = 'recoverease.theme'
 export const DEFAULT_THEME: ThemePreference = 'light'
 
-/** The browser's address-bar colour for each theme: the shell's own surface. */
-const THEME_COLOR: Record<ResolvedTheme, string> = { light: '#004269', dark: '#0c1420' }
+/** The browser's address-bar colour for each theme: the primary blue, and the dark page. */
+const THEME_COLOR: Record<ResolvedTheme, string> = { light: '#2563eb', dark: '#0b1220' }
 
 const SYSTEM_DARK = '(prefers-color-scheme: dark)'
 
