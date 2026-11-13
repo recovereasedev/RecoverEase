@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { catalog } from './helpers/catalog'
 import { createTestDatabase, type TestDatabase } from './helpers/database'
@@ -730,21 +730,41 @@ describe('reminders, missed doses and the doctor’s alerts', () => {
       [userId, pattern],
     )
 
-  /** A conflict held directly, at a moment relative to now, as the generator would hold one. */
+  /**
+   * A conflict held directly, as the generator would hold one, at a moment
+   * relative to the block's pinned clock (PINNED) and on that moment's date in
+   * the clinic's own time zone, the zone the database judges it in.
+   */
   const hold = (time: string, offset: string) =>
     one<string>(
       database,
       `insert into public.medication_dose_conflict
          (medication_schedule_id, conflict_dose_date, conflict_dose_time, conflict_reason, conflict_at)
-       values ($1, ((now() + $3::interval) at time zone 'Asia/Manila')::date, $2::time,
+       values ($1, ((now() + $3::interval) at time zone app_private.clinic_timezone(app_private.clinic_of_patient(
+                 app_private.patient_of_medication_schedule($1))))::date, $2::time,
                'same_moment_collision', now() + $3::interval)
        returning medication_dose_conflict_id::text`,
       [scheduleId, time, offset],
     )
 
+  /**
+   * The block's clock: 10:00 on Thursday 12 November 2026 in Manila (UTC+8,
+   * no daylight saving), hours from either midnight, so a moment "two hours
+   * from now" is on the same clinic day on every run. The database reads the
+   * time from JavaScript's clock; only that is pinned, as in
+   * medication-reminders.test.ts. Pinned before seeding, so the fixture's own
+   * "now" is the same moment.
+   */
+  const PINNED = '2026-11-12T02:00:00Z'
+
   beforeAll(async () => {
     database = await createTestDatabase()
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(PINNED))
     fx = await seedFixture(database)
+    // Set, not left to the schema's default: the pinned clock is 10:00 in
+    // Manila, and the course-end test reads its Los Angeles dose in Manila.
+    await setZone(database, 'Asia/Manila')
     await database.asService(
       'update public.patient set pat_reminder_is_enabled = true, pat_reminder_preferred_time = null where pat_id = $1',
       [fx.alicePatId],
@@ -754,7 +774,23 @@ describe('reminders, missed doses and the doctor’s alerts', () => {
   })
 
   afterAll(async () => {
+    // Runs whether or not the block's tests passed, so no later block in this
+    // file sees the pinned clock. Tests in a file run one at a time.
+    vi.useRealTimers()
     await database?.close()
+  })
+
+  beforeEach(async () => {
+    // Every test starts at the pinned moment. If the pin ever stopped reaching
+    // the database, fail rather than quietly test the real clock.
+    vi.setSystemTime(new Date(PINNED))
+    expect(await one<string>(database, `select to_char(now() at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')`)).toBe(PINNED)
+    // A clean start: no notifications, no conflicts and no doses on this
+    // block's schedule, so a test that fails part-way leaves nothing behind
+    // for the next one to count. The dispatchers act on every conflict.
+    await database.asService('delete from public.notification')
+    await database.asService('delete from public.medication_dose_conflict')
+    await database.asService('delete from public.medication_log where medication_schedule_id = $1', [scheduleId])
   })
 
   it('never reminds about, or marks missed, an unresolved conflict', async () => {
@@ -775,10 +811,13 @@ describe('reminders, missed doses and the doctor’s alerts', () => {
         [soon, gone],
       ),
     ).toEqual([{ conflict_resolution: null }, { conflict_resolution: null }])
-    await database.asService('delete from public.medication_dose_conflict where medication_schedule_id = $1', [scheduleId])
   })
 
   it('gives a rescheduled dose exactly one ordinary reminder before it is due', async () => {
+    // Held two hours ahead and moved to five minutes ahead. The database
+    // accepts a new time only on the conflict's own clinic date; on the real
+    // clock these two were different dates from 22:00 to 23:55 in Manila,
+    // which is why the clock is pinned.
     const id = await hold('03:20', '2 hours')
     const at = await one<string>(database, `select (now() + interval '5 minutes')::text`)
     await database.asUser(
@@ -786,6 +825,14 @@ describe('reminders, missed doses and the doctor’s alerts', () => {
       `select 1 from public.doctor_resolve_medication_conflict($1, 'rescheduled', $2::timestamptz, 'Reason')`,
       [id, at],
     )
+    // Moved, not confirmed in place: held for 12:00 Manila (04:00 UTC), the
+    // dose is now due at 10:05 (02:05 UTC), keeping its clinic date and time.
+    expect(await conflicts(database, scheduleId)).toEqual([
+      { date: '2026-11-12', time: '03:20', reason: 'same_moment_collision', at: '2026-11-12 04:00', resolution: 'rescheduled' },
+    ])
+    expect(await doses(database, scheduleId)).toEqual([
+      { date: '2026-11-12', time: '03:20', at: '2026-11-12 02:05', status: 'pending' },
+    ])
     for (let run = 0; run < 3; run += 1) await database.asService('select public.dispatch_medication_pre_dose_reminders()')
     expect(await notifications(fx.aliceUserId, 'Your Medicine X (1 tablet) is due at%')).toBe(1)
   })
