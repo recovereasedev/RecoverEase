@@ -38,7 +38,7 @@
 
 - A chat alert whose text matches neither constant (older rows, a future message): must show as a concern, not as a technical fault.
 - An unanswered-message alert on a conversation that was flagged earlier: must still show as unanswered (the message decides, not the flag).
-- The notifications page for a patient or an admin: unchanged apart from tone and size.
+- The notifications page for a patient or an admin: unchanged apart from tone, size and the empty-state line (Task 4).
 - A disabled or loading primary button: hover must not change it; focus ring stays.
 - Dark theme: every changed tone pairing must still clear 4.5:1 (existing theme-token tests cover the tokens used).
 
@@ -48,54 +48,64 @@
 
 **Files:** Modify `src/lib/status.ts`; Test `tests/unit/status-tones.test.ts` (new), update `tests/unit/dose-status.test.ts:100`.
 
-- [ ] Test `no shared status is red`: every descriptor in `appointmentStatus`, `rescheduleRequestStatus`, `treatmentPlanStatus`, `treatmentGoalStatus`, `medicationLogStatus`, `patientDoseStatus`, `patientStatus`, `doctorAccountStatus` has `tone !== 'danger'`.
-- [ ] Test the exact tones: appointment `cancelled` neutral, reschedule `declined` neutral, patient dose `missed` warning, doctor `inactive` neutral; `overdue` and `missed` keep different labels and icons.
-- [ ] Run `npx vitest run --project unit tests/unit/status-tones.test.ts`; expect FAIL on the four red entries.
-- [ ] Change the four tones; update the dose-status expectation and the comment above `patientDoseStatus`.
-- [ ] Run the two test files; expect PASS.
+- [x] Test `no shared status is red`: every descriptor in `appointmentStatus`, `rescheduleRequestStatus`, `treatmentPlanStatus`, `treatmentGoalStatus`, `medicationLogStatus`, `patientDoseStatus`, `patientStatus`, `doctorAccountStatus` has `tone !== 'danger'`.
+- [x] Test the exact tones: appointment `cancelled` neutral, reschedule `declined` neutral, patient dose `missed` warning, doctor `inactive` neutral; `overdue` and `missed` keep different labels and icons.
+- [x] Run `npx vitest run --project unit tests/unit/status-tones.test.ts`; expect FAIL on the four red entries.
+- [x] Change the four tones; update the dose-status expectation and the comment above `patientDoseStatus`.
+- [x] Run the two test files; expect PASS.
 
 ### Task 2: Button states and the chat Send button
 
 **Files:** Modify `src/features/chat/pages/patient-chat-page.tsx:1005`; Test `tests/unit/button-states.test.ts` (new).
 
-- [ ] Test `every filled control darkens on hover and press`: read `src/index.css` fill tokens; for each `buttonVariants` variant with `bg-fill-*`, hover and active fills have lower luminance than rest.
-- [ ] Test `no class list makes a fill lighter on hover`: scan `src/**/*.tsx` string literals that hold both `bg-fill-X-N` and `hover:bg-fill-X-M`; hover luminance must be lower. Expect FAIL on the chat Send button.
-- [ ] Remove the Send button's `bg-fill-brand-700 … hover:bg-fill-brand-800` override so it uses the primary variant (rest `#2563EB`, hover `#1D4FC4`, press `#183F9C`).
-- [ ] Run; expect PASS.
+- [x] Test `every filled control darkens on hover and press`: read `src/index.css` fill tokens; for each `buttonVariants` variant with `bg-fill-*`, hover and active fills have lower luminance than rest.
+- [x] Test `no class list makes a fill lighter on hover`: scan `src/**/*.tsx` string literals that hold both `bg-fill-X-N` and `hover:bg-fill-X-M`; hover luminance must be lower. Expect FAIL on the chat Send button.
+- [x] Remove the Send button's `bg-fill-brand-700 … hover:bg-fill-brand-800` override so it uses the primary variant (rest `#2563EB`, hover `#1D4FC4`, press `#183F9C`).
+- [x] Run; expect PASS.
 
 ### Task 3: Shared component text floor and neutral failures
 
-**Files:** Modify `src/components/ui/badge.tsx`, `progress.tsx`, `data-table.tsx`, `tabs.tsx`, `src/components/layout/theme-control.tsx`, `src/components/feedback/state-view.tsx`; Test `tests/unit/shared-text-floor.test.ts` (new).
+**Files:** Modify `src/components/ui/badge.tsx`, `progress.tsx`, `data-table.tsx`, `tabs.tsx`, `src/components/layout/theme-control.tsx`, `src/components/feedback/state-view.tsx`; Test `tests/unit/shared-text-floor.test.tsx` (new).
 
-- [ ] Test: none of those six files contains `text-xs`, `text-label-sm` or `text-[10-13px]`. Expect FAIL.
-- [ ] Test: `ErrorState` renders its icon without a `danger` class (a load failure is technical, not clinical). Expect FAIL.
-- [ ] Badge `text-sm`, icon `size-4`; ProgressRing centre `text-sm`; THead `text-sm font-semibold` in sentence case (drop `uppercase tracking-wider`); tab count `text-sm`; theme legend `text-sm`; ErrorState detail `text-sm`; ErrorState icon `text-neutral-500`.
-- [ ] Shorten the permission error copy to "Your account can't view or change this. If this seems wrong, contact your care team."
-- [ ] Run unit suite for the touched components; expect PASS.
+- [x] Test: none of those six files contains `text-xs`, `text-label-sm` or `text-[10-13px]`. Expect FAIL.
+- [x] Test: `ErrorState` renders its icon without a `danger` class (a load failure is technical, not clinical). Expect FAIL.
+- [x] Badge `text-sm`, icon `size-4`; ProgressRing centre `text-sm`; THead `text-sm font-semibold` in sentence case (drop `uppercase tracking-wider`); tab count `text-sm`; theme legend `text-sm`; ErrorState detail `text-sm`; ErrorState icon `text-neutral-500`.
+- [x] Shorten the permission error copy to "Your account can't view or change this. If this seems wrong, contact your care team."
+- [x] Run unit suite for the touched components; expect PASS.
 
 ### Task 4: Chat-alert kinds on the dashboard and the notifications page
 
-**Files:** Create `src/features/notifications/chat-alert.ts`; Modify `src/features/dashboard/pages/doctor-dashboard.tsx`, `src/features/notifications/pages/notifications-page.tsx`; Test `tests/unit/chat-alert.test.ts`, `tests/unit/doctor-dashboard-alerts.test.tsx` (new), extend `tests/unit/critical-notification-link.test.tsx`.
+**Files:** Create `src/features/notifications/chat-alert.ts`; Modify `src/features/dashboard/pages/doctor-dashboard.tsx`, `src/features/notifications/pages/notifications-page.tsx`; Test `tests/unit/chat-alert.test.ts`, `tests/unit/doctor-dashboard-alerts.test.tsx`, `tests/unit/notifications-empty-state.test.tsx` (new), extend `tests/unit/critical-notification-link.test.tsx`.
 
 **Interfaces — Produces:**
 - `type ChatAlertKind = 'concern' | 'unanswered'`
 - `chatAlertKind(n: { notification_type: NotificationType; notification_message: string }): ChatAlertKind | null`
 - `CHAT_ALERT: Record<ChatAlertKind, { label: string; summary: string; icon: LucideIcon; tone: 'warning' | 'neutral' }>`
 
-- [ ] Test the constants equal `CRITICAL_ALERT_MESSAGE` and `NEEDS_REVIEW_MESSAGE` from `supabase/functions/_shared`; `chatAlertKind` gives `concern`, `unanswered`, `concern` for unknown chat text, `null` for other types. FAIL (module missing).
-- [ ] Implement the module. Labels: concern "Possible concern" / "A patient raised a concern in the guidance chat." (AlertTriangle, warning); unanswered "Unanswered message" / "The assistant couldn't answer a patient's message." (MessageSquareOff, neutral).
-- [ ] Dashboard test: a concern row shows "Possible concern" with a warning tint; an unanswered row shows "Unanswered message" with no warning tint; concerns are listed first; both link to the conversation; no patient message text. FAIL.
-- [ ] Dashboard: use `CHAT_ALERT` per row, list concerns first, drop the section description "Waiting on your decision or your review.", shorten the empty line to "Nothing needs your attention right now." and the error line to "Chat alerts couldn't be checked just now."
-- [ ] Notifications-page test: an unanswered alert row shows "Unanswered message", a neutral icon and no warning tint; a concern row keeps the warning tint and shows "Possible concern". FAIL.
-- [ ] Notifications page: a small label (`Badge`) before the message for chat alerts, per-kind icon and tint. Empty-state description only for patients.
-- [ ] Run the four test files; expect PASS.
+- [x] Test the constants equal `CRITICAL_ALERT_MESSAGE` and `NEEDS_REVIEW_MESSAGE` from `supabase/functions/_shared`; `chatAlertKind` gives `concern`, `unanswered`, `concern` for unknown chat text, `null` for other types. FAIL (module missing).
+- [x] Implement the module. Labels: concern "Possible concern" / "A patient raised a concern in the guidance chat." (AlertTriangle, warning); unanswered "Unanswered message" / "The assistant couldn't answer a patient's message." (MessageSquareOff, neutral).
+- [x] Dashboard test: a concern row shows "Possible concern" with a warning tint; an unanswered row shows "Unanswered message" with no warning tint; concerns are listed first; both link to the conversation; no patient message text. FAIL.
+- [x] Dashboard: use `CHAT_ALERT` per row, list concerns first, drop the section description "Waiting on your decision or your review.", shorten the empty line to "Nothing needs your attention right now." and the error line to "Chat alerts couldn't be checked just now."
+- [x] Notifications-page test: an unanswered alert row shows "Unanswered message", a neutral icon and no warning tint; a concern row keeps the warning tint and shows "Possible concern". FAIL.
+- [x] Notifications page: a small label (`Badge`) before the message for chat alerts, per-kind icon and tint. Empty-state description by role: a patient sees "Medication and appointment reminders will show here."; a doctor sees "Chat alerts and appointment reminders will show here." (doctors get reminders of their own appointments: migrations 18 and 42); a Clinic Admin sees the title alone.
+- [x] Run the four test files; expect PASS.
 
 ### Task 5: Comments, docs, review, verification
 
 **Files:** Modify `src/components/layout/page-header.tsx:38-41`, `src/components/ui/section-heading.tsx:20-24`, `docs/ui-design.md` (Phase 2B section).
 
-- [ ] Update the two comments to Figtree 36/700 title, 22/700 section heading, 17px body.
-- [ ] `docs/ui-design.md`: record the status-tone rules, the chat-alert split and what is still deferred.
-- [ ] `/code-review` and ponytail-review on the diff; fix Critical/Important.
-- [ ] Screenshots at 1280, 768, 375, 320 in Light and Dark for the doctor dashboard, notifications, a badge-heavy page and patient chat, against the local stub.
-- [ ] Serially: `npm run lint`, `npm run typecheck`, `npm run test:unit`, `npm run build`, targeted `npm run test:e2e`; then the full e2e.
+- [x] Update the two comments to Figtree 36/700 title, 22/700 section heading, 17px body.
+- [x] `docs/ui-design.md`: record the status-tone rules, the chat-alert split and what is still deferred.
+- [x] `/code-review` and ponytail-review on the diff; fix Critical/Important.
+- [x] Screenshots at 1280, 768, 375, 320 in Light and Dark for the doctor dashboard, notifications, a badge-heavy page and patient chat, against the local stub.
+- [x] Serially: `npm run lint`, `npm run typecheck`, `npm run test:unit`, `npm run build`, targeted `npm run test:e2e`; then the full e2e.
+
+## Completion notes (2026-11-13)
+
+- Implemented in commit `0791249`. An independent review after Task 5 found two Low issues, both fixed in that commit: the doctor's empty-state line (Task 4) and the unanswered-row test, which now checks the row's own classes.
+- Last results: unit 1,581/1,581, lint, typecheck and build pass. The full e2e (400/400) ran before those two fixes; after them, only the two notification specs were rerun (7/7).
+- Not done, left for later:
+  - `chat-alert.ts` recognises an assistant failure by one exact backend message; a structured discriminator needs a migration.
+  - Open draft PR #62 writes an admin "held alert" as `chat_critical`; it would show as "Possible concern".
+  - `Badge` has no `whitespace-nowrap`.
+  - The app shell's 12px labels and red unread count, and the unused red "negative trend" in `StatBand`.
