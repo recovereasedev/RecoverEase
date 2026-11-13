@@ -1,15 +1,10 @@
-/* Inter, self-hosted. The design system names Inter for its legibility in
-   data-heavy clinical screens. It is bundled rather than pulled from a font
-   CDN: a patient portal should not send every visitor's IP and referrer to a
-   third party on page load, and a bundled font has no external failure mode.
-   Subsets are unicode-range gated, so an English session fetches one file.
-
-   The optical-size build (RecoverEase 2.0). Same family, same name, with
-   Inter 4's `opsz` axis: body sizes keep the open text cut, and titles move
-   to the tighter display cut on their own as they grow, through
-   `font-optical-sizing: auto`. That is the difference between a heading set
-   in a text face and a heading set in a heading face, for 25KB. */
-@import '@fontsource-variable/inter/opsz.css';
+/* Figtree, self-hosted: the typeface the approved design names. It is
+   bundled rather than pulled from a font CDN: a patient portal should not
+   send every visitor's IP and referrer to a third party on page load, and a
+   bundled font has no external failure mode. One variable file carries every
+   weight, and its subsets are unicode-range gated, so an English session
+   fetches one file. */
+@import '@fontsource-variable/figtree';
 @import 'tailwindcss';
 
 /* A desktop screen tall enough to fit the guidance chat to it: the
@@ -19,52 +14,58 @@
 @custom-variant chat-fit (@media (min-width: 64rem) and (min-height: 50rem));
 
 /* ===========================================================================
-   RecoverEase Design System - "Clinical Clarity"
+   RecoverEase Design System - "Calm, caring, clear"
    ---------------------------------------------------------------------------
-   Source of truth: the approved Stitch design system (clinical_clarity/
-   DESIGN.md), which supersedes the earlier palette. Its stated intent is a
-   high-trust healthcare aesthetic: calm, authoritative, human-centred, and
-   legible before it is decorative.
+   Source of truth: the approved design (RecoverEase-Dashboard-Redesign.pdf),
+   which supersedes the earlier "Clinical Clarity" palette and typeface. A
+   recovering patient should know what to do in three seconds. The design's
+   named colours are the anchors below; the steps between them are derived
+   from those, and docs/ui-design.md lists which are which.
 
    Design rules encoded here:
 
    1. Colour is never the only carrier of meaning. Every status token has a
       matching icon and text label in `src/lib/status.ts`.
-   2. Every foreground/background pair used for text meets WCAG AA (4.5:1).
-      Measured ratios are recorded beside each token.
-   3. Depth is tonal, not shadowed. Cards sit on the canvas with a hairline
-      border; shadow is reserved for genuinely floating layers (menu, dialog,
-      toast) so that elevation keeps its meaning.
-   4. The blue-to-teal gradient is used in exactly two places (the brand mark,
-      and the auth/landing brand panel) and nowhere else. It is an identity
-      cue, not a surface treatment.
-
-   Where this file departs from DESIGN.md the reason is recorded in place.
-   There is exactly one such departure: `outline`.
+   2. Every foreground/background pair used for text meets WCAG AA (4.5:1),
+      in both themes. tests/unit/theme-tokens.test.ts holds the checks.
+   3. Teal is what done looks like, amber is for late, and red is for
+      emergencies only.
+   4. Cards are white on the page behind a 1px line; shadow is reserved for
+      genuinely floating layers (menu, dialog, toast).
+   5. The logo gradient is for shapes. Where the design's own colours would
+      put text below 4.5:1 - white on the gradient's teal end, white on the
+      dark theme's light-blue primary - the token keeps the text readable and
+      the reason is recorded in place.
    =========================================================================== */
 
 @theme {
   /* ---- Typography ------------------------------------------------------ */
   --font-sans:
-    'Inter Variable', 'Inter', ui-sans-serif, system-ui, -apple-system,
+    'Figtree Variable', 'Figtree', ui-sans-serif, system-ui, -apple-system,
     BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
     'Noto Sans', sans-serif;
   --font-mono:
     ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas,
     'Liberation Mono', monospace;
 
-  /* RecoverEase 2.0 roles. One size per job, named by the job:
+  /* The design's four sizes, and the roles built on them:
 
        display     56/60  landing hero only
        display-sm  48/52  landing hero on a phone, landing section leads
-       title       30/36  the page title, one per screen
-       headline-md 20/28  a section of a page
-       body-md     16/24  body, the floor for anything a patient reads
-       body-sm     14/20  dense metadata and tables
-       label-sm    12/16  the smallest text anywhere
+       title       36/44  the page title, one per screen          (700)
+       headline-md 22/28  a section of a page                     (700)
+       body-md     17/26  body
+       body-sm     15/22  helper text
+       label-sm    12/16  still in use; see below
 
-     Hierarchy comes from these steps plus weight, not from colour or boxes,
-     which is what lets sections drop their containers. */
+     `text-base` and `text-sm` are Tailwind's own names for the body and
+     helper sizes, so they are set to the same 17px and 15px here: one change
+     moves every screen, and no component chooses a size of its own.
+
+     The design's floor is 14px. `label-sm` and `text-xs` are still 12px:
+     the phone's bottom bar, the calendar and the charts were measured at
+     that size, and raising them is component work for the phases that
+     redesign those components. */
   --text-display: 3.5rem; /* 56px */
   --text-display--line-height: 3.75rem;
   --text-display--letter-spacing: -0.03em;
@@ -75,42 +76,44 @@
   --text-display-sm--letter-spacing: -0.025em;
   --text-display-sm--font-weight: 700;
 
-  --text-title: 1.875rem; /* 30px */
-  --text-title--line-height: 2.25rem;
+  --text-title: 2.25rem; /* 36px */
+  --text-title--line-height: 2.75rem;
   --text-title--letter-spacing: -0.02em;
-  --text-title--font-weight: 600;
+  --text-title--font-weight: 700;
 
-  /* The design system's scale, verbatim. A "strong" hierarchy - large
-     contrast between headings and body - is what lets a clinician scan a
-     record instead of reading it. */
   --text-headline-xl: 2.25rem; /* 36px */
   --text-headline-xl--line-height: 2.75rem;
   --text-headline-xl--letter-spacing: -0.02em;
   --text-headline-xl--font-weight: 700;
 
+  /* The page title on a phone, and the headline figures. */
   --text-headline-lg: 1.75rem; /* 28px */
   --text-headline-lg--line-height: 2.25rem;
   --text-headline-lg--letter-spacing: -0.01em;
-  --text-headline-lg--font-weight: 600;
+  --text-headline-lg--font-weight: 700;
 
-  --text-headline-md: 1.25rem; /* 20px */
+  --text-headline-md: 1.375rem; /* 22px */
   --text-headline-md--line-height: 1.75rem;
   --text-headline-md--letter-spacing: -0.01em;
-  --text-headline-md--font-weight: 600;
+  --text-headline-md--font-weight: 700;
 
   --text-body-lg: 1.125rem; /* 18px */
   --text-body-lg--line-height: 1.75rem;
 
-  --text-body-md: 1rem; /* 16px - the body floor */
-  --text-body-md--line-height: 1.5rem;
+  --text-body-md: 1.0625rem; /* 17px - body */
+  --text-body-md--line-height: 1.625rem;
+  --text-base: 1.0625rem;
+  --text-base--line-height: 1.625rem;
 
-  --text-body-sm: 0.875rem; /* 14px - dense data tables */
-  --text-body-sm--line-height: 1.25rem;
+  --text-body-sm: 0.9375rem; /* 15px - helper */
+  --text-body-sm--line-height: 1.375rem;
+  --text-sm: 0.9375rem;
+  --text-sm--line-height: 1.375rem;
 
   /* Labels anchor a section. All-caps is used sparingly and never for prose:
      capitals destroy word shape and slow reading. */
-  --text-label-md: 0.875rem;
-  --text-label-md--line-height: 1.25rem;
+  --text-label-md: 0.9375rem;
+  --text-label-md--line-height: 1.375rem;
   --text-label-md--letter-spacing: 0.05em;
   --text-label-md--font-weight: 600;
 
@@ -118,153 +121,159 @@
   --text-label-sm--line-height: 1rem;
   --text-label-sm--font-weight: 500;
 
-  /* ---- Brand: medical blue ---------------------------------------------
-     Anchored on the design system's `primary` (#004269) and
-     `primary-container` (#0e5a8a): stability and medical expertise. The
-     colour of key actions, active navigation and brand touchpoints. */
-  --color-brand-50: #eaf2fb;
-  --color-brand-100: #cde5ff; /* primary-fixed */
-  --color-brand-200: #a0d0ff; /* on-primary-container */
-  --color-brand-300: #95ccff; /* primary-fixed-dim */
-  --color-brand-400: #5fa8d8;
-  --color-brand-500: #2b7cb0;
-  --color-brand-600: #0e5a8a; /* primary-container - 7.37:1 on white, AAA */
-  --color-brand-700: #004a75; /* on-primary-fixed-variant - 9.39:1, AAA */
-  --color-brand-800: #004269; /* primary - 10.59:1 on white, AAA */
-  --color-brand-900: #00344f;
-  --color-brand-950: #001d32; /* on-primary-fixed */
+  /* ---- Brand: blue ------------------------------------------------------
+     600 is the design's primary blue and 700 its blue dark (links, pressed);
+     50 is its soft blue (active navigation, fills) and 950 its ink. The
+     steps between are tints and shades of those. */
+  --color-brand-50: #e8f0fd; /* soft blue */
+  --color-brand-100: #dbe7fc;
+  --color-brand-200: #bdd2f9;
+  --color-brand-300: #93b4f5;
+  --color-brand-400: #6090f0;
+  --color-brand-500: #3b74ed;
+  --color-brand-600: #2563eb; /* primary - 5.17:1 on white, 4.51:1 on soft blue */
+  --color-brand-700: #1d4fc4; /* blue dark - 7.08:1 on white, 6.17:1 on soft blue */
+  --color-brand-800: #183f9c; /* 9.42:1 on white */
+  --color-brand-900: #14317a;
+  --color-brand-950: #0f2747; /* ink */
 
   /* ---- Accent: teal -----------------------------------------------------
-     The design system's `secondary`. Interactive emphasis and positive
-     reinforcement. Unlike the previous palette the whole usable range clears
-     AA: 600 is 4.86:1, so it is now safe for text as well as for icons. */
-  --color-accent-50: #e6fbf6;
-  --color-accent-100: #c6f7ec;
-  --color-accent-200: #6df5e1; /* secondary-container */
-  --color-accent-300: #4fdbc8; /* secondary-fixed-dim */
-  --color-accent-400: #1fbfa8;
-  --color-accent-500: #00a08b;
-  --color-accent-600: #00806f; /* 4.86:1 on white - AA */
-  --color-accent-700: #006b5f; /* secondary - 6.43:1 on white - AA */
-  --color-accent-800: #005048; /* on-secondary-fixed-variant - 9.37:1 */
-  --color-accent-900: #00403a;
-  --color-accent-950: #00201c; /* on-secondary-fixed */
+     500 is the design's teal accent. It is 2.49:1 on white, so it is for
+     shapes - a progress fill, an illustration - and never for words. Teal
+     text is 600. Teal is also what "done" looks like: there is no separate
+     green (see Status). */
+  --color-accent-50: #e3f6f3; /* soft teal */
+  --color-accent-100: #c8eee8;
+  --color-accent-200: #99e0d6;
+  --color-accent-300: #5fd0c2;
+  --color-accent-400: #3ccfbc;
+  --color-accent-500: #14b8a6; /* teal accent - shapes only */
+  --color-accent-600: #0f766e; /* teal text - 5.47:1 on white, 4.88:1 on soft teal */
+  --color-accent-700: #0c625b; /* 7.21:1 on white */
+  --color-accent-800: #0a4e49; /* 9.55:1 on white */
+  --color-accent-900: #083b37;
+  --color-accent-950: #052523;
 
   /* ---- Neutrals ---------------------------------------------------------
-     A blue-tinted slate taken from the design system's tonal surface
-     containers. Cooler than a true grey, which is what makes stacked panels
-     read as layers rather than as dirt on the screen. */
-  --color-neutral-50: #f9f9ff; /* surface / background */
-  --color-neutral-100: #f0f3ff; /* surface-container-low */
-  --color-neutral-200: #dfe5f1; /* hairline rules, progress track */
-  --color-neutral-300: #c1c7d0; /* outline-variant */
-  --color-neutral-400: #9aa1ad; /* decorative only - 2.60:1 */
-  --color-neutral-500: #717880; /* outline - 4.47:1, icons only */
-  --color-neutral-600: #5f6672; /* 5.78:1 on white - AA - muted text */
-  --color-neutral-700: #41474f; /* on-surface-variant - 9.38:1 */
-  --color-neutral-800: #333942;
-  --color-neutral-900: #263143; /* inverse-surface */
-  --color-neutral-950: #111c2d; /* on-surface - 17.10:1 */
+     A blue slate between the design's page (50), line (200), muted (600)
+     and ink (950). */
+  --color-neutral-50: #f5f8fc; /* page */
+  --color-neutral-100: #edf2f8; /* wells, hover */
+  --color-neutral-200: #dde6f0; /* line, progress track */
+  --color-neutral-300: #c5d1e0; /* input borders */
+  --color-neutral-400: #94a3b8; /* decorative only - 2.56:1 */
+  --color-neutral-500: #6b7c95; /* icons only - 4.25:1 on white, 3.99:1 on the page */
+  --color-neutral-600: #4b5f7a; /* muted - 6.53:1 on white */
+  --color-neutral-700: #344a68;
+  --color-neutral-800: #213a5b;
+  --color-neutral-900: #172f50;
+  --color-neutral-950: #0f2747; /* ink - 14.98:1 on white */
 
   /* ---- Status -----------------------------------------------------------
-     Each family is anchored on the design system's role colour, then taken
-     to the shade where colour-on-white clears AA, so that one token works
-     for both a badge fill and inline text. */
-  --color-success-50: #e8f7ee;
-  --color-success-100: #c2e9d3;
-  --color-success-200: #8fd4ae;
-  --color-success-600: #0e7a46; /* 5.40:1 on white */
-  --color-success-700: #0a5f37; /* 7.76:1 on white */
-  --color-success-800: #07492a; /* 10.52:1 on white */
+     Three families, by the design's rule: teal for done, amber for late,
+     red for emergencies only. In each, 50 is the design's tint and the text
+     steps clear 4.5:1 on white, on the page and on that tint. On the deeper
+     100 tint, text is the 700 or 800 step. */
+  --color-success-50: #e3f6f3; /* = accent */
+  --color-success-100: #c8eee8;
+  --color-success-200: #99e0d6;
+  --color-success-600: #0f766e;
+  --color-success-700: #0c625b;
+  --color-success-800: #0a4e49;
 
-  /* Amber, from the design system's `tertiary` family. */
-  --color-warning-50: #fff4e6;
-  --color-warning-100: #ffdcbd; /* tertiary-fixed */
-  --color-warning-200: #ffb86f; /* tertiary-fixed-dim */
-  --color-warning-600: #8a5000;
-  --color-warning-700: #7e4900; /* tertiary-container - 7.39:1 on white */
-  --color-warning-800: #693c00; /* on-tertiary-fixed-variant - 9.35:1 */
+  --color-warning-50: #fdf1e3; /* amber tint */
+  --color-warning-100: #fae1c3;
+  --color-warning-200: #f2c690;
+  --color-warning-600: #9a5510; /* 5.13:1 on its tint */
+  --color-warning-700: #8a4b0a; /* amber - 6.10:1 on its tint */
+  --color-warning-800: #6e3c08;
 
-  /* Red, from the design system's `error` family. */
-  --color-danger-50: #ffedea;
-  --color-danger-100: #ffdad6; /* error-container */
-  --color-danger-200: #ffb4ab;
-  --color-danger-600: #ba1a1a; /* error - 6.46:1 on white */
-  --color-danger-700: #a01414; /* 8.06:1 on white */
-  --color-danger-800: #93000a; /* on-error-container - 9.35:1 */
+  --color-danger-50: #fbe9e5; /* alert tint */
+  --color-danger-100: #f6d2ca;
+  --color-danger-200: #edafa2;
+  --color-danger-600: #a8321b; /* 6.69:1 on white */
+  --color-danger-700: #8f2a17; /* alert - 7.12:1 on its tint */
+  --color-danger-800: #732112;
 
   /* Informational states share the brand blue by design: "this is a fact
      about the system" and "this is the product speaking" are one voice. */
-  --color-info-50: #eaf2fb;
-  --color-info-100: #cde5ff;
-  --color-info-200: #a0d0ff;
-  --color-info-600: #0e5a8a;
-  --color-info-700: #004a75;
-  --color-info-800: #004269;
+  --color-info-50: #e8f0fd;
+  --color-info-100: #dbe7fc;
+  --color-info-200: #bdd2f9;
+  --color-info-600: #2563eb;
+  --color-info-700: #1d4fc4;
+  --color-info-800: #183f9c;
 
   /* ---- Semantic surface roles ------------------------------------------
      Components reference these, never a raw scale step or hex value. */
-  --color-canvas: #f9f9ff; /* the floor */
-  --color-surface: #ffffff; /* cards and content containers */
-  --color-surface-sunken: #f0f3ff; /* wells, table headers, inset panels */
-  --color-surface-raised: #e7eeff; /* icon tiles, active nav, tonal chips */
-  --color-border: #dfe5f1; /* hairline separation */
-  --color-border-strong: #c1c7d0; /* input borders, emphasised rules */
-  --color-heading: #111c2d; /* headings - 17.10:1 on white */
-  --color-body: #41474f; /* body copy - 9.38:1 on white */
-  --color-muted: #5f6672; /* secondary text and labels - 5.78:1 on white */
+  --color-canvas: #f5f8fc; /* the page */
+  --color-surface: #ffffff; /* cards are white */
+  --color-surface-sunken: #edf2f8; /* wells, table headers, inset panels */
+  --color-surface-raised: #e8f0fd; /* soft blue: icon tiles, tonal chips */
+  --color-border: #dde6f0; /* line */
+  --color-border-strong: #c5d1e0; /* input borders, emphasised rules */
+  --color-heading: #0f2747; /* ink - 14.98:1 on white */
+  --color-body: #0f2747; /* the design sets body copy in ink too */
+  --color-muted: #4b5f7a; /* helper text - 6.53:1 on white, 6.13:1 on the page */
 
-  /* DEPARTURE FROM DESIGN.md, deliberate and singular.
+  /* Hairlines, disabled glyphs and placeholder text, none of which need
+     4.5:1. Not a text colour: secondary text is `--color-muted`. */
+  --color-outline: #6b7c95;
 
-     The design system's `outline` is #717880. On white that is 4.47:1, on the
-     canvas 4.26:1, and on a tinted container 3.84:1 - below AA for normal
-     text in all three. It is kept here for what it is genuinely for
-     (hairlines, disabled glyphs, placeholder text, all of which are exempt),
-     and `--color-muted` is set one step darker at #5f6672 so that secondary
-     text - which is most of the text in a clinical interface - actually
-     passes. Accessibility outranks an exact hex. */
-  --color-outline: #717880;
+  /* ---- Fills under white text ------------------------------------------
+     A solid fill with white text on it - a button, an avatar, the chat
+     header - must stay dark enough for that text in either theme, while the
+     same step used as text turns light in dark mode. So the fills are tokens
+     of their own, named for the step each replaced. Every one clears 4.5:1
+     under white in both themes (tests/unit/theme-tokens.test.ts).
 
-  /* ---- Fills under white text (dark mode) ----------------------------
-     A solid fill with white text on it - a primary button, an avatar, the
-     chat header - must stay dark enough for that text in either theme,
-     while the same step used as text must turn light in dark mode. So the
-     fills are tokens of their own: in light mode exactly the steps they
-     replaced, in dark mode tones white text still clears 4.5:1 on. */
-  --color-fill-brand-600: #0e5a8a;
-  --color-fill-brand-700: #004a75;
-  --color-fill-brand-800: #004269;
-  --color-fill-brand-900: #00344f;
-  --color-fill-accent-600: #00806f;
-  --color-fill-accent-700: #006b5f;
-  --color-fill-accent-800: #005048;
-  --color-fill-accent-900: #00403a;
-  --color-fill-danger-600: #ba1a1a;
-  --color-fill-danger-700: #a01414;
-  --color-fill-danger-800: #93000a;
-  --color-fill-success-600: #0e7a46;
-  /* The chat header bar: in dark mode deep enough for white text even
-     under its buttons' 25% hover tint. */
-  --color-fill-brand-deep: #004269;
-  /* Quieter text on a brand fill - the chat header's status line. */
-  --color-on-fill-soft: #cde5ff;
+     The primary button rests on 800, which is the design's primary blue,
+     hovers on 700 (blue dark) and is pressed on 900. 600 is the patient's
+     chat bubble, whose time stamp is white at 70%: that needs a deeper blue
+     than the primary, 7.64:1 under white. */
+  --color-fill-brand-600: #1c4bb8;
+  --color-fill-brand-700: #1d4fc4;
+  --color-fill-brand-800: #2563eb;
+  --color-fill-brand-900: #183f9c;
+  --color-fill-accent-600: #0f766e;
+  --color-fill-accent-700: #0f766e;
+  --color-fill-accent-800: #0c625b;
+  --color-fill-accent-900: #0a4e49;
+  --color-fill-danger-600: #a8321b;
+  --color-fill-danger-700: #8f2a17;
+  --color-fill-danger-800: #732112;
+  --color-fill-success-600: #0f766e;
+  /* The chat header bar: deep enough for white text even under its
+     buttons' 25% hover tint. */
+  --color-fill-brand-deep: #0f2747;
+  /* Quieter text on that bar - the chat header's status line. */
+  --color-on-fill-soft: #dbe7fc;
   /* The drawer's backdrop: dark in either theme. */
-  --color-scrim: #111c2d;
+  --color-scrim: #0f2747;
 
-  --color-inverse-surface: #263143;
-  --color-inverse-on-surface: #ecf1ff; /* 11.60:1 on inverse-surface */
+  --color-inverse-surface: #0f2747;
+  --color-inverse-on-surface: #e8eef8; /* 12.86:1 on inverse-surface */
 
-  /* ---- Role accent (RecoverEase 2.0) -----------------------------------
-     One accent per portal, set by `data-role` on the app shell (see the base
-     layer below): teal for the patient, brand blue for the clinician, slate
-     for administration. It marks where you are - the active navigation item,
-     the selected tab, the shell's context line - and nothing else. Surfaces
-     never take it, so it cannot compete with the status colours. These
-     defaults are the clinician's, which is also right for public pages.
+  /* ---- The logo gradient -----------------------------------------------
+     Royal blue, sky, teal: taken from the logo. For shapes - the mark, a
+     progress fill - and never behind small text: white on it is 5.17:1 at
+     the blue end, 3.60:1 in the middle and 2.49:1 at the teal end. Text
+     that sits on a gradient uses `.brand-gradient` (utilities, below). The
+     same in both themes. */
+  --color-gradient-from: #2563eb;
+  --color-gradient-via: #1b8fcb;
+  --color-gradient-to: #14b8a6;
 
-     Contrast, measured: every `role` text step on white and on its own
-     `role-soft` background clears 6:1 (accent-700 6.43/6.0, brand-700
-     9.39/8.4, neutral-800 11.7/11.0). */
+  /* ---- Role accent ------------------------------------------------------
+     Set by `data-role` on the app shell (see the base layer below). It marks
+     where you are - the active navigation item, the selected tab - and
+     nothing else. The design uses its blue for the people it was drawn for,
+     patients and clinicians; administration keeps a slate of its own, so
+     the two administrative consoles never read as a clinical screen.
+
+     Contrast, measured: every `role` text step on its own `role-soft`
+     background clears 6:1 (brand-700 on brand-50 6.17, neutral-800 on
+     neutral-100 10.25). */
   --color-role: var(--color-brand-700);
   --color-role-strong: var(--color-brand-800);
   --color-role-soft: var(--color-brand-50);
@@ -290,11 +299,11 @@
   /* ---- Elevation --------------------------------------------------------
      Restrained by specification: offset 0 4px, blur 12px, 8% neutral. Only
      floating layers get one; everything else separates with a border. */
-  --shadow-xs: 0 1px 2px 0 rgb(17 28 45 / 0.04);
+  --shadow-xs: 0 1px 2px 0 rgb(15 39 71 / 0.04);
   --shadow-sm:
-    0 1px 3px 0 rgb(17 28 45 / 0.06), 0 1px 2px -1px rgb(17 28 45 / 0.04);
-  --shadow-md: 0 4px 12px 0 rgb(17 28 45 / 0.08);
-  --shadow-lg: 0 12px 32px -8px rgb(17 28 45 / 0.16);
+    0 1px 3px 0 rgb(15 39 71 / 0.06), 0 1px 2px -1px rgb(15 39 71 / 0.04);
+  --shadow-md: 0 4px 12px 0 rgb(15 39 71 / 0.08);
+  --shadow-lg: 0 12px 32px -8px rgb(15 39 71 / 0.16);
 
   /* ---- Layout -----------------------------------------------------------
      "Main content areas should be capped at 1280px to prevent line lengths
@@ -351,19 +360,17 @@
     background-color: var(--color-canvas);
     color: var(--color-body);
     font-family: var(--font-sans);
-    font-size: 1rem; /* 16px floor for body text */
+    font-size: 1.0625rem; /* 17px, the design's body size */
     line-height: 1.5;
-    /* The browser default, stated: large text picks up Inter's display cut. */
-    font-optical-sizing: auto;
     -webkit-font-smoothing: antialiased;
   }
 
   /* The role accent, per portal. Declared on the shell so every descendant
      resolves `var(--color-role)` to its own portal's hue. */
   [data-role='patient'] {
-    --color-role: var(--color-accent-700);
-    --color-role-strong: var(--color-accent-800);
-    --color-role-soft: var(--color-accent-50);
+    --color-role: var(--color-brand-700);
+    --color-role-strong: var(--color-brand-800);
+    --color-role-soft: var(--color-brand-50);
   }
 
   [data-role='doctor'] {
@@ -472,16 +479,16 @@
 
   @bottom-left {
     content: 'RecoverEase · Confidential health record';
-    font-family: 'Inter Variable', 'Inter', ui-sans-serif, system-ui, sans-serif;
+    font-family: 'Figtree Variable', 'Figtree', ui-sans-serif, system-ui, sans-serif;
     font-size: 7.5pt;
-    color: #5f6672;
+    color: #4b5f7a;
   }
 
   @bottom-right {
     content: 'Page ' counter(page) ' of ' counter(pages);
-    font-family: 'Inter Variable', 'Inter', ui-sans-serif, system-ui, sans-serif;
+    font-family: 'Figtree Variable', 'Figtree', ui-sans-serif, system-ui, sans-serif;
     font-size: 7.5pt;
-    color: #5f6672;
+    color: #4b5f7a;
   }
 }
 
@@ -544,7 +551,7 @@
   }
 
   .app-dialog::backdrop {
-    background-color: rgb(38 49 67 / 0);
+    background-color: rgb(15 39 71 / 0);
     transition:
       background-color var(--duration-base) var(--ease-out-soft),
       overlay var(--duration-base) allow-discrete,
@@ -552,12 +559,12 @@
   }
 
   .app-dialog[open]::backdrop {
-    background-color: rgb(38 49 67 / 0.4);
+    background-color: rgb(15 39 71 / 0.4);
   }
 
   @starting-style {
     .app-dialog[open]::backdrop {
-      background-color: rgb(38 49 67 / 0);
+      background-color: rgb(15 39 71 / 0);
     }
   }
 
@@ -718,13 +725,14 @@
    =========================================================================== */
 
 @layer utilities {
-  /* The one sanctioned gradient. Identity only: the brand mark, and the auth
-     and landing brand panel. Do not extend it to cards, buttons or headers. */
+  /* The gradient that carries text: the sign-in panel and the landing
+     page's closing band. Primary blue to teal text, so white on it is 5.17:1
+     or better along its whole length. The logo's own gradient
+     (--color-gradient-*) ends in a teal that white text cannot sit on. */
   .brand-gradient {
     background-image: linear-gradient(
       135deg,
       var(--color-fill-brand-800) 0%,
-      var(--color-fill-brand-600) 45%,
       var(--color-fill-accent-600) 100%
     );
   }
@@ -810,90 +818,90 @@
 @media screen {
   :root[data-theme='dark'] {
     color-scheme: dark;
-    --color-brand-50: #0f2233;
-    --color-brand-100: #12304a;
-    --color-brand-200: #1a4466;
-    --color-brand-300: #2b5f8a;
-    --color-brand-400: #3f7db0;
-    --color-brand-500: #5c9ccf;
-    --color-brand-600: #7db6e3;
-    --color-brand-700: #9ccbf0;
-    --color-brand-800: #b9dbf6;
-    --color-brand-900: #d4e9fa;
-    --color-brand-950: #eaf4fd;
-    --color-accent-50: #0b2420;
-    --color-accent-100: #0e302a;
-    --color-accent-200: #12443c;
-    --color-accent-300: #166055;
-    --color-accent-400: #1f8a79;
-    --color-accent-500: #2fae99;
-    --color-accent-600: #4cc7b2;
-    --color-accent-700: #6fd8c5;
-    --color-accent-800: #94e6d7;
-    --color-accent-900: #b9f0e6;
-    --color-accent-950: #dcf8f2;
-    --color-neutral-50: #0c1420;
-    --color-neutral-100: #172232;
-    --color-neutral-200: #243246;
-    --color-neutral-300: #34445a;
-    --color-neutral-400: #5d6b80;
-    --color-neutral-500: #8592a5;
-    --color-neutral-600: #a7b3c4;
-    --color-neutral-700: #c4cedb;
-    --color-neutral-800: #d9e0ea;
-    --color-neutral-900: #e8edf4;
+    --color-brand-50: #16264a;
+    --color-brand-100: #1a2f5e;
+    --color-brand-200: #223f80;
+    --color-brand-300: #2f56ab;
+    --color-brand-400: #4373d9;
+    --color-brand-500: #5687f0;
+    --color-brand-600: #6b9bff;
+    --color-brand-700: #8db2ff;
+    --color-brand-800: #b0c9ff;
+    --color-brand-900: #d0dfff;
+    --color-brand-950: #eaf1ff;
+    --color-accent-50: #0e2a2c;
+    --color-accent-100: #11363a;
+    --color-accent-200: #174b4c;
+    --color-accent-300: #1d6964;
+    --color-accent-400: #26968a;
+    --color-accent-500: #30b5a4;
+    --color-accent-600: #3ccfbc;
+    --color-accent-700: #6bdccc;
+    --color-accent-800: #98e7db;
+    --color-accent-900: #c0f1e9;
+    --color-accent-950: #e1f9f5;
+    --color-neutral-50: #0b1220;
+    --color-neutral-100: #18233a;
+    --color-neutral-200: #243452;
+    --color-neutral-300: #34476a;
+    --color-neutral-400: #5a6c8c;
+    --color-neutral-500: #8292ad;
+    --color-neutral-600: #a3b3cc;
+    --color-neutral-700: #c2cee1;
+    --color-neutral-800: #d8e1ef;
+    --color-neutral-900: #e8eef8;
     --color-neutral-950: #f4f7fc;
-    --color-success-50: #0d2419;
-    --color-success-100: #12321f;
-    --color-success-200: #1d4d33;
-    --color-success-600: #4cc28a;
-    --color-success-700: #73d3a5;
-    --color-success-800: #9be2bf;
-    --color-warning-50: #2a1d0a;
-    --color-warning-100: #3a280c;
-    --color-warning-200: #5a3d12;
-    --color-warning-600: #f0b04f;
-    --color-warning-700: #f5c26f;
-    --color-warning-800: #f8d395;
-    --color-danger-50: #2d1214;
-    --color-danger-100: #3d171a;
-    --color-danger-200: #5c2226;
-    --color-danger-600: #ff8a80;
-    --color-danger-700: #ffa49b;
-    --color-danger-800: #ffbeb7;
-    --color-info-50: #0f2233;
-    --color-info-100: #12304a;
-    --color-info-200: #1a4466;
-    --color-info-600: #7db6e3;
-    --color-info-700: #9ccbf0;
-    --color-info-800: #b9dbf6;
-    --color-canvas: #0c1420;
-    --color-surface: #131d2b;
-    --color-surface-sunken: #0f1824;
-    --color-surface-raised: #1c2838;
-    --color-border: #273548;
-    --color-border-strong: #3a4a60;
-    --color-heading: #eef3fb;
-    --color-body: #c9d3e1;
-    --color-muted: #9eacbf;
-    --color-outline: #7d8a9c;
-    --color-inverse-surface: #e3e9f3;
-    --color-inverse-on-surface: #1a2433;
-    --color-fill-brand-600: #265a86;
-    --color-fill-brand-700: #2a6fa6;
-    --color-fill-brand-800: #24659a;
-    --color-fill-brand-900: #1d5a8c;
-    --color-fill-accent-600: #0f7f6e;
-    --color-fill-accent-700: #0f7f6e;
-    --color-fill-accent-800: #0c7062;
-    --color-fill-accent-900: #0a6156;
-    --color-fill-danger-600: #c62828;
-    --color-fill-danger-700: #ae2020;
-    --color-fill-danger-800: #951a1a;
-    --color-fill-success-600: #16804e;
+    --color-success-50: #0e2a2c;
+    --color-success-100: #11363a;
+    --color-success-200: #174b4c;
+    --color-success-600: #3ccfbc;
+    --color-success-700: #6bdccc;
+    --color-success-800: #98e7db;
+    --color-warning-50: #2a1e0d;
+    --color-warning-100: #392911;
+    --color-warning-200: #593f18;
+    --color-warning-600: #efb25c;
+    --color-warning-700: #f4c47c;
+    --color-warning-800: #f8d59e;
+    --color-danger-50: #2e1613;
+    --color-danger-100: #3e1d18;
+    --color-danger-200: #5d2b22;
+    --color-danger-600: #ff9c8c;
+    --color-danger-700: #ffb1a4;
+    --color-danger-800: #ffc7bd;
+    --color-info-50: #16264a;
+    --color-info-100: #1a2f5e;
+    --color-info-200: #223f80;
+    --color-info-600: #6b9bff;
+    --color-info-700: #8db2ff;
+    --color-info-800: #b0c9ff;
+    --color-canvas: #0b1220;
+    --color-surface: #121c2e;
+    --color-surface-sunken: #0e1627;
+    --color-surface-raised: #16264a;
+    --color-border: #243452;
+    --color-border-strong: #34476a;
+    --color-heading: #e8eef8;
+    --color-body: #e8eef8;
+    --color-muted: #a3b3cc;
+    --color-outline: #8292ad;
+    --color-inverse-surface: #e8eef8;
+    --color-inverse-on-surface: #0f2747;
+    --color-fill-brand-600: #1c4bb8;
+    --color-fill-brand-700: #1d4fc4;
+    --color-fill-brand-800: #2563eb;
+    --color-fill-brand-900: #183f9c;
+    --color-fill-accent-600: #0f766e;
+    --color-fill-accent-700: #0f766e;
+    --color-fill-accent-800: #0c625b;
+    --color-fill-accent-900: #0a4e49;
+    --color-fill-danger-600: #a8321b;
+    --color-fill-danger-700: #8f2a17;
+    --color-fill-danger-800: #732112;
+    --color-fill-success-600: #0f766e;
     --color-scrim: #000000;
-    --color-on-fill-soft: #e6f2fc;
-    --color-fill-brand-deep: #1b4c74;
+    --color-on-fill-soft: #d0dfff;
+    --color-fill-brand-deep: #16264a;
     --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.3);
     --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.35), 0 1px 2px -1px rgb(0 0 0 / 0.3);
     --shadow-md: 0 4px 12px 0 rgb(0 0 0 / 0.4);
@@ -902,116 +910,116 @@
 
   :root[data-theme='dark'] [data-theme-scope='light'] {
     color-scheme: light;
-    --color-brand-50: #eaf2fb;
-    --color-brand-100: #cde5ff;
-    --color-brand-200: #a0d0ff;
-    --color-brand-300: #95ccff;
-    --color-brand-400: #5fa8d8;
-    --color-brand-500: #2b7cb0;
-    --color-brand-600: #0e5a8a;
-    --color-brand-700: #004a75;
-    --color-brand-800: #004269;
-    --color-brand-900: #00344f;
-    --color-brand-950: #001d32;
-    --color-accent-50: #e6fbf6;
-    --color-accent-100: #c6f7ec;
-    --color-accent-200: #6df5e1;
-    --color-accent-300: #4fdbc8;
-    --color-accent-400: #1fbfa8;
-    --color-accent-500: #00a08b;
-    --color-accent-600: #00806f;
-    --color-accent-700: #006b5f;
-    --color-accent-800: #005048;
-    --color-accent-900: #00403a;
-    --color-accent-950: #00201c;
-    --color-neutral-50: #f9f9ff;
-    --color-neutral-100: #f0f3ff;
-    --color-neutral-200: #dfe5f1;
-    --color-neutral-300: #c1c7d0;
-    --color-neutral-400: #9aa1ad;
-    --color-neutral-500: #717880;
-    --color-neutral-600: #5f6672;
-    --color-neutral-700: #41474f;
-    --color-neutral-800: #333942;
-    --color-neutral-900: #263143;
-    --color-neutral-950: #111c2d;
-    --color-success-50: #e8f7ee;
-    --color-success-100: #c2e9d3;
-    --color-success-200: #8fd4ae;
-    --color-success-600: #0e7a46;
-    --color-success-700: #0a5f37;
-    --color-success-800: #07492a;
-    --color-warning-50: #fff4e6;
-    --color-warning-100: #ffdcbd;
-    --color-warning-200: #ffb86f;
-    --color-warning-600: #8a5000;
-    --color-warning-700: #7e4900;
-    --color-warning-800: #693c00;
-    --color-danger-50: #ffedea;
-    --color-danger-100: #ffdad6;
-    --color-danger-200: #ffb4ab;
-    --color-danger-600: #ba1a1a;
-    --color-danger-700: #a01414;
-    --color-danger-800: #93000a;
-    --color-info-50: #eaf2fb;
-    --color-info-100: #cde5ff;
-    --color-info-200: #a0d0ff;
-    --color-info-600: #0e5a8a;
-    --color-info-700: #004a75;
-    --color-info-800: #004269;
-    --color-canvas: #f9f9ff;
+    --color-brand-50: #e8f0fd;
+    --color-brand-100: #dbe7fc;
+    --color-brand-200: #bdd2f9;
+    --color-brand-300: #93b4f5;
+    --color-brand-400: #6090f0;
+    --color-brand-500: #3b74ed;
+    --color-brand-600: #2563eb;
+    --color-brand-700: #1d4fc4;
+    --color-brand-800: #183f9c;
+    --color-brand-900: #14317a;
+    --color-brand-950: #0f2747;
+    --color-accent-50: #e3f6f3;
+    --color-accent-100: #c8eee8;
+    --color-accent-200: #99e0d6;
+    --color-accent-300: #5fd0c2;
+    --color-accent-400: #3ccfbc;
+    --color-accent-500: #14b8a6;
+    --color-accent-600: #0f766e;
+    --color-accent-700: #0c625b;
+    --color-accent-800: #0a4e49;
+    --color-accent-900: #083b37;
+    --color-accent-950: #052523;
+    --color-neutral-50: #f5f8fc;
+    --color-neutral-100: #edf2f8;
+    --color-neutral-200: #dde6f0;
+    --color-neutral-300: #c5d1e0;
+    --color-neutral-400: #94a3b8;
+    --color-neutral-500: #6b7c95;
+    --color-neutral-600: #4b5f7a;
+    --color-neutral-700: #344a68;
+    --color-neutral-800: #213a5b;
+    --color-neutral-900: #172f50;
+    --color-neutral-950: #0f2747;
+    --color-success-50: #e3f6f3;
+    --color-success-100: #c8eee8;
+    --color-success-200: #99e0d6;
+    --color-success-600: #0f766e;
+    --color-success-700: #0c625b;
+    --color-success-800: #0a4e49;
+    --color-warning-50: #fdf1e3;
+    --color-warning-100: #fae1c3;
+    --color-warning-200: #f2c690;
+    --color-warning-600: #9a5510;
+    --color-warning-700: #8a4b0a;
+    --color-warning-800: #6e3c08;
+    --color-danger-50: #fbe9e5;
+    --color-danger-100: #f6d2ca;
+    --color-danger-200: #edafa2;
+    --color-danger-600: #a8321b;
+    --color-danger-700: #8f2a17;
+    --color-danger-800: #732112;
+    --color-info-50: #e8f0fd;
+    --color-info-100: #dbe7fc;
+    --color-info-200: #bdd2f9;
+    --color-info-600: #2563eb;
+    --color-info-700: #1d4fc4;
+    --color-info-800: #183f9c;
+    --color-canvas: #f5f8fc;
     --color-surface: #ffffff;
-    --color-surface-sunken: #f0f3ff;
-    --color-surface-raised: #e7eeff;
-    --color-border: #dfe5f1;
-    --color-border-strong: #c1c7d0;
-    --color-heading: #111c2d;
-    --color-body: #41474f;
-    --color-muted: #5f6672;
-    --color-outline: #717880;
-    --color-inverse-surface: #263143;
-    --color-inverse-on-surface: #ecf1ff;
-    --color-fill-brand-600: #0e5a8a;
-    --color-fill-brand-700: #004a75;
-    --color-fill-brand-800: #004269;
-    --color-fill-brand-900: #00344f;
-    --color-fill-accent-600: #00806f;
-    --color-fill-accent-700: #006b5f;
-    --color-fill-accent-800: #005048;
-    --color-fill-accent-900: #00403a;
-    --color-fill-danger-600: #ba1a1a;
-    --color-fill-danger-700: #a01414;
-    --color-fill-danger-800: #93000a;
-    --color-fill-success-600: #0e7a46;
-    --color-scrim: #111c2d;
-    --color-on-fill-soft: #cde5ff;
-    --color-fill-brand-deep: #004269;
-    --shadow-xs: 0 1px 2px 0 rgb(17 28 45 / 0.04);
-    --shadow-sm: 0 1px 3px 0 rgb(17 28 45 / 0.06), 0 1px 2px -1px rgb(17 28 45 / 0.04);
-    --shadow-md: 0 4px 12px 0 rgb(17 28 45 / 0.08);
-    --shadow-lg: 0 12px 32px -8px rgb(17 28 45 / 0.16);
-    --color-role: #004a75;
-    --color-role-strong: #004269;
-    --color-role-soft: #eaf2fb;
+    --color-surface-sunken: #edf2f8;
+    --color-surface-raised: #e8f0fd;
+    --color-border: #dde6f0;
+    --color-border-strong: #c5d1e0;
+    --color-heading: #0f2747;
+    --color-body: #0f2747;
+    --color-muted: #4b5f7a;
+    --color-outline: #6b7c95;
+    --color-inverse-surface: #0f2747;
+    --color-inverse-on-surface: #e8eef8;
+    --color-fill-brand-600: #1c4bb8;
+    --color-fill-brand-700: #1d4fc4;
+    --color-fill-brand-800: #2563eb;
+    --color-fill-brand-900: #183f9c;
+    --color-fill-accent-600: #0f766e;
+    --color-fill-accent-700: #0f766e;
+    --color-fill-accent-800: #0c625b;
+    --color-fill-accent-900: #0a4e49;
+    --color-fill-danger-600: #a8321b;
+    --color-fill-danger-700: #8f2a17;
+    --color-fill-danger-800: #732112;
+    --color-fill-success-600: #0f766e;
+    --color-scrim: #0f2747;
+    --color-on-fill-soft: #dbe7fc;
+    --color-fill-brand-deep: #0f2747;
+    --shadow-xs: 0 1px 2px 0 rgb(15 39 71 / 0.04);
+    --shadow-sm: 0 1px 3px 0 rgb(15 39 71 / 0.06), 0 1px 2px -1px rgb(15 39 71 / 0.04);
+    --shadow-md: 0 4px 12px 0 rgb(15 39 71 / 0.08);
+    --shadow-lg: 0 12px 32px -8px rgb(15 39 71 / 0.16);
+    --color-role: #1d4fc4;
+    --color-role-strong: #183f9c;
+    --color-role-soft: #e8f0fd;
   }
   :root[data-theme='dark'] [data-role='patient'] [data-theme-scope='light'] {
-    --color-role: #006b5f;
-    --color-role-strong: #005048;
-    --color-role-soft: #e6fbf6;
+    --color-role: #1d4fc4;
+    --color-role-strong: #183f9c;
+    --color-role-soft: #e8f0fd;
   }
   :root[data-theme='dark'] [data-role='doctor'] [data-theme-scope='light'] {
-    --color-role: #004a75;
-    --color-role-strong: #004269;
-    --color-role-soft: #eaf2fb;
+    --color-role: #1d4fc4;
+    --color-role-strong: #183f9c;
+    --color-role-soft: #e8f0fd;
   }
   :root[data-theme='dark'] [data-role='admin'] [data-theme-scope='light'] {
-    --color-role: #333942;
-    --color-role-strong: #263143;
-    --color-role-soft: #f0f3ff;
+    --color-role: #213a5b;
+    --color-role-strong: #172f50;
+    --color-role-soft: #edf2f8;
   }
   :root[data-theme='dark'] [data-role='super_admin'] [data-theme-scope='light'] {
-    --color-role: #333942;
-    --color-role-strong: #263143;
-    --color-role-soft: #f0f3ff;
+    --color-role: #213a5b;
+    --color-role-strong: #172f50;
+    --color-role-soft: #edf2f8;
   }
 }

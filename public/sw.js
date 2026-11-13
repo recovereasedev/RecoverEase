@@ -22,7 +22,7 @@
  * the new one removes the old one's storage when it takes over.
  */
 
-const VERSION = 'v2'
+const VERSION = 'v3'
 const CACHE = `recoverease-offline-${VERSION}`
 const OFFLINE_URL = '/offline.html'
 

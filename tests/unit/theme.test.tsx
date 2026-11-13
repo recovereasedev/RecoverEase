@@ -50,7 +50,7 @@ beforeEach(() => {
   localStorage.clear()
   resetThemeForTests()
   delete document.documentElement.dataset['theme']
-  document.head.innerHTML = '<meta name="theme-color" content="#004269" />'
+  document.head.innerHTML = '<meta name="theme-color" content="#2563eb" />'
 })
 
 afterEach(() => {
@@ -88,7 +88,14 @@ describe('applying it', () => {
     startTheme()
     expect(theme()).toBe('dark')
     expect(document.documentElement.style.colorScheme).toBe('dark')
-    expect(document.querySelector('meta[name="theme-color"]')).toHaveAttribute('content', '#0c1420')
+    expect(document.querySelector('meta[name="theme-color"]')).toHaveAttribute('content', '#0b1220')
+  })
+
+  it('gives the address bar the primary blue in Light', () => {
+    document.querySelector('meta[name="theme-color"]')!.setAttribute('content', '#000000')
+    startTheme()
+    expect(theme()).toBe('light')
+    expect(document.querySelector('meta[name="theme-color"]')).toHaveAttribute('content', '#2563eb')
   })
 })
 
