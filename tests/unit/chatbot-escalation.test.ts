@@ -191,8 +191,10 @@ describe('chatbot-reply', () => {
     expect(answerStep).toContain('timeoutMs: providerDeadlineMs(Date.now() - startedAt)')
     expect(answerStep).toContain('escalateCriticalConcern(')
     expect(answerStep).toContain("chat_message_role: 'assistant'")
+    // The failure is passed on, so the request can say when it was a
+    // concern's escalation that failed (tests/unit/escalation-failure-alert.test.ts).
     expect(answerStep).toContain(
-      "() => requestReview(reviewStore(admin, patient.doc_id, chatSessionId))",
+      '(error) => requestReview(reviewStore(admin, patient.doc_id, chatSessionId), reviewMessageFor(error)),',
     )
   })
 
@@ -203,7 +205,8 @@ describe('chatbot-reply', () => {
     expect(answerStep.indexOf('escalateCriticalConcern(')).toBeLessThan(
       answerStep.indexOf("chat_message_role: 'assistant'"),
     )
-    expect(answerStep).toContain("'escalation_failed'")
+    // A failed escalation fails the request, wherever in it the code is set.
+    expect(source).toContain("'escalation_failed'")
   })
 
   it('writes an assistant message in one place only: the real reply', () => {
@@ -235,11 +238,12 @@ describe('chatbot-reply', () => {
       ".eq('user_id', doctorUserId)",
       ".eq('chat_session_id', chatSessionId)",
       ".eq('notification_type', 'chat_critical')",
-      ".eq('notification_message', NEEDS_REVIEW_MESSAGE)",
+      // The message being asked with: each is asked once, on its own.
+      ".eq('notification_message', message)",
       ".eq('notification_is_read', false)",
     ]) {
       expect(store).toContain(filter)
     }
-    expect(store).toContain('notification_message: NEEDS_REVIEW_MESSAGE')
+    expect(store).toContain('notification_message: message')
   })
 })

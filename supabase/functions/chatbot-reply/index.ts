@@ -43,8 +43,9 @@ import {
 } from '../_shared/reply-outcome.ts'
 import {
   answerOrRequestReview,
-  NEEDS_REVIEW_MESSAGE,
   requestReview,
+  reviewFailureLogLine,
+  reviewMessageFor,
   type ReviewRequestStore,
 } from '../_shared/escalation.ts'
 
@@ -77,7 +78,9 @@ import {
  * A reply that raises a critical concern is escalated - the conversation
  * flagged, the doctor alerted - BEFORE it is saved, and is saved only once
  * that has succeeded (_shared/critical-escalation.ts). A saved reply ends
- * every retry, so escalating afterwards could lose a concern for good.
+ * every retry, so escalating afterwards could lose a concern for good. When
+ * the escalation itself fails, the review request says a concern was
+ * detected, not that the assistant could not answer.
  *
  * Time: one budget for the whole request (_shared/reply-outcome.ts). Every
  * database call has its own deadline, and Gemini is given what is left of
@@ -164,7 +167,8 @@ function promptStore(admin: Admin): PromptStore {
 /**
  * The database side of a review request (_shared/escalation.ts), for one
  * conversation and the patient's assigned doctor. Written with the service
- * key, like every other write here.
+ * key, like every other write here. A deactivated doctor is not asked, and
+ * nobody is asked in their place (`requestReview`).
  */
 function reviewStore(admin: Admin, docId: string, chatSessionId: string): ReviewRequestStore {
   return {
@@ -178,31 +182,32 @@ function reviewStore(admin: Admin, docId: string, chatSessionId: string): Review
       if (error) throw error
       return data?.doc_is_active ? (data.user_id as string) : null
     },
-    async hasUnreadReviewRequest(doctorUserId) {
+    async hasUnreadReviewRequest(doctorUserId, message) {
       const { data, error } = await admin
         .from('notification')
         .select('notification_id')
         .eq('user_id', doctorUserId)
         .eq('chat_session_id', chatSessionId)
         .eq('notification_type', 'chat_critical')
-        .eq('notification_message', NEEDS_REVIEW_MESSAGE)
+        .eq('notification_message', message)
         .eq('notification_is_read', false)
         .limit(1)
         .abortSignal(dbDeadline())
       if (error) throw error
       return (data?.length ?? 0) > 0
     },
-    async insertReviewRequest(doctorUserId) {
+    async insertReviewRequest(doctorUserId, message) {
       const { error } = await admin
         .from('notification')
         .insert({
           user_id: doctorUserId,
           chat_session_id: chatSessionId,
           // The chat alert type, so it opens the conversation like one does
-          // (module 8.5). The message says a reply is missing, not that a
-          // concern was found, and the conversation is not flagged.
+          // (module 8.5). One of two fixed messages: that a reply is missing,
+          // or that a concern was detected and its escalation failed. Nothing
+          // is flagged here either way.
           notification_type: 'chat_critical',
-          notification_message: NEEDS_REVIEW_MESSAGE,
+          notification_message: message,
         })
         .abortSignal(dbDeadline())
       if (error) throw error
@@ -413,7 +418,8 @@ Deno.serve(async (request) => {
     //    nobody has replied. If the assistant cannot give one - for any
     //    reason, from an unconfigured key to a reply whose escalation or save
     //    fails - their doctor is asked to review the conversation, and the
-    //    patient still gets the failure, never a stand-in reply.
+    //    patient still gets the failure, never a stand-in reply. What the
+    //    doctor is asked with depends on the failure (`reviewMessageFor`).
     //
     //    Configuration is checked in here rather than at the top of the
     //    handler, so that an unconfigured deployment still answers "not
@@ -469,14 +475,14 @@ Deno.serve(async (request) => {
             ),
           )
         } catch (error) {
-          if (!(error instanceof EscalationError)) throw error
-          facts.escalationStep = error.step
-          console.error(JSON.stringify({ event: 'critical_escalation_failed', step: error.step }))
-          throw new ReplyError(
-            'The guidance assistant is unavailable.',
-            503,
-            'escalation_failed',
-          )
+          if (error instanceof EscalationError) {
+            facts.escalationStep = error.step
+            console.error(JSON.stringify({ event: 'critical_escalation_failed', step: error.step }))
+          }
+          // Passed on as it is: the review request below tells the doctor a
+          // concern was detected because this is an EscalationError, and the
+          // handler's catch turns it into the patient's response.
+          throw error
         }
 
         // One reply per question, enforced by the database rather than by a
@@ -559,14 +565,9 @@ Deno.serve(async (request) => {
           critical: escalation !== 'not_critical',
         }
       },
-      () => requestReview(reviewStore(admin, patient.doc_id, chatSessionId)),
-      (error) =>
-        console.error(
-          JSON.stringify({
-            event: 'review_request_failed',
-            error: error instanceof Error ? error.name : 'unknown',
-          }),
-        ),
+      (error) => requestReview(reviewStore(admin, patient.doc_id, chatSessionId), reviewMessageFor(error)),
+      (error) => console.error(reviewFailureLogLine(error, facts.escalationStep)),
+      (line) => console.error(line),
     )
 
     // Another request saved its reply first; that reply is the one shown,
@@ -591,6 +592,17 @@ Deno.serve(async (request) => {
         { error: error.message },
         error.status,
         error instanceof ReplyError ? error.code : codeForStatus(error.status),
+      )
+    }
+
+    if (error instanceof EscalationError) {
+      // A concern was detected and could not be fully escalated, so the reply
+      // was not saved. The patient is told what they were told before - the
+      // assistant is unavailable - and can ask again.
+      return respond(
+        { error: 'The guidance assistant is unavailable.' },
+        503,
+        'escalation_failed',
       )
     }
 

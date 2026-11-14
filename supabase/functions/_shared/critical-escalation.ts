@@ -11,8 +11,9 @@ import { type AssistantReply, raisesCriticalConcern } from './assistant.ts'
  * function dying - in which the concern was lost for good: the patient saw
  * an answer, and no retry would ever look at it again. Escalating first
  * closes that window. If any step fails the reply is not saved, the request
- * fails (and asks the doctor to review, `escalation.ts`), and the patient's
- * retry produces and escalates a reply afresh.
+ * fails, and the patient's retry produces and escalates a reply afresh. The
+ * doctor is asked to review the conversation meanwhile (`escalation.ts`), in
+ * words that say a concern was detected: `ESCALATION_FAILED_MESSAGE` below.
  *
  * What it costs: when escalation succeeds and the save then fails, the retry
  * escalates again. That second alert is suppressed here - an alert is sent at
@@ -32,6 +33,17 @@ import { type AssistantReply, raisesCriticalConcern } from './assistant.ts'
 
 export const CRITICAL_ALERT_MESSAGE =
   'A patient raised a concern in the guidance chat that may need your attention.'
+
+/**
+ * What the doctor is told instead when a step below fails: a concern was
+ * detected, and the usual flag or alert may be missing. Without it the review
+ * request said only that the assistant "could not answer" - the words for an
+ * outage - and a detected concern reached the doctor looking like one.
+ *
+ * Fixed text, like the alert: nothing the patient or the assistant wrote.
+ */
+export const ESCALATION_FAILED_MESSAGE =
+  'A possible concern was detected in the guidance chat, but automatic escalation could not be completed. Please review the conversation.'
 
 export function concernSummary(reply: AssistantReply): string {
   return reply.safety_level === 'urgent'
