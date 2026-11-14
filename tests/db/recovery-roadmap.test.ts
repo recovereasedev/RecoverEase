@@ -462,9 +462,12 @@ describe('the recovery roadmap (migration 45)', () => {
          values ($1, 'Climb one flight of stairs') returning treatment_goal_id as id`,
         [fx.alicePlanId],
       )
-      for (const status of ['in_progress', 'in_progress', 'achieved']) {
-        await asDoctorA('update public.treatment_goal set treatment_goal_status = $2 where treatment_goal_id = $1', [goalId, status])
-      }
+      // From migration 55 the patient records progress, through their own
+      // function; a repeat is refused, so it writes no event.
+      const progress = 'select * from public.patient_update_treatment_goal_status($1, $2::public.treatment_goal_status)'
+      await asAlice(progress, [goalId, 'in_progress'])
+      await expect(asAlice(progress, [goalId, 'in_progress'])).rejects.toThrow(/already/)
+      await asAlice(progress, [goalId, 'achieved'])
       // Linking to a phase is not a change of status.
       await asDoctorA('update public.treatment_goal set treatment_goal_description = $2 where treatment_goal_id = $1', [
         goalId,
@@ -481,8 +484,8 @@ describe('the recovery roadmap (migration 45)', () => {
       )
       expect(history).toEqual([
         { previous: null, next: 'pending', by: fx.doctorAUserId },
-        { previous: 'pending', next: 'in_progress', by: fx.doctorAUserId },
-        { previous: 'in_progress', next: 'achieved', by: fx.doctorAUserId },
+        { previous: 'pending', next: 'in_progress', by: fx.aliceUserId },
+        { previous: 'in_progress', next: 'achieved', by: fx.aliceUserId },
       ])
       await expect(
         asDoctorA(

@@ -206,6 +206,8 @@ export function ConsultationFlow({
             <TreatmentGoalForm
               patientId={patientId}
               planId={plan.treatment_plan_id}
+              planStartDate={plan.treatment_plan_start_date}
+              planEndDate={plan.treatment_plan_end_date}
             />
 
             <div className="flex justify-end border-t border-[var(--color-border)] pt-4">
