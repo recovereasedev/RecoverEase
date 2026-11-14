@@ -23,7 +23,9 @@
 >   (`doctor_identity_columns_fixed`) is **not applied** - see "Doctor
 >   record ID and registration date (migration 54)"; 55
 >   (`treatment_goal_progress`) is **not applied** - see "Treatment goal
->   progress and the missed status (migration 55)". 48
+>   progress and the missed status (migration 55)"; 56
+>   (`automatic_recovery_roadmap`) is **not applied** - see "Automatic
+>   recovery roadmap (migration 56)". 48
 >   (`medication_dose_identity`) was applied and verified on 2026-11-09 at
 >   08:45:39 UTC (history `20261109084539 medication_dose_identity`), and
 >   its website (PR #76) merged and deployed to production the same day -
@@ -437,6 +439,14 @@ To roll back 31, go the other way, newest first. Each later migration is
 rolled back with its own down-script, applied as a new migration, and where
 deployed code depends on it, that code goes back first:
 
+1. **56**, where it is applied: the website from before "Automatic recovery
+   roadmap" first (it reads the columns this drops), then
+   `supabase/rollbacks/20260902100056_automatic_recovery_roadmap.down.sql`.
+   It drops the generator, its triggers, the phase kind and goal columns and
+   the plan's follow-up appointment column, and restores migration 45's
+   phase policies and `doctor_reorder_recovery_phases()`. Every phase,
+   activity and event stays; activities 56 moved stay moved, and phases 56
+   archived stay archived. The chosen follow-up appointments are lost.
 1. **55**, where it is applied: the website from before "Treatment goal
    progress" first (its patient screen calls the function this removes),
    then `supabase/rollbacks/20260902100055_treatment_goal_progress.down.sql`.
@@ -1884,6 +1894,66 @@ the rollback round trip); the status-history case in
 `tests/db/super-admin-rollback.test.ts` and
 `tests/db/medication-dose-identity.test.ts`. No test can run pg_cron
 (PGlite has none): the schedule is verified only after an approved apply.
+
+### Automatic recovery roadmap (migration 56)
+
+> **NOT APPLIED to production.** Applying it needs Kean's separate approval
+> and a quiet window, like every migration here. It assumes 55 is applied
+> first (its tests run on top of 55).
+
+Every plan's roadmap becomes generated: Initial Recovery, one Recovery and
+Monitoring phase per goal, Follow-up and Assessment (`docs/database.md`,
+section 18). Doctors no longer create, edit, archive or reorder phases.
+
+- **What it changes.** Columns `recovery_phase.recovery_phase_kind`,
+  `recovery_phase.treatment_goal_id` (unique, FK) and
+  `treatment_plan.treatment_plan_follow_up_appointment_id` (composite FK to
+  the patient's own appointment; new unique constraint on `appointment
+  (appointment_id, pat_id)`); `app_private.sync_recovery_roadmap(uuid)`;
+  triggers `treatment_plan_sync_roadmap`, `treatment_goal_sync_roadmap`,
+  `treatment_goal_retire_phase`, `treatment_goal_keep_roadmap`;
+  `recovery_phase_prepare()` and `recovery_activity_prepare()` redefined;
+  the doctor's phase insert policy, `doctor_reorder_recovery_phases()` and
+  `recovery_phase_release_goals` dropped; INSERT/DELETE/TRUNCATE on
+  `recovery_phase` revoked from `anon` and `authenticated`.
+- **It writes rows.** For every plan: Initial Recovery and Follow-up and
+  Assessment, and one phase per goal. A current hand-made phase holding
+  exactly one goal is converted in place; every other current hand-made
+  phase's current activities move to Initial Recovery and the phase is
+  archived. Nothing is deleted.
+- **Before applying (read-only).** Count what it will touch:
+  `select count(*) filter (where recovery_phase_archived_at is null) as current_phases, count(*) as all_phases from recovery_phase;`,
+  `select count(*) from recovery_activity a join recovery_phase ph using (recovery_phase_id) where ph.recovery_phase_archived_at is null and a.recovery_activity_archived_at is null;`,
+  `select count(*) from recovery_activity_event;`,
+  and `select count(*) from treatment_plan; select count(*) from treatment_goal;`.
+- **Order.** Migration first, then the website: the website before this
+  change offers phase controls the database now refuses, and the new one
+  reads the new columns.
+- **Locks.** `recovery_phase`, `treatment_plan`, `treatment_goal` and
+  `appointment` are altered briefly; `set lock_timeout = '3s'` first,
+  `reset lock_timeout` last. Use a quiet window clear of the minute and
+  quarter-hour marks and of the :10 missed-goal job.
+- **Apply.** With approval, on its own: the file's text, unchanged, through
+  `apply_migration` with the name `automatic_recovery_roadmap`. Never
+  `supabase db push` (it would also run the held migration 34). MD5 at the
+  time of writing `98ead1af87f8ad849952b5212d1b8d07` (31,111 bytes) -
+  recompute from the file being applied.
+- **Verify, read-only.** One history entry `automatic_recovery_roadmap`
+  matching the file's MD5; every plan has exactly goals + 2 current phases:
+  `select tp.treatment_plan_id from treatment_plan tp where (select count(*) from recovery_phase ph where ph.treatment_plan_id = tp.treatment_plan_id and ph.recovery_phase_archived_at is null) <> (select count(*) from treatment_goal g where g.treatment_plan_id = tp.treatment_plan_id) + 2;`
+  returns no row; the activity and event counts from before are unchanged
+  in total; no current phase has a null kind; `lock_timeout` back to `0`.
+- **Rollback.** "To roll back 31", step 56.
+
+Tests: `tests/db/automatic-recovery-roadmap.test.ts` (phase counts 0/1/3/5
+goals, order, idempotency, duplicate refusals, the plan lock, plan and goal
+date sync, goal status read-through, goal deletion, every refused manual
+path, access across patients, doctors and clinics, the follow-up
+appointment, completion is not recovery, conversion of existing roadmaps,
+and the rollback round trip); the migration-45 suite now runs on the schema
+through 55; and 56 rolled back first in
+`tests/db/super-admin-rollback.test.ts` and
+`tests/db/medication-dose-identity.test.ts`.
 
 ## Bundle budget
 
