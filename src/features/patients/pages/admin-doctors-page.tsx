@@ -1,12 +1,14 @@
-import { KeyRound, Stethoscope, UserPlus, Users } from 'lucide-react'
+import { KeyRound, Pencil, Stethoscope, UserPlus, Users } from 'lucide-react'
 import { useState } from 'react'
 
-import { EmptyState, StateView } from '@/components/feedback/state-view'
+import { EmptyState, SavedNotice, StateView } from '@/components/feedback/state-view'
 import { PageHeader } from '@/components/layout/page-header'
 import { StatusBadge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardBody } from '@/components/ui/card'
 import { Notice } from '@/components/ui/notice'
+import type { Doctor } from '@/features/patients/api'
+import { EditDoctorDialog } from '@/features/patients/components/edit-doctor-dialog'
 import { ReassignPatientsDialog } from '@/features/patients/components/reassign-patients-dialog'
 import { RegisterAccountDialog } from '@/features/patients/components/register-account-dialog'
 import { ResetCredentialDialog } from '@/features/patients/components/reset-credential-dialog'
@@ -43,6 +45,12 @@ export function AdminDoctorsPage() {
     doctorId: string
     name: string
   } | null>(null)
+  // The doctor whose details are being edited (module 11.2), as the list
+  // held them when Edit was pressed.
+  const [editing, setEditing] = useState<Doctor | null>(null)
+  // The last edit that was saved: what to say, and when, so the same sentence
+  // said twice is announced twice.
+  const [saved, setSaved] = useState<{ at: number; message: string } | null>(null)
   const doctorsQuery = useAllDoctors()
   const setActive = useSetDoctorActive()
   const [isRegisterOpen, setRegisterOpen] = useState(false)
@@ -85,6 +93,23 @@ export function AdminDoctorsPage() {
       ) : null}
 
       {/* Mounted only while a doctor is selected, like the reset above, so
+          each opening starts from that doctor's details as they are on
+          record and carries nothing over from the last one. */}
+      {editing ? (
+        <EditDoctorDialog
+          doctor={editing}
+          onClose={() => setEditing(null)}
+          onSaved={(name) => {
+            setEditing(null)
+            setSaved({
+              at: Date.now(),
+              message: `The details for ${name} were updated.`,
+            })
+          }}
+        />
+      ) : null}
+
+      {/* Mounted only while a doctor is selected, like the reset above, so
           each opening counts that doctor's patients afresh. */}
       {reassigning ? (
         <ReassignPatientsDialog
@@ -94,6 +119,11 @@ export function AdminDoctorsPage() {
           doctors={doctorsQuery.data ?? []}
         />
       ) : null}
+
+      {/* Always in the document, so that a saved edit is announced. */}
+      <SavedNotice at={saved?.at ?? 0} className="mb-3">
+        {saved?.message}
+      </SavedNotice>
 
       <Card>
         <CardBody className="p-0">
@@ -155,6 +185,28 @@ export function AdminDoctorsPage() {
                               : doctorAccountStatus.inactive
                           }
                         />
+
+                        {/* Module 11.2. Their details only: status, password
+                            and patients keep their own controls below. */}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setSaved(null)
+                            setEditing(doctor)
+                          }}
+                        >
+                          <Pencil aria-hidden="true" />
+                          Edit
+                          <span className="sr-only">
+                            {' '}
+                            Dr{' '}
+                            {fullName(
+                              doctor.doc_first_name,
+                              doctor.doc_last_name,
+                            )}
+                          </span>
+                        </Button>
 
                         {/* Module 11.2. A temporary password is shown once,
                             and outbound email is not configured, so without

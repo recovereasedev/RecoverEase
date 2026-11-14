@@ -18,7 +18,10 @@
 >   merge of PR #68), serves <https://recoverease-web.vercel.app>.
 > - **Database** (2026-11-09, after 08:45 UTC). The migration history has
 >   45 entries. Every file in `supabase/migrations/` is in it except 34
->   (`lift_single_clinic_gate`), held for its own decision. 48
+>   (`lift_single_clinic_gate`), held for its own decision. Files added
+>   since are not covered by this snapshot: 54
+>   (`doctor_identity_columns_fixed`) is **not applied** - see "Doctor
+>   record ID and registration date (migration 54)". 48
 >   (`medication_dose_identity`) was applied and verified on 2026-11-09 at
 >   08:45:39 UTC (history `20261109084539 medication_dose_identity`), and
 >   its website (PR #76) merged and deployed to production the same day -
@@ -432,6 +435,10 @@ To roll back 31, go the other way, newest first. Each later migration is
 rolled back with its own down-script, applied as a new migration, and where
 deployed code depends on it, that code goes back first:
 
+1. **54**, where it is applied:
+   `supabase/rollbacks/20260902100054_doctor_identity_columns_fixed.down.sql`.
+   Nothing deployed depends on it (no screen sends either column), so it can
+   go back alone. It drops one trigger and its function; no row changes.
 1. **48**, applied to production on 2026-11-09: the website from before
    migration 48, then
    `supabase/rollbacks/20260902100048_medication_dose_identity.down.sql`. It
@@ -1749,6 +1756,75 @@ covered: a real phone receiving a real push (needs the steps above); the
 worker's handlers in a real browser (headless Chromium refuses notification
 permission to service workers); and truly simultaneous sessions (the test
 database has one connection, so overlap is a transaction left open).
+
+### Doctor record ID and registration date (migration 54)
+
+> **NOT APPLIED to production.** Applying it needs Kean's separate approval
+> and a quiet window, like every migration here.
+
+Module 11.2 lets a Clinic Admin edit a doctor's five details from **Doctor
+accounts → Edit** (PR "feat(clinic-admin): add doctor account editing").
+Migration 30's update policy limits that to their own clinic's doctors but
+not to those columns, and nothing guarded `doc_id` or `doc_created_at`: an
+administrator could rewrite either (`doc_id` where nothing referenced it
+yet), and a doctor their own registration date. The record ID is what every
+clinical record, appointment and audit entry points at, and the
+registration date is a fact about the account; neither has a legitimate
+change (`docs/database.md`, section 16).
+
+- **What it changes.** One function, `public.doctor_identity_is_fixed()`
+  (`search_path` empty, not `SECURITY DEFINER`, revoked from `public`,
+  `anon` and `authenticated`), and one trigger,
+  `doctor_identity_is_fixed`, `before update on public.doctor`, run only
+  `when` `doc_id` or `doc_created_at` `is distinct from` its old value. It
+  raises `42501` with "A doctor's record ID cannot be changed" or "A
+  doctor's registration date cannot be changed", for every writer,
+  including the service role and scheduled jobs. Sending either column back
+  unchanged is accepted. No table, column, policy, grant or other trigger
+  changes, and no row is written.
+- **Order.** It does not depend on the website: the Edit dialog never sends
+  either column, so the website can be merged before or after it. Nothing
+  else in production writes either column (no screen, Edge Function, job or
+  seed).
+- **Locks.** Creating the trigger locks `doctor`, which the reminder jobs
+  read, so it starts with `set lock_timeout = '3s'` and ends with `reset
+  lock_timeout` ("Migration timing and run history"). Use a quiet window
+  clear of the minute and quarter-hour marks.
+- **Apply.** With approval, on its own, as every migration on this project:
+  the file's text, unchanged, through the Supabase connector's
+  `apply_migration` with the name `doctor_identity_columns_fixed` (or the
+  reviewed one-file `supabase db query --linked -f` route used for 53),
+  from the merged file. Never `supabase db push`: it would also run the
+  held migration 34. The file's MD5 at the time of writing is
+  `b5e844a47357399b7594a0791e52f73f` (3,362 bytes) - recompute from the
+  file being applied. If applying fails or seems partial, stop and gather
+  read-only evidence, as for 37 above; do not retry or repair the history
+  without a separate decision.
+- **Verify, read-only.** One new history entry named
+  `doctor_identity_columns_fixed` (its version is the apply time, not
+  `20260902100054`) whose statements match the file's MD5;
+  `select tgname, tgenabled from pg_trigger where tgname = 'doctor_identity_is_fixed';`
+  returns one enabled trigger; `to_regprocedure('public.doctor_identity_is_fixed()')`
+  is present with `proconfig` `search_path=""`; every table unchanged by
+  count; `lock_timeout` back to `0`; and the reminder jobs' next runs
+  succeed. Do not test it by updating a production doctor.
+- **Rollback.** "To roll back 31", step 54:
+  `supabase/rollbacks/20260902100054_doctor_identity_columns_fixed.down.sql`,
+  applied as a new migration in the same kind of window. It refuses unless
+  54 is applied, then drops only the trigger and the function; the earlier
+  guards (migrations 7, 29 and 42) stay. Afterwards an administrator can
+  again rewrite either column through the Data API.
+
+Tests: `tests/db/doctor-identity-fixed.test.ts` (an administrator, the
+doctor and the service role are each refused either change and the row is
+left as it was; a refused change discards the rest of that update; both
+columns sent back unchanged are accepted; the five details, the clinic
+boundary, activation and the reminder setting behave as before; the
+3-second lock timeout, running twice, and the rollback);
+`tests/db/clinic-admin-updates-doctor.test.ts` (what a Clinic Admin may
+change, and that nobody else may); and 54 rolled back first in
+`tests/db/super-admin-rollback.test.ts` and
+`tests/db/medication-dose-identity.test.ts`.
 
 ## Bundle budget
 

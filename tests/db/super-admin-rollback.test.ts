@@ -22,6 +22,7 @@ import { assuredSuperAdmin, createSignIn, type Claims } from './helpers/super-ad
  * the comparison includes the enum, so it shows that is all that remains.
  */
 
+const ROLLBACK_54 = 'supabase/rollbacks/20260902100054_doctor_identity_columns_fixed.down.sql'
 const ROLLBACK_53 = 'supabase/rollbacks/20260902100053_web_push_notifications.down.sql'
 const ROLLBACK_48 = 'supabase/rollbacks/20260902100048_medication_dose_identity.down.sql'
 const ROLLBACK_46 = 'supabase/rollbacks/20260902100046_super_admin_platform_overview.down.sql'
@@ -56,7 +57,7 @@ const rows = async (database: TestDatabase) => ({
   ),
 })
 
-describe('rolling back migrations 53, 48, 46, 45, 43, 44, 41, 42, 38, 37, 36, 35, 34 and 33 with their down-scripts', () => {
+describe('rolling back migrations 54, 53, 48, 46, 45, 43, 44, 41, 42, 38, 37, 36, 35, 34 and 33 with their down-scripts', () => {
   let used: TestDatabase
   let through32: TestDatabase
   let fx: Fixture
@@ -100,6 +101,7 @@ describe('rolling back migrations 53, 48, 46, 45, 43, 44, 41, 42, 38, 37, 36, 35
   it('returns the schema to exactly what 32 left, and keeps every row', async () => {
     const before = await rows(used)
 
+    await used.db.exec(await script(ROLLBACK_54))
     await used.db.exec(await script(ROLLBACK_53))
     await used.db.exec(await script(ROLLBACK_48))
     await used.db.exec(await script(ROLLBACK_46))

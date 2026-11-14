@@ -378,6 +378,25 @@ with nothing to count there is none ("No activities yet"). Doses,
 appointments and check-ins are never counted
 (`src/features/recovery-roadmap/roadmap.ts`).
 
+### 16. A doctor's record ID and registration date are fixed
+
+Module 11.2. A Clinic Admin edits a doctor's first and last name, licence
+number, specialisation and contact number from **Doctor accounts → Edit**,
+through migration 30's `doctor_update_self_or_admin` (their own clinic's
+doctors only). That policy decides *whose* row may be updated, not *which
+columns*, and two had no guard: an administrator could rewrite a doctor's
+`doc_id` (where nothing referenced it yet) and `doc_created_at`, and a doctor
+their own `doc_created_at`.
+
+Neither has a legitimate change. `doc_id` is the identity every clinical
+record, appointment and audit entry points at; `doc_created_at` is when the
+account was registered, shown on Doctor accounts. Migration 54 adds
+`doctor_identity_is_fixed`, a `before update` trigger that refuses a change
+to either (`insufficient_privilege`) for every writer - the service role and
+the database's own jobs included, like the clinic (migration 29). Sending
+either back unchanged is not a change and is accepted. The policy and the
+guards of migrations 7, 29 and 42 are untouched.
+
 ## Assumptions where the ERD was silent
 
 The ERD types every status column as `varchar` without listing values. Each
