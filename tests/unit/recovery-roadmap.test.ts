@@ -4,11 +4,14 @@ import type { RecoveryActivity, RecoveryPhase } from '@/features/recovery-roadma
 import {
   completedInPeriod,
   countItems,
+  followUpAppointment,
   lastAchieved,
+  phaseHeading,
   phaseStatus,
   planRoadmap,
   upcomingTasks,
 } from '@/features/recovery-roadmap/roadmap'
+import type { AppointmentWithPatient } from '@/features/appointments/api'
 import type { TreatmentGoal } from '@/features/treatment-plans/api'
 
 /**
@@ -31,6 +34,8 @@ const phase = (id: string, order: number, overrides: Partial<RecoveryPhase> = {}
   recovery_phase_archived_at: null,
   recovery_phase_created_at: '2026-10-01T00:00:00Z',
   recovery_phase_updated_at: '2026-10-01T00:00:00Z',
+  recovery_phase_kind: 'initial',
+  treatment_goal_id: null,
   ...overrides,
 })
 
@@ -110,7 +115,47 @@ describe('a plan’s roadmap', () => {
     // a (done), b, c, and the linked goal (achieved): 2 of 4. The other
     // plan's activity and the goal in no phase are not counted.
     expect(built.count).toEqual({ done: 2, total: 4, remaining: 2, percentage: 50 })
-    expect(built.unlinkedGoals.map((item) => item.treatment_goal_id)).toEqual(['loose'])
+  })
+})
+
+describe('the generated phases (migration 56)', () => {
+  const goals = [
+    goal('walk', { treatment_goal_description: 'Walk 500 metres unaided', recovery_phase_id: 'g', treatment_goal_status: 'missed' }),
+  ]
+  const roadmap = {
+    phases: [
+      phase('end', 1000000, { recovery_phase_kind: 'follow_up', recovery_phase_title: 'Follow-up and Assessment' }),
+      phase('g', 2, { recovery_phase_kind: 'goal', treatment_goal_id: 'walk', recovery_phase_title: 'Recovery and Monitoring' }),
+      phase('start', 1, { recovery_phase_kind: 'initial', recovery_phase_title: 'Initial Recovery' }),
+    ],
+    activities: [],
+  }
+
+  it('puts Initial Recovery first and Follow-up and Assessment last, numbered by position', () => {
+    const built = planRoadmap('plan-1', goals, roadmap, TODAY)
+    expect(built.phases.map((item) => [item.number, item.kind])).toEqual([
+      [1, 'initial'],
+      [2, 'goal'],
+      [3, 'follow_up'],
+    ])
+  })
+
+  it('gives a goal phase its own goal, read from the goal, and heads it with the goal', () => {
+    const built = planRoadmap('plan-1', goals, roadmap, TODAY)
+    const goalPhase = built.phases[1]!
+    expect(goalPhase.goal?.treatment_goal_status).toBe('missed')
+    expect(phaseHeading(goalPhase)).toBe('Recovery and Monitoring: Walk 500 metres unaided')
+    expect(phaseHeading(built.phases[0]!)).toBe('Initial Recovery')
+    expect(phaseHeading(built.phases[2]!)).toBe('Follow-up and Assessment')
+  })
+
+  it('finds the plan’s chosen follow-up appointment and no other', () => {
+    const appointment = (id: string) => ({ appointment_id: id }) as AppointmentWithPatient
+    const appointments = [appointment('a1'), appointment('a2')]
+    expect(followUpAppointment({ treatment_plan_follow_up_appointment_id: 'a2' }, appointments)?.appointment_id).toBe('a2')
+    expect(followUpAppointment({ treatment_plan_follow_up_appointment_id: null }, appointments)).toBeNull()
+    // Chosen, but not among those read (still loading, or unreadable): not "none chosen".
+    expect(followUpAppointment({ treatment_plan_follow_up_appointment_id: 'gone' }, appointments)).toBeUndefined()
   })
 })
 

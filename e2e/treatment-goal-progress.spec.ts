@@ -40,6 +40,7 @@ const PLAN = () => ({
       treatment_plan_status: 'active',
       treatment_plan_created_at: '2026-02-01T00:00:00Z',
       treatment_plan_updated_at: '2026-02-01T00:00:00Z',
+      treatment_plan_follow_up_appointment_id: null,
       treatment_goal: [
         goal('goal-new', 'Climb one flight of stairs', 'pending', dayFromToday(14)),
         // What the scheduled job leaves once the date has passed.

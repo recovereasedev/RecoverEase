@@ -244,6 +244,11 @@ describe('treatment goal progress (migration 55)', () => {
 
     it('6–8. cannot change the description, target date, plan, phase or status directly', async () => {
       const goalId = await seedGoal('pending', plusDays(today, 10))
+      // Migration 56 gives every goal its own generated roadmap phase.
+      const [{ phase }] = await database.asService<{ phase: string }>(
+        'select recovery_phase_id as phase from public.treatment_goal where treatment_goal_id = $1',
+        [goalId],
+      )
       for (const change of [
         "treatment_goal_description = 'Rewritten'",
         `treatment_goal_target_date = '${plusDays(today, 60)}'`,
@@ -267,7 +272,7 @@ describe('treatment goal progress (migration 55)', () => {
         treatment_goal_description: 'Seeded goal',
         target: plusDays(today, 10),
         treatment_plan_id: fx.alicePlanId,
-        recovery_phase_id: null,
+        recovery_phase_id: phase,
         status: 'pending',
       })
       // The function itself takes only a status.
@@ -493,12 +498,12 @@ describe('treatment goal progress (migration 55)', () => {
        values ($1, 'Balance on one leg') returning treatment_goal_id as id`,
       [planId],
     )
-    const [{ id: phaseId }] = await asDoctorA<{ id: string }>(
-      `insert into public.recovery_phase (treatment_plan_id, recovery_phase_title)
-       values ($1, 'Balance') returning recovery_phase_id as id`,
-      [planId],
+    // Its roadmap phase is generated (migration 56), not placed by hand.
+    const [{ phase }] = await database.asService<{ phase: string | null }>(
+      'select recovery_phase_id as phase from public.treatment_goal where treatment_goal_id = $1',
+      [goalId],
     )
-    await asDoctorA('update public.treatment_goal set recovery_phase_id = $2 where treatment_goal_id = $1', [goalId, phaseId])
+    expect(phase).not.toBeNull()
     await asDoctorA("update public.treatment_plan set treatment_plan_title = 'Second plan, revised' where treatment_plan_id = $1", [
       planId,
     ])
@@ -510,7 +515,8 @@ describe('treatment goal progress (migration 55)', () => {
 describe('migration 55, before and after', () => {
   it('can be run twice, and rolls back to exactly what 54 left, keeping every goal and event', async () => {
     const [full, through54] = await Promise.all([
-      createTestDatabase(),
+      // Migration 56 builds on 55; this round trip is 55's alone.
+      createTestDatabase({ stopAfter: '20260902100055' }),
       createTestDatabase({ stopAfter: '20260902100054' }),
     ])
     try {

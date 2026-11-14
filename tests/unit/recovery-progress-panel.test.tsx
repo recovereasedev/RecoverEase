@@ -117,6 +117,7 @@ const PLANS: PlanWithGoals[] = [
     treatment_plan_status: 'active',
     treatment_plan_created_at: '2026-09-01T00:00:00Z',
     treatment_plan_updated_at: '2026-09-01T00:00:00Z',
+    treatment_plan_follow_up_appointment_id: null,
     treatment_goal: [
       {
         treatment_goal_id: 'g-1',

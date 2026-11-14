@@ -20,6 +20,9 @@ import { seedFixture, type Fixture } from './helpers/fixtures'
 
 const MIGRATION_44 = '20260902100044'
 const MIGRATION_45 = '20260902100045'
+// Migration 56 replaces hand-made phases with generated ones; these suites
+// describe the roadmap as 45 made it, on the schema through 55.
+const MIGRATION_55 = '20260902100055'
 const MIGRATION_45_FILE = 'supabase/migrations/20260902100045_recovery_roadmap.sql'
 const ROLLBACK_45 = 'supabase/rollbacks/20260902100045_recovery_roadmap.down.sql'
 
@@ -98,7 +101,7 @@ describe('the recovery roadmap (migration 45)', () => {
     )
 
   beforeAll(async () => {
-    database = await createTestDatabase()
+    database = await createTestDatabase({ stopAfter: MIGRATION_55 })
     fx = await seedFixture(database)
     ;[{ today }] = await database.asService<{ today: string }>('select public.app_today()::text as today')
 
@@ -578,7 +581,7 @@ describe('migration 45 under concurrent sessions', () => {
 
   beforeAll(async () => {
     const { pageinspect } = await import('@electric-sql/pglite/contrib/pageinspect')
-    database = await createTestDatabase({ extensions: { pageinspect }, preparedTransactions: true })
+    database = await createTestDatabase({ extensions: { pageinspect }, preparedTransactions: true, stopAfter: MIGRATION_55 })
     await database.db.exec('create extension pageinspect')
     fx = await seedFixture(database)
     ;[{ today }] = await database.asService<{ today: string }>('select public.app_today()::text as today')

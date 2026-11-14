@@ -348,6 +348,7 @@ describe('the goal snapshot', () => {
       treatment_plan_status: status,
       treatment_plan_created_at: '2026-09-01T00:00:00Z',
       treatment_plan_updated_at: '2026-09-01T00:00:00Z',
+      treatment_plan_follow_up_appointment_id: null,
       treatment_goal: goals,
     }
   }
