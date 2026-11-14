@@ -16,7 +16,7 @@ export function Badge({ tone = 'neutral', className, children }: BadgeProps) {
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold',
+        'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-sm font-semibold',
         toneClasses[tone],
         className,
       )}
@@ -50,7 +50,7 @@ export function StatusBadge({
 
   return (
     <Badge tone={status.tone} className={className}>
-      <Icon className="size-3.5" aria-hidden="true" />
+      <Icon className="size-4 shrink-0" aria-hidden="true" />
       {iconOnly ? (
         <span className="sr-only">{status.label}</span>
       ) : (

@@ -36,8 +36,8 @@ export type PageHeaderProps = {
  * headings — and stops each page inventing its own title styling.
  *
  * RecoverEase 2.0: the title is set by size and weight alone - `title`
- * (30/36 semibold, Inter's display cut) against the 20px section heading - in
- * the heading colour. Brand blue is kept for what can be acted on, so a page
+ * (Figtree 36px bold, 28px on a phone) against the 22px bold section
+ * heading and 17px body - in the heading colour. Brand blue is kept for what can be acted on, so a page
  * no longer opens with a blue word competing with its own primary button.
  *
  * There is no eyebrow. The small all-caps line above every title restated the

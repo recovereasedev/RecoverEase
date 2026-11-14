@@ -75,7 +75,7 @@ export const appointmentStatus: Record<
   cancelled: {
     label: 'Cancelled',
     icon: XCircle,
-    tone: 'danger',
+    tone: 'neutral',
     description: 'This appointment will not take place.',
   },
   no_show: {
@@ -105,7 +105,7 @@ export const rescheduleRequestStatus: Record<
   declined: {
     label: 'Declined',
     icon: XCircle,
-    tone: 'danger',
+    tone: 'neutral',
     description: 'The original appointment time still stands.',
   },
 }
@@ -204,7 +204,10 @@ export const medicationLogStatus: Record<
  * Timing, not clinical severity. Overdue is a presentation state and never a
  * database status: the row stays `pending`. This is kept apart from
  * `medicationLogStatus`, which the adherence summaries share with the
- * clinician's view, so strengthening Missed here changes nothing there.
+ * clinician's view.
+ *
+ * Overdue and Missed are both amber - they ask for attention, and red is kept
+ * for emergencies - and stay apart by their words and their icons.
  */
 export type PatientDoseState = 'due' | 'overdue' | 'missed' | 'taken' | 'skipped'
 
@@ -216,7 +219,7 @@ export const patientDoseStatus: Record<PatientDoseState, StatusDescriptor> = {
     tone: 'warning',
     description: 'The time has passed. You can still record this dose.',
   },
-  missed: { ...medicationLogStatus.missed, tone: 'danger' },
+  missed: medicationLogStatus.missed,
   taken: medicationLogStatus.taken,
   skipped: medicationLogStatus.skipped,
 }
@@ -232,7 +235,7 @@ export const patientStatus: Record<
 
 export const doctorAccountStatus = {
   active: { label: 'Active', icon: UserCheck, tone: 'success' },
-  inactive: { label: 'Deactivated', icon: Ban, tone: 'danger' },
+  inactive: { label: 'Deactivated', icon: Ban, tone: 'neutral' },
 } as const satisfies Record<'active' | 'inactive', StatusDescriptor>
 
 /** Tailwind classes per tone, for badges. The border keeps a badge legible

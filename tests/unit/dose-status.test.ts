@@ -94,10 +94,10 @@ describe('how each state reads to the patient', () => {
     expect(patientDoseStatus.skipped).toBe(medicationLogStatus.skipped)
   })
 
-  it('shows Overdue as a warning, and Missed more strongly than that', () => {
+  it('shows Overdue and Missed as warnings, never red (Phase 2B: red is for emergencies)', () => {
     expect(patientDoseStatus.due.tone).toBe('info')
     expect(patientDoseStatus.overdue).toMatchObject({ label: 'Overdue', tone: 'warning' })
-    expect(patientDoseStatus.missed).toMatchObject({ label: 'Missed', tone: 'danger' })
+    expect(patientDoseStatus.missed).toMatchObject({ label: 'Missed', tone: 'warning' })
   })
 
   it('tells Due, Overdue and Missed apart without relying on colour', () => {
