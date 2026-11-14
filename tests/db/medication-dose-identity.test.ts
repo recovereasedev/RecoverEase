@@ -24,6 +24,7 @@ import { assuredSuperAdmin, createSignIn } from './helpers/super-admin'
  */
 
 const MIGRATION_48 = 'supabase/migrations/20260902100048_medication_dose_identity.sql'
+const ROLLBACK_54 = 'supabase/rollbacks/20260902100054_doctor_identity_columns_fixed.down.sql'
 const ROLLBACK_53 = 'supabase/rollbacks/20260902100053_web_push_notifications.down.sql'
 const ROLLBACK_48 = 'supabase/rollbacks/20260902100048_medication_dose_identity.down.sql'
 const script = (path: string) => readFile(join(process.cwd(), path), 'utf8')
@@ -1122,7 +1123,8 @@ describe('rolling back migration 48', () => {
 
   it('returns the schema to exactly what 47 left, keeping every dose, then refuses a second time', async () => {
     const doseRows = await doseFingerprint(database)
-    // Migration 53 came after 48; it goes first, as its rollback says.
+    // Migrations 54 and 53 came after 48; they go first, newest first.
+    await database.db.exec(await script(ROLLBACK_54))
     await database.db.exec(await script(ROLLBACK_53))
     await database.db.exec(await script(ROLLBACK_48))
     expect(await catalog(database)).toEqual(await catalog(without48))
