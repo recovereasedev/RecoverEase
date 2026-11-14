@@ -9,8 +9,8 @@ import { expect, IDS, test } from './support/fixtures'
  * A dialog removed while open is closed first, so focus returns to the
  * control that opened it. A row action that leaves with its row hands focus
  * to the next action. An inline form, saved or cancelled, hands it back to the
- * control that opened it. A goal's select is held busy while it saves rather
- * than disabled. And "Mark read" sends one request however fast it is pressed.
+ * control that opened it. A goal's progress button is held busy while it saves
+ * rather than disabled. And "Mark read" sends one request however fast it is pressed.
  */
 
 /** Activates a control the way a keyboard user does. */
@@ -225,37 +225,35 @@ test.describe('inline forms hand focus back to the control that opened them', ()
   })
 })
 
-test('a goal’s select keeps focus while its change saves, and takes no other change meanwhile', async ({
+test('a goal’s progress button keeps focus while it saves, takes no second press, and focus stays on the goal', async ({
   page,
   signInAs,
 }) => {
-  await signInAs('doctor')
-  const { writes, release } = await heldWrites(page, 'treatment_goal')
-  await page.goto(`/doctor/patients/${IDS.alicePat}?tab=treatment`)
-  const progress = page.getByRole('combobox', { name: /progress/i }).first()
-
-  await page.keyboard.press('Shift')
-  await progress.focus()
-  await progress.selectOption('achieved')
-
-  await expect(progress).toHaveAttribute('aria-disabled', 'true')
-  await expect(progress).toHaveAttribute('aria-busy', 'true')
-  await expect(progress).toBeFocused()
-  // Held, not disabled: a change made while it saves is not taken. Sent as
-  // the event itself, because Playwright waits for an aria-disabled control
-  // to become available before choosing an option.
-  await progress.evaluate((select: HTMLSelectElement) => {
-    select.value = 'missed'
-    select.dispatchEvent(new Event('change', { bubbles: true }))
+  // Migration 55: the patient records progress; the doctor's select is gone.
+  const stub = await signInAs('patient')
+  stub.setRpcHandler('patient_update_treatment_goal_status', (args) => {
+    const goal = stub
+      .rowsIn('treatment_plan')
+      .flatMap((plan) => plan['treatment_goal'] as Record<string, unknown>[])
+      .find((row) => row['treatment_goal_id'] === args['target_goal_id'])!
+    goal['treatment_goal_status'] = args['new_status']
+    return { result: goal }
   })
-  await expect(progress).not.toHaveValue('missed')
+  const { writes, release } = await heldWrites(page, 'rpc/patient_update_treatment_goal_status')
+  await page.goto('/patient/treatment')
+  const achieve = page.getByRole('button', { name: 'Mark achieved: Walk 500 metres unaided' })
 
-  // Only now does the save finish: everything above happened while it was
-  // still in flight.
+  await pressWithKeyboard(page, achieve)
+  await expect(achieve).toHaveAttribute('aria-busy', 'true')
+  await expect(achieve).toBeFocused()
+  // Held, not disabled: a second press while it saves is not taken.
+  await page.keyboard.press('Enter')
+
   release()
-  await expect(progress).not.toHaveAttribute('aria-disabled')
-  await expect(progress).toBeFocused()
+  await expect(achieve).toHaveCount(0)
   expect(writes).toHaveLength(1)
+  // The button is gone with the goal achieved; focus stays on that goal.
+  expect(await page.evaluate(() => document.activeElement !== document.body)).toBe(true)
 })
 
 test('Mark read sends one request however fast it is pressed', async ({ page, signInAs }) => {

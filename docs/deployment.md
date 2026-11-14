@@ -21,7 +21,9 @@
 >   (`lift_single_clinic_gate`), held for its own decision. Files added
 >   since are not covered by this snapshot: 54
 >   (`doctor_identity_columns_fixed`) is **not applied** - see "Doctor
->   record ID and registration date (migration 54)". 48
+>   record ID and registration date (migration 54)"; 55
+>   (`treatment_goal_progress`) is **not applied** - see "Treatment goal
+>   progress and the missed status (migration 55)". 48
 >   (`medication_dose_identity`) was applied and verified on 2026-11-09 at
 >   08:45:39 UTC (history `20261109084539 medication_dose_identity`), and
 >   its website (PR #76) merged and deployed to production the same day -
@@ -435,6 +437,11 @@ To roll back 31, go the other way, newest first. Each later migration is
 rolled back with its own down-script, applied as a new migration, and where
 deployed code depends on it, that code goes back first:
 
+1. **55**, where it is applied: the website from before "Treatment goal
+   progress" first (its patient screen calls the function this removes),
+   then `supabase/rollbacks/20260902100055_treatment_goal_progress.down.sql`.
+   It unschedules the job and drops the function, guard and column; goals
+   and history rows stay.
 1. **54**, where it is applied:
    `supabase/rollbacks/20260902100054_doctor_identity_columns_fixed.down.sql`.
    Nothing deployed depends on it (no screen sends either column), so it can
@@ -1825,6 +1832,58 @@ boundary, activation and the reminder setting behave as before; the
 change, and that nobody else may); and 54 rolled back first in
 `tests/db/super-admin-rollback.test.ts` and
 `tests/db/medication-dose-identity.test.ts`.
+
+### Treatment goal progress and the missed status (migration 55)
+
+> **NOT APPLIED to production.** Applying it needs Kean's separate approval
+> and a quiet window, like every migration here.
+
+The patient records progress on their goals, the doctor monitors, and a
+scheduled job marks an overdue goal missed (`docs/database.md`, section 17).
+
+- **What it changes.** A nullable column
+  `treatment_goal_status_event.treatment_goal_change_source` with a check
+  (`user`, `system`, `service`); `treatment_goal_record_status()` redefined
+  to fill it; a new trigger `treatment_goal_guard_progress` on
+  `treatment_goal`; `patient_update_treatment_goal_status(uuid,
+  treatment_goal_status)` for `authenticated`;
+  `mark_missed_treatment_goals()` for `service_role` only; a partial index
+  `treatment_goal_open_target_idx`; and the pg_cron job
+  `recoverease-mark-missed-treatment-goals` at `10 * * * *`. No row is
+  written by the migration itself; the job's first run marks goals already
+  overdue as missed.
+- **Order.** Migration first, then the website: the new patient screen
+  calls the function, and once 55 is live the doctor's old progress select
+  (in the website before this change) is refused by the guard.
+- **Before applying (read-only).** Count what the first run will change:
+  `select count(*) from treatment_goal g join treatment_plan tp using (treatment_plan_id) join patient p on p.pat_id = tp.pat_id join doctor d on d.doc_id = p.doc_id join clinic c using (clinic_id) where g.treatment_goal_status in ('pending','in_progress') and g.treatment_goal_target_date < (now() at time zone c.clinic_timezone)::date;`
+  and confirm pg_cron is installed and no job of that name exists yet.
+- **Locks.** Adding the column and the trigger locks `treatment_goal` and
+  its history briefly; `set lock_timeout = '3s'` first, `reset lock_timeout`
+  last. Use a quiet window clear of the minute and quarter-hour marks.
+- **Apply.** With approval, on its own: the file's text, unchanged, through
+  `apply_migration` with the name `treatment_goal_progress`. Never
+  `supabase db push` (it would also run the held migration 34). MD5 at the
+  time of writing `fd30d1e91c7636d91aae755039f4ebda` (15,611 bytes) -
+  recompute from the file being applied.
+- **Verify, read-only.** One history entry `treatment_goal_progress`
+  matching the file's MD5; `select jobname, schedule, active, username from cron.job where jobname = 'recoverease-mark-missed-treatment-goals';`
+  one active row owned by `postgres`; after the next :10, a `succeeded`
+  run in `cron.job_run_details` and `missed` events with source `system`
+  and no actor for exactly the goals counted before; `anon` and
+  `authenticated` cannot execute `mark_missed_treatment_goals()`;
+  `lock_timeout` back to `0`.
+- **Rollback.** "To roll back 31", step 55.
+
+Tests: `tests/db/treatment-goal-progress.test.ts` (doctor creation and
+refusals across clinics, every patient move and refusal, immutable goal
+fields, no manual missed, the job's date rule in two time zones,
+idempotency, patient vs system history, grants, the scheduled command, and
+the rollback round trip); the status-history case in
+`tests/db/recovery-roadmap.test.ts`; and 55 rolled back first in
+`tests/db/super-admin-rollback.test.ts` and
+`tests/db/medication-dose-identity.test.ts`. No test can run pg_cron
+(PGlite has none): the schedule is verified only after an approved apply.
 
 ## Bundle budget
 

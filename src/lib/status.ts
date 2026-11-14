@@ -159,10 +159,12 @@ export const treatmentGoalStatus: Record<
     icon: CheckCircle2,
     tone: 'success',
   },
+  // Set only by the system, once the target date has passed (migration 55).
   missed: {
-    label: 'Not met',
+    label: 'Missed',
     icon: MinusCircle,
     tone: 'warning',
+    description: 'The target date passed before this goal was achieved.',
   },
 }
 

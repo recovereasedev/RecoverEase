@@ -104,16 +104,25 @@ export async function createTreatmentGoal(input: {
   return data
 }
 
+/** The progress a patient may record; only the system marks a goal missed. */
+export type PatientGoalProgress = Extract<TreatmentGoalStatus, 'in_progress' | 'achieved'>
+
+/**
+ * Module 5.8: the patient records progress on their own goal (migration 55).
+ * The database checks whose goal it is and which moves are allowed, and
+ * keeps the change in the goal's history; nothing else on the goal changes.
+ */
 export async function updateTreatmentGoalStatus(
   goalId: string,
-  status: TreatmentGoalStatus,
-): Promise<void> {
-  const { error } = await supabase
-    .from('treatment_goal')
-    .update({ treatment_goal_status: status })
-    .eq('treatment_goal_id', goalId)
+  status: PatientGoalProgress,
+): Promise<TreatmentGoal> {
+  const { data, error } = await supabase.rpc('patient_update_treatment_goal_status', {
+    target_goal_id: goalId,
+    new_status: status,
+  })
 
   if (error) throw error
+  return data
 }
 
 /**

@@ -397,6 +397,45 @@ the database's own jobs included, like the clinic (migration 29). Sending
 either back unchanged is not a change and is accepted. The policy and the
 guards of migrations 7, 29 and 42 are untouched.
 
+### 17. Treatment goal progress and the missed status
+
+Modules 3.3 and 5.8, completed by migration 55. The doctor sets a goal
+(RLS of migration 6, unchanged: the patient's assigned, active doctor); the
+patient records progress; the system marks a goal missed. Nobody else
+changes a goal's status.
+
+- **The patient** calls `patient_update_treatment_goal_status(goal, status)`
+  (`SECURITY DEFINER`, empty `search_path`, `authenticated` only). It checks
+  the caller owns the goal's plan before taking a lock (another patient's or
+  a guessed ID gets the same refusal), locks the goal `FOR UPDATE` and the
+  plan `FOR SHARE`, requires the plan to be active, and changes the status
+  alone: pending → in progress, pending → achieved, in progress → achieved,
+  and missed → achieved. A repeat, a step back, `pending` or `missed` is
+  refused. The patient still has no UPDATE policy on `treatment_goal`.
+- **Late completion.** A missed goal the patient reaches later may be
+  marked achieved. The missed event stays in the history and the achieved
+  one follows it, so the record shows both that the date passed and that
+  the goal was reached; the job never touches an achieved goal.
+- **The doctor** may not set a status: `treatment_goal_guard_progress`
+  (`before insert or update`, runs as the caller) refuses a session insert
+  that is not `pending` and a session update that changes the status. A
+  target date set by a session must not be before the clinic's today and
+  must lie within the plan's dates. The two functions above run as their
+  owner and pass.
+- **The system.** `mark_missed_treatment_goals()` (`service_role` only)
+  sets `missed` on every goal still pending or in progress whose target
+  date is before today in its clinic's time zone (patient → doctor →
+  clinic, as the medication jobs). Goals with no target date are never
+  touched. One `UPDATE`, so a concurrent achievement is re-checked and wins;
+  a second run changes nothing. Failures are raised with the SQLSTATE only.
+  pg_cron runs it hourly as `recoverease-mark-missed-treatment-goals`
+  (`10 * * * *`), guarded as migration 9.
+- **History.** `treatment_goal_status_event.treatment_goal_change_source`
+  (new, nullable): `user` (a signed-in person, in `treatment_goal_changed_by`),
+  `system` (the job: no actor, and only when no one is signed in), or
+  `service` (any other change with no one signed in). Events from before 55
+  keep a null source; none is rewritten or deleted.
+
 ## Assumptions where the ERD was silent
 
 The ERD types every status column as `varchar` without listing values. Each
