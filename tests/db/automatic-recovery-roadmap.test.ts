@@ -604,7 +604,8 @@ describe('migration 56 over existing roadmaps', () => {
 
   it('rolls back to exactly what 55 left, keeping every phase, activity and event', async () => {
     const [full, through55] = await Promise.all([
-      createTestDatabase(),
+      // Migration 57 builds on 56; this round trip is 56's alone.
+      createTestDatabase({ stopAfter: '20260902100056' }),
       createTestDatabase({ stopAfter: MIGRATION_55 }),
     ])
     try {

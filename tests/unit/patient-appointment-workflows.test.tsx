@@ -75,6 +75,7 @@ function appointment(id: string, status: string, days: number) {
     appointment_status: status,
     appointment_created_at: at(-30),
     appointment_reminder_sent_at: null,
+    appointment_follow_up_of_plan_id: null,
     patient: null,
   }
 }

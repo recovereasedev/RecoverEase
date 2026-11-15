@@ -25,7 +25,11 @@
 >   (`treatment_goal_progress`) is **not applied** - see "Treatment goal
 >   progress and the missed status (migration 55)"; 56
 >   (`automatic_recovery_roadmap`) is **not applied** - see "Automatic
->   recovery roadmap (migration 56)". 48
+>   recovery roadmap (migration 56)"; 57
+>   (`discharge_reopen_treatment_case`) is **not applied** - see
+>   "Discharge and reopen a treatment case (migration 57)". A read-only
+>   `list_migrations` on 2026-11-15 confirmed production's latest entry is
+>   still 53 (`web_push_notifications`). 48
 >   (`medication_dose_identity`) was applied and verified on 2026-11-09 at
 >   08:45:39 UTC (history `20261109084539 medication_dose_identity`), and
 >   its website (PR #76) merged and deployed to production the same day -
@@ -439,6 +443,15 @@ To roll back 31, go the other way, newest first. Each later migration is
 rolled back with its own down-script, applied as a new migration, and where
 deployed code depends on it, that code goes back first:
 
+1. **57**, where it is applied: the website from before "Discharge and
+   reopen" first (it calls the functions this drops), then
+   `supabase/rollbacks/20260902100057_discharge_reopen_treatment_case.down.sql`.
+   It refuses while any plan is discharged or ready for discharge (an enum
+   value cannot be removed while a row holds it): reopen or settle those
+   first. It drops the job and schedule, both doctor functions, the guards,
+   the lifecycle history, the discharge columns and the appointments'
+   follow-up mark, remakes the status enum with its four original values,
+   and restores migrations 45 and 55's patient functions and missed-goal job.
 1. **56**, where it is applied: the website from before "Automatic recovery
    roadmap" first (it reads the columns this drops), then
    `supabase/rollbacks/20260902100056_automatic_recovery_roadmap.down.sql`.
@@ -1954,6 +1967,71 @@ and the rollback round trip); the migration-45 suite now runs on the schema
 through 55; and 56 rolled back first in
 `tests/db/super-admin-rollback.test.ts` and
 `tests/db/medication-dose-identity.test.ts`.
+
+### Discharge and reopen a treatment case (migration 57)
+
+> **NOT APPLIED to production.** Applying it needs Kean's separate approval
+> and a quiet window. It assumes 55 and 56 are applied first (it redefines
+> 55's goal function and job and runs its tests on top of 56).
+
+A treatment plan's case lifecycle: ACTIVE → READY FOR DISCHARGE (daily
+system flag) → DISCHARGED (the assigned doctor, with a reason), and back to
+ACTIVE on reopening (`docs/database.md`, section 19).
+
+- **What it changes.** Two values on `treatment_plan_status`
+  (`ready_for_discharge`, `discharged`); columns
+  `treatment_plan_closure_reason`, `treatment_plan_discharged_at` with two
+  checks; table `treatment_plan_lifecycle_event` (RLS, select only);
+  triggers `treatment_plan_record_lifecycle`,
+  `treatment_plan_guard_lifecycle`, `recovery_log_guard_care_ended`,
+  `appointment_mark_follow_up`; column
+  `appointment.appointment_follow_up_of_plan_id`; functions
+  `doctor_discharge_treatment_plan(uuid, text)` and
+  `doctor_reopen_treatment_plan(uuid)` for `authenticated`,
+  `mark_treatment_plans_ready_for_discharge()` for `service_role` only;
+  `patient_complete_recovery_activity`, `patient_reopen_recovery_activity`,
+  `patient_update_treatment_goal_status` accept a plan ready for
+  discharge; `mark_missed_treatment_goals` skips discharged plans; pg_cron
+  job `recoverease-mark-plans-ready-for-discharge` at `15 16 * * *` (00:15
+  Asia/Manila). The migration writes no row; the job's first run flags every
+  plan already eligible and notifies each assigned doctor once.
+- **Enum values.** `ALTER TYPE ... ADD VALUE` cannot be used in the
+  transaction that adds it; the file compares the new values only inside
+  plpgsql bodies or as text, so it applies as one file.
+- **Order.** Migration first, then the website: the new website calls the
+  two doctor functions and reads the new columns.
+- **Before applying (read-only).** Count what the first run will flag:
+  `select count(*) from treatment_plan tp join patient p on p.pat_id = tp.pat_id join doctor d on d.doc_id = p.doc_id join clinic c using (clinic_id) where tp.treatment_plan_status = 'active' and d.doc_is_active and ((tp.treatment_plan_end_date < (now() at time zone c.clinic_timezone)::date) or (exists (select 1 from treatment_goal g where g.treatment_plan_id = tp.treatment_plan_id) and not exists (select 1 from treatment_goal g where g.treatment_plan_id = tp.treatment_plan_id and g.treatment_goal_status <> 'achieved')));`
+  and confirm no job of that name exists.
+- **Locks.** `treatment_plan`, `recovery_log` and `appointment` are altered
+  briefly; `set lock_timeout = '3s'` first, `reset lock_timeout` last. Use a
+  quiet window clear of the minute and quarter-hour marks.
+- **Apply.** With approval, on its own: the file's text, unchanged, through
+  `apply_migration` with the name `discharge_reopen_treatment_case`. Never
+  `supabase db push` (it would also run the held migration 34). MD5 at the
+  time of writing `02659f5d595a2a74a854a3fc341f9120` (34,936 bytes) -
+  recompute from the file being applied.
+- **Verify, read-only.** One history entry matching the file's MD5; the
+  enum lists six values; `select jobname, schedule, active from cron.job where jobname = 'recoverease-mark-plans-ready-for-discharge';`
+  one active row; after its first run, `treatment_plan_lifecycle_event` rows
+  with source `system` and no actor for exactly the plans counted before,
+  and one `treatment` notification per plan for its assigned doctor; `anon`
+  and `authenticated` cannot execute the job; `lock_timeout` back to `0`.
+- **Rollback.** "To roll back 31", step 57.
+
+Tests: `tests/db/discharge-reopen.test.ts` (discharge from active and
+ready, every reason and refusals, every unauthorised caller, open-only
+discharge, reopen and repeated cycles with history, every direct-write
+bypass refused, append-only history and who may read it, the readiness
+rule by date and by goals in two time zones, never flagging closed plans,
+one doctor notification per flag, service-role only, patient access kept
+after discharge, check-ins blocked only when no care is open, activities
+and goal progress open while ready and closed once discharged, follow-up
+booking and its mark, appointment reminders kept, the missed-goal job
+paused and resumed, and the rollback round trip); and 57 rolled back first
+in `tests/db/super-admin-rollback.test.ts` and
+`tests/db/medication-dose-identity.test.ts`. No test can run pg_cron: the
+schedule is verified only after an approved apply.
 
 ## Bundle budget
 

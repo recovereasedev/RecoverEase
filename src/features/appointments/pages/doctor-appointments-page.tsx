@@ -5,7 +5,7 @@ import { Link } from 'react-router-dom'
 import { FormError } from '@/components/feedback/form-error'
 import { EmptyState, StateView } from '@/components/feedback/state-view'
 import { PageHeader } from '@/components/layout/page-header'
-import { StatusBadge } from '@/components/ui/badge'
+import { Badge, StatusBadge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardBody } from '@/components/ui/card'
 import { Dialog } from '@/components/ui/dialog'
@@ -265,11 +265,18 @@ export function DoctorAppointmentsPage() {
                             appointment.appointment_date,
                           )}
                           status={
-                            <StatusBadge
-                              status={
-                                appointmentStatus[appointment.appointment_status]
-                              }
-                            />
+                            <span className="flex flex-wrap items-center gap-1.5">
+                              {/* Booked after the patient was discharged,
+                                  with no care open (migration 57). */}
+                              {appointment.appointment_follow_up_of_plan_id ? (
+                                <Badge tone="info">Follow-up after discharge</Badge>
+                              ) : null}
+                              <StatusBadge
+                                status={
+                                  appointmentStatus[appointment.appointment_status]
+                                }
+                              />
+                            </span>
                           }
                           actions={
                             // Ahead of the visit the only thing to do is call

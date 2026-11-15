@@ -7,6 +7,7 @@ import {
 } from '@/features/medications/api'
 import type { RecoveryLog } from '@/features/recovery-logs/api'
 import {
+  isOpenCare,
   summariseGoals,
   type PlanWithGoals,
   type TreatmentGoalStatus,
@@ -253,7 +254,7 @@ export function goalSnapshot(
   plans: readonly PlanWithGoals[],
   today: string,
 ): GoalSnapshot {
-  const active = plans.filter((plan) => plan.treatment_plan_status === 'active')
+  const active = plans.filter((plan) => isOpenCare(plan.treatment_plan_status))
   const goals = active.flatMap((plan) => plan.treatment_goal)
   const all = summariseGoals(goals)
 

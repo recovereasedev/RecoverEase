@@ -153,3 +153,62 @@ export function summariseGoals(goals: TreatmentGoal[]): {
     percentage: total === 0 ? null : Math.round((achieved / total) * 100),
   }
 }
+
+// ---------------------------------------------------------------------------
+// The case lifecycle (migration 57)
+// ---------------------------------------------------------------------------
+
+export type ClosureReason = NonNullable<TreatmentPlan['treatment_plan_closure_reason']>
+
+/** Why a doctor discharged a plan, in the order the dialog lists them. */
+export const CLOSURE_REASONS: readonly { value: ClosureReason; label: string }[] = [
+  { value: 'completed_recovery', label: 'Completed recovery' },
+  { value: 'transferred', label: 'Transferred' },
+  { value: 'withdrew', label: 'Withdrew' },
+  { value: 'lost_to_follow_up', label: 'Lost to follow-up' },
+  { value: 'referred', label: 'Referred' },
+]
+
+export function closureReasonLabel(reason: ClosureReason | null): string | null {
+  return CLOSURE_REASONS.find((item) => item.value === reason)?.label ?? null
+}
+
+/**
+ * Care still going on: an active plan, or one the system has flagged ready
+ * for discharge, which stays open until the doctor discharges it.
+ */
+export function isOpenCare(status: TreatmentPlanStatus): boolean {
+  return status === 'active' || status === 'ready_for_discharge'
+}
+
+/**
+ * The patient's care has ended: a plan was discharged and none is open. The
+ * database applies the same rule to new daily check-ins (migration 57).
+ */
+export function careHasEnded(plans: readonly Pick<TreatmentPlan, 'treatment_plan_status'>[]): boolean {
+  return (
+    plans.some((plan) => plan.treatment_plan_status === 'discharged') &&
+    !plans.some((plan) => isOpenCare(plan.treatment_plan_status))
+  )
+}
+
+/**
+ * The patient's assigned doctor discharges a plan, with a reason. The
+ * database checks who may and from which status; the patient's account and
+ * records are untouched.
+ */
+export async function dischargeTreatmentPlan(planId: string, reason: ClosureReason): Promise<TreatmentPlan> {
+  const { data, error } = await supabase.rpc('doctor_discharge_treatment_plan', {
+    target_plan_id: planId,
+    closure_reason: reason,
+  })
+  if (error) throw error
+  return data
+}
+
+/** The assigned doctor reopens a discharged plan; the discharge stays in its history. */
+export async function reopenTreatmentPlan(planId: string): Promise<TreatmentPlan> {
+  const { data, error } = await supabase.rpc('doctor_reopen_treatment_plan', { target_plan_id: planId })
+  if (error) throw error
+  return data
+}

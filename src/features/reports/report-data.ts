@@ -24,6 +24,7 @@ import { usePatient } from '@/features/patients/hooks'
 import type { RecoveryLog } from '@/features/recovery-logs/api'
 import { useRecoveryLogs } from '@/features/recovery-logs/hooks'
 import {
+  isOpenCare,
   summariseGoals,
   type PlanWithGoals,
 } from '@/features/treatment-plans/api'
@@ -151,8 +152,8 @@ export function summariseReport(
   return {
     recoveryEntries: data.recoveryLogs.length,
     goals: summariseGoals(data.plans.flatMap((plan) => plan.treatment_goal)),
-    activePlans: data.plans.filter(
-      (plan) => plan.treatment_plan_status === 'active',
+    activePlans: data.plans.filter((plan) =>
+      isOpenCare(plan.treatment_plan_status),
     ).length,
     totalPlans: data.plans.length,
     currentMedicines: data.schedules.filter(

@@ -52,6 +52,7 @@ function appointment(overrides: Record<string, unknown> = {}) {
     appointment_status: 'confirmed',
     appointment_created_at: at(-600),
     appointment_reminder_sent_at: null,
+    appointment_follow_up_of_plan_id: null,
     patient: { pat_id: 'p-alice', pat_first_name: 'Alice', pat_last_name: 'Santos' },
     ...overrides,
   } as never

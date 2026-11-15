@@ -63,6 +63,8 @@ vi.mock('@/features/treatment-plans/hooks', () => ({
   useCreateTreatmentGoal: () => noop,
   useUpdateGoalStatus: () => state.goalStatus,
   useClinicToday: () => '2026-11-15',
+  useDischargePlan: () => noop,
+  useReopenPlan: () => noop,
 }))
 
 vi.mock('@/features/medications/hooks', () => ({
@@ -119,6 +121,8 @@ const PLAN = {
   treatment_plan_created_at: '2026-02-01T00:00:00Z',
   treatment_plan_updated_at: '2026-02-01T00:00:00Z',
   treatment_plan_follow_up_appointment_id: null,
+  treatment_plan_closure_reason: null,
+  treatment_plan_discharged_at: null,
   treatment_goal: [
     {
       treatment_goal_id: 'goal-1',

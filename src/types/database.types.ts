@@ -132,6 +132,7 @@ export type Database = {
           appointment_status: Database['public']['Enums']['appointment_status']
           appointment_created_at: string
           appointment_reminder_sent_at: string | null
+          appointment_follow_up_of_plan_id: string | null
         }
         Insert: {
           appointment_id?: string
@@ -141,6 +142,7 @@ export type Database = {
           appointment_status?: Database['public']['Enums']['appointment_status']
           appointment_created_at?: string
           appointment_reminder_sent_at?: string | null
+          appointment_follow_up_of_plan_id?: string | null
         }
         Update: {
           appointment_id?: string
@@ -150,8 +152,16 @@ export type Database = {
           appointment_status?: Database['public']['Enums']['appointment_status']
           appointment_created_at?: string
           appointment_reminder_sent_at?: string | null
+          appointment_follow_up_of_plan_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: 'appointment_appointment_follow_up_of_plan_id_fkey'
+            columns: ['appointment_follow_up_of_plan_id']
+            isOneToOne: false
+            referencedRelation: 'treatment_plan'
+            referencedColumns: ['treatment_plan_id']
+          },
           {
             foreignKeyName: 'appointment_doc_id_fkey'
             columns: ['doc_id']
@@ -1161,6 +1171,47 @@ export type Database = {
           },
         ]
       }
+      treatment_plan_lifecycle_event: {
+        Row: {
+          treatment_plan_lifecycle_event_id: string
+          treatment_plan_id: string
+          treatment_plan_previous_status: Database['public']['Enums']['treatment_plan_status'] | null
+          treatment_plan_new_status: Database['public']['Enums']['treatment_plan_status']
+          treatment_plan_closure_reason: 'completed_recovery' | 'transferred' | 'withdrew' | 'lost_to_follow_up' | 'referred' | null
+          treatment_plan_changed_by: string | null
+          treatment_plan_change_source: 'doctor' | 'system' | 'service'
+          treatment_plan_changed_at: string
+        }
+        Insert: {
+          treatment_plan_lifecycle_event_id?: string
+          treatment_plan_id: string
+          treatment_plan_previous_status?: Database['public']['Enums']['treatment_plan_status'] | null
+          treatment_plan_new_status: Database['public']['Enums']['treatment_plan_status']
+          treatment_plan_closure_reason?: 'completed_recovery' | 'transferred' | 'withdrew' | 'lost_to_follow_up' | 'referred' | null
+          treatment_plan_changed_by?: string | null
+          treatment_plan_change_source: 'doctor' | 'system' | 'service'
+          treatment_plan_changed_at?: string
+        }
+        Update: {
+          treatment_plan_lifecycle_event_id?: string
+          treatment_plan_id?: string
+          treatment_plan_previous_status?: Database['public']['Enums']['treatment_plan_status'] | null
+          treatment_plan_new_status?: Database['public']['Enums']['treatment_plan_status']
+          treatment_plan_closure_reason?: 'completed_recovery' | 'transferred' | 'withdrew' | 'lost_to_follow_up' | 'referred' | null
+          treatment_plan_changed_by?: string | null
+          treatment_plan_change_source?: 'doctor' | 'system' | 'service'
+          treatment_plan_changed_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'treatment_plan_lifecycle_event_treatment_plan_id_fkey'
+            columns: ['treatment_plan_id']
+            isOneToOne: false
+            referencedRelation: 'treatment_plan'
+            referencedColumns: ['treatment_plan_id']
+          },
+        ]
+      }
       treatment_goal_status_event: {
         Row: {
           treatment_goal_status_event_id: string
@@ -1219,6 +1270,8 @@ export type Database = {
           treatment_plan_created_at: string
           treatment_plan_updated_at: string
           treatment_plan_follow_up_appointment_id: string | null
+          treatment_plan_closure_reason: 'completed_recovery' | 'transferred' | 'withdrew' | 'lost_to_follow_up' | 'referred' | null
+          treatment_plan_discharged_at: string | null
         }
         Insert: {
           treatment_plan_id?: string
@@ -1232,6 +1285,8 @@ export type Database = {
           treatment_plan_created_at?: string
           treatment_plan_updated_at?: string
           treatment_plan_follow_up_appointment_id?: string | null
+          treatment_plan_closure_reason?: 'completed_recovery' | 'transferred' | 'withdrew' | 'lost_to_follow_up' | 'referred' | null
+          treatment_plan_discharged_at?: string | null
         }
         Update: {
           treatment_plan_id?: string
@@ -1245,6 +1300,8 @@ export type Database = {
           treatment_plan_created_at?: string
           treatment_plan_updated_at?: string
           treatment_plan_follow_up_appointment_id?: string | null
+          treatment_plan_closure_reason?: 'completed_recovery' | 'transferred' | 'withdrew' | 'lost_to_follow_up' | 'referred' | null
+          treatment_plan_discharged_at?: string | null
         }
         Relationships: [
           {
@@ -1353,6 +1410,14 @@ export type Database = {
         Args: { target_activity_id: string }
         Returns: Database['public']['Tables']['recovery_activity']['Row']
       }
+      doctor_discharge_treatment_plan: {
+        Args: { target_plan_id: string; closure_reason: string }
+        Returns: Database['public']['Tables']['treatment_plan']['Row']
+      }
+      doctor_reopen_treatment_plan: {
+        Args: { target_plan_id: string }
+        Returns: Database['public']['Tables']['treatment_plan']['Row']
+      }
       doctor_reorder_recovery_activities: {
         Args: { target_phase_id: string; activity_ids: string[] }
         Returns: undefined
@@ -1447,7 +1512,7 @@ export type Database = {
       report_type: 'patient_recovery' | 'system_wide'
       reschedule_request_status: 'pending' | 'approved' | 'declined'
       treatment_goal_status: 'pending' | 'in_progress' | 'achieved' | 'missed'
-      treatment_plan_status: 'draft' | 'active' | 'completed' | 'cancelled'
+      treatment_plan_status: 'draft' | 'active' | 'ready_for_discharge' | 'discharged' | 'completed' | 'cancelled'
       user_role: 'patient' | 'doctor' | 'admin' | 'super_admin'
     }
     CompositeTypes: { [_ in never]: never }

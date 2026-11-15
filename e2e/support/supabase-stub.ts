@@ -582,6 +582,8 @@ export class SupabaseStub {
         result = this.rpcResults.get(name)
       } else if (ROADMAP_FUNCTIONS.has(name)) {
         result = this.roadmapCall(name, JSON.parse(request.postData() ?? '{}') as Record<string, unknown>)
+      } else if (name === 'doctor_discharge_treatment_plan' || name === 'doctor_reopen_treatment_plan') {
+        result = this.caseCall(name, JSON.parse(request.postData() ?? '{}') as Record<string, unknown>)
       } else if (name === 'super_admin_assured') {
         // The database's answer, from this session: the real one also
         // checks the session, factor and code against Supabase Auth's
@@ -819,6 +821,21 @@ export class SupabaseStub {
     return null
   }
 
+  /**
+   * Discharge and reopen (migration 57), as far as the browser sees them:
+   * the plan's status, reason and time. Who may and from which status is the
+   * database's to refuse (tests/db/discharge-reopen.test.ts), not the stub's.
+   */
+  private caseCall(name: string, args: Record<string, unknown>): unknown {
+    const plan = this.rowsIn('treatment_plan').find((row) => row['treatment_plan_id'] === args['target_plan_id'])
+    if (!plan) return null
+    const discharging = name === 'doctor_discharge_treatment_plan'
+    plan['treatment_plan_status'] = discharging ? 'discharged' : 'active'
+    plan['treatment_plan_closure_reason'] = discharging ? args['closure_reason'] : null
+    plan['treatment_plan_discharged_at'] = discharging ? new Date().toISOString() : null
+    return plan
+  }
+
   /** The next place in a phase's activities, as the database numbers a new row. */
   private nextActivityOrder(phaseId: unknown): number {
     const orders = this.rowsIn('recovery_activity')
@@ -861,6 +878,8 @@ export class SupabaseStub {
           treatment_plan_created_at: now,
           treatment_plan_updated_at: now,
           treatment_plan_follow_up_appointment_id: null,
+          treatment_plan_closure_reason: null,
+          treatment_plan_discharged_at: null,
           // The embed the read query expects, empty until goals are added.
           treatment_goal: [],
         }

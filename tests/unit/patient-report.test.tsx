@@ -83,6 +83,8 @@ function recordFor(overrides: Partial<PatientReportData> = {}): PatientReportDat
         treatment_plan_created_at: '2026-02-01T00:00:00Z',
         treatment_plan_updated_at: '2026-02-01T00:00:00Z',
         treatment_plan_follow_up_appointment_id: null,
+        treatment_plan_closure_reason: null,
+        treatment_plan_discharged_at: null,
         treatment_goal: [
           {
             treatment_goal_id: 'g-1',
@@ -131,6 +133,7 @@ function recordFor(overrides: Partial<PatientReportData> = {}): PatientReportDat
         appointment_status: 'scheduled',
         appointment_created_at: '2026-09-01T00:00:00Z',
         appointment_reminder_sent_at: null,
+        appointment_follow_up_of_plan_id: null,
       },
       {
         appointment_id: 'a-2',
@@ -140,6 +143,7 @@ function recordFor(overrides: Partial<PatientReportData> = {}): PatientReportDat
         appointment_status: 'completed',
         appointment_created_at: '2026-07-01T00:00:00Z',
         appointment_reminder_sent_at: null,
+        appointment_follow_up_of_plan_id: null,
       },
     ],
     weekAdherence: { taken: 5, missed: 1, skipped: 0, pending: 2, resolved: 6, rate: 83 },

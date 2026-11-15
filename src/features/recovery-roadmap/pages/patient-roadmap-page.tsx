@@ -26,7 +26,8 @@ import { useQueryKeys } from '@/features/auth/use-query-keys'
 import { addDays, deviceTimeZone, todayIn } from '@/features/calendar/calendar-model'
 import { fetchAllDoses } from '@/features/medications/api'
 import { fetchOwnClinicTimeZone } from '@/features/patients/api'
-import { byTargetDate, summariseGoals, type PlanWithGoals } from '@/features/treatment-plans/api'
+import { byTargetDate, careHasEnded, isOpenCare, summariseGoals, type PlanWithGoals } from '@/features/treatment-plans/api'
+import { CareEndedNotice } from '@/features/treatment-plans/components/care-ended-notice'
 import { useTreatmentPlans } from '@/features/treatment-plans/hooks'
 import { useDocumentTitle } from '@/hooks/use-document-title'
 import { useNow } from '@/hooks/use-now'
@@ -69,7 +70,9 @@ export function PatientRoadmapPage() {
   const patientId = user.profile.kind === 'patient' ? user.profile.patient.pat_id : ''
 
   const plansQuery = useTreatmentPlans(patientId)
-  const activePlans = (plansQuery.data ?? []).filter((plan) => plan.treatment_plan_status === 'active')
+  // Open care: active plans, and plans ready for discharge (migration 57).
+  const activePlans = (plansQuery.data ?? []).filter((plan) => isOpenCare(plan.treatment_plan_status))
+  const ended = plansQuery.data ? careHasEnded(plansQuery.data) : false
   const roadmapQuery = useRoadmap(patientId, plansQuery.data ? activePlans : undefined)
 
   // Days and times in the clinic's zone, as the calendar keeps them.
@@ -154,6 +157,9 @@ export function PatientRoadmapPage() {
         onRetry={() => void plansQuery.refetch()}
         loadingLabel="Loading your roadmap…"
         empty={
+          ended ? (
+            <CareEndedNotice />
+          ) : (
           <Card>
             <CardBody>
               <p className="font-medium text-heading">No active treatment plan</p>
@@ -166,6 +172,7 @@ export function PatientRoadmapPage() {
               </p>
             </CardBody>
           </Card>
+          )
         }
       >
         {(plans) => {
