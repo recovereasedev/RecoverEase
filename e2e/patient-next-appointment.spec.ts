@@ -25,6 +25,7 @@ function appointment(id: string, when: string, status: string) {
     appointment_status: status,
     appointment_created_at: '2026-09-01T00:00:00Z',
     appointment_reminder_sent_at: null,
+    appointment_follow_up_of_plan_id: null,
   }
 }
 

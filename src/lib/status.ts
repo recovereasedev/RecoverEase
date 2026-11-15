@@ -5,8 +5,10 @@ import {
   CalendarCheck,
   CalendarClock,
   CheckCircle2,
+  ClipboardCheck,
   CircleDashed,
   CircleSlash,
+  DoorOpen,
   Clock,
   FileText,
   Flag,
@@ -125,6 +127,20 @@ export const treatmentPlanStatus: Record<
     icon: Flag,
     tone: 'info',
     description: 'Currently in progress.',
+  },
+  // Migration 57: flagged by the daily check, still open care until the
+  // doctor discharges it.
+  ready_for_discharge: {
+    label: 'Ready for discharge',
+    icon: ClipboardCheck,
+    tone: 'warning',
+    description: 'Ready for the doctor to review and discharge.',
+  },
+  discharged: {
+    label: 'Discharged',
+    icon: DoorOpen,
+    tone: 'neutral',
+    description: 'The doctor ended this care plan.',
   },
   completed: {
     label: 'Completed',

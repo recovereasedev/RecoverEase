@@ -14,11 +14,14 @@ import { fetchOwnClinicName } from '@/features/patients/api'
 import { useMyDoctor } from '@/features/patients/hooks'
 import {
   byTargetDate,
+  careHasEnded,
+  isOpenCare,
   summariseGoals,
   type TreatmentGoalStatus,
 } from '@/features/treatment-plans/api'
 import { GoalProgressActions } from '@/features/treatment-plans/components/goal-progress-actions'
 import { useTreatmentPlans } from '@/features/treatment-plans/hooks'
+import { CareEndedNotice } from '@/features/treatment-plans/components/care-ended-notice'
 import { useDocumentTitle } from '@/hooks/use-document-title'
 import { useDocumentFile } from '@/lib/documents/use-document-file'
 import { formatDate } from '@/lib/format'
@@ -148,6 +151,13 @@ export function PatientTreatmentPage() {
         </div>
       ) : null}
       <PrintOutcomeNotice outcome={planFile.printOutcome} what="treatment plan" className="mb-6" />
+      {/* Migration 57: the doctor discharged the patient and no care is open.
+          The plans below stay, as history. */}
+      {plansQuery.data && careHasEnded(plansQuery.data) ? (
+        <div className="mb-6 print:hidden">
+          <CareEndedNotice />
+        </div>
+      ) : null}
 
       <StateView
         isPending={plansQuery.isPending}
@@ -296,7 +306,7 @@ export function PatientTreatmentPage() {
                                     </span>
                                     <StatusBadge status={status} />
                                   </div>
-                                  {plan.treatment_plan_status === 'active' ? (
+                                  {isOpenCare(plan.treatment_plan_status) ? (
                                     <GoalProgressActions
                                       patientId={patientId}
                                       goal={goal}

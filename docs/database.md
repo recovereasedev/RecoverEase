@@ -503,6 +503,79 @@ exactly **goals + 2** current phases, made and kept in step by the database:
 achieved) / (activities + goals), now counting every goal, since every goal
 has its phase.
 
+### 19. Discharging and reopening a treatment case
+
+Migration 57 (**not applied to production**; see `docs/deployment.md`,
+"Discharge and reopen a treatment case (migration 57)"). A treatment plan
+is the patient's care case; its lifecycle uses the existing
+`treatment_plan_status`, extended with two values. `draft`, `completed`
+and `cancelled` keep their meaning and no row was rewritten.
+
+| From | To | By |
+| --- | --- | --- |
+| `active` | `ready_for_discharge` | the daily job only |
+| `active`, `ready_for_discharge` | `discharged` | the patient's assigned, active doctor, with a reason |
+| `discharged` | `active` | the same doctor (reopen) |
+
+- **Discharge metadata.** `treatment_plan_closure_reason`
+  (`completed_recovery`, `transferred`, `withdrew`, `lost_to_follow_up`,
+  `referred`) and `treatment_plan_discharged_at`, both set exactly while the
+  plan is discharged (a check holds this even for the owner); reopening
+  clears them.
+- **Writes.** `doctor_discharge_treatment_plan(plan, reason)` and
+  `doctor_reopen_treatment_plan(plan)`: `SECURITY DEFINER`, empty
+  `search_path`, `is_my_patient` before any lock (the same refusal for
+  another doctor's plan, a Clinic Admin, a patient or a missing plan), then
+  the plan `FOR UPDATE` and the allowed transition only.
+  `treatment_plan_guard_lifecycle` refuses any session that inserts or
+  moves a plan into or out of the two new statuses, or writes the two
+  columns, so the API cannot bypass the functions.
+- **History.** `treatment_plan_lifecycle_event`: previous and new status,
+  the reason on a discharge, `treatment_plan_changed_by`, source (`doctor`,
+  `system` for the job, `service` otherwise) and time. Written only by
+  `treatment_plan_record_lifecycle` on a real status change; no session may
+  write, change or delete it; readable by whoever may read the plan.
+  Repeated cycles keep every event.
+- **Readiness.** `mark_treatment_plans_ready_for_discharge()`
+  (`service_role`, daily `15 16 * * *`) flags an `active` plan whose end
+  date is before its clinic's today (patient → doctor → clinic; a plan
+  ending today is not yet past), or that has at least one goal with every
+  goal `achieved` (no goals is never complete; pending, in progress and
+  missed are not achieved). Roadmap activities are not milestones: the
+  schema has no required flag. Each flagged plan gives its patient's
+  assigned doctor one `treatment` notification ("… is ready for discharge
+  review."); nothing goes to the patient. A plan whose patient's
+  assigned doctor is deactivated is not flagged and no one is told (no other
+  recipient is chosen); the first run after the patient has an active doctor
+  flags it and tells that doctor. A second run finds nothing to flag, so
+  nothing repeats. It never discharges. A plan reopened after its
+  end date is flagged again by the next run unless the doctor extends the
+  end date; the reopen dialog says so.
+- **Open care.** A plan ready for discharge is still open: the patient's
+  activity and goal functions accept `active` or `ready_for_discharge`,
+  and refuse a discharged plan. The missed-goal job skips discharged
+  plans, and checks them again once reopened.
+- **Check-ins.** `recovery_log` is the patient's, not a plan's, and no
+  check-in records a plan, so none is guessed. `recovery_log_guard_care_ended`
+  refuses a session adding or changing a check-in while the patient has a
+  discharged plan and no open one ("Your care plan has ended. Book a
+  follow-up if you need more care."). A patient with any open plan, no plans,
+  or only `completed`/`cancelled` ones is unaffected.
+- **Reminders.** No reminder generator belongs to a plan: medication
+  reminders follow prescriptions and schedules, appointment reminders
+  follow appointments, and both continue after discharge. A prescription
+  records no plan, so none is linked to a case and none is stopped on
+  discharge; the doctor ends a schedule as before (migration 23) when the
+  medication should stop. The missed-goal
+  job is the only plan-level automation, handled above.
+- **Follow-up after discharge.** `appointment.appointment_follow_up_of_plan_id`,
+  set only by `appointment_mark_follow_up` when the appointment is booked
+  while the patient's care has ended (their most recently discharged plan);
+  sessions cannot set or change it. It is not the roadmap's chosen
+  follow-up appointment (section 18) unless the doctor picks it.
+- **Not touched.** The patient row (`pat_status` stays as it was), the
+  account, and every record. `patient_status = 'discharged'` is not used.
+
 ## Assumptions where the ERD was silent
 
 The ERD types every status column as `varchar` without listing values. Each

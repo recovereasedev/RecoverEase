@@ -161,6 +161,7 @@ test.describe('the reminder card', () => {
           appointment_status: 'confirmed',
           appointment_created_at: new Date(Date.now() - 86_400_000).toISOString(),
           appointment_reminder_sent_at: null,
+          appointment_follow_up_of_plan_id: null,
           patient: { pat_id: IDS.alicePat, pat_first_name: 'Alice', pat_last_name: 'Santos' },
         },
       ],

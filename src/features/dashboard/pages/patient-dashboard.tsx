@@ -29,6 +29,8 @@ import { calculateStreak } from '@/features/recovery-logs/api'
 import { useRecoveryLogs } from '@/features/recovery-logs/hooks'
 import { summariseGoals } from '@/features/treatment-plans/api'
 import { useTreatmentPlans } from '@/features/treatment-plans/hooks'
+import { careHasEnded, isOpenCare } from '@/features/treatment-plans/api'
+import { CareEndedNotice } from '@/features/treatment-plans/components/care-ended-notice'
 import { useDocumentTitle } from '@/hooks/use-document-title'
 import { useFocusRecovery } from '@/hooks/use-focus-recovery'
 import { useNow } from '@/hooks/use-now'
@@ -108,9 +110,11 @@ export function PatientDashboard() {
         new Date(b.appointment_date).getTime(),
     )[0]
 
-  const activePlan = plansQuery.data?.find(
-    (plan) => plan.treatment_plan_status === 'active',
+  // Open care: an active plan, or one ready for discharge (migration 57).
+  const activePlan = plansQuery.data?.find((plan) =>
+    isOpenCare(plan.treatment_plan_status),
   )
+  const ended = plansQuery.data ? careHasEnded(plansQuery.data) : false
   const goalProgress = activePlan
     ? summariseGoals(activePlan.treatment_goal)
     : null
@@ -257,7 +261,13 @@ export function PatientDashboard() {
             </StateView>
 
             {/* Today's recovery entry - the other thing a patient owes
-                today, in the same list of things to do. */}
+                today, in the same list of things to do - until their care
+                has ended (migration 57). */}
+            {ended ? (
+              <div className="border-t border-[var(--color-border)] p-4">
+                <CareEndedNotice />
+              </div>
+            ) : (
             <ListRows className="border-t border-[var(--color-border)]">
               <ListRow
                 title="Today’s recovery entry"
@@ -288,6 +298,7 @@ export function PatientDashboard() {
                 }
               />
             </ListRows>
+            )}
           </Card>
         </PageSection>
 

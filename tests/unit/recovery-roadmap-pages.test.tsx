@@ -94,6 +94,8 @@ const PLAN = {
   treatment_plan_created_at: '2026-10-01T00:00:00Z',
   treatment_plan_updated_at: '2026-10-01T00:00:00Z',
   treatment_plan_follow_up_appointment_id: null as string | null,
+  treatment_plan_closure_reason: null,
+  treatment_plan_discharged_at: null,
   treatment_goal: [
     goal('g-early', 'Walk without crutches', 'achieved', 'pg1'),
     goal('g-walk', 'Walk 500 metres unaided', 'in_progress', 'pg2', '2026-11-05'),

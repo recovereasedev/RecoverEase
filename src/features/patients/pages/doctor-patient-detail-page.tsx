@@ -62,9 +62,11 @@ import { useRecoveryLogs } from '@/features/recovery-logs/hooks'
 import { RecoveryProgress } from '@/features/recovery-progress/components/recovery-progress'
 import { RoadmapEditor } from '@/features/recovery-roadmap/components/roadmap-editor'
 import { TreatmentGoalForm } from '@/features/treatment-plans/components/treatment-goal-form'
+import { CaseLifecycle } from '@/features/treatment-plans/components/case-lifecycle'
 import { TreatmentPlanForm } from '@/features/treatment-plans/components/treatment-plan-form'
 import { useTreatmentPlans } from '@/features/treatment-plans/hooks'
 import {
+  isOpenCare,
   summariseGoals,
   type PlanWithGoals,
   type TreatmentGoalStatus,
@@ -618,6 +620,14 @@ export function DoctorPatientDetailPage() {
                               }
                             />
                             <CardBody>
+                              {/* Migration 57: discharge an open plan, or
+                                  reopen a discharged one. */}
+                              {isOpenCare(plan.treatment_plan_status) ||
+                              plan.treatment_plan_status === 'discharged' ? (
+                                <div className="mb-5 border-b border-[var(--color-border)] pb-5">
+                                  <CaseLifecycle patientId={patientId} plan={plan} />
+                                </div>
+                              ) : null}
                               {editingPlanId === plan.treatment_plan_id ? (
                                 <div className="mb-5 border-b border-[var(--color-border)] pb-5">
                                   <TreatmentPlanForm
@@ -1122,8 +1132,8 @@ function RecordSummary({
         new Date(a.appointment_date).getTime() -
         new Date(b.appointment_date).getTime(),
     )[0]
-  const activePlan = plans?.find(
-    (plan) => plan.treatment_plan_status === 'active',
+  const activePlan = plans?.find((plan) =>
+    isOpenCare(plan.treatment_plan_status),
   )
   const goals = activePlan ? summariseGoals(activePlan.treatment_goal) : null
   const flagged =
