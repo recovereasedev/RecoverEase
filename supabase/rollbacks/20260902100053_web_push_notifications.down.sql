@@ -23,6 +23,15 @@ begin
                     and column_name = 'notification_source') then
     raise exception 'Migration 53 is not applied. Nothing was changed.';
   end if;
+
+  -- Migration 59 added the doctor's reminder switch to the reminder functions
+  -- this restores. Restoring them over it would send reminders for medicines
+  -- a doctor switched off, with the switch still showing "off".
+  if exists (select 1 from information_schema.columns
+              where table_schema = 'public' and table_name = 'medication_schedule'
+                and column_name = 'medication_schedule_reminders_is_enabled') then
+    raise exception 'Roll back migration 59 first: it replaced the reminder functions this restores. Nothing was changed.';
+  end if;
 end
 $$;
 

@@ -613,6 +613,41 @@ Covered by `tests/db/medication-instructions.test.ts`,
 `tests/unit/medication-instructions-api.test.ts` and
 `tests/unit/documents.test.ts`.
 
+### 21. The doctor switches a medicine's reminders on or off
+
+The ERD gives a patient a reminder setting and a medicine none. Migration 59
+adds two columns to `medication_schedule`:
+
+| Column | Type | Meaning |
+| --- | --- | --- |
+| `medication_schedule_reminders_is_enabled` | `boolean not null default true` | Whether RecoverEase reminds the patient about this medicine. Set by the patient's doctor. |
+| `medication_schedule_reminders_enabled_at` | `timestamptz`, null | When reminders were last switched back on. Stamped by the database (`medication_schedule_stamp_reminders`); a value a writer sends is ignored. |
+
+- **On by default.** Every schedule from before 59, and every new one, has
+  reminders on. Nothing decides for the doctor which medicine needs them.
+- **Both must agree.** A reminder is sent only when the doctor has reminders
+  on for the medicine **and** the patient wants medication reminders
+  (`pat_reminder_is_enabled`). The patient's setting is never changed by the
+  doctor's.
+- **Who reads it.** The reminder before a dose
+  (`dispatch_medication_pre_dose_reminders`), the follow-up
+  (`dispatch_medication_reminders`), and the check a queued phone reminder
+  gets before delivery (`app_private.push_source_is_current`). Each is as
+  migration 53 left it but for that condition.
+- **Switching back on** sends nothing about the past: the follow-up is only
+  for doses due from `..._enabled_at`, and a dose already reminded about
+  keeps its mark.
+- **Who does not read it.** Dose generation, the missed-dose job, adherence
+  and the checklist. A medicine with reminders off still has its doses,
+  they can still be recorded, and an unrecorded one still becomes missed.
+- **Who may write it** is the row's existing rule (migration 6): only the
+  patient's own doctor updates a schedule.
+
+Covered by `tests/db/medication-reminder-controls.test.ts`,
+`tests/unit/medication-reminder-control.test.tsx`,
+`tests/unit/medication-reminder-control-api.test.ts` and
+`tests/unit/doctor-prescription-print.test.tsx`.
+
 ## Assumptions where the ERD was silent
 
 The ERD types every status column as `varchar` without listing values. Each

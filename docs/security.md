@@ -454,6 +454,7 @@ the columns that decide their own privileges, so triggers close that gap:
 | `medication_log_guard_slot` | Anyone moving when a dose was due, which would make the adherence history meaningless. |
 | `medication_log_guard_occurrence` | Anyone - the service role included - changing which date and wall-clock time a dose was created for, its identity (migration 48, not applied). |
 | `medication_schedule_guard_shape` | Anyone changing a schedule's times, frequency, start date or prescription, which would leave its existing doses behind, or listing a time twice (migration 48, not applied). |
+| `medication_schedule_stamp_reminders` | Anyone - the doctor included - setting the moment a medicine's reminders came back on, which decides which overdue doses are chased. The database records it itself (migration 59, not applied). |
 | `user_account_guard_writes` | Any browser session writing an account — a role, a sign-in address, a login — even if a later policy allowed it; and anyone re-pointing an account at a different login. |
 | `profile_matches_account_role` | A doctor or patient profile being created for an account of a different role — a doctor profile on a patient's account, a patient profile on an administrator's. Applies to the service role too. |
 | `patient_guard_reassignment` | A patient being reassigned to a deactivated doctor, or to a doctor row whose account is not a doctor's, where no active clinician could see them. |
@@ -815,6 +816,10 @@ Recorded honestly rather than left for someone to discover:
    on the device from the patient's own reads, can leave medicine names out
    for a calendar that syncs to an online account, and does not update
    itself; the page says so. There is no "offline reminders" switch.
+   A new file leaves out any medicine whose reminders the doctor has turned
+   off (migration 59). A file downloaded before that is a separate copy on
+   the phone that RecoverEase cannot reach: it keeps ringing until the
+   patient deletes those events, and the page says that too.
 5. **A notification's addressee may update every column of it, not only
    its read state.** `notification_update_own` (migration 06) limits *which*
    rows - the signed-in user's own - and keeps `user_id`, but not *which
