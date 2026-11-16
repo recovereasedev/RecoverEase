@@ -597,7 +597,11 @@ describe('the treatment case lifecycle (migration 57)', () => {
 
 describe('migration 57, before and after', () => {
   it('leaves existing plans as they were, and rolls back to exactly what 56 left', async () => {
-    const [full, through56] = await Promise.all([createTestDatabase(), createTestDatabase({ stopAfter: MIGRATION_56 })])
+    // "Full" stops at 57: later migrations (58 on) are not this comparison's subject.
+    const [full, through56] = await Promise.all([
+      createTestDatabase({ stopAfter: MIGRATION_57 }),
+      createTestDatabase({ stopAfter: MIGRATION_56 }),
+    ])
     try {
       const fx = await seedFixture(full)
       const after57 = await catalog(full)
