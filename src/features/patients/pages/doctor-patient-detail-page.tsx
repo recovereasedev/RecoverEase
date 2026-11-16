@@ -44,6 +44,10 @@ import {
 import { summariseConflicts } from '@/features/medications/conflicts'
 import { EndMedicationAction } from '@/features/medications/components/end-medication'
 import { MedicationForm } from '@/features/medications/components/medication-form'
+import {
+  EditInstructionsAction,
+  MedicineInstructions,
+} from '@/features/medications/components/medication-instructions'
 import { PrescriptionPrintHeader } from '@/features/medications/components/prescription-print-header'
 import { summariseAdherence, type Adherence } from '@/features/medications/api'
 import {
@@ -884,6 +888,15 @@ export function DoctorPatientDetailPage() {
                                       ? ` until ${formatDate(schedule.medication_schedule_end_date)}`
                                       : ', ongoing'}
                                   </p>
+                                  {/* This medicine's own instructions
+                                      (migration 58); nothing when none. */}
+                                  {schedule.medication_schedule_instructions ? (
+                                    <div className="mt-2">
+                                      <MedicineInstructions
+                                        text={schedule.medication_schedule_instructions}
+                                      />
+                                    </div>
+                                  ) : null}
                                   {/* The prescription's notes, which the
                                       patient's own printed prescription also
                                       carries. Paper only (QA 9/12). */}
@@ -899,6 +912,10 @@ export function DoctorPatientDetailPage() {
                                     keeps the row's layout exactly as it was;
                                     the control stays off the paper. */}
                                 <div className="contents print:hidden">
+                                  <EditInstructionsAction
+                                    patientId={patientId}
+                                    schedule={schedule}
+                                  />
                                   <EndMedicationAction
                                     patientId={patientId}
                                     schedule={schedule}

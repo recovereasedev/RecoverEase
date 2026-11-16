@@ -576,6 +576,43 @@ and `cancelled` keep their meaning and no row was rewritten.
 - **Not touched.** The patient row (`pat_status` stays as it was), the
   account, and every record. `patient_status = 'discharged'` is not used.
 
+### 20. A medicine has instructions of its own
+
+The ERD gives a prescription notes (`prescription_notes`) and a medicine
+none. Migration 58 adds `medication_schedule_instructions` to
+`medication_schedule`: the doctor's instructions for that one medicine,
+apart from the notes that apply to the whole prescription.
+
+```sql
+check (
+  medication_schedule_instructions is null
+  or (btrim(medication_schedule_instructions) <> ''
+      and char_length(medication_schedule_instructions) <= 500)
+)
+```
+
+- **Optional.** "None" is NULL, never an empty string. Every schedule from
+  before 58 has NULL; nothing was copied from the prescription's notes.
+- **The doctor's words only.** No screen, job or function writes it; the
+  form has no suggested text.
+- **Who may write it** is the row's existing rule (migration 6): only the
+  patient's own doctor inserts or updates a schedule, and a patient cannot
+  update one. Migration 48's guard fixes a schedule's times, frequency,
+  start date and prescription; the instructions are not among them, so the
+  doctor can correct them on a medicine already prescribed, running or
+  ended.
+- **Nothing follows from a change.** No trigger reads the column: doses,
+  reminders and adherence are untouched.
+
+The patient reads them under the medicine on **Medications → Your
+prescriptions**, and the prescription PDF prints them in that medicine's
+row, under its times.
+
+Covered by `tests/db/medication-instructions.test.ts`,
+`tests/unit/medication-instructions.test.tsx`,
+`tests/unit/medication-instructions-api.test.ts` and
+`tests/unit/documents.test.ts`.
+
 ## Assumptions where the ERD was silent
 
 The ERD types every status column as `varchar` without listing values. Each

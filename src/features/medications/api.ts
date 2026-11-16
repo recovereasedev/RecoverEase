@@ -198,6 +198,8 @@ export async function createMedicationSchedule(input: {
   times: string[]
   startDate: string
   endDate: string | null
+  /** The doctor's instructions for this one medicine, or null for none. */
+  instructions: string | null
 }): Promise<MedicationSchedule> {
   const { data, error } = await supabase
     .from('medication_schedule')
@@ -209,12 +211,41 @@ export async function createMedicationSchedule(input: {
       medication_schedule_times: input.times,
       medication_schedule_start_date: input.startDate,
       medication_schedule_end_date: input.endDate,
+      // Left out when there are none: the column's default is NULL, and a
+      // medicine without instructions then saves the same on a database
+      // that migration 58 has not reached yet.
+      ...(input.instructions === null
+        ? {}
+        : { medication_schedule_instructions: input.instructions }),
     })
     .select()
     .single()
 
   if (error) throw error
   return data
+}
+
+/**
+ * Changes one medicine's instructions (migration 58), or clears them with
+ * null. Only that column is sent, so nothing about the schedule or its doses
+ * moves.
+ */
+export async function updateMedicationInstructions(input: {
+  scheduleId: string
+  instructions: string | null
+}): Promise<void> {
+  const { data, error } = await supabase
+    .from('medication_schedule')
+    .update({ medication_schedule_instructions: input.instructions })
+    .eq('medication_schedule_id', input.scheduleId)
+    .select('medication_schedule_id')
+
+  if (error) throw error
+  // RLS reports a refused update as zero rows rather than an error. Saying
+  // the instructions were saved when nothing changed would be worse.
+  if (!data || data.length === 0) {
+    throw new Error('The instructions could not be saved.')
+  }
 }
 
 /**

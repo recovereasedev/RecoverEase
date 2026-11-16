@@ -443,6 +443,13 @@ To roll back 31, go the other way, newest first. Each later migration is
 rolled back with its own down-script, applied as a new migration, and where
 deployed code depends on it, that code goes back first:
 
+1. **58**, where it is applied: the website from before "Medicine-specific
+   instructions" first (it sends the column this drops whenever a doctor
+   writes instructions), then
+   `supabase/rollbacks/20260902100058_medication_schedule_instructions.down.sql`.
+   **It deletes every instruction written since 58** - export them first if
+   they must be kept. Nothing else changes, and no other down-script depends
+   on it, so it can go back alone.
 1. **57**, where it is applied: the website from before "Discharge and
    reopen" first (it calls the functions this drops), then
    `supabase/rollbacks/20260902100057_discharge_reopen_treatment_case.down.sql`.
@@ -2032,6 +2039,84 @@ paused and resumed, and the rollback round trip); and 57 rolled back first
 in `tests/db/super-admin-rollback.test.ts` and
 `tests/db/medication-dose-identity.test.ts`. No test can run pg_cron: the
 schedule is verified only after an approved apply.
+
+### Medicine-specific instructions (migration 58)
+
+> **NOT APPLIED to production.** Applying it needs Kean's separate approval
+> and a quiet window, like every migration here.
+
+A prescription's notes apply to every medicine on it. From 58 each medicine
+can also carry the doctor's own instructions - before meals, with water -
+written on the medication form or added later from **Patient record →
+Medication → Add/Edit instructions**, shown to the patient under that
+medicine on **Medications**, and printed in that medicine's row of the
+prescription PDF (`docs/database.md`, section 20).
+
+- **What it changes.** One nullable column,
+  `medication_schedule.medication_schedule_instructions` (`text`), and one
+  check, `medication_schedule_instructions_valid`: NULL, or not blank and at
+  most 500 characters. No default, so no row is rewritten and every existing
+  schedule reads NULL; the prescription's notes are not copied. No policy,
+  grant, function, trigger, job, dose, reminder or other row changes.
+- **Security.** Unchanged, because no policy changes. Migration 6's
+  policies cover the whole row: the patient, their doctor and the clinic's
+  administrator read a schedule; only the patient's own doctor inserts or
+  updates one. A patient has no update policy on `medication_schedule`.
+- **Order.** Database first, then the website. The website from 58 on
+  sends the new column only when a doctor has written instructions, so on a
+  database without 58 a medicine with no instructions still saves, and one
+  with instructions is refused with an error; nothing is lost silently. The
+  earlier website works unchanged on a database with 58.
+- **Locks.** Adding the column and its check locks `medication_schedule`,
+  which the reminder jobs read - the pre-dose job every minute - so it
+  starts with `set lock_timeout = '3s'` and ends with `reset lock_timeout`
+  ("Migration timing and run history"). Use a quiet window clear of the
+  minute and quarter-hour marks.
+- **Apply.** With approval, on its own, as every migration on this project:
+  the file's text, unchanged, through the Supabase connector's
+  `apply_migration` with the name `medication_schedule_instructions` (or
+  the reviewed one-file `supabase db query --linked -f` route used for 53),
+  from the merged file. Never `supabase db push`: it would also run the
+  held migration 34. Nothing in it reads what 54 to 57 add, but apply it
+  after them, in number order (54, 55, 56, 57, then 58), each with its own
+  approval: the website on `main` already needs 54 to 57, so the website
+  with this feature must not be deployed until all five are applied. As of
+  2026-11-16 production's latest is 53. The file's MD5 at the
+  time of writing is `1f810afe91168b22eadab28238aa826b` (3,239 bytes) -
+  recompute from the file being applied. If applying fails or seems
+  partial, stop and gather read-only evidence, as for 37 above; do not
+  retry or repair the history without a separate decision.
+- **Verify, read-only.** One new history entry named
+  `medication_schedule_instructions` whose statements match the file's MD5;
+  the column present, `text`, nullable, with no default;
+  `select conname from pg_constraint where conname = 'medication_schedule_instructions_valid';`
+  returns one row;
+  `select count(*) from public.medication_schedule where medication_schedule_instructions is not null;`
+  is 0 straight after; every table unchanged by count; `lock_timeout` back
+  to `0`; and the reminder jobs' next runs succeed. Do not test it by
+  writing to a production schedule.
+- **Rollback.** "To roll back 31", step 58: the website first, then
+  `supabase/rollbacks/20260902100058_medication_schedule_instructions.down.sql`.
+  It refuses unless 58 is applied, then drops the column and, with it, the
+  check. **Every instruction written since is deleted**; the down-script's
+  header has the query to export them first.
+
+Tests: `tests/db/medication-instructions.test.ts` (the patient's doctor
+adds, changes and clears instructions; the patient reads theirs and cannot
+change them; another patient, an unassigned doctor, the clinic's
+administrator and a doctor in another clinic are refused; 500 characters
+accepted, 501 and blank refused; doses untouched by a change; 58 applied
+over existing schedules leaves every schedule, dose and prescription note
+as it was; the rollback round trip);
+`tests/unit/medication-instructions.test.tsx` (the form's field, counter
+and limit; add, edit, clear, saving, failure and saved states; the
+patient's page shows each medicine's instructions under that medicine,
+nothing when there are none, and no control);
+`tests/unit/medication-instructions-api.test.ts` (what is sent);
+`tests/unit/documents.test.ts` (each medicine's instructions in its own
+row of the PDF, wrapped inside the column, with the notes apart); and 58
+rolled back first in `tests/db/super-admin-rollback.test.ts` and
+`tests/db/medication-dose-identity.test.ts`.
 
 ## Bundle budget
 
