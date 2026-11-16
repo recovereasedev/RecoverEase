@@ -48,6 +48,7 @@ import {
   EditInstructionsAction,
   MedicineInstructions,
 } from '@/features/medications/components/medication-instructions'
+import { MedicationReminderSwitch } from '@/features/medications/components/medication-reminder-control'
 import { PrescriptionPrintHeader } from '@/features/medications/components/prescription-print-header'
 import { summariseAdherence, type Adherence } from '@/features/medications/api'
 import {
@@ -897,6 +898,12 @@ export function DoctorPatientDetailPage() {
                                       />
                                     </div>
                                   ) : null}
+                                  {/* The doctor's reminder switch for this
+                                      medicine (migration 59). */}
+                                  <MedicationReminderSwitch
+                                    patientId={patientId}
+                                    schedule={schedule}
+                                  />
                                   {/* The prescription's notes, which the
                                       patient's own printed prescription also
                                       carries. Paper only (QA 9/12). */}

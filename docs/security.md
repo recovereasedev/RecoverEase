@@ -454,6 +454,7 @@ the columns that decide their own privileges, so triggers close that gap:
 | `medication_log_guard_slot` | Anyone moving when a dose was due, which would make the adherence history meaningless. |
 | `medication_log_guard_occurrence` | Anyone - the service role included - changing which date and wall-clock time a dose was created for, its identity (migration 48, not applied). |
 | `medication_schedule_guard_shape` | Anyone changing a schedule's times, frequency, start date or prescription, which would leave its existing doses behind, or listing a time twice (migration 48, not applied). |
+| `medication_schedule_stamp_reminders` | Anyone - the doctor included - setting the moment a medicine's reminders came back on, which decides which overdue doses are chased. The database records it itself (migration 59, not applied). |
 | `user_account_guard_writes` | Any browser session writing an account — a role, a sign-in address, a login — even if a later policy allowed it; and anyone re-pointing an account at a different login. |
 | `profile_matches_account_role` | A doctor or patient profile being created for an account of a different role — a doctor profile on a patient's account, a patient profile on an administrator's. Applies to the service role too. |
 | `patient_guard_reassignment` | A patient being reassigned to a deactivated doctor, or to a doctor row whose account is not a doctor's, where no active clinician could see them. |
