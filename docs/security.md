@@ -816,6 +816,10 @@ Recorded honestly rather than left for someone to discover:
    on the device from the patient's own reads, can leave medicine names out
    for a calendar that syncs to an online account, and does not update
    itself; the page says so. There is no "offline reminders" switch.
+   A new file leaves out any medicine whose reminders the doctor has turned
+   off (migration 59). A file downloaded before that is a separate copy on
+   the phone that RecoverEase cannot reach: it keeps ringing until the
+   patient deletes those events, and the page says that too.
 5. **A notification's addressee may update every column of it, not only
    its read state.** `notification_update_own` (migration 06) limits *which*
    rows - the signed-in user's own - and keeps `user_id`, but not *which
