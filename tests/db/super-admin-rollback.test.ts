@@ -22,6 +22,7 @@ import { assuredSuperAdmin, createSignIn, type Claims } from './helpers/super-ad
  * the comparison includes the enum, so it shows that is all that remains.
  */
 
+const ROLLBACK_59 = 'supabase/rollbacks/20260902100059_medication_schedule_reminder_control.down.sql'
 const ROLLBACK_58 = 'supabase/rollbacks/20260902100058_medication_schedule_instructions.down.sql'
 const ROLLBACK_57 = 'supabase/rollbacks/20260902100057_discharge_reopen_treatment_case.down.sql'
 const ROLLBACK_56 = 'supabase/rollbacks/20260902100056_automatic_recovery_roadmap.down.sql'
@@ -105,6 +106,7 @@ describe('rolling back migrations 57, 56, 55, 54, 53, 48, 46, 45, 43, 44, 41, 42
   it('returns the schema to exactly what 32 left, and keeps every row', async () => {
     const before = await rows(used)
 
+    await used.db.exec(await script(ROLLBACK_59))
     await used.db.exec(await script(ROLLBACK_58))
     await used.db.exec(await script(ROLLBACK_57))
     await used.db.exec(await script(ROLLBACK_56))

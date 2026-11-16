@@ -9,6 +9,7 @@ import {
   fetchDoses,
   fetchSchedules,
   setDoseStatus,
+  setMedicationReminders,
   updateMedicationInstructions,
   type MedicationLogStatus,
 } from './api'
@@ -117,6 +118,22 @@ export function useUpdateMedicationInstructions(patientId: string) {
         queryKey: queryKeys.medications.schedulesFor(patientId),
       })
     },
+  })
+}
+
+/** The doctor's reminder switch for one medicine (migration 59). */
+export function useSetMedicationReminders(patientId: string) {
+  const queryKeys = useQueryKeys()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: setMedicationReminders,
+    // Settled, not only succeeded: after a failure the list is read again so
+    // the switch shows what the database holds.
+    onSettled: () =>
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.medications.schedulesFor(patientId),
+      }),
   })
 }
 

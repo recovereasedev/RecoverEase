@@ -443,6 +443,14 @@ To roll back 31, go the other way, newest first. Each later migration is
 rolled back with its own down-script, applied as a new migration, and where
 deployed code depends on it, that code goes back first:
 
+1. **59**, where it is applied: the website from before "Doctor-controlled
+   medication reminders" first (it reads and writes the column this drops),
+   then
+   `supabase/rollbacks/20260902100059_medication_schedule_reminder_control.down.sql`.
+   **Every doctor's "off" is lost and those medicines are reminded about
+   again** from the jobs' next run - list them first if they must be known.
+   It restores the three reminder functions to what 53 left. 53's
+   down-script refuses while 59 is installed.
 1. **58**, where it is applied: the website from before "Medicine-specific
    instructions" first (it sends the column this drops whenever a doctor
    writes instructions), then
@@ -2116,6 +2124,111 @@ nothing when there are none, and no control);
 `tests/unit/documents.test.ts` (each medicine's instructions in its own
 row of the PDF, wrapped inside the column, with the notes apart); and 58
 rolled back first in `tests/db/super-admin-rollback.test.ts` and
+`tests/db/medication-dose-identity.test.ts`.
+
+### Doctor-controlled medication reminders (migration 59)
+
+> **NOT APPLIED to production.** Applying it needs Kean's separate approval
+> and a quiet window, like every migration here.
+
+A doctor can switch reminders off, and on again, for one medicine of their
+patient's from **Patient record → Medication** - for a medicine taken only
+when needed, say. Reminders are on for every medicine unless the doctor
+switches them off. The patient sees "Medication reminders are turned off by
+your doctor." under that medicine and cannot change it; their doses stay on
+the checklist (`docs/database.md`, section 21).
+
+- **The rule.** A reminder is sent only when both hold: the doctor has
+  reminders on for that medicine, and the patient wants medication reminders
+  (`pat_reminder_is_enabled`, module 4.9). The patient's setting and
+  preferred time are not touched.
+- **What it changes.** Two columns on `medication_schedule`:
+  `medication_schedule_reminders_is_enabled` (`boolean not null default
+  true`) and `medication_schedule_reminders_enabled_at` (`timestamptz`,
+  null). One function and trigger, `medication_schedule_stamp_reminders`
+  (`before insert or update`), which records when reminders come back on
+  and ignores any value a writer sends for it. Three functions redefined,
+  each as migration 53 left it but for the lines marked `(59)`:
+  `dispatch_medication_pre_dose_reminders()`,
+  `dispatch_medication_reminders(integer)` and
+  `app_private.push_source_is_current(...)`. `CREATE OR REPLACE` keeps their
+  owner, `SECURITY DEFINER`, empty `search_path`, grants and comments. No
+  row is rewritten or set to false, and no policy, grant, job, schedule,
+  dose or notification changes.
+- **Switching back on.** The reminder before a dose resumes with the next
+  dose still ahead. The follow-up resumes with doses that come due from
+  that moment (`..._enabled_at`), so doses that came due while reminders
+  were off are not chased in a run. A reminder already sent is never sent
+  again: each job's mark on the dose is unchanged.
+- **Web Push.** It has no writer of its own; it delivers the notifications
+  the two jobs write. The check a queued phone reminder gets before delivery
+  now also reads the switch, so one waiting when the doctor switches the
+  medicine off is dropped.
+- **Unchanged.** Dose generation (`extend_all_medication_log_slots`), the
+  missed-dose job (`mark_overdue_medication_logs`: a dose with reminders off
+  still becomes missed after the grace period), adherence, every job's
+  cadence, the clinic's lead time and grace period, the doctor's
+  dose-conflict alerts, and appointment reminders.
+- **Security.** No policy changes. Migration 6's policies cover the row:
+  only the patient's own doctor updates a schedule; the patient reads it and
+  has no update policy; an unassigned doctor, a doctor in another clinic and
+  the Clinic Admin are refused.
+- **Order.** Migrations go in number order, each with its own approval:
+  **54 → 55 → 56 → 57 → 58 → 59**. 59 needs 53 (it redefines 53's
+  functions), which is applied; it is stacked on 58 only because both add
+  columns to `medication_schedule`. Database first, then the website: the
+  website with this feature updates the new column when a doctor uses the
+  switch, which fails with an error on a database without 59; reading a
+  schedule without the column shows reminders as on. As of 2026-11-16
+  production's latest is 53.
+- **Locks.** Adding the columns and the trigger locks `medication_schedule`,
+  which the reminder jobs read - the pre-dose job every minute - so it
+  starts with `set lock_timeout = '3s'` and ends with `reset lock_timeout`.
+  Use a quiet window clear of the minute and quarter-hour marks.
+- **Apply.** With approval, on its own: the file's text, unchanged, through
+  the Supabase connector's `apply_migration` with the name
+  `medication_schedule_reminder_control` (or the reviewed one-file
+  `supabase db query --linked -f` route used for 53), from the merged file.
+  Never `supabase db push`: it would also run the held migration 34. The
+  file's MD5 at the time of writing is `48f7ae6c9abf421f04a790f00fe35422`
+  (16,994 bytes) - recompute from the file being applied. If applying fails
+  or seems partial, stop and gather read-only evidence, as for 37 above.
+- **Verify, read-only.** One new history entry named
+  `medication_schedule_reminder_control` whose statements match the file's
+  MD5; both columns present with the types above;
+  `select count(*) from public.medication_schedule where not medication_schedule_reminders_is_enabled;`
+  is 0 straight after; the trigger `medication_schedule_stamp_reminders`
+  enabled; the three functions' definitions contain
+  `medication_schedule_reminders_is_enabled`, with `prosecdef` true and
+  `proconfig` `search_path=""`; `cron.job` unchanged; `lock_timeout` back to
+  `0`; and the reminder jobs' next runs succeed. Do not test it by switching
+  a production medicine off.
+- **Rollback.** "To roll back 31", step 59: the website first, then
+  `supabase/rollbacks/20260902100059_medication_schedule_reminder_control.down.sql`.
+  It refuses unless 59 is applied, restores the three functions to what 53
+  left, and drops the trigger, its function and both columns. **Every
+  "off" is lost and those medicines are reminded about again.**
+  `supabase/rollbacks/20260902100053_web_push_notifications.down.sql` now
+  refuses while 59 is installed: restoring 53's functions over the switch
+  would send reminders for medicines shown as off.
+
+Tests: `tests/db/medication-reminder-controls.test.ts` (on by default; the
+patient's doctor switches one medicine off and on; the patient, an
+unassigned doctor, the Clinic Admin and a doctor in another clinic are
+refused; both jobs skip a medicine switched off and still serve the other;
+the patient's opt-out still wins; no run of follow-ups and no repeats on
+switching back on; the stamp is the database's; a queued phone reminder is
+dropped; doses untouched, recordable, still missed after the grace period
+and still generated; each function identical to 53's but for the new
+lines, with its security and grants; no job scheduled; 59 over existing
+schedules; the rollback round trip and 53's refusal);
+`tests/unit/medication-reminder-control.test.tsx` (the switch per medicine,
+on and off, saving, saved, failure, no second press while saving; the
+patient's notice, no control, checklist and mark-as-taken unchanged);
+`tests/unit/medication-reminder-control-api.test.ts` (what is sent);
+`tests/unit/doctor-prescription-print.test.tsx` (a switch for every
+medicine on the record, off the paper); and 59 rolled back first in
+`tests/db/super-admin-rollback.test.ts` and
 `tests/db/medication-dose-identity.test.ts`.
 
 ## Bundle budget

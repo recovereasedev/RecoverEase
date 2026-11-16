@@ -131,7 +131,7 @@ it, and the doctor saw it done (`docs/deployment.md`, "Recovery roadmap
 | --- | --- | --- | --- | --- |
 | 7.1 | Send Notification to Patient | Doctor | Complete (PR #67) | Notifications page; record. Migrations 41 and 44 applied 2026-10-29: a general, unread message of up to 1,000 characters, dated by the database |
 | 7.2 | Post System Announcement | Doctor | Complete | Doctor Announcements (migration 36) |
-| 7.3 | Configure Reminder Settings | Doctor | **Partial - product decision** | See below |
+| 7.3 | Configure Reminder Settings | Doctor | **Partial - per-medicine switch built (migration 59, not applied, not merged)** | See below |
 | 7.4 | View Notifications and Reminders | Patient | Complete | Notifications |
 | 7.5 | View System Announcements | Patient | Complete | Announcements |
 
@@ -156,6 +156,19 @@ tests and approval:
 
 In each, the patient's own "reminders off" still wins. Recommended: option
 1, which matches "based on their prescribed schedules" most closely.
+
+**Option 1 is built (branch `feat/doctor-medication-reminder-controls`,
+migration 59, not applied to production, not merged).** On **Patient record
+→ Medication** each medicine has a "Medication reminders ON / OFF" switch,
+on by default. Off, neither the reminder before a dose nor the follow-up is
+sent for that medicine, and a phone reminder still waiting is dropped; the
+doses stay on the patient's checklist, can be recorded, and still become
+missed. The patient sees "Medication reminders are turned off by your
+doctor." and has no control over it; their own on/off and preferred time
+still apply. One difference from the option as worded: the switch belongs
+to the patient's **currently assigned** doctor, the rule every schedule
+update already follows, not to whoever issued the prescription. Options 2
+and 3 are not built.
 
 ## AI Chatbot Support
 
@@ -197,7 +210,7 @@ check of it is recorded. Needs a production smoke test.
 | Recovery roadmap, trend charts | Complete |
 | Medicine and appointment calendar (Patient & Doctor) | **Complete (this branch)** |
 | Send notification to a specific patient (Doctor) | Complete (PR #67) |
-| Configure reminder settings (Doctor) | Partial - product decision (7.3 above) |
+| Configure reminder settings (Doctor) | Partial - per-medicine reminder switch built (migration 59, not applied, not merged); the other options are a product decision (7.3 above) |
 | View recently generated reports, with download (Admin) | **Complete (this branch, migration 43, applied and verified in production)** |
 | View system usage statistics | Complete |
 | AI chatbot on/off | Complete (migration 38) |

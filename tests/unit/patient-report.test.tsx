@@ -111,6 +111,8 @@ function recordFor(overrides: Partial<PatientReportData> = {}): PatientReportDat
       {
         medication_schedule_id: 's-1',
         medication_schedule_instructions: null,
+        medication_schedule_reminders_is_enabled: true,
+        medication_schedule_reminders_enabled_at: null,
         prescription_id: 'rx-1',
         medication_schedule_name: 'Paracetamol',
         medication_schedule_dosage: '500mg',
