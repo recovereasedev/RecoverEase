@@ -219,6 +219,8 @@ describe('the patient’s medications page', () => {
           medication_schedule_id: 'ms-a',
           medication_schedule_name: 'Medicine A',
           medication_schedule_dosage: '500mg',
+          // What the calendar file is filtered on; the checklist ignores it.
+          medication_schedule_reminders_is_enabled: false,
         },
       },
     ]
