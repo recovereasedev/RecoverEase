@@ -266,10 +266,11 @@ export function DoctorAppointmentsPage() {
                           )}
                           status={
                             <span className="flex flex-wrap items-center gap-1.5">
-                              {/* Booked after the patient was discharged,
-                                  with no care open (migration 57). */}
+                              {/* Booked while the patient was discharged; it
+                                  stays marked if the case is reopened
+                                  (migrations 57 and 60). */}
                               {appointment.appointment_follow_up_of_plan_id ? (
-                                <Badge tone="info">Follow-up after discharge</Badge>
+                                <Badge tone="info">Follow-up request</Badge>
                               ) : null}
                               <StatusBadge
                                 status={

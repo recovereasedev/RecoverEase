@@ -133,6 +133,7 @@ export type Database = {
           appointment_created_at: string
           appointment_reminder_sent_at: string | null
           appointment_follow_up_of_plan_id: string | null
+          treatment_plan_id: string | null
         }
         Insert: {
           appointment_id?: string
@@ -143,6 +144,7 @@ export type Database = {
           appointment_created_at?: string
           appointment_reminder_sent_at?: string | null
           appointment_follow_up_of_plan_id?: string | null
+          treatment_plan_id?: string | null
         }
         Update: {
           appointment_id?: string
@@ -153,6 +155,7 @@ export type Database = {
           appointment_created_at?: string
           appointment_reminder_sent_at?: string | null
           appointment_follow_up_of_plan_id?: string | null
+          treatment_plan_id?: string | null
         }
         Relationships: [
           {
@@ -175,6 +178,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: 'patient'
             referencedColumns: ['pat_id']
+          },
+          {
+            foreignKeyName: 'appointment_treatment_plan_id_fkey'
+            columns: ['treatment_plan_id']
+            isOneToOne: false
+            referencedRelation: 'treatment_plan'
+            referencedColumns: ['treatment_plan_id']
           },
         ]
       }
@@ -561,6 +571,8 @@ export type Database = {
           medication_schedule_end_date: string | null
           medication_schedule_created_at: string
           medication_schedule_instructions: string | null
+          medication_schedule_reminders_is_enabled: boolean
+          medication_schedule_reminders_enabled_at: string | null
         }
         Insert: {
           medication_schedule_id?: string
@@ -573,6 +585,8 @@ export type Database = {
           medication_schedule_end_date?: string | null
           medication_schedule_created_at?: string
           medication_schedule_instructions?: string | null
+          medication_schedule_reminders_is_enabled?: boolean
+          medication_schedule_reminders_enabled_at?: string | null
         }
         Update: {
           medication_schedule_id?: string
@@ -585,6 +599,8 @@ export type Database = {
           medication_schedule_end_date?: string | null
           medication_schedule_created_at?: string
           medication_schedule_instructions?: string | null
+          medication_schedule_reminders_is_enabled?: boolean
+          medication_schedule_reminders_enabled_at?: string | null
         }
         Relationships: [
           {
@@ -726,6 +742,7 @@ export type Database = {
           doc_id: string
           prescription_issued_date: string
           prescription_notes: string | null
+          treatment_plan_id: string | null
           prescription_created_at: string
         }
         Insert: {
@@ -734,6 +751,7 @@ export type Database = {
           doc_id: string
           prescription_issued_date?: string
           prescription_notes?: string | null
+          treatment_plan_id?: string | null
           prescription_created_at?: string
         }
         Update: {
@@ -742,6 +760,7 @@ export type Database = {
           doc_id?: string
           prescription_issued_date?: string
           prescription_notes?: string | null
+          treatment_plan_id?: string | null
           prescription_created_at?: string
         }
         Relationships: [
@@ -758,6 +777,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: 'patient'
             referencedColumns: ['pat_id']
+          },
+          {
+            foreignKeyName: 'prescription_treatment_plan_id_fkey'
+            columns: ['treatment_plan_id']
+            isOneToOne: false
+            referencedRelation: 'treatment_plan'
+            referencedColumns: ['treatment_plan_id']
           },
         ]
       }

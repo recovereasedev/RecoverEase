@@ -11,12 +11,11 @@ import { CLOSURE_REASONS, closureReasonLabel, isOpenCare, type ClosureReason, ty
 import { useDischargePlan, useReopenPlan } from '../hooks'
 
 /**
- * Migration 57 on the doctor's patient record: discharge an open plan (active
- * or ready for discharge) with a required reason, or reopen a discharged one.
- * The database allows each only to the patient's assigned, active doctor
- * and only from the right status; this offers the action that fits the plan
- * and says plainly what it does. A plan ready for discharge was flagged by
- * the daily check - it is never discharged without the doctor.
+ * Migrations 57 and 60 on the doctor's patient record: discharge an active
+ * plan with a required reason, or reopen a discharged one. The database
+ * allows each only to the patient's assigned, active doctor and only from the
+ * right status; this offers the action that fits the plan and says plainly
+ * what it does. Nothing discharges a plan but the doctor.
  */
 export function CaseLifecycle({ patientId, plan }: { patientId: string; plan: TreatmentPlan }) {
   const discharge = useDischargePlan(patientId)
@@ -79,13 +78,9 @@ export function CaseLifecycle({ patientId, plan }: { patientId: string; plan: Tr
           }
         >
           <p className="text-body">
-            The patient can log check-ins and work on this plan’s activities and goals again. The discharge stays in the
-            plan’s history.
-          </p>
-          {/* The daily check (migration 57) flags a plan past its end date. */}
-          <p className="mt-2 text-sm text-muted">
-            If the plan’s end date has passed, extend it, or the daily check will mark the plan ready for discharge
-            again.
+            The patient can log check-ins and work on this plan’s activities and goals again, and reminders resume for
+            what comes next. Nothing is sent about the time the case was closed. The discharge stays in the plan’s
+            history.
           </p>
           {reopen.error ? <FormError error={reopen.error} title="The case was not reopened" /> : null}
         </Dialog>
@@ -99,11 +94,9 @@ export function CaseLifecycle({ patientId, plan }: { patientId: string; plan: Tr
   return (
     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
       <p className="text-sm text-muted">
-        {status === 'ready_for_discharge'
-          ? 'This plan is ready for your discharge review. It stays open until you discharge the patient.'
-          : 'Discharge the patient when their care under this plan is complete.'}
+        Discharge the patient when their care under this plan is complete.
       </p>
-      <Button variant={status === 'ready_for_discharge' ? 'primary' : 'secondary'} size="sm" onClick={() => setDialog('discharge')}>
+      <Button variant="secondary" size="sm" onClick={() => setDialog('discharge')}>
         <DoorOpen aria-hidden="true" />
         Discharge patient
       </Button>
@@ -137,7 +130,7 @@ export function CaseLifecycle({ patientId, plan }: { patientId: string; plan: Tr
         <div className="space-y-4">
           <p className="text-body">
             This ends this care plan. The patient keeps their account, records and appointment booking, and can book a
-            follow-up; they stop logging daily check-ins for it. You can reopen the case later.
+            follow-up; daily check-ins and reminders for this care stop. You can reopen the case later.
           </p>
           <Field label="Closure reason" required error={missingReason ? 'Choose a reason for the discharge.' : undefined}>
             <Select

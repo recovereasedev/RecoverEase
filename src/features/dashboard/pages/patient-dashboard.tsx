@@ -110,7 +110,7 @@ export function PatientDashboard() {
         new Date(b.appointment_date).getTime(),
     )[0]
 
-  // Open care: an active plan, or one ready for discharge (migration 57).
+  // Open care: an active plan (migration 60).
   const activePlan = plansQuery.data?.find((plan) =>
     isOpenCare(plan.treatment_plan_status),
   )

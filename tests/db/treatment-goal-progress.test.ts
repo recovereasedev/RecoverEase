@@ -288,9 +288,11 @@ describe('treatment goal progress (migration 55)', () => {
     it('refuses progress while the plan is not active', async () => {
       const [{ id: closedPlan }] = await database.asService<{ id: string }>(
         `insert into public.treatment_plan (pat_id, doc_id, treatment_plan_title, treatment_plan_status, treatment_plan_start_date)
-         values ($1, $2, 'Closed plan', 'completed', $3::date) returning treatment_plan_id as id`,
+         values ($1, $2, 'Closed plan', 'active', $3::date) returning treatment_plan_id as id`,
         [fx.alicePatId, fx.doctorAId, today],
       )
+      // A plan is active or discharged (migration 60); the doctor closes this one.
+      await database.asUser(fx.doctorAUserId, 'select public.doctor_discharge_treatment_plan($1, $2)', [closedPlan, 'withdrew'])
       const goalId = await seedGoal('pending', null, closedPlan)
       await expect(asAlice(PROGRESS, [goalId, 'in_progress'])).rejects.toThrow(/active/)
     })

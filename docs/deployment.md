@@ -443,6 +443,44 @@ To roll back 31, go the other way, newest first. Each later migration is
 rolled back with its own down-script, applied as a new migration, and where
 deployed code depends on it, that code goes back first:
 
+1. **60**, where it is applied: the website from before "A care case is
+   Active or Discharged" first (it no longer knows "ready for discharge"),
+   then
+   `supabase/rollbacks/20260902100060_simplify_discharge_lifecycle.down.sql`.
+   **Discharged plans are reminded about again, and the daily readiness job
+   starts again** (flagging plans and notifying doctors from its next run).
+   **It refuses, changing nothing, while any prescription or appointment is
+   linked to a care plan** ("Rollback 60 refused: N prescription and M
+   appointment care-plan links exist …"): dropping the columns would delete
+   the links, and those chosen by a person cannot be worked out again. So,
+   in order:
+   1. Export every link, read-only, and keep the export with the backup:
+      `select prescription_id, pat_id, treatment_plan_id from public.prescription where treatment_plan_id is not null;`
+      `select appointment_id, pat_id, treatment_plan_id from public.appointment where treatment_plan_id is not null;`
+   2. With Kean's approval, clear them deliberately with the service role:
+      `update public.prescription set treatment_plan_id = null where treatment_plan_id is not null;`
+      `update public.appointment set treatment_plan_id = null where treatment_plan_id is not null;`
+      (from here until the rollback, those rows get no reminders: the
+      patient has plans and the rows are on none).
+   3. Run the down-script straight after, as one transaction. It takes a
+      share lock on both tables before it checks, so no link can be written
+      between the check and the drop; it refuses again if one was.
+
+   It restores the four reminder functions to what 59 and 53 left and 57's
+   functions and job, and drops the two-status check, the helpers, the
+   prescription trigger, the same-patient foreign keys and their unique key,
+   and the two empty columns. No other row changes.
+   Re-applying 60 later links again only rows of patients with one plan; the
+   export is how the others are put back (by hand, with approval). 59's and
+   57's down-scripts refuse while 60 is installed.
+1. **59**, where it is applied: the website from before "Doctor-controlled
+   medication reminders" first (it reads and writes the column this drops),
+   then
+   `supabase/rollbacks/20260902100059_medication_schedule_reminder_control.down.sql`.
+   **Every doctor's "off" is lost and those medicines are reminded about
+   again** from the jobs' next run - list them first if they must be known.
+   It restores the three reminder functions to what 53 left. 53's
+   down-script refuses while 59 is installed.
 1. **58**, where it is applied: the website from before "Medicine-specific
    instructions" first (it sends the column this drops whenever a doctor
    writes instructions), then
@@ -565,7 +603,8 @@ check cannot do:
 
 Migration `…100009_scheduled_jobs.sql` registers three pg_cron jobs,
 `…100018_appointment_reminders.sql` a fourth and
-`…100037_medication_pre_dose_reminders.sql` a fifth. Each block is guarded on
+`…100037_medication_pre_dose_reminders.sql` a fifth. (Migration 57 added a
+sixth, the daily ready-for-discharge check; migration 60 removes it.) Each block is guarded on
 `pg_cron` being available, so it is a no-op where the extension is absent
 (including the PGlite test harness) rather than aborting the migration.
 
@@ -1977,6 +2016,9 @@ through 55; and 56 rolled back first in
 
 ### Discharge and reopen a treatment case (migration 57)
 
+> **Superseded in part by migration 60**, which removes the "ready for
+> discharge" status, its daily job and its notifications (below).
+
 > **NOT APPLIED to production.** Applying it needs Kean's separate approval
 > and a quiet window. It assumes 55 and 56 are applied first (it redefines
 > 55's goal function and job and runs its tests on top of 56).
@@ -2116,6 +2158,269 @@ nothing when there are none, and no control);
 `tests/unit/documents.test.ts` (each medicine's instructions in its own
 row of the PDF, wrapped inside the column, with the notes apart); and 58
 rolled back first in `tests/db/super-admin-rollback.test.ts` and
+`tests/db/medication-dose-identity.test.ts`.
+
+### A care case is Active or Discharged (migration 60)
+
+> **NOT APPLIED to production.** Applying it needs Kean's separate approval
+> and a quiet window. It needs 57 (it redefines 57's functions) and 59 (it
+> redefines 59's reminder functions) applied first.
+
+Migration 57's "ready for discharge" status and its daily job are removed:
+the patient's assigned doctor alone discharges and reopens the case. Each
+prescription and appointment now belongs to a care plan, and a discharged
+plan's reminders stop while any other plan's continue (`docs/database.md`,
+section 19).
+
+- **What it changes.** Unschedules `recoverease-mark-plans-ready-for-discharge`
+  and drops `mark_treatment_plans_ready_for_discharge()`; no job replaces it.
+  Sets every `ready_for_discharge` plan to `active` (each change is kept in
+  the lifecycle history, source `service`). Adds the check
+  `treatment_plan_status_valid` (`active` or `discharged` only). Redefines
+  57's `treatment_plan_guard_lifecycle`, `doctor_discharge_treatment_plan`,
+  `patient_complete_recovery_activity`, `patient_reopen_recovery_activity`,
+  `patient_update_treatment_goal_status`, `recovery_log_guard_care_ended` and
+  `appointment_mark_follow_up` without "ready for discharge". Adds
+  `app_private.patient_care_is_open(uuid)`,
+  `app_private.care_reminders_allowed(uuid, uuid)` and
+  `app_private.care_reopened_at(uuid, uuid)` (no grants). Adds
+  `prescription.treatment_plan_id` and `appointment.treatment_plan_id`
+  (nullable, `on delete set null`, partial indexes), the same-patient
+  foreign keys `prescription_treatment_plan_same_patient_fkey` and
+  `appointment_treatment_plan_same_patient_fkey` on `(treatment_plan_id,
+  pat_id)` with the unique key `treatment_plan_id_pat_id_key` they need
+  (`on delete set null (treatment_plan_id)`: PostgreSQL 15 or later;
+  production runs 17), the trigger
+  `prescription_link_care_plan`, and redefines 57's
+  `appointment_mark_follow_up` to place a new appointment on its plan.
+  Redefines four reminder readers, each as 59 or 53 left it but for the lines marked
+  `(60)`: `dispatch_medication_pre_dose_reminders()`,
+  `dispatch_medication_reminders(integer)`,
+  `dispatch_appointment_reminders(integer)` and
+  `app_private.push_source_is_current(...)`. `CREATE OR REPLACE` keeps owner,
+  `SECURITY DEFINER`, empty `search_path`, grants and comments. No other
+  job's schedule changes; no dose, log, appointment or notification is
+  touched.
+- **Preconditions.** The first statement checks, before anything changes,
+  that 57 is applied (both doctor functions, the lifecycle history, the
+  follow-up mark) and that 59 is applied (both reminder-switch columns and
+  `medication_schedule_stamp_reminders()`); otherwise it stops with
+  "Migration 57/59 is not applied; apply it first. Nothing was changed."
+- **Existing prescriptions and appointments.** Linked to a plan only where
+  the patient has exactly one plan; follow-up requests stay unlinked. A
+  patient with several plans has nothing guessed: their rows stay on no
+  plan.
+- **Unassigned rows are silent until placed (fails closed).** A prescription
+  or an ordinary appointment on no plan, for a patient who has any care
+  plan, gets **no reminder of any kind** - no medicine reminder, no
+  follow-up, no appointment reminder, no queued phone reminder delivered
+  (`skipped`, `source_no_longer_valid`), nothing on the patient's reminder
+  card or phone calendar - until it is placed on a plan by hand. Another
+  plan being active proves nothing about which plan it belongs to. The row,
+  its doses and its notifications are kept. Two exceptions: a follow-up
+  request is reminded about as before, and a patient with no care plan at
+  all is reminded about as before 60. A prescription issued while all of a
+  patient's plans are discharged is also on no plan, and silent (the form
+  says so). The migration prints how many rows it left unplaced, as a
+  notice. Before applying, count them, read-only:
+  `select (select count(*) from public.prescription pr where (select count(*) from public.treatment_plan tp where tp.pat_id = pr.pat_id) > 1) as prescriptions, (select count(*) from public.appointment a where a.appointment_follow_up_of_plan_id is null and (select count(*) from public.treatment_plan tp where tp.pat_id = a.pat_id) > 1) as appointments;`
+  After applying, list every silent row, read-only, with the patient's plans
+  for the doctor to choose from:
+  `select 'prescription' as kind, pr.prescription_id as id, pr.pat_id, pr.prescription_created_at as created_at, (select string_agg(tp.treatment_plan_id || ' ' || tp.treatment_plan_title || ' (' || tp.treatment_plan_status || ')', '; ') from public.treatment_plan tp where tp.pat_id = pr.pat_id) as plans from public.prescription pr where pr.treatment_plan_id is null and exists (select 1 from public.treatment_plan tp where tp.pat_id = pr.pat_id) union all select 'appointment', a.appointment_id, a.pat_id, a.appointment_date, (select string_agg(tp.treatment_plan_id || ' ' || tp.treatment_plan_title || ' (' || tp.treatment_plan_status || ')', '; ') from public.treatment_plan tp where tp.pat_id = a.pat_id) from public.appointment a where a.treatment_plan_id is null and a.appointment_follow_up_of_plan_id is null and exists (select 1 from public.treatment_plan tp where tp.pat_id = a.pat_id) order by 3, 1, 4;`
+  The patient's doctor says which plan each belongs to; nothing is mapped
+  automatically. No session can set a link once a row exists, so each is
+  placed by the service role, with Kean's approval, e.g.
+  `update public.prescription set treatment_plan_id = '<plan>' where prescription_id = '<id>';`
+  (the trigger still refuses another patient's plan). Its reminders start
+  from the next job run. There is no screen for this.
+- **It refuses while any plan is draft, completed or cancelled**, changing
+  nothing: no rule says what those become. The website has never written
+  them, but production data has not been checked. Before applying,
+  read-only:
+  `select treatment_plan_status::text, count(*) from public.treatment_plan group by 1;`
+  If any are draft, completed or cancelled, Kean decides each (active or
+  discharged) before 60 is applied.
+- **First run after applying.** Discharged patients stop getting medication
+  reminders, phone reminders and reminders for appointments booked before
+  their discharge; every unassigned row above also falls silent. Count the
+  discharged patients first, read-only:
+  `select count(distinct pat_id) from public.treatment_plan tp where tp.treatment_plan_status::text = 'discharged' and not exists (select 1 from public.treatment_plan o where o.pat_id = tp.pat_id and o.treatment_plan_status::text = 'active');`
+- **Order.** Migrations in number order, each with its own approval:
+  **54 → 55 → 56 → 57 → 58 → 59 → 60**. Database first, then the website: the
+  website still works on a database without 60 (it reads a ready plan as
+  active), but the database is what stops the reminders.
+- **Locks.** The check scans `treatment_plan`; the reminder functions are
+  replaced while the pre-dose job runs every minute. `set lock_timeout = '3s'`
+  first, `reset lock_timeout` last. Use a quiet window clear of the minute and
+  quarter-hour marks.
+- **Apply.** With approval, on its own: the file's text, unchanged, through
+  `apply_migration` with the name `simplify_discharge_lifecycle`. Never
+  `supabase db push` (it would also run the held migration 34). MD5 at the
+  time of writing `579655d9562f185e1c9a0b757df0c1e6` (50,588 bytes) -
+  recompute from the file being applied.
+- **Verify, read-only.** One history entry matching the file's MD5;
+  `select jobname from cron.job where jobname = 'recoverease-mark-plans-ready-for-discharge';`
+  returns nothing and every other `recoverease-%` job is unchanged;
+  `select count(*) from public.treatment_plan where treatment_plan_status::text not in ('active','discharged');`
+  is 0; both new columns present;
+  `select conname from pg_constraint where conname in ('treatment_plan_id_pat_id_key', 'prescription_treatment_plan_same_patient_fkey', 'appointment_treatment_plan_same_patient_fkey');`
+  returns all three; the four reader definitions contain
+  `care_reminders_allowed` with
+  `prosecdef` true and `proconfig` `search_path=""`; `lock_timeout` back to
+  `0`; the reminder jobs' next runs succeed.
+- **Rollback.** "To roll back 31", step 60.
+
+Tests: `tests/db/discharge-lifecycle-simplified.test.ts` (links: the only
+active plan filled in, a choice required among several, another patient's
+plan refused for everyone, a discharged plan refused for a session, no
+session moving a link, a linked prescription or appointment moved to another
+patient refused, a linked plan given to another patient refused (each
+changing nothing), the service role still placing a row on its own
+patient's plan, deleting a plan clearing only the link, a follow-up request on no plan; with one plan
+discharged and one active: the discharged plan's medicine and appointment
+silent, the active plan's reminded, a follow-up request always reminded,
+reopening one plan not changing the other's, follow-ups only after a plan's
+own reopening; a legacy prescription on no plan silent (with plan A
+discharged and B active, and with both active) until placed by hand, a
+legacy appointment on no plan silent while a follow-up request is reminded,
+no plan speaking for another patient's row; a
+queued follow-up skipped for good after discharge and reopening, a later dose
+still delivered, a queued reminder for a medicine on no plan skipped for good
+once the patient has a plan, the other plan's queued reminder delivered; existing rows
+linked only for a patient with one plan; 60 refused without 59; only active and
+discharged accepted for any writer; no readiness function or job; a plan
+past its end date with every goal achieved stays active; discharge history
+kept with reason and time on reopening; medication reminders as before
+while active, none and no dose marked once discharged; a queued phone
+reminder dropped on discharge and accepted again on reopening; a medicine
+switched off stays silent; no follow-up chased for doses due before the
+reopening, later ones once each; no dose made or changed; a patient with no
+plan still reminded; no reminder for an appointment of the ended care, a
+follow-up request booked and reminded, its mark kept on reopening, an
+appointment still ahead reminded once after reopening, a discharged patient
+can still cancel; each reader identical to before but for the `(60)` lines,
+with its security and grants; 60 over existing data; its refusal on draft,
+completed or cancelled plans; the rollback refused, changing nothing, while
+a prescription or an appointment is linked to a plan, and again if a link
+comes back after clearing; the rollback round trip once the links are
+cleared, and 59's and 57's refusals); `tests/db/discharge-reopen.test.ts` (who may discharge and
+reopen, history, direct-write bypass refused, check-ins blocked and
+restored); `tests/unit/discharge-reopen.test.tsx`,
+`tests/unit/doctor-appointment-workflows.test.tsx` ("Follow-up request"),
+`tests/unit/reminder-calendar.test.tsx` (no calendar file once care has
+ended; a discharged plan's medicines left out); `tests/unit/care-plan-links.test.tsx`
+(the shared rules, the prescription form and the doctor's dialog);
+`tests/unit/reminder-tray.test.tsx` (the card hides a discharged plan's dose
+and appointment, shows an active plan's and a follow-up request, and waits
+for the plans); `tests/unit/patient-appointment-workflows.test.tsx` (the
+patient's choice of plan; history still listed); `e2e/discharge-reopen.spec.ts`
+(including the card with one plan discharged and one active); and 60 rolled back first in
+`tests/db/super-admin-rollback.test.ts` and
+`tests/db/medication-dose-identity.test.ts`.
+
+### Doctor-controlled medication reminders (migration 59)
+
+> **NOT APPLIED to production.** Applying it needs Kean's separate approval
+> and a quiet window, like every migration here.
+
+A doctor can switch reminders off, and on again, for one medicine of their
+patient's from **Patient record → Medication** - for a medicine taken only
+when needed, say. Reminders are on for every medicine unless the doctor
+switches them off. The patient sees "Medication reminders are turned off by
+your doctor." under that medicine and cannot change it; their doses stay on
+the checklist (`docs/database.md`, section 21).
+
+- **The rule.** A reminder is sent only when both hold: the doctor has
+  reminders on for that medicine, and the patient wants medication reminders
+  (`pat_reminder_is_enabled`, module 4.9). The patient's setting and
+  preferred time are not touched.
+- **What it changes.** Two columns on `medication_schedule`:
+  `medication_schedule_reminders_is_enabled` (`boolean not null default
+  true`) and `medication_schedule_reminders_enabled_at` (`timestamptz`,
+  null). One function and trigger, `medication_schedule_stamp_reminders`
+  (`before insert or update`), which records when reminders come back on
+  and ignores any value a writer sends for it. Three functions redefined,
+  each as migration 53 left it but for the lines marked `(59)`:
+  `dispatch_medication_pre_dose_reminders()`,
+  `dispatch_medication_reminders(integer)` and
+  `app_private.push_source_is_current(...)`. `CREATE OR REPLACE` keeps their
+  owner, `SECURITY DEFINER`, empty `search_path`, grants and comments. No
+  row is rewritten or set to false, and no policy, grant, job, schedule,
+  dose or notification changes.
+- **Switching back on.** The reminder before a dose resumes with the next
+  dose still ahead. The follow-up resumes with doses that come due from
+  that moment (`..._enabled_at`), so doses that came due while reminders
+  were off are not chased in a run. A reminder already sent is never sent
+  again: each job's mark on the dose is unchanged.
+- **Web Push.** It has no writer of its own; it delivers the notifications
+  the two jobs write. The check a queued phone reminder gets before delivery
+  now also reads the switch, so one waiting when the doctor switches the
+  medicine off is dropped.
+- **Unchanged.** Dose generation (`extend_all_medication_log_slots`), the
+  missed-dose job (`mark_overdue_medication_logs`: a dose with reminders off
+  still becomes missed after the grace period), adherence, every job's
+  cadence, the clinic's lead time and grace period, the doctor's
+  dose-conflict alerts, and appointment reminders.
+- **Security.** No policy changes. Migration 6's policies cover the row:
+  only the patient's own doctor updates a schedule; the patient reads it and
+  has no update policy; an unassigned doctor, a doctor in another clinic and
+  the Clinic Admin are refused.
+- **Order.** Migrations go in number order, each with its own approval:
+  **54 → 55 → 56 → 57 → 58 → 59**. 59 needs 53 (it redefines 53's
+  functions), which is applied; it is stacked on 58 only because both add
+  columns to `medication_schedule`. Database first, then the website: the
+  website with this feature updates the new column when a doctor uses the
+  switch, which fails with an error on a database without 59; reading a
+  schedule without the column shows reminders as on. As of 2026-11-16
+  production's latest is 53.
+- **Locks.** Adding the columns and the trigger locks `medication_schedule`,
+  which the reminder jobs read - the pre-dose job every minute - so it
+  starts with `set lock_timeout = '3s'` and ends with `reset lock_timeout`.
+  Use a quiet window clear of the minute and quarter-hour marks.
+- **Apply.** With approval, on its own: the file's text, unchanged, through
+  the Supabase connector's `apply_migration` with the name
+  `medication_schedule_reminder_control` (or the reviewed one-file
+  `supabase db query --linked -f` route used for 53), from the merged file.
+  Never `supabase db push`: it would also run the held migration 34. The
+  file's MD5 at the time of writing is `48f7ae6c9abf421f04a790f00fe35422`
+  (16,994 bytes) - recompute from the file being applied. If applying fails
+  or seems partial, stop and gather read-only evidence, as for 37 above.
+- **Verify, read-only.** One new history entry named
+  `medication_schedule_reminder_control` whose statements match the file's
+  MD5; both columns present with the types above;
+  `select count(*) from public.medication_schedule where not medication_schedule_reminders_is_enabled;`
+  is 0 straight after; the trigger `medication_schedule_stamp_reminders`
+  enabled; the three functions' definitions contain
+  `medication_schedule_reminders_is_enabled`, with `prosecdef` true and
+  `proconfig` `search_path=""`; `cron.job` unchanged; `lock_timeout` back to
+  `0`; and the reminder jobs' next runs succeed. Do not test it by switching
+  a production medicine off.
+- **Rollback.** "To roll back 31", step 59: the website first, then
+  `supabase/rollbacks/20260902100059_medication_schedule_reminder_control.down.sql`.
+  It refuses unless 59 is applied, restores the three functions to what 53
+  left, and drops the trigger, its function and both columns. **Every
+  "off" is lost and those medicines are reminded about again.**
+  `supabase/rollbacks/20260902100053_web_push_notifications.down.sql` now
+  refuses while 59 is installed: restoring 53's functions over the switch
+  would send reminders for medicines shown as off.
+
+Tests: `tests/db/medication-reminder-controls.test.ts` (on by default; the
+patient's doctor switches one medicine off and on; the patient, an
+unassigned doctor, the Clinic Admin and a doctor in another clinic are
+refused; both jobs skip a medicine switched off and still serve the other;
+the patient's opt-out still wins; no run of follow-ups and no repeats on
+switching back on; the stamp is the database's; a queued phone reminder is
+dropped; doses untouched, recordable, still missed after the grace period
+and still generated; each function identical to 53's but for the new
+lines, with its security and grants; no job scheduled; 59 over existing
+schedules; the rollback round trip and 53's refusal);
+`tests/unit/medication-reminder-control.test.tsx` (the switch per medicine,
+on and off, saving, saved, failure, no second press while saving; the
+patient's notice, no control, checklist and mark-as-taken unchanged);
+`tests/unit/medication-reminder-control-api.test.ts` (what is sent);
+`tests/unit/doctor-prescription-print.test.tsx` (a switch for every
+medicine on the record, off the paper); and 59 rolled back first in
+`tests/db/super-admin-rollback.test.ts` and
 `tests/db/medication-dose-identity.test.ts`.
 
 ## Bundle budget

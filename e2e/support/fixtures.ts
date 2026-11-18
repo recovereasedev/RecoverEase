@@ -250,6 +250,7 @@ export function datasetFor(role: 'patient' | 'doctor' | 'admin'): TableRows {
       appointment: [
         {
           appointment_id: IDS.appointmentA,
+          treatment_plan_id: IDS.planA,
           pat_id: IDS.alicePat,
           doc_id: IDS.doctorA,
           appointment_date: inDays(3),
@@ -303,6 +304,7 @@ export function datasetFor(role: 'patient' | 'doctor' | 'admin'): TableRows {
     appointment: [
       {
         appointment_id: IDS.appointmentA,
+        treatment_plan_id: IDS.planA,
         pat_id: IDS.alicePat,
         doc_id: IDS.doctorA,
         appointment_date: inDays(3),
@@ -349,7 +351,7 @@ export function datasetFor(role: 'patient' | 'doctor' | 'admin'): TableRows {
           medication_schedule_id: IDS.scheduleA,
           medication_schedule_name: 'Paracetamol',
           medication_schedule_dosage: '500mg',
-          prescription: { pat_id: IDS.alicePat },
+          prescription: { pat_id: IDS.alicePat, treatment_plan_id: IDS.planA },
         },
       },
     ],

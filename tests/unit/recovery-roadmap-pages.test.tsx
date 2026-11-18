@@ -362,7 +362,7 @@ describe('the patient’s Recovery Roadmap', () => {
   })
 
   it('says so when there is no active plan, and when the phases cannot be read', async () => {
-    api.plans.mockResolvedValue([{ ...PLAN, treatment_plan_status: 'completed' }])
+    api.plans.mockResolvedValue([])
     const { unmount } = renderWith(<PatientRoadmapPage />)
     expect(await screen.findByText('No active treatment plan')).toBeInTheDocument()
     unmount()

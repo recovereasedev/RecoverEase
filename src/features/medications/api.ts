@@ -17,7 +17,12 @@ export type DoseWithSchedule = MedicationLog & {
   medication_schedule: Pick<
     MedicationSchedule,
     'medication_schedule_id' | 'medication_schedule_name' | 'medication_schedule_dosage'
-  > | null
+  > & {
+    /** The doctor's reminder switch (migration 59); only read when asked for. */
+    medication_schedule_reminders_is_enabled?: boolean
+    /** The prescription's care plan (migration 60); only read when asked for. */
+    prescription?: { pat_id: string; treatment_plan_id?: string | null }
+  } | null
 }
 
 /**
@@ -60,6 +65,32 @@ const DOSE_COLUMNS = `*,
        )`
 
 /**
+ * The same, with the doctor's reminder switch (migration 59). Its own list,
+ * so the checklist, charts and calendar page read exactly what they did.
+ */
+const DOSE_COLUMNS_WITH_REMINDER_SETTING = `*,
+       medication_schedule!inner (
+         medication_schedule_id,
+         medication_schedule_name,
+         medication_schedule_dosage,
+         medication_schedule_reminders_is_enabled,
+         prescription!inner ( pat_id, treatment_plan_id )
+       )`
+
+/**
+ * As `DOSE_COLUMNS`, plus the care plan each dose's prescription belongs to
+ * (migration 60), for the reminder card. Asked for only there, so every other
+ * reader of doses keeps working on a database without 60.
+ */
+const DOSE_COLUMNS_WITH_PLAN = `*,
+       medication_schedule!inner (
+         medication_schedule_id,
+         medication_schedule_name,
+         medication_schedule_dosage,
+         prescription!inner ( pat_id, treatment_plan_id )
+       )`
+
+/**
  * Doses falling inside a window, newest first.
  *
  * One query joined through to the schedule rather than fetching schedules and
@@ -70,10 +101,12 @@ export async function fetchDoses(input: {
   patientId: string
   from: string
   to: string
+  /** Also read each dose's care plan (migration 60). */
+  withPlan?: boolean
 }): Promise<DoseWithSchedule[]> {
   const { data, error } = await supabase
     .from('medication_log')
-    .select(DOSE_COLUMNS)
+    .select(input.withPlan ? DOSE_COLUMNS_WITH_PLAN : DOSE_COLUMNS)
     .eq('medication_schedule.prescription.pat_id', input.patientId)
     .gte('medication_log_scheduled_at', input.from)
     .lte('medication_log_scheduled_at', input.to)
@@ -103,12 +136,18 @@ export const DOSE_PAGE_SIZE = 1000
  * a count it falls back to stopping at the first short page. The id breaks
  * ties between doses due at the same moment, so no row can fall between two
  * pages or appear in both; one that did would be dropped as a repeat.
+ *
+ * `withReminderSetting` also reads each dose's schedule's reminder switch
+ * and its prescription's care plan, for the phone-calendar file, which leaves
+ * out medicines switched off and medicines of a discharged plan.
  */
 export async function fetchAllDoses(input: {
   patientId: string
   from: string
   to: string
+  withReminderSetting?: boolean
 }): Promise<DoseWithSchedule[]> {
+  const columns = input.withReminderSetting ? DOSE_COLUMNS_WITH_REMINDER_SETTING : DOSE_COLUMNS
   const doses: DoseWithSchedule[] = []
   const seen = new Set<string>()
   let total: number | null = null
@@ -117,7 +156,7 @@ export async function fetchAllDoses(input: {
   for (;;) {
     const { data, error, count } = await supabase
       .from('medication_log')
-      .select(DOSE_COLUMNS, offset === 0 ? { count: 'exact' } : {})
+      .select(columns, offset === 0 ? { count: 'exact' } : {})
       .eq('medication_schedule.prescription.pat_id', input.patientId)
       .gte('medication_log_scheduled_at', input.from)
       .lte('medication_log_scheduled_at', input.to)
@@ -169,6 +208,8 @@ export async function createPrescription(input: {
   patientId: string
   doctorId: string
   notes: string | null
+  /** The care plan it belongs to (migration 60); left out, the database decides. */
+  planId?: string | null
 }): Promise<Prescription> {
   const { data, error } = await supabase
     .from('prescription')
@@ -176,6 +217,7 @@ export async function createPrescription(input: {
       pat_id: input.patientId,
       doc_id: input.doctorId,
       prescription_notes: input.notes,
+      ...(input.planId ? { treatment_plan_id: input.planId } : {}),
     })
     .select()
     .single()
@@ -245,6 +287,29 @@ export async function updateMedicationInstructions(input: {
   // the instructions were saved when nothing changed would be worse.
   if (!data || data.length === 0) {
     throw new Error('The instructions could not be saved.')
+  }
+}
+
+/**
+ * The doctor's reminder switch for one medicine (migration 59). Only that
+ * column is sent: the schedule, its doses and the patient's own reminder
+ * choice do not move.
+ */
+export async function setMedicationReminders(input: {
+  scheduleId: string
+  enabled: boolean
+}): Promise<void> {
+  const { data, error } = await supabase
+    .from('medication_schedule')
+    .update({ medication_schedule_reminders_is_enabled: input.enabled })
+    .eq('medication_schedule_id', input.scheduleId)
+    .select('medication_schedule_id')
+
+  if (error) throw error
+  // RLS reports a refused update as zero rows rather than an error. Showing
+  // reminders as switched when nothing changed would be worse than failing.
+  if (!data || data.length === 0) {
+    throw new Error('The reminder setting could not be saved.')
   }
 }
 

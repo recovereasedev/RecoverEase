@@ -26,6 +26,7 @@ import {
 } from '@/features/appointments/hooks'
 import { useCurrentUser } from '@/features/auth/auth-context'
 import { useQueryKeys } from '@/features/auth/use-query-keys'
+import { CarePlanField, type CarePlanChoice } from '@/features/treatment-plans/components/care-plan-field'
 import { useDocumentTitle } from '@/hooks/use-document-title'
 import { useFocusRecovery } from '@/hooks/use-focus-recovery'
 import { formatDateTime, formatRelative } from '@/lib/format'
@@ -72,6 +73,10 @@ export function PatientAppointmentsPage() {
   const [isBookingOpen, setBookingOpen] = useState(false)
   const [bookingValue, setBookingValue] = useState('')
   const [bookingProblem, setBookingProblem] = useState<string | null>(null)
+  // The care plan it belongs to (migration 60), for a patient with several.
+  const [bookingPlan, setBookingPlan] = useState('')
+  const [bookingPlanProblem, setBookingPlanProblem] = useState<string | null>(null)
+  const [planChoice, setPlanChoice] = useState<CarePlanChoice>({ planId: null, needsChoice: false })
   const [reschedulingId, setReschedulingId] = useState<string | null>(null)
   const [rescheduleValue, setRescheduleValue] = useState('')
   const [rescheduleReason, setRescheduleReason] = useState('')
@@ -151,6 +156,12 @@ export function PatientAppointmentsPage() {
       return
     }
 
+    if (planChoice.needsChoice) {
+      flushSync(() => setBookingPlanProblem('Choose which care plan this appointment is for.'))
+      focusFirstInvalid(event.currentTarget.closest('dialog'))
+      return
+    }
+
     // Nothing below this line may run twice for one user action.
     if (bookingInFlight.current) return
     bookingInFlight.current = true
@@ -160,6 +171,7 @@ export function PatientAppointmentsPage() {
         patientId: patient.pat_id,
         doctorId: patient.doc_id,
         scheduledFor: new Date(bookingValue).toISOString(),
+        ...(planChoice.planId ? { planId: planChoice.planId } : {}),
       },
       {
         onSuccess: () => {
@@ -588,6 +600,19 @@ export function PatientAppointmentsPage() {
               }}
             />
           </Field>
+
+          {patient ? (
+            <CarePlanField
+              patientId={patient.pat_id}
+              value={bookingPlan}
+              onChange={(planId) => {
+                setBookingPlan(planId)
+                setBookingPlanProblem(null)
+              }}
+              onResolved={setPlanChoice}
+              error={bookingPlanProblem ?? undefined}
+            />
+          ) : null}
 
           {createAppointment.isError ? (
             <FormError

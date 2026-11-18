@@ -48,6 +48,7 @@ import {
   EditInstructionsAction,
   MedicineInstructions,
 } from '@/features/medications/components/medication-instructions'
+import { MedicationReminderSwitch } from '@/features/medications/components/medication-reminder-control'
 import { PrescriptionPrintHeader } from '@/features/medications/components/prescription-print-header'
 import { summariseAdherence, type Adherence } from '@/features/medications/api'
 import {
@@ -95,7 +96,7 @@ import {
 import {
   patientStatus,
   treatmentGoalStatus,
-  treatmentPlanStatus,
+  treatmentPlanStatusOf,
 } from '@/lib/status'
 import { cn, fullName } from '@/lib/utils'
 
@@ -600,9 +601,7 @@ export function DoctorPatientDetailPage() {
                                 <div className="flex items-center gap-2">
                                   <StatusBadge
                                     status={
-                                      treatmentPlanStatus[
-                                        plan.treatment_plan_status
-                                      ]
+                                      treatmentPlanStatusOf(plan.treatment_plan_status)
                                     }
                                   />
                                   <Button
@@ -897,6 +896,12 @@ export function DoctorPatientDetailPage() {
                                       />
                                     </div>
                                   ) : null}
+                                  {/* The doctor's reminder switch for this
+                                      medicine (migration 59). */}
+                                  <MedicationReminderSwitch
+                                    patientId={patientId}
+                                    schedule={schedule}
+                                  />
                                   {/* The prescription's notes, which the
                                       patient's own printed prescription also
                                       carries. Paper only (QA 9/12). */}

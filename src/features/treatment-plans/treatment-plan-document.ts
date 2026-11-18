@@ -42,7 +42,7 @@ import {
   WARNING,
   WIDTH,
 } from '@/lib/documents/sheet'
-import { treatmentGoalStatus, treatmentPlanStatus } from '@/lib/status'
+import { treatmentGoalStatus, treatmentPlanStatusOf } from '@/lib/status'
 
 /**
  * Module 3.5, "Download Treatment Plan as PDF" - and what Print prints.
@@ -128,7 +128,7 @@ function drawPlanHeading(sheet: Sheet, plan: PlanWithGoals, doctor: PrescriberDe
   }
 
   const progress = summariseGoals(plan.treatment_goal)
-  field(sheet, 'Status', treatmentPlanStatus[plan.treatment_plan_status].label, fieldX, top, fieldWidth)
+  field(sheet, 'Status', treatmentPlanStatusOf(plan.treatment_plan_status).label, fieldX, top, fieldWidth)
   field(sheet, 'Plan period', planPeriod(plan), fieldX, top - 44, fieldWidth)
   field(
     sheet,

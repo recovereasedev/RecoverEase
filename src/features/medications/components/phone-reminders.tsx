@@ -14,6 +14,8 @@ import {
   REMINDER_LEADS,
   type ReminderLead,
 } from '@/features/medications/reminder-calendar'
+import { dosesOfOpenCare } from '@/features/reminders/reminder-items'
+import { careHasEnded, fetchTreatmentPlans } from '@/features/treatment-plans/api'
 import { saveFile } from '@/lib/documents/download'
 
 /** Dose slots are made 30 days ahead (migration 09), so that is what a file can hold. */
@@ -52,11 +54,26 @@ export function PhoneReminders({
     setResult(null)
     try {
       const now = new Date()
-      const doses = await fetchAllDoses({
+      // Discharged, with no care open: no reminders for that care (migration
+      // 60), so no file either. The doses stay on the Medications page.
+      const plans = await fetchTreatmentPlans(patient.pat_id)
+      if (careHasEnded(plans)) {
+        setResult({
+          message: 'Your care plan has ended. Book a follow-up if you need more care.',
+          at: Date.now(),
+        })
+        return
+      }
+      const allDoses = await fetchAllDoses({
         patientId: patient.pat_id,
         from: now.toISOString(),
         to: addDays(now, DAYS_AHEAD + 1).toISOString(),
+        // The doctor's per-medicine switch: a medicine that is off is left out;
+        // so is one of a plan the doctor has discharged (migration 60).
+        withReminderSetting: true,
       })
+      const doses = dosesOfOpenCare(allDoses, plans)
+      const endedPlanLeftOut = doses.length < allDoses.length
       const file = buildReminderCalendar({
         patient,
         doses,
@@ -65,12 +82,22 @@ export function PhoneReminders({
         generatedAt: now,
       })
       if (file.count === 0) {
-        setResult({ message: 'There are no upcoming doses to add yet.', at: Date.now() })
+        setResult({
+          message:
+            file.withheld > 0
+              ? 'There is nothing to add: your doctor has turned off reminders for your upcoming doses.'
+              : endedPlanLeftOut
+                ? 'There is nothing to add: your upcoming doses are not on an active care plan.'
+                : 'There are no upcoming doses to add yet.',
+          at: Date.now(),
+        })
         return
       }
       saveFile(file)
       setResult({
-        message: `Saved ${file.count} dose ${file.count === 1 ? 'time' : 'times'} for the next ${DAYS_AHEAD} days. Open the file to add them to your calendar.`,
+        message: `Saved ${file.count} dose ${file.count === 1 ? 'time' : 'times'} for the next ${DAYS_AHEAD} days. Open the file to add them to your calendar.${
+          file.withheld > 0 ? ' Medicines with reminders turned off by your doctor were left out.' : ''
+        }${endedPlanLeftOut ? ' Medicines of a care plan your doctor has ended, or not yet placed on a care plan, were left out.' : ''}`,
         at: Date.now(),
       })
     } catch (cause) {
@@ -135,6 +162,7 @@ export function PhoneReminders({
 
           <ul className="list-disc space-y-1 pl-5 text-sm text-muted">
             <li>The reminders do not change by themselves. When your prescription changes, delete the old ones and download a new file.</li>
+            <li>A medicine your doctor has turned reminders off for is left out of a new file. A file you downloaded before is a separate copy: if it still has reminders for that medicine, delete them from your calendar yourself.</li>
             <li>They cover the doses scheduled for the next {DAYS_AHEAD} days.</li>
             <li>Mark each dose as taken here, in RecoverEase.</li>
           </ul>
