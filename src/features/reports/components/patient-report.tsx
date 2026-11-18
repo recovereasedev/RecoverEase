@@ -8,7 +8,7 @@ import {
   appointmentStatus,
   patientStatus,
   treatmentGoalStatus,
-  treatmentPlanStatus,
+  treatmentPlanStatusOf,
 } from '@/lib/status'
 import { fullName } from '@/lib/utils'
 
@@ -338,7 +338,7 @@ export function PatientReport({
                             : 'ongoing'}
                         </span>
                         <ReportStatus
-                          status={treatmentPlanStatus[plan.treatment_plan_status]}
+                          status={treatmentPlanStatusOf(plan.treatment_plan_status)}
                         />
                       </div>
                     </div>

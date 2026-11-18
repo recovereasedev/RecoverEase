@@ -177,6 +177,8 @@ describe('fetchAllDoses', () => {
     expect(client.state.selects).toHaveLength(2)
     for (const columns of client.state.selects) {
       expect(columns).not.toContain('medication_schedule_reminders_is_enabled')
+      // Nor the care plan (migration 60): the charts and calendar page work without it.
+      expect(columns).not.toContain('treatment_plan_id')
     }
 
     client.state.selects.length = 0
@@ -184,8 +186,9 @@ describe('fetchAllDoses', () => {
     expect(client.state.selects).toHaveLength(2)
     for (const columns of client.state.selects) {
       expect(columns).toContain('medication_schedule_reminders_is_enabled')
-      // Still joined through to the patient the dose belongs to.
-      expect(columns).toContain('prescription!inner ( pat_id )')
+      // Still joined through to the patient the dose belongs to, and to the
+      // prescription's care plan (migration 60), for the calendar file.
+      expect(columns).toContain('prescription!inner ( pat_id, treatment_plan_id )')
     }
   })
 

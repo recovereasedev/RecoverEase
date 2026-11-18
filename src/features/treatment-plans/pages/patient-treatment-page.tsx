@@ -25,7 +25,7 @@ import { CareEndedNotice } from '@/features/treatment-plans/components/care-ende
 import { useDocumentTitle } from '@/hooks/use-document-title'
 import { useDocumentFile } from '@/lib/documents/use-document-file'
 import { formatDate } from '@/lib/format'
-import { treatmentGoalStatus, treatmentPlanStatus } from '@/lib/status'
+import { treatmentGoalStatus, treatmentPlanStatusOf } from '@/lib/status'
 import { cn } from '@/lib/utils'
 
 // The roadmap marker for each goal state. The status badge beside every goal
@@ -200,7 +200,7 @@ export function PatientTreatmentPage() {
                           {plan.treatment_plan_title}
                         </h2>
                         <StatusBadge
-                          status={treatmentPlanStatus[plan.treatment_plan_status]}
+                          status={treatmentPlanStatusOf(plan.treatment_plan_status)}
                         />
                       </div>
 

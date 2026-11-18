@@ -447,7 +447,8 @@ describe('migration 59 and the reminder jobs', () => {
   it('keeps each function as migration 53 left it, but for the new condition', async () => {
     const [before, after] = await Promise.all([
       createTestDatabase({ stopAfter: MIGRATION_58 }),
-      createTestDatabase(),
+      // Migration 60 builds on 59; this comparison is 59's alone.
+      createTestDatabase({ stopAfter: MIGRATION_59 }),
     ])
     try {
       const was = await functionFacts(before)
@@ -520,7 +521,8 @@ describe('migration 59 on existing data, and its rollback', () => {
 
   it('rolls back to exactly what 58 left, refuses a second run, and can be applied again', async () => {
     const [database, through58] = await Promise.all([
-      createTestDatabase(),
+      // Migration 60 builds on 59; this round trip is 59's alone.
+      createTestDatabase({ stopAfter: MIGRATION_59 }),
       createTestDatabase({ stopAfter: MIGRATION_58 }),
     ])
     try {

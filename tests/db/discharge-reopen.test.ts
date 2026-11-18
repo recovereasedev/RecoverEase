@@ -9,10 +9,9 @@ import { createTestDatabase, expectDenied, type TestDatabase } from './helpers/d
 import { seedFixture, type Fixture } from './helpers/fixtures'
 
 /**
- * Migration 57: a treatment plan's case lifecycle. ACTIVE → READY FOR
- * DISCHARGE (the system's daily flag, never a discharge) → DISCHARGED (the
- * patient's assigned, active doctor only, with a reason), and back to ACTIVE
- * when that doctor reopens it. Every move is kept in an append-only history.
+ * Migrations 57 and 60: a treatment plan's case lifecycle. ACTIVE →
+ * DISCHARGED (the patient's assigned, active doctor only, with a reason), and
+ * back to ACTIVE when that doctor reopens it. Nothing else moves a plan. Every move is kept in an append-only history.
  * The patient's account is never touched; once their care has ended they
  * keep their records and can book a follow-up, but cannot log new check-ins.
  */
@@ -24,7 +23,6 @@ const script = (path: string) => readFile(join(process.cwd(), path), 'utf8')
 
 const DISCHARGE = 'select * from public.doctor_discharge_treatment_plan($1, $2)'
 const REOPEN = 'select * from public.doctor_reopen_treatment_plan($1)'
-const READY_JOB = 'select public.mark_treatment_plans_ready_for_discharge() as changed'
 const ENDED = /Your care plan has ended\. Book a follow-up if you need more care\./
 
 const plusDays = (date: string, days: number) => {
@@ -84,14 +82,9 @@ describe('the treatment case lifecycle (migration 57)', () => {
         order by treatment_plan_changed_at, treatment_plan_lifecycle_event_id`,
       [planId],
     )
-  const runJob = async () => Number((await database.asService<{ changed: number }>(READY_JOB))[0]!.changed)
-  /** Plans other tests left open are closed first, so a job run counts only this test's. */
+  /** Plans other tests left are removed first, so a patient's care is only what this test makes it. */
   const quietOthers = async (...keep: string[]) => {
-    await database.asService(
-      `update public.treatment_plan set treatment_plan_status = 'cancelled'
-        where treatment_plan_status in ('active', 'ready_for_discharge') and not (treatment_plan_id = any($1::uuid[]))`,
-      [keep],
-    )
+    await database.asService('delete from public.treatment_plan where not (treatment_plan_id = any($1::uuid[]))', [keep])
   }
 
   beforeAll(async () => {
@@ -130,12 +123,6 @@ describe('the treatment case lifecycle (migration 57)', () => {
       ])
     })
 
-    it('discharges a plan that is ready for discharge', async () => {
-      const planId = await newPlan({ status: 'ready_for_discharge' })
-      await asDoctorA(DISCHARGE, [planId, 'referred'])
-      expect(await plan(planId)).toEqual({ status: 'discharged', reason: 'referred', discharged: true })
-    })
-
     it('accepts every listed reason and refuses any other or none', async () => {
       for (const reason of ['completed_recovery', 'transferred', 'withdrew', 'lost_to_follow_up', 'referred']) {
         const planId = await newPlan()
@@ -160,11 +147,10 @@ describe('the treatment case lifecycle (migration 57)', () => {
     })
 
     it('discharges only an open plan', async () => {
-      for (const status of ['draft', 'completed', 'cancelled', 'discharged']) {
-        const planId = await newPlan({ status: status === 'discharged' ? 'active' : status })
-        if (status === 'discharged') await asDoctorA(DISCHARGE, [planId, 'withdrew'])
-        await expect(asDoctorA(DISCHARGE, [planId, 'withdrew'])).rejects.toThrow(/only an active plan|ready for discharge/)
-      }
+      const planId = await newPlan()
+      await asDoctorA(DISCHARGE, [planId, 'withdrew'])
+      await expect(asDoctorA(DISCHARGE, [planId, 'withdrew'])).rejects.toThrow(/only an active plan/)
+      expect((await events(planId)).length).toBe(1)
     })
 
     it('reopens a discharged plan, clearing the reason and time, and keeps every event through repeated cycles', async () => {
@@ -184,10 +170,7 @@ describe('the treatment case lifecycle (migration 57)', () => {
 
     it('reopens only a discharged plan, and only for its assigned doctor', async () => {
       const active = await newPlan()
-      const ready = await newPlan({ status: 'ready_for_discharge' })
       await expect(asDoctorA(REOPEN, [active])).rejects.toThrow(/only a discharged plan/)
-      await expect(asDoctorA(REOPEN, [ready])).rejects.toThrow(/only a discharged plan/)
-      expect((await plan(ready)).status).toBe('ready_for_discharge')
 
       const closed = await newPlan()
       await asDoctorA(DISCHARGE, [closed, 'withdrew'])
@@ -201,7 +184,6 @@ describe('the treatment case lifecycle (migration 57)', () => {
       const planId = await newPlan()
       for (const change of [
         "treatment_plan_status = 'discharged', treatment_plan_closure_reason = 'withdrew', treatment_plan_discharged_at = now()",
-        "treatment_plan_status = 'ready_for_discharge'",
         "treatment_plan_closure_reason = 'withdrew'",
         'treatment_plan_discharged_at = now()',
       ]) {
@@ -209,6 +191,10 @@ describe('the treatment case lifecycle (migration 57)', () => {
           asDoctorA(`update public.treatment_plan set ${change} where treatment_plan_id = $1`, [planId]),
         ).rejects.toThrow(/discharge|lifecycle/)
       }
+      // A status the case no longer has is refused for every writer (migration 60).
+      await expect(
+        asDoctorA(`update public.treatment_plan set treatment_plan_status = 'ready_for_discharge' where treatment_plan_id = $1`, [planId]),
+      ).rejects.toThrow(/treatment_plan_status_valid/)
       await asDoctorA(DISCHARGE, [planId, 'withdrew'])
       await expect(
         asDoctorA(`update public.treatment_plan set treatment_plan_status = 'active' where treatment_plan_id = $1`, [planId]),
@@ -256,157 +242,6 @@ describe('the treatment case lifecycle (migration 57)', () => {
       expect(await asDoctorA(read, [planId])).toEqual([{ next: 'discharged' }])
       for (const userId of [fx.bobUserId, fx.doctorBUserId, doctorDUserId, fx.adminUserId]) {
         await expectDenied(() => database.asUser(userId, read, [planId]))
-      }
-    })
-  })
-
-  describe('the daily readiness check', () => {
-    it('flags an active plan whose end date is before the clinic’s today, not one ending today', async () => {
-      const past = await newPlan({ end: plusDays(today, -1) })
-      const endingToday = await newPlan({ end: today })
-      await quietOthers(past, endingToday)
-      expect(await runJob()).toBe(1)
-      expect((await plan(past)).status).toBe('ready_for_discharge')
-      expect((await plan(endingToday)).status).toBe('active')
-      expect(await events(past)).toEqual([{ previous: 'active', next: 'ready_for_discharge', reason: null, actor: null, source: 'system' }])
-    })
-
-    it('flags a plan once every goal is achieved, and not for a missed or pending one or no goals', async () => {
-      const allAchieved = await newPlan()
-      await addGoal(allAchieved, 'achieved')
-      await addGoal(allAchieved, 'achieved')
-      const oneMissed = await newPlan()
-      await addGoal(oneMissed, 'achieved')
-      await addGoal(oneMissed, 'missed')
-      const onePending = await newPlan()
-      await addGoal(onePending, 'achieved')
-      await addGoal(onePending, 'pending')
-      const noGoals = await newPlan()
-      await quietOthers(allAchieved, oneMissed, onePending, noGoals)
-      expect(await runJob()).toBe(1)
-      expect((await plan(allAchieved)).status).toBe('ready_for_discharge')
-      for (const planId of [oneMissed, onePending, noGoals]) expect((await plan(planId)).status).toBe('active')
-    })
-
-    it('never flags a draft, completed, cancelled or discharged plan, and never discharges', async () => {
-      const ids: string[] = []
-      for (const status of ['draft', 'completed', 'cancelled']) ids.push(await newPlan({ status, end: plusDays(today, -5) }))
-      const discharged = await newPlan({ end: plusDays(today, -5) })
-      await asDoctorA(DISCHARGE, [discharged, 'withdrew'])
-      const eligible = await newPlan({ end: plusDays(today, -5) })
-      await quietOthers(...ids, discharged, eligible)
-      const before = await database.asService<{ n: number }>(
-        `select count(*)::int as n from public.treatment_plan where treatment_plan_status = 'discharged'`,
-      )
-      await runJob()
-      expect((await Promise.all(ids.map(plan))).map((row) => row.status)).toEqual(['draft', 'completed', 'cancelled'])
-      expect((await plan(discharged)).status).toBe('discharged')
-      expect((await plan(eligible)).status).toBe('ready_for_discharge')
-      expect(
-        await database.asService(`select count(*)::int as n from public.treatment_plan where treatment_plan_status = 'discharged'`),
-      ).toEqual(before)
-    })
-
-    it('tells the assigned doctor once, and the patient nothing, however often it runs', async () => {
-      const planId = await newPlan({ end: plusDays(today, -2) })
-      await quietOthers(planId)
-      await database.asService('delete from public.notification')
-      await runJob()
-      await runJob()
-      expect(await runJob()).toBe(0)
-      const sent = await database.asService<{ user_id: string; type: string; message: string }>(
-        `select user_id, notification_type::text as type, notification_message as message from public.notification`,
-      )
-      expect(sent).toEqual([
-        { user_id: fx.doctorAUserId, type: 'treatment', message: expect.stringMatching(/ready for discharge review/) },
-      ])
-      expect(sent[0]!.message).not.toMatch(/discharged/)
-      expect(await events(planId)).toHaveLength(1)
-    })
-
-    it('waits while the assigned doctor is deactivated, then flags and tells an active doctor', async () => {
-      // Dave's doctor (doctorC) is deactivated: no one can review a discharge,
-      // so the plan stays active and no notification goes to a closed account.
-      const [{ id: planId }] = await database.asService<{ id: string }>(
-        `insert into public.treatment_plan
-           (pat_id, doc_id, treatment_plan_title, treatment_plan_status, treatment_plan_start_date, treatment_plan_end_date)
-         values ($1, $2, 'Hip plan', 'active', $3::date, $4::date) returning treatment_plan_id as id`,
-        [fx.davePatId, fx.doctorCId, plusDays(today, -30), plusDays(today, -2)],
-      )
-      await quietOthers(planId)
-      await database.asService('delete from public.notification')
-      expect(await runJob()).toBe(0)
-      expect((await plan(planId)).status).toBe('active')
-      expect(await events(planId)).toEqual([])
-      expect(await database.asService('select 1 from public.notification')).toEqual([])
-
-      // Once the patient's doctor is active again, the next run flags it for them.
-      const setActive = (active: boolean) =>
-        database.asUser(fx.adminUserId, 'update public.doctor set doc_is_active = $1 where doc_id = $2', [active, fx.doctorCId])
-      await setActive(true)
-      try {
-        expect(await runJob()).toBe(1)
-        expect((await plan(planId)).status).toBe('ready_for_discharge')
-        expect(await database.asService<{ user_id: string }>('select user_id from public.notification')).toEqual([
-          { user_id: fx.doctorCUserId },
-        ])
-      } finally {
-        await setActive(false)
-      }
-    })
-
-    it('uses each clinic’s own day', async () => {
-      // A patient of a doctor in a UTC+14 clinic: "yesterday" and "today"
-      // are that clinic's, whatever the server's date.
-      const kiri = await addClinic(database, 'Line Islands Clinic', 'Pacific/Kiritimati')
-      const [{ kiriToday }] = await database.asService<{ kiriToday: string }>(
-        'select app_private.clinic_today($1)::text as "kiriToday"',
-        [kiri],
-      )
-      const account = async (email: string, role: string) => {
-        const [{ id }] = await database.asService<{ id: string }>(
-          'insert into auth.users (id, email) values (gen_random_uuid(), $1) returning id',
-          [email],
-        )
-        await database.asService('insert into public.user_account (user_id, user_email, user_role) values ($1, $2, $3)', [
-          id,
-          email,
-          role,
-        ])
-        return id
-      }
-      const doctorUser = await account('kai@line.test', 'doctor')
-      const [{ doc }] = await database.asService<{ doc: string }>(
-        `insert into public.doctor (user_id, doc_first_name, doc_last_name, doc_license_no, doc_is_active, clinic_id)
-         values ($1, 'Kai', 'Tane', 'LIC-K-001', true, $2) returning doc_id as doc`,
-        [doctorUser, kiri],
-      )
-      const patientUser = await account('tia@line.test', 'patient')
-      const [{ pat }] = await database.asService<{ pat: string }>(
-        `insert into public.patient (user_id, doc_id, pat_first_name, pat_last_name, pat_consent_at)
-         values ($1, $2, 'Tia', 'Rua', now()) returning pat_id as pat`,
-        [patientUser, doc],
-      )
-      const kiriPlan = async (end: string) =>
-        (await database.asService<{ id: string }>(
-          `insert into public.treatment_plan (pat_id, doc_id, treatment_plan_title, treatment_plan_start_date, treatment_plan_end_date)
-           values ($1, $2, 'Line plan', $3::date, $4::date) returning treatment_plan_id as id`,
-          [pat, doc, plusDays(kiriToday, -30), end],
-        ))[0]!.id
-      const yesterday = await kiriPlan(plusDays(kiriToday, -1))
-      const endsToday = await kiriPlan(kiriToday)
-      await quietOthers(yesterday, endsToday)
-      await database.asService('delete from public.notification')
-      expect(await runJob()).toBe(1)
-      expect((await plan(yesterday)).status).toBe('ready_for_discharge')
-      expect((await plan(endsToday)).status).toBe('active')
-      // Its own assigned doctor is told.
-      expect(await database.asService('select user_id from public.notification')).toEqual([{ user_id: doctorUser }])
-    })
-
-    it('is for the service role only', async () => {
-      for (const run of [() => asDoctorA(READY_JOB), () => asAlice(READY_JOB), () => database.asAnon(READY_JOB)]) {
-        await expect(run()).rejects.toThrow(/permission denied/)
       }
     })
   })
@@ -472,27 +307,25 @@ describe('the treatment case lifecycle (migration 57)', () => {
         (await database.asService<{ n: number }>('select count(*)::int as n from public.recovery_log where pat_id = $1', [fx.bobPatId]))[0]!.n
 
       await insert(6) // no plans
-      await newPlan({ patId: fx.bobPatId, status: 'completed' })
-      await newPlan({ patId: fx.bobPatId, status: 'cancelled' })
-      await insert(5) // only completed and cancelled plans
       const first = await newPlan({ patId: fx.bobPatId })
       await insert(4) // an active plan
 
       await asDoctorA(DISCHARGE, [first, 'transferred'])
       await expect(insert(3)).rejects.toThrow(ENDED) // discharged, nothing else open
-      expect(await bobLogs()).toBe(3) // earlier check-ins are kept
+      expect(await bobLogs()).toBe(2) // earlier check-ins are kept
 
       const second = await newPlan({ patId: fx.bobPatId })
       await insert(3) // a discharged plan and an active one
       await asDoctorA(DISCHARGE, [second, 'referred'])
       await expect(insert(2)).rejects.toThrow(ENDED)
-      await newPlan({ patId: fx.bobPatId, status: 'ready_for_discharge' })
-      await insert(2) // ready for discharge is still open care
-      expect(await bobLogs()).toBe(5)
+      expect(await bobLogs()).toBe(3)
+      await asDoctorA(REOPEN, [second])
+      await insert(2) // reopened: check-ins come back
+      expect(await bobLogs()).toBe(4)
     })
 
-    it('keeps activities and goal progress open while ready, and closes them once discharged', async () => {
-      const planId = await newPlan({ status: 'ready_for_discharge' })
+    it('keeps activities and goal progress open while active, and closes them once discharged', async () => {
+      const planId = await newPlan()
       const goalId = await addGoal(planId, 'pending')
       const [{ phase }] = await database.asService<{ phase: string }>(
         `select recovery_phase_id as phase from public.recovery_phase
@@ -555,7 +388,7 @@ describe('the treatment case lifecycle (migration 57)', () => {
   })
 
   describe('reminders', () => {
-    it('keeps appointment reminders for a discharged patient', async () => {
+    it('keeps appointment reminders for a follow-up booked after discharge', async () => {
       await quietOthers()
       const planId = await newPlan()
       await asDoctorA(DISCHARGE, [planId, 'completed_recovery'])

@@ -10,6 +10,7 @@ import { Dialog } from '@/components/ui/dialog'
 import { Combobox, Field, Input } from '@/components/ui/field'
 import { Notice } from '@/components/ui/notice'
 import { useCreateAppointment } from '@/features/appointments/hooks'
+import { CarePlanField, type CarePlanChoice } from '@/features/treatment-plans/components/care-plan-field'
 import { useMyPatients } from '@/features/patients/hooks'
 import { fullName } from '@/lib/utils'
 
@@ -102,6 +103,9 @@ export function ScheduleAppointmentDialog({
   const [patientId, setPatientId] = useState(fixedPatientId ?? '')
   const [scheduledFor, setScheduledFor] = useState('')
   const [validationError, setValidationError] = useState<string | null>(null)
+  // The care plan it belongs to (migration 60), for a patient with several.
+  const [carePlan, setCarePlan] = useState('')
+  const [planChoice, setPlanChoice] = useState<CarePlanChoice>({ planId: null, needsChoice: false })
 
   const patients = patientsQuery.data ?? []
   const selected = patients.find((p) => p.pat_id === (fixedPatientId ?? patientId))
@@ -110,6 +114,7 @@ export function ScheduleAppointmentDialog({
     inFlight.current = false
     setPatientId(fixedPatientId ?? '')
     setScheduledFor('')
+    setCarePlan('')
     setValidationError(null)
     // Clears a previous failure so it is not still on screen the next time
     // this dialog is opened.
@@ -139,6 +144,11 @@ export function ScheduleAppointmentDialog({
       return
     }
 
+    if (planChoice.needsChoice) {
+      setValidationError('Choose which care plan this appointment is for.')
+      return
+    }
+
     // Nothing below this line may run twice for one user action.
     if (inFlight.current) return
     inFlight.current = true
@@ -148,6 +158,7 @@ export function ScheduleAppointmentDialog({
         patientId: selected.pat_id,
         doctorId: selected.doc_id,
         scheduledFor: when.toISOString(),
+        ...(planChoice.planId ? { planId: planChoice.planId } : {}),
       },
       {
         onSuccess: close,
@@ -216,6 +227,19 @@ export function ScheduleAppointmentDialog({
             />
           </Field>
         )}
+
+        {selected ? (
+          <CarePlanField
+            key={selected.pat_id}
+            patientId={selected.pat_id}
+            value={carePlan}
+            onChange={(planId) => {
+              setCarePlan(planId)
+              setValidationError(null)
+            }}
+            onResolved={setPlanChoice}
+          />
+        ) : null}
 
         <Field
           label="Date and time"

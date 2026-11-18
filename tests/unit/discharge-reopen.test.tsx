@@ -5,7 +5,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 /**
- * Discharge and reopen (migration 57), on screen: what counts as open care,
+ * Discharge and reopen (migrations 57 and 60), on screen: what counts as open care,
  * the doctor's discharge dialog with its required reason and its reopen
  * confirmation, and what the patient sees once their care has ended. The
  * database's own refusals are tests/db/discharge-reopen.test.ts.
@@ -33,6 +33,7 @@ vi.mock('@/features/recovery-logs/api', async (importOriginal) => ({
 vi.mock('@/features/recovery-progress/components/recovery-progress', () => ({ RecoveryProgress: () => null }))
 
 const { careHasEnded, isOpenCare, CLOSURE_REASONS } = await import('@/features/treatment-plans/api')
+const { treatmentPlanStatus, treatmentPlanStatusOf } = await import('@/lib/status')
 const { CaseLifecycle } = await import('@/features/treatment-plans/components/case-lifecycle')
 const { RecoveryPage } = await import('@/features/recovery-logs/pages/recovery-page')
 
@@ -88,20 +89,21 @@ beforeEach(() => {
 })
 
 describe('open care and ended care', () => {
-  it('treats a plan ready for discharge as open care, like an active one', () => {
-    expect((['draft', 'active', 'ready_for_discharge', 'discharged', 'completed', 'cancelled'] as const).filter((status) => isOpenCare(status))).toEqual([
-      'active',
-      'ready_for_discharge',
-    ])
+  it('knows two statuses, Active and Discharged, and only an active plan is open care', () => {
+    expect(Object.keys(treatmentPlanStatus)).toEqual(['active', 'discharged'])
+    expect(Object.values(treatmentPlanStatus).map((status) => status.label)).toEqual(['Active', 'Discharged'])
+    expect(treatmentPlanStatusOf('discharged').label).toBe('Discharged')
+    expect(treatmentPlanStatusOf('active').label).toBe('Active')
+    expect(isOpenCare('active')).toBe(true)
+    expect(isOpenCare('discharged')).toBe(false)
   })
 
   it('says care has ended only with a discharged plan and no open one', () => {
     const status = (...statuses: string[]) => statuses.map((value) => ({ treatment_plan_status: value }) as never)
     expect(careHasEnded(status('discharged'))).toBe(true)
-    expect(careHasEnded(status('discharged', 'cancelled'))).toBe(true)
+    expect(careHasEnded(status('discharged', 'discharged'))).toBe(true)
     expect(careHasEnded(status('discharged', 'active'))).toBe(false)
-    expect(careHasEnded(status('discharged', 'ready_for_discharge'))).toBe(false)
-    expect(careHasEnded(status('completed'))).toBe(false)
+    expect(careHasEnded(status('active'))).toBe(false)
     expect(careHasEnded([])).toBe(false)
   })
 
@@ -124,7 +126,9 @@ describe('the doctor discharges and reopens', () => {
   it('discharges only once a reason is chosen, once however often confirmed', async () => {
     let release!: () => void
     api.discharge.mockReturnValue(new Promise((resolve) => (release = () => resolve({}))))
-    renderWith(<CaseLifecycle patientId="p-alice" plan={plan('ready_for_discharge') as never} />)
+    renderWith(<CaseLifecycle patientId="p-alice" plan={plan('active') as never} />)
+    expect(screen.queryByRole('button', { name: 'Reopen case' })).not.toBeInTheDocument()
+    expect(document.body).not.toHaveTextContent(/ready for/i)
 
     fireEvent.click(screen.getByRole('button', { name: 'Discharge patient' }))
     const dialog = await screen.findByRole('dialog', { name: 'Discharge patient' })
@@ -140,7 +144,7 @@ describe('the doctor discharges and reopens', () => {
     fireEvent.click(confirm)
     release()
     await waitFor(() => expect(api.discharge).toHaveBeenCalledTimes(1))
-    expect(api.discharge).toHaveBeenCalledWith('plan-ready_for_discharge', 'transferred')
+    expect(api.discharge).toHaveBeenCalledWith('plan-active', 'transferred')
   })
 
   it('says why a discharge was refused and keeps the dialog open', async () => {
@@ -161,17 +165,20 @@ describe('the doctor discharges and reopens', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Reopen case' }))
     const dialog = await screen.findByRole('dialog', { name: 'Reopen case' })
     expect(within(dialog).getByText(/discharge stays in the plan’s history/)).toBeInTheDocument()
-    expect(within(dialog).getByText(/end date has passed, extend it/)).toBeInTheDocument()
+    // No daily check is left to flag the plan again.
+    expect(dialog).not.toHaveTextContent(/daily check|ready for/i)
+    expect(api.reopen).not.toHaveBeenCalled()
     fireEvent.click(within(dialog).getByRole('button', { name: 'Reopen case' }))
     await waitFor(() => expect(api.reopen).toHaveBeenCalledWith('plan-discharged'))
   })
 
-  it('offers nothing on a draft, completed or cancelled plan', () => {
-    for (const status of ['draft', 'completed', 'cancelled']) {
-      const { unmount } = renderWith(<CaseLifecycle patientId="p-alice" plan={plan(status) as never} />)
-      expect(screen.queryByRole('button')).not.toBeInTheDocument()
-      unmount()
-    }
+  it('says why a reopening was refused and keeps the dialog open', async () => {
+    api.reopen.mockRejectedValue(new Error('Only the patient’s assigned doctor can reopen this plan'))
+    renderWith(<CaseLifecycle patientId="p-alice" plan={DISCHARGED as never} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Reopen case' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Reopen case' })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Reopen case' }))
+    expect(await within(dialog).findByText(/assigned doctor can reopen/)).toBeInTheDocument()
   })
 })
 
@@ -208,7 +215,7 @@ describe('the patient once care has ended', () => {
   })
 
   it('keeps the daily check-in while any care is open', async () => {
-    api.plans.mockResolvedValue([DISCHARGED, plan('ready_for_discharge')])
+    api.plans.mockResolvedValue([DISCHARGED, plan('active')])
     renderWith(<RecoveryPage />)
     expect(await screen.findByRole('heading', { name: 'Log today' })).toBeInTheDocument()
     expect(screen.queryByText(ENDED)).not.toBeInTheDocument()

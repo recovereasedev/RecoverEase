@@ -505,18 +505,31 @@ has its phase.
 
 ### 19. Discharging and reopening a treatment case
 
-Migration 57 (**not applied to production**; see `docs/deployment.md`,
-"Discharge and reopen a treatment case (migration 57)"). A treatment plan
-is the patient's care case; its lifecycle uses the existing
-`treatment_plan_status`, extended with two values. `draft`, `completed`
-and `cancelled` keep their meaning and no row was rewritten.
+Migrations 57 and 60 (**neither applied to production**; see
+`docs/deployment.md`, "Discharge and reopen a treatment case (migration 57)"
+and "A care case is Active or Discharged (migration 60)"). A treatment plan is
+the patient's care case. From migration 60 it has exactly two statuses, and
+only the patient's assigned, active doctor moves it between them:
 
 | From | To | By |
 | --- | --- | --- |
-| `active` | `ready_for_discharge` | the daily job only |
-| `active`, `ready_for_discharge` | `discharged` | the patient's assigned, active doctor, with a reason |
+| `active` | `discharged` | the patient's assigned, active doctor, with a closure reason |
 | `discharged` | `active` | the same doctor (reopen) |
 
+- **Two statuses.** The check `treatment_plan_status_valid` allows only
+  `active` and `discharged`, for every writer including the service role.
+  The `treatment_plan_status` enum still lists `draft`, `completed`,
+  `cancelled` and `ready_for_discharge` (PostgreSQL cannot drop an enum
+  label); the check is what refuses them. Migration 60 made every plan that
+  was ready for discharge active (the doctor had not discharged it) and kept
+  every discharged one; it refuses to run while any plan is draft, completed
+  or cancelled, since no rule says what those become.
+- **Nothing automatic.** Migration 57's daily readiness job
+  (`mark_treatment_plans_ready_for_discharge()`, pg_cron
+  `recoverease-mark-plans-ready-for-discharge`) and its "ready for discharge
+  review" notifications are gone (60). No job replaces them: a plan past its
+  end date, or with every goal achieved, stays active until the doctor
+  discharges it.
 - **Discharge metadata.** `treatment_plan_closure_reason`
   (`completed_recovery`, `transferred`, `withdrew`, `lost_to_follow_up`,
   `referred`) and `treatment_plan_discharged_at`, both set exactly while the
@@ -525,53 +538,103 @@ and `cancelled` keep their meaning and no row was rewritten.
 - **Writes.** `doctor_discharge_treatment_plan(plan, reason)` and
   `doctor_reopen_treatment_plan(plan)`: `SECURITY DEFINER`, empty
   `search_path`, `is_my_patient` before any lock (the same refusal for
-  another doctor's plan, a Clinic Admin, a patient or a missing plan), then
-  the plan `FOR UPDATE` and the allowed transition only.
-  `treatment_plan_guard_lifecycle` refuses any session that inserts or
-  moves a plan into or out of the two new statuses, or writes the two
-  columns, so the API cannot bypass the functions.
+  another doctor's plan, a doctor in another clinic, a Clinic Admin, a
+  patient or a missing plan), then the plan `FOR UPDATE` and the allowed
+  transition only. `treatment_plan_guard_lifecycle` refuses any session that
+  inserts a discharged plan, moves a plan into or out of `discharged`, or
+  writes the two columns, so the API cannot bypass the functions.
 - **History.** `treatment_plan_lifecycle_event`: previous and new status,
-  the reason on a discharge, `treatment_plan_changed_by`, source (`doctor`,
-  `system` for the job, `service` otherwise) and time. Written only by
-  `treatment_plan_record_lifecycle` on a real status change; no session may
-  write, change or delete it; readable by whoever may read the plan.
-  Repeated cycles keep every event.
-- **Readiness.** `mark_treatment_plans_ready_for_discharge()`
-  (`service_role`, daily `15 16 * * *`) flags an `active` plan whose end
-  date is before its clinic's today (patient → doctor → clinic; a plan
-  ending today is not yet past), or that has at least one goal with every
-  goal `achieved` (no goals is never complete; pending, in progress and
-  missed are not achieved). Roadmap activities are not milestones: the
-  schema has no required flag. Each flagged plan gives its patient's
-  assigned doctor one `treatment` notification ("… is ready for discharge
-  review."); nothing goes to the patient. A plan whose patient's
-  assigned doctor is deactivated is not flagged and no one is told (no other
-  recipient is chosen); the first run after the patient has an active doctor
-  flags it and tells that doctor. A second run finds nothing to flag, so
-  nothing repeats. It never discharges. A plan reopened after its
-  end date is flagged again by the next run unless the doctor extends the
-  end date; the reopen dialog says so.
-- **Open care.** A plan ready for discharge is still open: the patient's
-  activity and goal functions accept `active` or `ready_for_discharge`,
-  and refuse a discharged plan. The missed-goal job skips discharged
-  plans, and checks them again once reopened.
+  the reason on a discharge, `treatment_plan_changed_by`, source and time.
+  Written only by `treatment_plan_record_lifecycle` on a real status change,
+  in the same transaction as the change and before the reopening's update is
+  visible; no session may write, change or delete it; readable by whoever may
+  read the plan. Each discharge and each reopening is its own row, so a
+  reopened case keeps every earlier discharge with its reason and time.
+- **Open care.** Only an `active` plan is open: the patient's activity and
+  goal functions refuse a discharged plan. The missed-goal job skips
+  discharged plans, and checks them again once reopened.
 - **Check-ins.** `recovery_log` is the patient's, not a plan's, and no
   check-in records a plan, so none is guessed. `recovery_log_guard_care_ended`
   refuses a session adding or changing a check-in while the patient has a
-  discharged plan and no open one ("Your care plan has ended. Book a
-  follow-up if you need more care."). A patient with any open plan, no plans,
-  or only `completed`/`cancelled` ones is unaffected.
-- **Reminders.** No reminder generator belongs to a plan: medication
-  reminders follow prescriptions and schedules, appointment reminders
-  follow appointments, and both continue after discharge. A prescription
-  records no plan, so none is linked to a case and none is stopped on
-  discharge; the doctor ends a schedule as before (migration 23) when the
-  medication should stop. The missed-goal
-  job is the only plan-level automation, handled above.
-- **Follow-up after discharge.** `appointment.appointment_follow_up_of_plan_id`,
+  discharged plan and no active one ("Your care plan has ended. Book a
+  follow-up if you need more care."). A patient with an active plan, or no
+  plans, is unaffected. The schema has no symptom log: the check-in's notes and
+  mood rating are the only place a patient records how they feel, and this
+  guard covers them.
+- **A care plan of its own (60).** `prescription.treatment_plan_id` and
+  `appointment.treatment_plan_id` (nullable, `on delete set null`, indexed)
+  record which plan a prescription or appointment belongs to.
+  - **New rows.** `prescription_link_care_plan` and
+    `appointment_mark_follow_up` (both run as the caller, before insert or
+    update) fill it in with the patient's only active plan. With several
+    active plans a session must name one ("Choose which care plan …"); with
+    none it stays null. A named plan must be the same patient's, for every
+    writer (a session cannot even see another patient's plan), and active,
+    for a session. A foreign key on `(treatment_plan_id, pat_id)` to
+    `treatment_plan (treatment_plan_id, pat_id)` (unique key
+    `treatment_plan_id_pat_id_key`) holds this on every write, whatever the
+    row policies show: a linked row cannot be moved to another patient with
+    its link left as it was, nor a linked plan given to another patient.
+    Deleting a plan clears only the link (`on delete set null
+    (treatment_plan_id)`). Once set, no session changes it. An appointment booked
+    while the patient's care has ended is a follow-up request and belongs to
+    no plan.
+  - **Screens.** The doctor's prescription form and appointment dialog and
+    the patient's booking dialog ask "Care plan" only when the patient has
+    several active plans (`CarePlanField`), and otherwise send the only one.
+  - **Existing rows.** Linked only where the patient has exactly one plan.
+    Rows of a patient with several plans stay null - nothing is guessed - and
+    follow-up requests stay null. They are placed by hand (queries in
+    `docs/deployment.md`, migration 60).
+- **Reminders (60).** `app_private.care_reminders_allowed(plan, patient)`
+  fails closed:
+  - on a plan: true only while that plan is the same patient's and active;
+  - on no plan, for a patient who has any plan: false. Nothing says which
+    plan the row belongs to - another plan being active proves nothing - so
+    it is silent until placed on a plan by hand;
+  - on no plan, for a patient with no plan at all: true, as before 60.
+
+  So a discharged plan's medicines and appointments stop while another
+  plan's continue, and a follow-up request (below) is always reminded about.
+  The four reminder
+  readers ask it, each as 59 (medication, phone) or 53 (appointment) left it
+  but for the lines marked `(60)`:
+  - `dispatch_medication_pre_dose_reminders()` and
+    `dispatch_medication_reminders(integer)` write nothing for a dose of a
+    discharged plan, and leave the dose unmarked;
+  - `dispatch_appointment_reminders(integer)` writes nothing for an
+    appointment of a discharged plan, but always reminds about a follow-up
+    request (below);
+  - `app_private.push_source_is_current(...)` drops a queued phone reminder of
+    a discharged plan when it comes to be delivered (`skipped`,
+    `source_no_longer_valid`, for good).
+
+  A medicine is reminded about only when its plan allows it **and** the
+  doctor has its reminders on (59) **and** the patient wants reminders
+  (module 4.9). Nothing is deleted: pending reminders are cancelled by not
+  being written or not being delivered, and every dose, log, appointment and
+  notification stays as it was. A reminder already in the patient's
+  notification list stays there.
+- **The reminder card.** The in-app card (`src/features/reminders/`) applies
+  the same rule to the patient's doses and appointments
+  (`remindersAllowedFor`), and shows nothing until it knows the patient's
+  plans; so does the phone calendar file. A follow-up request is always shown.
+  Records stay on their own pages. The doctor's card is unchanged.
+- **Reopening sends nothing about the past.** The follow-up job, and the
+  check before a queued phone reminder (either kind) is delivered, accept
+  only doses that came due after the dose's own plan was last reopened
+  (`app_private.care_reopened_at(plan, patient)`, from that plan's history).
+  Reopening one plan
+  changes nothing for another. A reminder already sent is never repeated:
+  each job's own "sent" mark is unchanged. Reopening creates no dose. An
+  appointment of the reopened plan that is still ahead is reminded about
+  once, as it would have been.
+- **Follow-up request.** `appointment.appointment_follow_up_of_plan_id`,
   set only by `appointment_mark_follow_up` when the appointment is booked
   while the patient's care has ended (their most recently discharged plan);
-  sessions cannot set or change it. It is not the roadmap's chosen
+  sessions cannot set or change it, and it stays when the case is reopened.
+  The doctor's appointment list shows it as **Follow-up request**. Booking is
+  never refused for a discharged patient. It is not the roadmap's chosen
   follow-up appointment (section 18) unless the doctor picks it.
 - **Not touched.** The patient row (`pat_status` stays as it was), the
   account, and every record. `patient_status = 'discharged'` is not used.

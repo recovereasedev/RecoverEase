@@ -14,11 +14,14 @@ import type { Patient } from '@/features/patients/api'
 import { useMyDoctor } from '@/features/patients/hooks'
 import {
   appointmentReminders,
+  appointmentsOfOpenCare,
   doseReminders,
+  dosesOfOpenCare,
   SNOOZE_MS,
   type ReminderItem,
   type ReminderState,
 } from '@/features/reminders/reminder-items'
+import { useTreatmentPlans } from '@/features/treatment-plans/hooks'
 import { useNow } from '@/hooks/use-now'
 import { cn, fullName } from '@/lib/utils'
 
@@ -57,10 +60,14 @@ function PatientReminders({ patient }: { patient: Patient }) {
   // Refetched each minute: the reminder is shown once the server has sent
   // its own, which it marks on the dose.
   const doses = useQuery({
-    queryKey: queryKeys.medications.dosesFor(patient.pat_id, from, to),
-    queryFn: () => fetchDoses({ patientId: patient.pat_id, from, to }),
+    // Its own key: these rows also carry each dose's care plan (migration 60).
+    queryKey: [...queryKeys.medications.dosesFor(patient.pat_id, from, to), 'with-plan'],
+    queryFn: () => fetchDoses({ patientId: patient.pat_id, from, to, withPlan: true }),
     refetchInterval: 60_000,
   })
+  // Which care is still open: a discharged plan's doses and appointments are
+  // not reminded of (migration 60). Nothing is shown until that is known.
+  const plans = useTreatmentPlans(patient.pat_id)
   const appointments = useReminderAppointments(patient.pat_id)
   const doctor = useMyDoctor(patient.doc_id)
   const setDoseStatus = useSetDoseStatus(patient.pat_id)
@@ -68,13 +75,15 @@ function PatientReminders({ patient }: { patient: Patient }) {
   const doctorName = doctor.data
     ? `Dr. ${fullName(doctor.data.doc_first_name, doctor.data.doc_last_name)}`
     : null
-  const items: ReminderItem[] = [
-    ...doseReminders(doses.data ?? [], now, state.current),
-    ...appointmentReminders(appointments.data ?? [], now, state.current, {
-      role: 'patient',
-      doctorName,
-    }),
-  ]
+  const items: ReminderItem[] = plans.data
+    ? [
+        ...doseReminders(dosesOfOpenCare(doses.data ?? [], plans.data), now, state.current),
+        ...appointmentReminders(appointmentsOfOpenCare(appointments.data ?? [], plans.data), now, state.current, {
+          role: 'patient',
+          doctorName,
+        }),
+      ]
+    : []
 
   return (
     <Tray

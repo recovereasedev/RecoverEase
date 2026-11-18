@@ -5,12 +5,9 @@ import {
   CalendarCheck,
   CalendarClock,
   CheckCircle2,
-  ClipboardCheck,
   CircleDashed,
-  CircleSlash,
   DoorOpen,
   Clock,
-  FileText,
   Flag,
   MinusCircle,
   Pause,
@@ -112,29 +109,16 @@ export const rescheduleRequestStatus: Record<
   },
 }
 
-export const treatmentPlanStatus: Record<
-  Enums<'treatment_plan_status'>,
-  StatusDescriptor
-> = {
-  draft: {
-    label: 'Draft',
-    icon: FileText,
-    tone: 'neutral',
-    description: 'Not yet shared with the patient.',
-  },
+/**
+ * A care case is Active or Discharged (migration 60); the doctor alone moves
+ * it between the two.
+ */
+export const treatmentPlanStatus: Record<'active' | 'discharged', StatusDescriptor> = {
   active: {
     label: 'Active',
     icon: Flag,
     tone: 'info',
     description: 'Currently in progress.',
-  },
-  // Migration 57: flagged by the daily check, still open care until the
-  // doctor discharges it.
-  ready_for_discharge: {
-    label: 'Ready for discharge',
-    icon: ClipboardCheck,
-    tone: 'warning',
-    description: 'Ready for the doctor to review and discharge.',
   },
   discharged: {
     label: 'Discharged',
@@ -142,18 +126,14 @@ export const treatmentPlanStatus: Record<
     tone: 'neutral',
     description: 'The doctor ended this care plan.',
   },
-  completed: {
-    label: 'Completed',
-    icon: CheckCircle2,
-    tone: 'success',
-    description: 'The programme has finished.',
-  },
-  cancelled: {
-    label: 'Cancelled',
-    icon: CircleSlash,
-    tone: 'neutral',
-    description: 'This plan was stopped before completion.',
-  },
+}
+
+/**
+ * The descriptor for a plan's stored status. The database type still lists
+ * labels the database now refuses; anything not discharged is open care.
+ */
+export function treatmentPlanStatusOf(status: Enums<'treatment_plan_status'>): StatusDescriptor {
+  return treatmentPlanStatus[status === 'discharged' ? 'discharged' : 'active']
 }
 
 export const treatmentGoalStatus: Record<

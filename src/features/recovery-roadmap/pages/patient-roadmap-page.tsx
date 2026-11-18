@@ -70,7 +70,7 @@ export function PatientRoadmapPage() {
   const patientId = user.profile.kind === 'patient' ? user.profile.patient.pat_id : ''
 
   const plansQuery = useTreatmentPlans(patientId)
-  // Open care: active plans, and plans ready for discharge (migration 57).
+  // Open care: active plans (migration 60).
   const activePlans = (plansQuery.data ?? []).filter((plan) => isOpenCare(plan.treatment_plan_status))
   const ended = plansQuery.data ? careHasEnded(plansQuery.data) : false
   const roadmapQuery = useRoadmap(patientId, plansQuery.data ? activePlans : undefined)

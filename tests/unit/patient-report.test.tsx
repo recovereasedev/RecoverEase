@@ -137,6 +137,7 @@ function recordFor(overrides: Partial<PatientReportData> = {}): PatientReportDat
         appointment_created_at: '2026-09-01T00:00:00Z',
         appointment_reminder_sent_at: null,
         appointment_follow_up_of_plan_id: null,
+      treatment_plan_id: null,
       },
       {
         appointment_id: 'a-2',
@@ -147,6 +148,7 @@ function recordFor(overrides: Partial<PatientReportData> = {}): PatientReportDat
         appointment_created_at: '2026-07-01T00:00:00Z',
         appointment_reminder_sent_at: null,
         appointment_follow_up_of_plan_id: null,
+      treatment_plan_id: null,
       },
     ],
     weekAdherence: { taken: 5, missed: 1, skipped: 0, pending: 2, resolved: 6, rate: 83 },

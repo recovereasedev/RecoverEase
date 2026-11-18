@@ -22,6 +22,11 @@ begin
   if to_regprocedure('public.doctor_discharge_treatment_plan(uuid, text)') is null then
     raise exception 'Migration 57 is not applied. Nothing was changed.';
   end if;
+  -- Migration 60's reminder functions read the lifecycle history and the
+  -- follow-up mark this drops.
+  if to_regprocedure('app_private.patient_care_is_open(uuid)') is not null then
+    raise exception 'Roll back migration 60 first: its reminder functions read what this drops. Nothing was changed.';
+  end if;
   if exists (select 1 from public.treatment_plan
               where treatment_plan_status::text in ('ready_for_discharge', 'discharged')) then
     raise exception 'Some plans are discharged or ready for discharge; reopen or settle them first. Nothing was changed.';

@@ -3,7 +3,11 @@ import type { Enums, Tables, TablesUpdate } from '@/types/database.types'
 
 export type TreatmentPlan = Tables<'treatment_plan'>
 export type TreatmentGoal = Tables<'treatment_goal'>
-export type TreatmentPlanStatus = Enums<'treatment_plan_status'>
+/**
+ * A care case is Active or Discharged (migration 60). The database type still
+ * lists older labels - PostgreSQL cannot drop an enum label - but refuses them.
+ */
+export type TreatmentPlanStatus = Extract<Enums<'treatment_plan_status'>, 'active' | 'discharged'>
 export type TreatmentGoalStatus = Enums<'treatment_goal_status'>
 
 export type PlanWithGoals = TreatmentPlan & {
@@ -155,7 +159,7 @@ export function summariseGoals(goals: TreatmentGoal[]): {
 }
 
 // ---------------------------------------------------------------------------
-// The case lifecycle (migration 57)
+// The case lifecycle (migrations 57 and 60)
 // ---------------------------------------------------------------------------
 
 export type ClosureReason = NonNullable<TreatmentPlan['treatment_plan_closure_reason']>
@@ -173,23 +177,55 @@ export function closureReasonLabel(reason: ClosureReason | null): string | null 
   return CLOSURE_REASONS.find((item) => item.value === reason)?.label ?? null
 }
 
-/**
- * Care still going on: an active plan, or one the system has flagged ready
- * for discharge, which stays open until the doctor discharges it.
- */
-export function isOpenCare(status: TreatmentPlanStatus): boolean {
-  return status === 'active' || status === 'ready_for_discharge'
+/** Care still going on: an active plan. Only the doctor ends it, by discharging. */
+export function isOpenCare(status: Enums<'treatment_plan_status'>): boolean {
+  return status === 'active'
 }
 
 /**
  * The patient's care has ended: a plan was discharged and none is open. The
- * database applies the same rule to new daily check-ins (migration 57).
+ * database applies the same rule to new daily check-ins (migration 57) and
+ * to reminders (migration 60).
  */
 export function careHasEnded(plans: readonly Pick<TreatmentPlan, 'treatment_plan_status'>[]): boolean {
   return (
     plans.some((plan) => plan.treatment_plan_status === 'discharged') &&
     !plans.some((plan) => isOpenCare(plan.treatment_plan_status))
   )
+}
+
+/**
+ * Whether reminders for something on this care plan may be shown - the rule
+ * the database applies before it sends one (migration 60). It fails closed:
+ * - on a plan: only while that plan is one of this patient's and active;
+ * - on no plan: only while the patient has no plan at all. Once the patient
+ *   has any plan, nothing says which one it belongs to, so it is silent until
+ *   it is placed on one by hand.
+ * A follow-up request is the caller's exception (see reminder-items.ts).
+ */
+export function remindersAllowedFor(
+  planId: string | null | undefined,
+  plans: readonly Pick<TreatmentPlan, 'treatment_plan_id' | 'treatment_plan_status'>[],
+): boolean {
+  if (!planId) return plans.length === 0
+  const plan = plans.find((candidate) => candidate.treatment_plan_id === planId)
+  return plan !== undefined && isOpenCare(plan.treatment_plan_status)
+}
+
+/**
+ * Which care plan a new prescription or appointment goes on (migration 60):
+ * the one chosen, if it is active; else the patient's only active plan. With
+ * several active plans and none chosen, the person must choose - the
+ * database refuses to guess. With none, it goes on no plan.
+ */
+export function chooseCarePlan(
+  plans: readonly Pick<TreatmentPlan, 'treatment_plan_id' | 'treatment_plan_status'>[],
+  chosen: string,
+): { planId: string | null; needsChoice: boolean } {
+  const active = plans.filter((plan) => isOpenCare(plan.treatment_plan_status))
+  if (chosen && active.some((plan) => plan.treatment_plan_id === chosen)) return { planId: chosen, needsChoice: false }
+  if (active.length === 1) return { planId: active[0]!.treatment_plan_id, needsChoice: false }
+  return { planId: null, needsChoice: active.length > 1 }
 }
 
 /**

@@ -415,6 +415,8 @@ describe('issuing a prescription and its schedule (modules 4.3 and 4.1)', () => 
 
     expect(created.prescription.mutate.mock.calls[0][0]).toEqual({
       notes: 'Take with food.',
+      // No active plan in this test's record: the database decides (migration 60).
+      planId: null,
     })
     expect(created.schedule.mutate.mock.calls[0][0]).toEqual({
       prescriptionId: 'presc-new',

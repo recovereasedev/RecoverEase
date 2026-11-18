@@ -32,6 +32,12 @@ begin
   ) then
     raise exception 'Migration 59 is not applied. Nothing was changed.';
   end if;
+
+  -- Migration 60 added "the patient's care is open" to the reminder functions
+  -- this restores. Restoring them over it would remind discharged patients.
+  if to_regprocedure('app_private.patient_care_is_open(uuid)') is not null then
+    raise exception 'Roll back migration 60 first: it replaced the reminder functions this restores. Nothing was changed.';
+  end if;
 end
 $$;
 

@@ -53,6 +53,7 @@ function appointment(overrides: Record<string, unknown> = {}) {
     appointment_created_at: at(-600),
     appointment_reminder_sent_at: null,
     appointment_follow_up_of_plan_id: null,
+    treatment_plan_id: null,
     patient: { pat_id: 'p-alice', pat_first_name: 'Alice', pat_last_name: 'Santos' },
     ...overrides,
   } as never
@@ -158,6 +159,8 @@ const hooks = vi.hoisted(() => ({
   appointments: [] as unknown[],
   mutate: vi.fn(),
   saveFailed: false,
+  /** The patient's care plans (migration 60); 'pending' never answers. */
+  plans: [] as unknown[] | 'pending',
 }))
 
 vi.mock('@/features/auth/auth-context', () => ({ useCurrentUser: () => hooks.user }))
@@ -176,6 +179,10 @@ vi.mock('@/features/medications/hooks', () => ({
 vi.mock('@/features/appointments/api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/features/appointments/api')>()),
   fetchAppointments: async () => hooks.appointments,
+}))
+vi.mock('@/features/treatment-plans/api', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/features/treatment-plans/api')>()),
+  fetchTreatmentPlans: () => (hooks.plans === 'pending' ? new Promise(() => {}) : Promise.resolve(hooks.plans)),
 }))
 vi.mock('@/features/patients/hooks', () => ({
   useMyDoctor: () => ({ data: { doc_first_name: 'Alan', doc_last_name: 'Cruz' } }),
@@ -223,6 +230,7 @@ beforeEach(() => {
   hooks.appointments = []
   hooks.mutate.mockReset()
   hooks.saveFailed = false
+  hooks.plans = []
 })
 
 afterEach(() => {
@@ -475,6 +483,100 @@ describe('the reminder card', () => {
  * when its text changes, so these record each change rather than only the
  * text it ends with.
  */
+describe('the reminder card and the patient’s care plans (migration 60)', () => {
+  const DISCHARGED = { treatment_plan_id: 'plan-a', treatment_plan_status: 'discharged' }
+  const ACTIVE = { treatment_plan_id: 'plan-b', treatment_plan_status: 'active' }
+  const onPlan = (id: string, name: string, planId: string | null) =>
+    dose({
+      medication_log_id: id,
+      medication_schedule: {
+        medication_schedule_id: `ms-${id}`,
+        medication_schedule_name: name,
+        medication_schedule_dosage: '500 mg',
+        prescription: { pat_id: 'p-alice', treatment_plan_id: planId },
+      },
+    })
+
+  it('hides a dose of a discharged plan, and shows one of an active plan', async () => {
+    hooks.plans = [DISCHARGED, ACTIVE]
+    hooks.doses = [onPlan('log-a', 'Amoxicillin', 'plan-a'), onPlan('log-b', 'Ibuprofen', 'plan-b')]
+    renderTray()
+    await settle()
+    const card = within(tray()!)
+    expect(card.getByText('Ibuprofen 500 mg at 08:00')).toBeInTheDocument()
+    expect(card.queryByText(/Amoxicillin/)).toBeNull()
+  })
+
+  it('hides an appointment of a discharged plan, and shows one of an active plan', async () => {
+    hooks.plans = [DISCHARGED, ACTIVE]
+    hooks.doses = []
+    hooks.appointments = [
+      appointment({ appointment_id: 'ap-a', treatment_plan_id: 'plan-a', appointment_date: at(6) }),
+      appointment({ appointment_id: 'ap-b', treatment_plan_id: 'plan-b', appointment_date: at(8) }),
+    ]
+    renderTray()
+    await settle()
+    const card = within(tray()!)
+    expect(card.getByText('Appointment in 8 minutes')).toBeInTheDocument()
+    expect(card.queryByText('Appointment in 6 minutes')).toBeNull()
+  })
+
+  it('still shows a follow-up request once every plan is discharged, and nothing of the care that ended', async () => {
+    hooks.plans = [DISCHARGED]
+    hooks.doses = [onPlan('log-a', 'Amoxicillin', 'plan-a'), onPlan('log-x', 'Legacy', null)]
+    hooks.appointments = [
+      appointment({ appointment_id: 'ap-old', treatment_plan_id: 'plan-a', appointment_date: at(6) }),
+      appointment({
+        appointment_id: 'ap-follow-up',
+        treatment_plan_id: null,
+        appointment_follow_up_of_plan_id: 'plan-a',
+        appointment_date: at(8),
+      }),
+    ]
+    renderTray()
+    await settle()
+    const card = within(tray()!)
+    expect(card.getByText('Appointment in 8 minutes')).toBeInTheDocument()
+    expect(card.queryByText('Appointment in 6 minutes')).toBeNull()
+    expect(card.queryByText(/Medication due/)).toBeNull()
+  })
+
+  it('hides a dose and an appointment on no plan while another plan is active (fails closed)', async () => {
+    hooks.plans = [DISCHARGED, ACTIVE]
+    hooks.doses = [onPlan('log-x', 'Legacy', null), onPlan('log-b', 'Ibuprofen', 'plan-b')]
+    hooks.appointments = [
+      appointment({ appointment_id: 'ap-legacy', treatment_plan_id: null, appointment_date: at(6) }),
+      appointment({ appointment_id: 'ap-b', treatment_plan_id: 'plan-b', appointment_date: at(8) }),
+    ]
+    renderTray()
+    await settle()
+    const card = within(tray()!)
+    expect(card.getByText('Ibuprofen 500 mg at 08:00')).toBeInTheDocument()
+    expect(card.queryByText(/Legacy/)).toBeNull()
+    expect(card.getByText('Appointment in 8 minutes')).toBeInTheDocument()
+    expect(card.queryByText('Appointment in 6 minutes')).toBeNull()
+  })
+
+  it('still shows a dose and an appointment on no plan for a patient with no care plan at all', async () => {
+    hooks.plans = []
+    hooks.doses = [onPlan('log-x', 'Legacy', null)]
+    hooks.appointments = [appointment({ appointment_id: 'ap-legacy', treatment_plan_id: null, appointment_date: at(6) })]
+    renderTray()
+    await settle()
+    const card = within(tray()!)
+    expect(card.getByText('Legacy 500 mg at 08:00')).toBeInTheDocument()
+    expect(card.getByText('Appointment in 6 minutes')).toBeInTheDocument()
+  })
+
+  it('shows nothing until it knows the patient’s plans', async () => {
+    hooks.plans = 'pending'
+    hooks.appointments = [appointment()]
+    renderTray()
+    await settle()
+    expect(tray()).toBeNull()
+  })
+})
+
 describe('reading reminders out', () => {
   const PARACETAMOL = {
     medication_log_id: 'log-2',

@@ -96,7 +96,7 @@ import {
 import {
   patientStatus,
   treatmentGoalStatus,
-  treatmentPlanStatus,
+  treatmentPlanStatusOf,
 } from '@/lib/status'
 import { cn, fullName } from '@/lib/utils'
 
@@ -601,9 +601,7 @@ export function DoctorPatientDetailPage() {
                                 <div className="flex items-center gap-2">
                                   <StatusBadge
                                     status={
-                                      treatmentPlanStatus[
-                                        plan.treatment_plan_status
-                                      ]
+                                      treatmentPlanStatusOf(plan.treatment_plan_status)
                                     }
                                   />
                                   <Button

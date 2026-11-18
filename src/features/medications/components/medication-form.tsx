@@ -18,6 +18,7 @@ import {
   useCreateMedicationSchedule,
   useCreatePrescription,
 } from '@/features/medications/hooks'
+import { CarePlanField, type CarePlanChoice } from '@/features/treatment-plans/components/care-plan-field'
 import { toDateKey } from '@/lib/format'
 
 /**
@@ -67,8 +68,11 @@ export function MedicationForm({
   const [startTime, setStartTime] = useState('08:00')
   const [startDate, setStartDate] = useState(toDateKey())
   const [endDate, setEndDate] = useState('')
+  // The care plan a new prescription belongs to (migration 60).
+  const [carePlan, setCarePlan] = useState('')
+  const [planChoice, setPlanChoice] = useState<CarePlanChoice>({ planId: null, needsChoice: false })
   const [errors, setErrors] = useState<
-    Partial<Record<'name' | 'dosage' | 'instructions' | DoseTimeField | 'startDate' | 'endDate', string>>
+    Partial<Record<'name' | 'dosage' | 'instructions' | DoseTimeField | 'startDate' | 'endDate' | 'plan', string>>
   >({})
 
   const inFlight = useRef(false)
@@ -109,6 +113,9 @@ export function MedicationForm({
     if (endDate && startDate && endDate < startDate) {
       next.endDate = 'The end date cannot be before the start date.'
     }
+    if (!prescriptionId && planChoice.needsChoice) {
+      next.plan = 'Choose which care plan this prescription is for.'
+    }
     setErrors(next)
     if (Object.keys(next).length > 0 || !doseTimes.ok) return
 
@@ -142,7 +149,7 @@ export function MedicationForm({
     }
 
     createPrescription.mutate(
-      { notes: notes.trim() || null },
+      { notes: notes.trim() || null, planId: planChoice.planId },
       {
         onSuccess: (prescription) =>
           writeSchedule(prescription.prescription_id),
@@ -173,6 +180,20 @@ export function MedicationForm({
             placeholder="Take with food. Stop if any rash appears."
           />
         </Field>
+      )}
+
+      {prescriptionId ? null : (
+        <CarePlanField
+          patientId={patientId}
+          value={carePlan}
+          onChange={(planId) => {
+            setCarePlan(planId)
+            setErrors(({ plan: _cleared, ...rest }) => rest)
+          }}
+          onResolved={setPlanChoice}
+          error={errors.plan}
+          endedNotice="This patient’s care has ended, so this medicine is on no care plan and no reminders are sent for it."
+        />
       )}
 
       <div className="grid gap-4 sm:grid-cols-2">

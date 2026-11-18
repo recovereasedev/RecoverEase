@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { DoseWithSchedule } from '@/features/medications/api'
@@ -17,10 +17,15 @@ import { captureDownloads } from './support/capture-download'
  * calendar app reads - and the patient's section that makes it.
  */
 
-const api = vi.hoisted(() => ({ doses: vi.fn() }))
+const api = vi.hoisted(() => ({ doses: vi.fn(), plans: vi.fn() }))
 vi.mock('@/features/medications/api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/features/medications/api')>()),
   fetchAllDoses: api.doses,
+}))
+
+vi.mock('@/features/treatment-plans/api', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/features/treatment-plans/api')>()),
+  fetchTreatmentPlans: api.plans,
 }))
 
 const { PhoneReminders } = await import('@/features/medications/components/phone-reminders')
@@ -246,6 +251,7 @@ describe('reminders on the patient’s phone', () => {
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(NOW)
     api.doses.mockReset().mockResolvedValue(DOSES)
+    api.plans.mockReset().mockResolvedValue([])
   })
 
   afterEach(() => {
@@ -331,6 +337,89 @@ describe('reminders on the patient’s phone', () => {
       expect(capture.files).toHaveLength(0)
     } finally {
       capture.release()
+    }
+  })
+
+  it('saves no file once the doctor has discharged the patient (migration 60)', async () => {
+    api.doses.mockResolvedValue(DOSES)
+    api.plans.mockResolvedValue([{ treatment_plan_status: 'discharged' }])
+    const capture = captureDownloads()
+    try {
+      render(<PhoneReminders patient={ALICE} />)
+      fireEvent.click(screen.getByRole('button', { name: 'Download reminders (.ics)' }))
+      expect(
+        await screen.findByText('Your care plan has ended. Book a follow-up if you need more care.'),
+      ).toBeInTheDocument()
+      expect(capture.files).toHaveLength(0)
+    } finally {
+      capture.release()
+    }
+  })
+
+  it('leaves out a discharged plan’s medicines and keeps an active plan’s', async () => {
+    const onPlan = (id: string, name: string, planId: string) => {
+      const row = doseWithSetting(id, '2026-11-04T12:00:00Z', name, true) as unknown as {
+        medication_schedule: Record<string, unknown>
+      }
+      row.medication_schedule['prescription'] = { pat_id: 'p-alice', treatment_plan_id: planId }
+      return row
+    }
+    api.doses.mockResolvedValue([onPlan('a', 'Amoxicillin', 'plan-a'), onPlan('b', 'Ibuprofen', 'plan-b')])
+    api.plans.mockResolvedValue([
+      { treatment_plan_id: 'plan-a', treatment_plan_status: 'discharged' },
+      { treatment_plan_id: 'plan-b', treatment_plan_status: 'active' },
+    ])
+    const capture = captureDownloads()
+    try {
+      render(<PhoneReminders patient={ALICE} />)
+      fireEvent.click(screen.getByRole('button', { name: 'Download reminders (.ics)' }))
+      expect(await screen.findByText(/care plan your doctor has ended, or not yet placed on a care plan, were left out/)).toBeInTheDocument()
+      const text = new TextDecoder().decode(await capture.files[0]!.bytes())
+      expect(text).toContain('Ibuprofen')
+      expect(text).not.toContain('Amoxicillin')
+    } finally {
+      capture.release()
+    }
+  })
+
+  it('leaves out a medicine on no care plan once the patient has a plan, and keeps it when they have none', async () => {
+    const unplaced = doseWithSetting('u', '2026-11-04T12:00:00Z', 'Amoxicillin', true) as unknown as {
+      medication_schedule: Record<string, unknown>
+    }
+    unplaced.medication_schedule['prescription'] = { pat_id: 'p-alice', treatment_plan_id: null }
+    const placed = doseWithSetting('b', '2026-11-04T12:00:00Z', 'Ibuprofen', true) as unknown as {
+      medication_schedule: Record<string, unknown>
+    }
+    placed.medication_schedule['prescription'] = { pat_id: 'p-alice', treatment_plan_id: 'plan-b' }
+    api.doses.mockResolvedValue([unplaced, placed])
+    api.plans.mockResolvedValue([
+      { treatment_plan_id: 'plan-a', treatment_plan_status: 'discharged' },
+      { treatment_plan_id: 'plan-b', treatment_plan_status: 'active' },
+    ])
+    const capture = captureDownloads()
+    try {
+      render(<PhoneReminders patient={ALICE} />)
+      fireEvent.click(screen.getByRole('button', { name: 'Download reminders (.ics)' }))
+      expect(await screen.findByText(/not yet placed on a care plan, were left out/)).toBeInTheDocument()
+      const text = new TextDecoder().decode(await capture.files[0]!.bytes())
+      expect(text).toContain('Ibuprofen')
+      expect(text).not.toContain('Amoxicillin')
+    } finally {
+      capture.release()
+    }
+
+    // A patient with no care plan at all keeps reminders for it, as before 60.
+    api.doses.mockResolvedValue([unplaced])
+    api.plans.mockResolvedValue([])
+    const again = captureDownloads()
+    try {
+      cleanup()
+      render(<PhoneReminders patient={ALICE} />)
+      fireEvent.click(screen.getByRole('button', { name: 'Download reminders (.ics)' }))
+      await waitFor(() => expect(again.files).toHaveLength(1))
+      expect(new TextDecoder().decode(await again.files[0]!.bytes())).toContain('Amoxicillin')
+    } finally {
+      again.release()
     }
   })
 

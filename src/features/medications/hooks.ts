@@ -59,8 +59,8 @@ export function useCreatePrescription(patientId: string, doctorId: string) {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (input: { notes: string | null }) =>
-      createPrescription({ patientId, doctorId, notes: input.notes }),
+    mutationFn: (input: { notes: string | null; planId?: string | null }) =>
+      createPrescription({ patientId, doctorId, notes: input.notes, planId: input.planId ?? null }),
     onSuccess: () => {
       void queryClient.invalidateQueries({
         queryKey: queryKeys.prescriptions.forPatient(patientId),
