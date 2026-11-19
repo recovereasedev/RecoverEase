@@ -15,13 +15,11 @@ import { useMyDoctor } from '@/features/patients/hooks'
 import {
   byTargetDate,
   careHasEnded,
-  isOpenCare,
   summariseGoals,
   type TreatmentGoalStatus,
 } from '@/features/treatment-plans/api'
-import { GoalProgressActions } from '@/features/treatment-plans/components/goal-progress-actions'
-import { useTreatmentPlans } from '@/features/treatment-plans/hooks'
 import { CareEndedNotice } from '@/features/treatment-plans/components/care-ended-notice'
+import { useTreatmentPlans } from '@/features/treatment-plans/hooks'
 import { useDocumentTitle } from '@/hooks/use-document-title'
 import { useDocumentFile } from '@/lib/documents/use-document-file'
 import { formatDate } from '@/lib/format'
@@ -151,7 +149,7 @@ export function PatientTreatmentPage() {
         </div>
       ) : null}
       <PrintOutcomeNotice outcome={planFile.printOutcome} what="treatment plan" className="mb-6" />
-      {/* Migration 57: the doctor discharged the patient and no care is open.
+      {/* Migration 61: the doctor discharged the patient and no care is open.
           The plans below stay, as history. */}
       {plansQuery.data && careHasEnded(plansQuery.data) ? (
         <div className="mb-6 print:hidden">
@@ -230,7 +228,7 @@ export function PatientTreatmentPage() {
                           </p>
                           {/* Restates the count above it. The percentage
                               comes from `summariseGoals` over goals the
-                              patient has marked achieved - nothing here is
+                              doctor has already marked - nothing here is
                               inferred. */}
                           <ProgressBar
                             className="mt-2"
@@ -306,12 +304,6 @@ export function PatientTreatmentPage() {
                                     </span>
                                     <StatusBadge status={status} />
                                   </div>
-                                  {isOpenCare(plan.treatment_plan_status) ? (
-                                    <GoalProgressActions
-                                      patientId={patientId}
-                                      goal={goal}
-                                    />
-                                  ) : null}
                                 </div>
                               </li>
                             )

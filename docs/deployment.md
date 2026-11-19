@@ -443,6 +443,16 @@ To roll back 31, go the other way, newest first. Each later migration is
 rolled back with its own down-script, applied as a new migration, and where
 deployed code depends on it, that code goes back first:
 
+> **Discharge-only release.** On this branch, migrations 54-60 are not in
+> `supabase/migrations` (they are in `supabase/pending` and
+> `supabase/superseded`), so steps 60 down to 54 below do not apply to a
+> database built from it. The first step is **61**: the website from before
+> "Discharge a care plan" first (it calls the two doctor functions), then the
+> doctor reopens every discharged plan, then
+> `supabase/rollbacks/20260902100061_discharge_care_plan.down.sql` (see
+> "Discharge and reopen a care plan (migration 61)" below). Then continue
+> with 53.
+
 1. **60**, where it is applied: the website from before "A care case is
    Active or Discharged" first (it no longer knows "ready for discharge"),
    then
@@ -1833,6 +1843,12 @@ worker's handlers in a real browser (headless Chromium refuses notification
 permission to service workers); and truly simultaneous sessions (the test
 database has one connection, so overlap is a transaction left open).
 
+> **Not in the discharge-only release.** Migrations 54, 55, 56, 58 and 59
+> are held in `supabase/pending`; 57 and 60 are retired to
+> `supabase/superseded`, replaced by migration 61. The sections from here to
+> "Doctor-controlled medication reminders (migration 59)" describe them for
+> when they are re-landed, renumbered after 61.
+
 ### Doctor record ID and registration date (migration 54)
 
 > **NOT APPLIED to production.** Applying it needs Kean's separate approval
@@ -2422,6 +2438,123 @@ patient's notice, no control, checklist and mark-as-taken unchanged);
 medicine on the record, off the paper); and 59 rolled back first in
 `tests/db/super-admin-rollback.test.ts` and
 `tests/db/medication-dose-identity.test.ts`.
+
+### Discharge and reopen a care plan (migration 61)
+
+> **NOT APPLIED to production.** Applying it needs Kean's separate approval,
+> a manual backup (the Free plan has no backups or point-in-time recovery)
+> and a quiet window, like every migration here.
+
+A standalone release on top of migration 53: it needs nothing from 54-60.
+A care plan is Active or Discharged. The patient's assigned, active doctor
+discharges it (with a closure reason) and reopens it; nothing else moves a
+plan into or out of a discharge (`docs/database.md`, section 22).
+
+- **What it changes.** Enum value `discharged` on `treatment_plan_status`;
+  check `treatment_plan_status_valid` (only `active` or `discharged`, for
+  every writer); columns `treatment_plan_closure_reason`,
+  `treatment_plan_discharged_at` with checks
+  `treatment_plan_closure_reason_valid` and
+  `treatment_plan_discharge_complete`; table
+  `treatment_plan_lifecycle_event` (RLS, select only, append-only); triggers
+  `treatment_plan_record_lifecycle`, `treatment_plan_guard_lifecycle`,
+  `recovery_log_guard_care_ended`, `appointment_mark_follow_up`; column
+  `appointment.appointment_follow_up_of_plan_id` with a partial index;
+  unique key `treatment_plan_id_pat_id_key` on `treatment_plan
+  (treatment_plan_id, pat_id)` and foreign key
+  `appointment_follow_up_same_patient_fkey` on `appointment
+  (appointment_follow_up_of_plan_id, pat_id)` referencing it, `on delete
+  set null (appointment_follow_up_of_plan_id)` - so a follow-up mark always
+  names a plan of the appointment's own patient, for every writer
+  including the service role (PostgreSQL 15+ for the column list;
+  production runs 17.6);
+  functions `doctor_discharge_treatment_plan(uuid, text)` and
+  `doctor_reopen_treatment_plan(uuid)` for `authenticated`. No job, no
+  cron schedule, no notification, and the migration writes no row.
+- **What it leaves alone.** Every reminder function and job, as 53 left
+  them; migration 45's activity functions (they already refuse a plan that
+  is not `active`, so a discharged plan's activities are closed); goals (at
+  53 only the doctor writes them).
+- **Reminders after a discharge - a known limitation.** Schema 53 does not
+  record which care plan a prescription or appointment belongs to, so
+  nothing can tell a discharged plan's medicine from a long-term one.
+  Medication, appointment and phone reminders are therefore **not** changed
+  by a discharge, so a long-term medicine is never silenced by mistake. The
+  discharge dialog tells the doctor so; at discharge the doctor ends any
+  medicine that should stop (End medicine, migration 23) and cancels any
+  appointment no longer needed. Per-plan links and reminder gating come
+  later, with migration 59 re-landed.
+- **Refuses** while any plan is `draft`, `completed` or `cancelled` (no rule
+  says what those become). Production on 2026-11-19: 4 plans, all `active`.
+- **Enum value.** `ALTER TYPE ... ADD VALUE` cannot be used in the
+  transaction that adds it; the file compares `discharged` only inside
+  plpgsql bodies or as text, so it applies as one file in one transaction.
+- **Order.** Migration first, then the website: the website calls the two
+  doctor functions and reads the new columns. The website from before
+  (9f2d9bd, live since 2026-11-19) keeps working on 53 + 61 while no plan
+  is discharged.
+- **Before applying (read-only).**
+  `select treatment_plan_status::text, count(*) from public.treatment_plan group by 1;`
+  only `active`;
+  `select to_regclass('public.treatment_plan_lifecycle_event'), to_regprocedure('public.doctor_discharge_treatment_plan(uuid, text)');`
+  both null; latest history entry `20261112050314 web_push_notifications`.
+- **Locks.** `treatment_plan`, `recovery_log` and `appointment` are altered
+  briefly; `set lock_timeout = '3s'` first, `reset lock_timeout` last. Use a
+  quiet window clear of the jobs at :00, :05 and :10 and the quarter-hours.
+- **Apply.** With approval, on its own: the file's text, unchanged, with its
+  history row (name `discharge_care_plan`) in the same transaction. Never
+  `supabase db push` (it would also run the held migration 34). MD5 at the
+  time of writing `c68f54eaf261a1b1e3eff7aa6df875eb` (20,963 bytes) -
+  recompute from the file being applied.
+- **Verify, read-only.** One history entry matching the file's MD5; the
+  enum lists `draft, active, discharged, completed, cancelled`; the four
+  triggers exist on their tables; the three checks exist on
+  `treatment_plan`, plus `treatment_plan_id_pat_id_key` (unique) on
+  `treatment_plan` and `appointment_follow_up_same_patient_fkey` on
+  `appointment`
+  (`select conname, pg_get_constraintdef(oid) from pg_constraint where conname in ('treatment_plan_id_pat_id_key', 'appointment_follow_up_same_patient_fkey');`);
+  `has_function_privilege('anon', 'public.doctor_discharge_treatment_plan(uuid, text)', 'execute')`
+  is false and for `authenticated` true (same for reopen);
+  `treatment_plan_lifecycle_event` has RLS on, one select policy and no
+  insert/update/delete grant to `anon` or `authenticated`; every plan still
+  `active` with null reason and time; no lifecycle row; the six cron jobs
+  unchanged; `lock_timeout` back to `0`.
+- **Smoke test** (Kean signs in; `@smoke.invalid` accounts only): discharge
+  with a reason gives one lifecycle row (source `doctor`); the patient's
+  check-in is refused with "Your care plan has ended..."; a booking is
+  marked as a follow-up request; reopen gives a second lifecycle row; the
+  check-in is accepted again.
+- **Rollback.** Website first, then reopen every discharged plan, export
+  `treatment_plan_lifecycle_event` and the follow-up marks (queries in the
+  down-script's header), then
+  `supabase/rollbacks/20260902100061_discharge_care_plan.down.sql`
+  (MD5 `229e4b10a180847fb914407ac9084cbf`, 4,309 bytes). It drops the
+  same-patient foreign key and then the unique key before the column and
+  the enum rebuild. It refuses while any plan is
+  discharged, and returns the schema to exactly what 53 left (the enum is
+  rebuilt with migration 1's four values). Data loss: the lifecycle history
+  and follow-up marks only; no patient, plan, appointment or check-in row.
+
+Tests: `tests/db/discharge-care-plan.test.ts` (no object of 54-60 exists;
+the patient still has no goal write; discharge with every reason and
+refusals; every unauthorised caller including a deactivated assigned
+doctor and a visitor; a missing plan refused in the same words; discharge
+once, from active only; reopen and repeated cycles with history; every
+direct-write bypass and migration 1's other statuses refused; service
+changes recorded as `service`; append-only history and who may read it;
+account and records untouched; check-ins blocked only with no active plan;
+roadmap activities closed and reopened; the follow-up mark kept on the
+appointment's own patient - the service role cannot move a marked
+appointment or a marked plan to another patient, nor point a mark at
+another patient's plan, each patient's own plan is marked, and deleting
+a plan clears only the mark; follow-up booking by patient and
+doctor and its mark; most recent discharge chosen; appointment and
+medication reminders still sent; and against a 53 database: refusal on an
+old status, data unchanged, idempotent re-run, rollback refusal and round
+trip to exactly 53, re-apply); 61 rolled back first in
+`tests/db/super-admin-rollback.test.ts` and
+`tests/db/medication-dose-identity.test.ts`;
+`tests/unit/discharge-reopen.test.tsx`; `e2e/discharge-reopen.spec.ts`.
 
 ## Bundle budget
 

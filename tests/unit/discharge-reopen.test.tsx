@@ -5,10 +5,10 @@ import { MemoryRouter } from 'react-router-dom'
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 /**
- * Discharge and reopen (migrations 57 and 60), on screen: what counts as open care,
+ * Discharge and reopen (migration 61), on screen: what counts as open care,
  * the doctor's discharge dialog with its required reason and its reopen
  * confirmation, and what the patient sees once their care has ended. The
- * database's own refusals are tests/db/discharge-reopen.test.ts.
+ * database's own refusals are tests/db/discharge-care-plan.test.ts.
  */
 
 const api = vi.hoisted(() => ({
@@ -50,7 +50,6 @@ const plan = (status: string, extra: Record<string, unknown> = {}) => ({
   treatment_plan_status: status,
   treatment_plan_created_at: '2026-10-01T00:00:00Z',
   treatment_plan_updated_at: '2026-10-01T00:00:00Z',
-  treatment_plan_follow_up_appointment_id: null,
   treatment_plan_closure_reason: null,
   treatment_plan_discharged_at: null,
   treatment_goal: [],
@@ -133,6 +132,10 @@ describe('the doctor discharges and reopens', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Discharge patient' }))
     const dialog = await screen.findByRole('dialog', { name: 'Discharge patient' })
     expect(within(dialog).getByText(/ends this care plan/)).toBeInTheDocument()
+    // Migration 61 leaves reminders as they are, and the dialog says so
+    // rather than promising they stop.
+    expect(within(dialog).getByText(/reminders are not changed by a discharge/)).toBeInTheDocument()
+    expect(dialog).not.toHaveTextContent(/reminders for this care stop/)
 
     fireEvent.click(within(dialog).getByRole('button', { name: 'Confirm discharge' }))
     expect(await within(dialog).findByText('Choose a reason for the discharge.')).toBeInTheDocument()
@@ -165,6 +168,7 @@ describe('the doctor discharges and reopens', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Reopen case' }))
     const dialog = await screen.findByRole('dialog', { name: 'Reopen case' })
     expect(within(dialog).getByText(/discharge stays in the plan’s history/)).toBeInTheDocument()
+    expect(dialog).not.toHaveTextContent(/reminders resume/)
     // No daily check is left to flag the plan again.
     expect(dialog).not.toHaveTextContent(/daily check|ready for/i)
     expect(api.reopen).not.toHaveBeenCalled()

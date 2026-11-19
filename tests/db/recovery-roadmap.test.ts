@@ -20,9 +20,6 @@ import { seedFixture, type Fixture } from './helpers/fixtures'
 
 const MIGRATION_44 = '20260902100044'
 const MIGRATION_45 = '20260902100045'
-// Migration 56 replaces hand-made phases with generated ones; these suites
-// describe the roadmap as 45 made it, on the schema through 55.
-const MIGRATION_55 = '20260902100055'
 const MIGRATION_45_FILE = 'supabase/migrations/20260902100045_recovery_roadmap.sql'
 const ROLLBACK_45 = 'supabase/rollbacks/20260902100045_recovery_roadmap.down.sql'
 
@@ -101,7 +98,7 @@ describe('the recovery roadmap (migration 45)', () => {
     )
 
   beforeAll(async () => {
-    database = await createTestDatabase({ stopAfter: MIGRATION_55 })
+    database = await createTestDatabase()
     fx = await seedFixture(database)
     ;[{ today }] = await database.asService<{ today: string }>('select public.app_today()::text as today')
 
@@ -376,15 +373,10 @@ describe('the recovery roadmap (migration 45)', () => {
       await expect(asAlice(COMPLETE, [archived])).rejects.toThrow(/no longer on the roadmap/)
 
       const kept = (await activity(recovery_phase_id, 'Kept')).recovery_activity_id
-      await asDoctorA('update public.treatment_plan set treatment_plan_status = $2 where treatment_plan_id = $1', [
-        fx.alicePlanId,
-        'completed',
-      ])
+      // A plan is closed by discharging it (migration 61).
+      await asDoctorA('select * from public.doctor_discharge_treatment_plan($1, $2)', [fx.alicePlanId, 'completed_recovery'])
       await expect(asAlice(COMPLETE, [kept])).rejects.toThrow(/plan is active/)
-      await asDoctorA('update public.treatment_plan set treatment_plan_status = $2 where treatment_plan_id = $1', [
-        fx.alicePlanId,
-        'active',
-      ])
+      await asDoctorA('select * from public.doctor_reopen_treatment_plan($1)', [fx.alicePlanId])
 
       await asDoctorA('update public.recovery_phase set recovery_phase_archived_at = now() where recovery_phase_id = $1', [recovery_phase_id])
       await expect(asAlice(COMPLETE, [kept])).rejects.toThrow(/no longer on the roadmap/)
@@ -465,12 +457,9 @@ describe('the recovery roadmap (migration 45)', () => {
          values ($1, 'Climb one flight of stairs') returning treatment_goal_id as id`,
         [fx.alicePlanId],
       )
-      // From migration 55 the patient records progress, through their own
-      // function; a repeat is refused, so it writes no event.
-      const progress = 'select * from public.patient_update_treatment_goal_status($1, $2::public.treatment_goal_status)'
-      await asAlice(progress, [goalId, 'in_progress'])
-      await expect(asAlice(progress, [goalId, 'in_progress'])).rejects.toThrow(/already/)
-      await asAlice(progress, [goalId, 'achieved'])
+      for (const status of ['in_progress', 'in_progress', 'achieved']) {
+        await asDoctorA('update public.treatment_goal set treatment_goal_status = $2 where treatment_goal_id = $1', [goalId, status])
+      }
       // Linking to a phase is not a change of status.
       await asDoctorA('update public.treatment_goal set treatment_goal_description = $2 where treatment_goal_id = $1', [
         goalId,
@@ -487,8 +476,8 @@ describe('the recovery roadmap (migration 45)', () => {
       )
       expect(history).toEqual([
         { previous: null, next: 'pending', by: fx.doctorAUserId },
-        { previous: 'pending', next: 'in_progress', by: fx.aliceUserId },
-        { previous: 'in_progress', next: 'achieved', by: fx.aliceUserId },
+        { previous: 'pending', next: 'in_progress', by: fx.doctorAUserId },
+        { previous: 'in_progress', next: 'achieved', by: fx.doctorAUserId },
       ])
       await expect(
         asDoctorA(
@@ -581,7 +570,7 @@ describe('migration 45 under concurrent sessions', () => {
 
   beforeAll(async () => {
     const { pageinspect } = await import('@electric-sql/pglite/contrib/pageinspect')
-    database = await createTestDatabase({ extensions: { pageinspect }, preparedTransactions: true, stopAfter: MIGRATION_55 })
+    database = await createTestDatabase({ extensions: { pageinspect }, preparedTransactions: true })
     await database.db.exec('create extension pageinspect')
     fx = await seedFixture(database)
     ;[{ today }] = await database.asService<{ today: string }>('select public.app_today()::text as today')
@@ -866,9 +855,9 @@ describe('migration 45 under concurrent sessions', () => {
     const [first, second] = [await add(ADD_ACTIVITY, [phaseId, 'First', null]), await add(ADD_ACTIVITY, [phaseId, 'Second', null])]
 
     await database.asUser(fx.aliceUserId, COMPLETE, [first])
-    await database.asUser(fx.doctorAUserId, 'update public.treatment_plan set treatment_plan_status = $2 where treatment_plan_id = $1', [plan, 'completed'])
+    await database.asUser(fx.doctorAUserId, 'select * from public.doctor_discharge_treatment_plan($1, $2)', [plan, 'completed_recovery'])
     await expect(database.asUser(fx.aliceUserId, COMPLETE, [second])).rejects.toThrow(/plan is active/)
-    await database.asUser(fx.doctorAUserId, 'update public.treatment_plan set treatment_plan_status = $2 where treatment_plan_id = $1', [plan, 'active'])
+    await database.asUser(fx.doctorAUserId, 'select * from public.doctor_reopen_treatment_plan($1)', [plan])
     await add('update public.recovery_phase set recovery_phase_archived_at = now() where recovery_phase_id = $1 returning recovery_phase_id', [phaseId])
     await expect(database.asUser(fx.aliceUserId, REOPEN, [first])).rejects.toThrow(/no longer on the roadmap/)
 

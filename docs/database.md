@@ -380,6 +380,10 @@ with nothing to count there is none ("No activities yet"). Doses,
 appointments and check-ins are never counted
 (`src/features/recovery-roadmap/roadmap.ts`).
 
+> Sections 16-21 describe migrations 54-60, which are **not** in the
+> discharge-only release (`supabase/pending`, `supabase/superseded`).
+> Section 22 is what this release ships.
+
 ### 16. A doctor's record ID and registration date are fixed
 
 Module 11.2. A Clinic Admin edits a doctor's first and last name, licence
@@ -710,6 +714,41 @@ Covered by `tests/db/medication-reminder-controls.test.ts`,
 `tests/unit/medication-reminder-control.test.tsx`,
 `tests/unit/medication-reminder-control-api.test.ts` and
 `tests/unit/doctor-prescription-print.test.tsx`.
+
+### 22. A care plan is Active or Discharged (migration 61)
+
+Migration 61, on top of 53 alone. `treatmentPlan.treatmentPlanStatus` gains
+`discharged`, and `treatment_plan_status_valid` allows only `active` and
+`discharged` (the enum keeps migration 1's `draft`, `completed` and
+`cancelled`, which PostgreSQL cannot drop; the check refuses them).
+
+- `treatment_plan_closure_reason` (`completed_recovery`, `transferred`,
+  `withdrew`, `lost_to_follow_up`, `referred`) and
+  `treatment_plan_discharged_at` are set together exactly while a plan is
+  discharged, and cleared on reopening.
+- `treatment_plan_lifecycle_event` keeps every status change from 61 on:
+  previous and new status, reason, who (`treatment_plan_changed_by`, null
+  for the service), source (`doctor` or `service`) and when. Written only by
+  the trigger `treatment_plan_record_lifecycle`; readable by anyone who may
+  read the patient; nobody signed in may insert, change or delete.
+- `doctor_discharge_treatment_plan(plan, reason)` and
+  `doctor_reopen_treatment_plan(plan)` are the only session paths, for the
+  patient's assigned, active doctor; `treatment_plan_guard_lifecycle`
+  refuses every other session write into or out of `discharged` and of the
+  two columns.
+- `recovery_log_guard_care_ended`: no new or changed check-in while the
+  patient has a discharged plan and no active one.
+- `appointment.appointment_follow_up_of_plan_id`: set by the database on
+  booking while the patient's care has ended (their most recently
+  discharged plan); a session cannot set or change it. A foreign key on
+  `(appointment_follow_up_of_plan_id, pat_id)` referencing the unique
+  `treatment_plan (treatment_plan_id, pat_id)` keeps it on a plan of the
+  appointment's own patient for every writer (an appointment or a plan
+  cannot be moved to another patient while marked); deleting the plan
+  clears only the mark.
+- Unchanged: reminders (no per-plan link exists at 53; see
+  `docs/deployment.md`), roadmap activities (45 already requires an active
+  plan), goals (doctor-only at 53), and every patient, account and record.
 
 ## Assumptions where the ERD was silent
 

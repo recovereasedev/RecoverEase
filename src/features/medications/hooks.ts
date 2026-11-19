@@ -9,8 +9,6 @@ import {
   fetchDoses,
   fetchSchedules,
   setDoseStatus,
-  setMedicationReminders,
-  updateMedicationInstructions,
   type MedicationLogStatus,
 } from './api'
 import { fetchConflicts, resolveConflict, type DoctorResolution } from './conflicts'
@@ -59,8 +57,8 @@ export function useCreatePrescription(patientId: string, doctorId: string) {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (input: { notes: string | null; planId?: string | null }) =>
-      createPrescription({ patientId, doctorId, notes: input.notes, planId: input.planId ?? null }),
+    mutationFn: (input: { notes: string | null }) =>
+      createPrescription({ patientId, doctorId, notes: input.notes }),
     onSuccess: () => {
       void queryClient.invalidateQueries({
         queryKey: queryKeys.prescriptions.forPatient(patientId),
@@ -102,38 +100,6 @@ export function useCreateMedicationSchedule(patientId: string) {
         queryKey: queryKeys.prescriptions.forPatient(patientId),
       })
     },
-  })
-}
-
-/** The doctor's change to one medicine's instructions (migration 58). */
-export function useUpdateMedicationInstructions(patientId: string) {
-  const queryKeys = useQueryKeys()
-  const queryClient = useQueryClient()
-
-  return useMutation({
-    mutationFn: updateMedicationInstructions,
-    onSuccess: () => {
-      // Only the schedule's text moved; its doses did not.
-      void queryClient.invalidateQueries({
-        queryKey: queryKeys.medications.schedulesFor(patientId),
-      })
-    },
-  })
-}
-
-/** The doctor's reminder switch for one medicine (migration 59). */
-export function useSetMedicationReminders(patientId: string) {
-  const queryKeys = useQueryKeys()
-  const queryClient = useQueryClient()
-
-  return useMutation({
-    mutationFn: setMedicationReminders,
-    // Settled, not only succeeded: after a failure the list is read again so
-    // the switch shows what the database holds.
-    onSettled: () =>
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.medications.schedulesFor(patientId),
-      }),
   })
 }
 

@@ -54,7 +54,6 @@ function appointment(id: string, status: string, days: number) {
     appointment_status: status,
     appointment_created_at: at(-30),
     appointment_reminder_sent_at: null,
-    appointment_follow_up_of_plan_id: null,
     patient: { pat_id: 'p-1', pat_first_name: 'Alice', pat_last_name: 'Santos' },
   }
 }
@@ -115,19 +114,6 @@ beforeEach(() => {
 })
 
 // ---------------------------------------------------------------------------
-describe('a follow-up request (migration 60)', () => {
-  it('marks an appointment booked after discharge, and no other', async () => {
-    api.fetchAppointments.mockResolvedValue([
-      { ...appointment('a-follow-up', 'scheduled', 3), appointment_follow_up_of_plan_id: 'plan-1' },
-      appointment('a-ordinary', 'scheduled', 4),
-    ])
-    renderWith(<DoctorAppointmentsPage />)
-
-    expect(await screen.findAllByText('Follow-up request')).toHaveLength(1)
-    expect(screen.queryByText(/after discharge/i)).not.toBeInTheDocument()
-  })
-})
-
 describe('NA-01 closing out a visit', () => {
   it.each(['scheduled', 'confirmed'])(
     'offers Mark completed and Mark no-show once a %s visit has passed',

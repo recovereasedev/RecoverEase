@@ -359,6 +359,17 @@ async function main(): Promise<void> {
     lines.push('        Returns: boolean')
     lines.push('      }')
 
+    // Migration 61: the assigned doctor discharges or reopens a care plan.
+    const planRow = "Database['public']['Tables']['treatment_plan']['Row']"
+    lines.push('      doctor_discharge_treatment_plan: {')
+    lines.push('        Args: { target_plan_id: string; closure_reason: string }')
+    lines.push(`        Returns: ${planRow}`)
+    lines.push('      }')
+    lines.push('      doctor_reopen_treatment_plan: {')
+    lines.push('        Args: { target_plan_id: string }')
+    lines.push(`        Returns: ${planRow}`)
+    lines.push('      }')
+
     // The Super Admin's operations (migration 33). Each refuses anyone but a
     // Super Admin in a session verified with their authenticator app.
     const clinicRow =

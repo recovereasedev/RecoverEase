@@ -84,7 +84,7 @@ function remindedDose() {
       medication_schedule_id: IDS.scheduleA,
       medication_schedule_name: 'Paracetamol',
       medication_schedule_dosage: '500mg',
-      prescription: { pat_id: IDS.alicePat, treatment_plan_id: IDS.planA },
+      prescription: { pat_id: IDS.alicePat },
     },
   }
 }
@@ -158,7 +158,6 @@ for (const theme of ['light', 'dark'] as const) {
             appointment_status: 'confirmed',
             appointment_created_at: new Date(Date.now() - 86_400_000).toISOString(),
             appointment_reminder_sent_at: null,
-            appointment_follow_up_of_plan_id: null,
             patient: { pat_id: IDS.alicePat, pat_first_name: 'Alice', pat_last_name: 'Santos' },
           },
         ],

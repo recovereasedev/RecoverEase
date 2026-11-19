@@ -22,7 +22,6 @@ const api = vi.hoisted(() => ({
   createRescheduleRequest: vi.fn(),
 }))
 const requests = vi.hoisted(() => ({ data: [] as unknown[] }))
-const carePlans = vi.hoisted(() => ({ data: [] as unknown[] }))
 
 vi.mock('@/features/appointments/api', () => api)
 
@@ -56,7 +55,7 @@ vi.mock('@/features/recovery-logs/hooks', () => ({
   useRecoveryLogs: () => ({ data: [], isPending: false, error: null, refetch: vi.fn() }),
 }))
 vi.mock('@/features/treatment-plans/hooks', () => ({
-  useTreatmentPlans: () => ({ data: carePlans.data, isPending: false, error: null, refetch: vi.fn() }),
+  useTreatmentPlans: () => ({ data: [], isPending: false, error: null, refetch: vi.fn() }),
 }))
 
 const { PatientAppointmentsPage } = await import(
@@ -76,7 +75,6 @@ function appointment(id: string, status: string, days: number) {
     appointment_status: status,
     appointment_created_at: at(-30),
     appointment_reminder_sent_at: null,
-    appointment_follow_up_of_plan_id: null,
     patient: null,
   }
 }
@@ -137,7 +135,6 @@ beforeEach(() => {
   // leak into the next one.
   vi.resetAllMocks()
   requests.data = []
-  carePlans.data = []
   api.fetchAppointments.mockResolvedValue([appointment('a-1', 'scheduled', 5)])
   api.setAppointmentStatus.mockResolvedValue(undefined)
   api.createAppointment.mockImplementation(() => later({}))
@@ -357,50 +354,5 @@ describe('NA-05 a time already in the past is refused before anything is sent', 
       appointmentId: 'a-1',
       proposedFor: new Date(value).toISOString(),
     })
-  })
-})
-
-// ---------------------------------------------------------------------------
-describe('booking under a care plan (migration 60)', () => {
-  const plan = (id: string, status: string, title: string) => ({
-    treatment_plan_id: id,
-    treatment_plan_status: status,
-    treatment_plan_title: title,
-    treatment_plan_start_date: '2026-10-01',
-  })
-
-  it('asks which care plan when the patient has two active ones, and sends the choice', async () => {
-    carePlans.data = [plan('plan-a', 'active', 'Knee recovery'), plan('plan-b', 'active', 'Back pain')]
-    const form = await openBooking()
-    form.type(inTwoDays())
-    fireEvent.click(form.submit())
-    expect(await within(form.dialog).findByText('Choose which care plan this appointment is for.')).toBeInTheDocument()
-    expect(api.createAppointment).not.toHaveBeenCalled()
-
-    fireEvent.change(within(form.dialog).getByLabelText(/care plan/i), { target: { value: 'plan-b' } })
-    fireEvent.click(form.submit())
-    await waitFor(() => expect(api.createAppointment).toHaveBeenCalledTimes(1))
-    expect(api.createAppointment.mock.calls[0]![0]).toMatchObject({ planId: 'plan-b' })
-  })
-
-  it('books a follow-up without asking once every plan is discharged', async () => {
-    carePlans.data = [plan('plan-a', 'discharged', 'Knee recovery')]
-    const form = await openBooking()
-    expect(within(form.dialog).queryByLabelText(/care plan/i)).not.toBeInTheDocument()
-    form.type(inTwoDays())
-    fireEvent.click(form.submit())
-    await waitFor(() => expect(api.createAppointment).toHaveBeenCalledTimes(1))
-    expect(api.createAppointment.mock.calls[0]![0]).not.toHaveProperty('planId')
-  })
-
-  it('still lists an appointment of a discharged plan in the patient’s history', async () => {
-    carePlans.data = [plan('plan-a', 'discharged', 'Knee recovery')]
-    api.fetchAppointments.mockResolvedValue([
-      { ...appointment('a-old', 'completed', -10), treatment_plan_id: 'plan-a' },
-      { ...appointment('a-next', 'scheduled', 5), treatment_plan_id: 'plan-a' },
-    ])
-    renderWith(<PatientAppointmentsPage />)
-    expect(await screen.findByRole('button', { name: /request new time/i })).toBeInTheDocument()
-    expect(screen.getAllByText(/completed/i).length).toBeGreaterThan(0)
   })
 })

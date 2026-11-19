@@ -1,12 +1,12 @@
 import { expect, IDS, test } from './support/fixtures'
 
 /**
- * Discharge and reopen (migrations 57 and 60) in a real browser against the
+ * Discharge and reopen (migration 61) in a real browser against the
  * stub: the doctor discharges an active plan with a reason and reopens it;
  * sees a follow-up request booked after discharge; and the
  * patient, once their care has ended, is told so where they would log a
  * check-in, keeps their history, and can book a follow-up. Who may do what
- * is the database's (tests/db/discharge-reopen.test.ts).
+ * is the database's (tests/db/discharge-care-plan.test.ts).
  */
 
 const ENDED = 'Your care plan has ended. Book a follow-up if you need more care.'
@@ -22,7 +22,6 @@ const plan = (status: string, extra: Record<string, unknown> = {}) => ({
   treatment_plan_status: status,
   treatment_plan_created_at: '2026-02-01T00:00:00Z',
   treatment_plan_updated_at: '2026-02-01T00:00:00Z',
-  treatment_plan_follow_up_appointment_id: null,
   treatment_plan_closure_reason: null,
   treatment_plan_discharged_at: null,
   treatment_goal: [],
@@ -44,6 +43,8 @@ test.describe('the doctor', () => {
     await page.getByRole('button', { name: 'Discharge patient' }).click()
     const dialog = page.getByRole('dialog', { name: 'Discharge patient' })
     await expect(dialog.getByText(/ends this care plan/)).toBeVisible()
+    // Reminders are not part of this release (migration 61): the dialog says so.
+    await expect(dialog.getByText(/reminders are not changed by a discharge/)).toBeVisible()
     await dialog.getByRole('button', { name: 'Confirm discharge' }).click()
     await expect(dialog.getByText('Choose a reason for the discharge.')).toBeVisible()
     await dialog.getByLabel(/Closure reason/).selectOption('transferred')
@@ -125,74 +126,46 @@ test.describe('the patient once care has ended', () => {
   })
 })
 
-test.describe('the reminder card with one plan discharged and one active (migration 60)', () => {
-  const MIN = 60_000
-  const PLAN_B = '00000000-0000-4000-8000-0000000000b2'
-  const dose = (id: string, scheduleId: string, name: string, planId: string) => {
+test.describe('reminders after discharge (migration 61 leaves them unchanged)', () => {
+  test('still shows a discharged patient’s medicine and appointment reminders', async ({ page, signInAs }) => {
+    const MIN = 60_000
     const now = Date.now()
-    return {
-      medication_log_id: id,
-      medication_schedule_id: scheduleId,
-      medication_log_scheduled_at: new Date(now + 8 * MIN).toISOString(),
-      medication_log_taken_at: null,
-      medication_log_status: 'pending',
-      medication_log_follow_up_sent_at: null,
-      medication_log_pre_dose_sent_at: new Date(now - 2 * MIN).toISOString(),
-      medication_schedule: {
-        medication_schedule_id: scheduleId,
-        medication_schedule_name: name,
-        medication_schedule_dosage: '500mg',
-        prescription: { pat_id: IDS.alicePat, treatment_plan_id: planId },
-      },
-    }
-  }
-  const appointment = (id: string, minutes: number, planId: string | null, followUpOf: string | null = null) => ({
-    appointment_id: id,
-    pat_id: IDS.alicePat,
-    doc_id: IDS.doctorA,
-    appointment_date: new Date(Date.now() + minutes * MIN).toISOString(),
-    appointment_status: 'scheduled',
-    appointment_created_at: '2026-03-12T00:00:00Z',
-    appointment_reminder_sent_at: null,
-    appointment_follow_up_of_plan_id: followUpOf,
-    treatment_plan_id: planId,
-    patient: { pat_id: IDS.alicePat, pat_first_name: 'Alice', pat_last_name: 'Santos' },
-  })
-
-  test('reminds of the active plan’s dose and appointment, and not the discharged plan’s', async ({ page, signInAs }) => {
-    await signInAs('patient', {
-      treatment_plan: [DISCHARGED, plan('active', { treatment_plan_id: PLAN_B, treatment_plan_title: 'Back pain' })],
-      medication_log: [
-        dose('00000000-0000-4000-8000-0000000000d1', '00000000-0000-4000-8000-0000000000c1', 'Paracetamol', IDS.planA),
-        dose('00000000-0000-4000-8000-0000000000d2', '00000000-0000-4000-8000-0000000000c2', 'Ibuprofen', PLAN_B),
-      ],
-      appointment: [
-        appointment('00000000-0000-4000-8000-0000000000a1', 6, IDS.planA),
-        appointment('00000000-0000-4000-8000-0000000000a2', 9, PLAN_B),
-      ],
-    })
-    await page.goto('/patient')
-    const card = page.getByRole('region', { name: 'Reminders' })
-    await expect(card).toContainText('Ibuprofen 500mg at')
-    await expect(card).not.toContainText('Paracetamol')
-    await expect(card.getByText(/^Appointment in/)).toHaveCount(1)
-    await expect(card).toContainText(/Appointment in (8|9) minutes/)
-  })
-
-  test('still reminds of a follow-up request once every plan is discharged', async ({ page, signInAs }) => {
     await signInAs('patient', {
       treatment_plan: [DISCHARGED],
+      medication_log: [
+        {
+          medication_log_id: '00000000-0000-4000-8000-0000000000d1',
+          medication_schedule_id: IDS.scheduleA,
+          medication_log_scheduled_at: new Date(now + 8 * MIN).toISOString(),
+          medication_log_taken_at: null,
+          medication_log_status: 'pending',
+          medication_log_follow_up_sent_at: null,
+          medication_log_pre_dose_sent_at: new Date(now - 2 * MIN).toISOString(),
+          medication_schedule: {
+            medication_schedule_id: IDS.scheduleA,
+            medication_schedule_name: 'Paracetamol',
+            medication_schedule_dosage: '500mg',
+            prescription: { pat_id: IDS.alicePat },
+          },
+        },
+      ],
       appointment: [
-        appointment('00000000-0000-4000-8000-0000000000a1', 6, IDS.planA),
-        appointment('00000000-0000-4000-8000-0000000000a3', 9, null, IDS.planA),
+        {
+          appointment_id: '00000000-0000-4000-8000-0000000000a1',
+          pat_id: IDS.alicePat,
+          doc_id: IDS.doctorA,
+          appointment_date: new Date(now + 9 * MIN).toISOString(),
+          appointment_status: 'scheduled',
+          appointment_created_at: '2026-03-12T00:00:00Z',
+          appointment_reminder_sent_at: null,
+          appointment_follow_up_of_plan_id: null,
+          patient: { pat_id: IDS.alicePat, pat_first_name: 'Alice', pat_last_name: 'Santos' },
+        },
       ],
     })
     await page.goto('/patient')
     const card = page.getByRole('region', { name: 'Reminders' })
-    await expect(card.getByText(/^Appointment in/)).toHaveCount(1)
+    await expect(card).toContainText('Paracetamol 500mg at')
     await expect(card).toContainText(/Appointment in (8|9) minutes/)
-    // The care that ended is still on record.
-    await page.goto('/patient/appointments')
-    await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
   })
 })

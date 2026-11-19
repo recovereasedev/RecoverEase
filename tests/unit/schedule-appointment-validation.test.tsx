@@ -34,15 +34,6 @@ vi.mock('@/features/patients/hooks', () => ({
   useMyPatients: () => mockPatients,
 }))
 
-// The patient's care plans (migration 60): one active, so nothing is asked.
-vi.mock('@/features/treatment-plans/hooks', () => ({
-  useTreatmentPlans: () => ({
-    data: [{ treatment_plan_id: 'plan-1', treatment_plan_status: 'active', treatment_plan_title: 'Plan' }],
-    isPending: false,
-    error: null,
-  }),
-}))
-
 vi.mock('@/features/appointments/hooks', () => ({
   useCreateAppointment: () => mockCreate,
 }))

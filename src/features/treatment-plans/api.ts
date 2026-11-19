@@ -3,11 +3,7 @@ import type { Enums, Tables, TablesUpdate } from '@/types/database.types'
 
 export type TreatmentPlan = Tables<'treatment_plan'>
 export type TreatmentGoal = Tables<'treatment_goal'>
-/**
- * A care case is Active or Discharged (migration 60). The database type still
- * lists older labels - PostgreSQL cannot drop an enum label - but refuses them.
- */
-export type TreatmentPlanStatus = Extract<Enums<'treatment_plan_status'>, 'active' | 'discharged'>
+export type TreatmentPlanStatus = Enums<'treatment_plan_status'>
 export type TreatmentGoalStatus = Enums<'treatment_goal_status'>
 
 export type PlanWithGoals = TreatmentPlan & {
@@ -108,25 +104,16 @@ export async function createTreatmentGoal(input: {
   return data
 }
 
-/** The progress a patient may record; only the system marks a goal missed. */
-export type PatientGoalProgress = Extract<TreatmentGoalStatus, 'in_progress' | 'achieved'>
-
-/**
- * Module 5.8: the patient records progress on their own goal (migration 55).
- * The database checks whose goal it is and which moves are allowed, and
- * keeps the change in the goal's history; nothing else on the goal changes.
- */
 export async function updateTreatmentGoalStatus(
   goalId: string,
-  status: PatientGoalProgress,
-): Promise<TreatmentGoal> {
-  const { data, error } = await supabase.rpc('patient_update_treatment_goal_status', {
-    target_goal_id: goalId,
-    new_status: status,
-  })
+  status: TreatmentGoalStatus,
+): Promise<void> {
+  const { error } = await supabase
+    .from('treatment_goal')
+    .update({ treatment_goal_status: status })
+    .eq('treatment_goal_id', goalId)
 
   if (error) throw error
-  return data
 }
 
 /**
@@ -159,12 +146,18 @@ export function summariseGoals(goals: TreatmentGoal[]): {
 }
 
 // ---------------------------------------------------------------------------
-// The case lifecycle (migrations 57 and 60)
+// The care-plan lifecycle (migration 61)
 // ---------------------------------------------------------------------------
 
-export type ClosureReason = NonNullable<TreatmentPlan['treatment_plan_closure_reason']>
+/** Why a doctor discharged a plan; the database refuses any other value. */
+export type ClosureReason =
+  | 'completed_recovery'
+  | 'transferred'
+  | 'withdrew'
+  | 'lost_to_follow_up'
+  | 'referred'
 
-/** Why a doctor discharged a plan, in the order the dialog lists them. */
+/** The reasons, in the order the dialog lists them. */
 export const CLOSURE_REASONS: readonly { value: ClosureReason; label: string }[] = [
   { value: 'completed_recovery', label: 'Completed recovery' },
   { value: 'transferred', label: 'Transferred' },
@@ -173,19 +166,22 @@ export const CLOSURE_REASONS: readonly { value: ClosureReason; label: string }[]
   { value: 'referred', label: 'Referred' },
 ]
 
-export function closureReasonLabel(reason: ClosureReason | null): string | null {
+export function closureReasonLabel(reason: string | null): string | null {
   return CLOSURE_REASONS.find((item) => item.value === reason)?.label ?? null
 }
 
-/** Care still going on: an active plan. Only the doctor ends it, by discharging. */
-export function isOpenCare(status: Enums<'treatment_plan_status'>): boolean {
+/**
+ * Care still going on: an active plan. A plan is Active or Discharged
+ * (migration 61); only the doctor ends it, by discharging.
+ */
+export function isOpenCare(status: TreatmentPlanStatus): boolean {
   return status === 'active'
 }
 
 /**
- * The patient's care has ended: a plan was discharged and none is open. The
- * database applies the same rule to new daily check-ins (migration 57) and
- * to reminders (migration 60).
+ * The patient's care has ended: a plan was discharged and none is active.
+ * The database applies the same rule to new daily check-ins and marks an
+ * appointment booked then as a follow-up (migration 61).
  */
 export function careHasEnded(plans: readonly Pick<TreatmentPlan, 'treatment_plan_status'>[]): boolean {
   return (
@@ -195,43 +191,9 @@ export function careHasEnded(plans: readonly Pick<TreatmentPlan, 'treatment_plan
 }
 
 /**
- * Whether reminders for something on this care plan may be shown - the rule
- * the database applies before it sends one (migration 60). It fails closed:
- * - on a plan: only while that plan is one of this patient's and active;
- * - on no plan: only while the patient has no plan at all. Once the patient
- *   has any plan, nothing says which one it belongs to, so it is silent until
- *   it is placed on one by hand.
- * A follow-up request is the caller's exception (see reminder-items.ts).
- */
-export function remindersAllowedFor(
-  planId: string | null | undefined,
-  plans: readonly Pick<TreatmentPlan, 'treatment_plan_id' | 'treatment_plan_status'>[],
-): boolean {
-  if (!planId) return plans.length === 0
-  const plan = plans.find((candidate) => candidate.treatment_plan_id === planId)
-  return plan !== undefined && isOpenCare(plan.treatment_plan_status)
-}
-
-/**
- * Which care plan a new prescription or appointment goes on (migration 60):
- * the one chosen, if it is active; else the patient's only active plan. With
- * several active plans and none chosen, the person must choose - the
- * database refuses to guess. With none, it goes on no plan.
- */
-export function chooseCarePlan(
-  plans: readonly Pick<TreatmentPlan, 'treatment_plan_id' | 'treatment_plan_status'>[],
-  chosen: string,
-): { planId: string | null; needsChoice: boolean } {
-  const active = plans.filter((plan) => isOpenCare(plan.treatment_plan_status))
-  if (chosen && active.some((plan) => plan.treatment_plan_id === chosen)) return { planId: chosen, needsChoice: false }
-  if (active.length === 1) return { planId: active[0]!.treatment_plan_id, needsChoice: false }
-  return { planId: null, needsChoice: active.length > 1 }
-}
-
-/**
- * The patient's assigned doctor discharges a plan, with a reason. The
- * database checks who may and from which status; the patient's account and
- * records are untouched.
+ * The patient's assigned doctor discharges an active plan, with a reason.
+ * The database checks who may and from which status; the patient's account
+ * and records are untouched.
  */
 export async function dischargeTreatmentPlan(planId: string, reason: ClosureReason): Promise<TreatmentPlan> {
   const { data, error } = await supabase.rpc('doctor_discharge_treatment_plan', {

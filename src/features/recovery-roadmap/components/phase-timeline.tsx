@@ -1,17 +1,14 @@
-import { CalendarClock, CalendarDays, Check, CircleDashed, RotateCcw, Target } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { CalendarDays, Check, CircleDashed, RotateCcw, Target } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { StatusBadge } from '@/components/ui/badge'
 import { ProgressBar } from '@/components/ui/progress'
-import type { AppointmentWithPatient } from '@/features/appointments/api'
-import { zonedDayAndTime } from '@/features/calendar/calendar-model'
 import { formatDate } from '@/lib/format'
-import { appointmentStatus, treatmentGoalStatus } from '@/lib/status'
+import { treatmentGoalStatus } from '@/lib/status'
 import { cn } from '@/lib/utils'
 
 import type { RecoveryActivity } from '../api'
-import { PHASE_STATUS, phaseHeading, type PhaseStatus, type PlanRoadmap, type RoadmapPhase } from '../roadmap'
+import { PHASE_STATUS, type PhaseStatus, type PlanRoadmap } from '../roadmap'
 
 // The phase's number on the path, in its state: filled once completed,
 // ringed while in progress, open until it starts - as the treatment plan
@@ -30,81 +27,19 @@ export function phaseDates(start: string | null, end: string | null): string | n
 }
 
 /**
- * What a generated phase is about, under its heading: a goal's target date
- * and status, read from the goal; the plan's follow-up appointment, read
- * from the appointment, in the clinic's time. Shared by the patient's
- * timeline and the doctor's roadmap.
- */
-export function PhaseSubject({
-  item,
-  followUp,
-  zone,
-  audience,
-}: {
-  item: RoadmapPhase
-  /** Null: none chosen. Undefined: chosen, but its details are not to hand. */
-  followUp: AppointmentWithPatient | null | undefined
-  zone: string
-  audience: 'patient' | 'doctor'
-}) {
-  if (item.kind === 'goal' && item.goal) {
-    const goal = item.goal
-    return (
-      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm">
-        <span className="flex items-center gap-1.5 text-muted" data-numeric>
-          <Target className="size-4 shrink-0 text-accent-700" aria-hidden="true" />
-          {goal.treatment_goal_target_date ? `Goal target date ${formatDate(goal.treatment_goal_target_date)}` : 'No target date'}
-        </span>
-        <StatusBadge status={treatmentGoalStatus[goal.treatment_goal_status]} />
-        {audience === 'patient' && (goal.treatment_goal_status === 'pending' || goal.treatment_goal_status === 'in_progress' || goal.treatment_goal_status === 'missed') ? (
-          <Link to="/patient/treatment" className="font-medium text-brand-700 underline underline-offset-4">
-            Update your progress
-          </Link>
-        ) : null}
-      </div>
-    )
-  }
-  if (item.kind === 'follow_up') {
-    const at = followUp ? zonedDayAndTime(followUp.appointment_date, zone) : null
-    return (
-      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm">
-        <span className="flex items-center gap-1.5 text-body" data-numeric>
-          <CalendarClock className="size-4 shrink-0 text-brand-700" aria-hidden="true" />
-          {followUp && at
-            ? `Follow-up appointment ${formatDate(at.day)}, ${at.time}`
-            : followUp === undefined
-              ? 'A follow-up appointment is set; its details cannot be shown right now.'
-              : audience === 'patient'
-                ? 'Your doctor has not chosen a follow-up appointment yet.'
-                : 'No follow-up appointment chosen yet.'}
-        </span>
-        {followUp ? <StatusBadge status={appointmentStatus[followUp.appointment_status]} /> : null}
-      </div>
-    )
-  }
-  return null
-}
-
-/**
- * Module 5.7: a plan's generated phases down a path - Initial Recovery, one
- * Recovery and Monitoring phase per goal, Follow-up and Assessment - each
- * with its state, its dates, what it is about, how much of it is done, and
- * the activities the patient marks done. Every state is said in words
- * beside its colour.
+ * Module 5.7: a plan's phases down a path, in the doctor's order, each with
+ * its state, its dates, how much of it is done, and what is in it - the
+ * activities the patient marks done, and the goals the doctor linked to it,
+ * which only the doctor marks. Every state is said in words beside its
+ * colour.
  */
 export function PhaseTimeline({
   roadmap,
-  followUp,
-  zone,
   onComplete,
   onReopen,
   savingId,
 }: {
   roadmap: PlanRoadmap
-  /** The plan's chosen follow-up appointment: null if none, undefined if not to hand. */
-  followUp: AppointmentWithPatient | null | undefined
-  /** The clinic's time zone, for the appointment's time. */
-  zone: string
   onComplete: (activity: RecoveryActivity) => void
   onReopen: (activity: RecoveryActivity) => void
   /** The activity being saved, if any: its button shows it, and no other takes a press. */
@@ -141,7 +76,7 @@ export function PhaseTimeline({
             <section aria-labelledby={headingId} className="min-w-0 flex-1 pt-1.5">
               <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1.5">
                 <h3 id={headingId} className="text-base font-semibold text-heading">
-                  Phase {item.number} — {phaseHeading(item)}
+                  Phase {item.number} — {item.phase.recovery_phase_title}
                 </h3>
                 <StatusBadge status={PHASE_STATUS[item.status]} />
               </div>
@@ -153,15 +88,16 @@ export function PhaseTimeline({
                 </p>
               ) : null}
 
-              <PhaseSubject item={item} followUp={followUp} zone={zone} audience="patient" />
-
               {item.phase.recovery_phase_description ? (
                 <p className="mt-2 whitespace-pre-wrap leading-relaxed text-body">
                   {item.phase.recovery_phase_description}
                 </p>
               ) : null}
 
-              {item.count.total > 0 ? (
+              {item.count.total === 0 ? (
+                <p className="mt-3 text-sm text-muted">No activities yet</p>
+              ) : (
+                <>
                   <div className="mt-3 flex items-center gap-3">
                     <ProgressBar
                       className="flex-1"
@@ -174,11 +110,7 @@ export function PhaseTimeline({
                       {item.count.done} of {item.count.total} done
                     </span>
                   </div>
-              ) : null}
 
-              {item.activities.length === 0 ? (
-                <p className="mt-3 text-sm text-muted">No activities yet</p>
-              ) : (
                   <ul className="mt-3 divide-y divide-[var(--color-border)] rounded-[var(--radius-md)] border border-[var(--color-border)]">
                     {item.activities.map((activity) => {
                       const done = activity.recovery_activity_completed_at !== null
@@ -249,7 +181,30 @@ export function PhaseTimeline({
                         </li>
                       )
                     })}
+                    {item.goals.map((goal) => (
+                      <li
+                        key={goal.treatment_goal_id}
+                        className="flex flex-col gap-2 px-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
+                      >
+                        <div className="flex min-w-0 gap-3">
+                          <Target className="mt-0.5 size-5 shrink-0 text-accent-700" aria-hidden="true" />
+                          <div className="min-w-0">
+                            <p className="text-body">
+                              <span className="font-medium">Goal: </span>
+                              {goal.treatment_goal_description}
+                            </p>
+                            <p className="mt-0.5 text-sm text-muted" data-numeric>
+                              {goal.treatment_goal_target_date
+                                ? `By ${formatDate(goal.treatment_goal_target_date)} · marked by your doctor`
+                                : 'Marked by your doctor'}
+                            </p>
+                          </div>
+                        </div>
+                        <StatusBadge status={treatmentGoalStatus[goal.treatment_goal_status]} />
+                      </li>
+                    ))}
                   </ul>
+                </>
               )}
             </section>
           </li>

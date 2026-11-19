@@ -110,7 +110,7 @@ export function PatientDashboard() {
         new Date(b.appointment_date).getTime(),
     )[0]
 
-  // Open care: an active plan (migration 60).
+  // Open care: an active plan (migration 61: Active or Discharged).
   const activePlan = plansQuery.data?.find((plan) =>
     isOpenCare(plan.treatment_plan_status),
   )
@@ -262,7 +262,7 @@ export function PatientDashboard() {
 
             {/* Today's recovery entry - the other thing a patient owes
                 today, in the same list of things to do - until their care
-                has ended (migration 57). */}
+                has ended (migration 61). */}
             {ended ? (
               <div className="border-t border-[var(--color-border)] p-4">
                 <CareEndedNotice />

@@ -24,13 +24,7 @@ import { assuredSuperAdmin, createSignIn } from './helpers/super-admin'
  */
 
 const MIGRATION_48 = 'supabase/migrations/20260902100048_medication_dose_identity.sql'
-const ROLLBACK_60 = 'supabase/rollbacks/20260902100060_simplify_discharge_lifecycle.down.sql'
-const ROLLBACK_59 = 'supabase/rollbacks/20260902100059_medication_schedule_reminder_control.down.sql'
-const ROLLBACK_58 = 'supabase/rollbacks/20260902100058_medication_schedule_instructions.down.sql'
-const ROLLBACK_57 = 'supabase/rollbacks/20260902100057_discharge_reopen_treatment_case.down.sql'
-const ROLLBACK_56 = 'supabase/rollbacks/20260902100056_automatic_recovery_roadmap.down.sql'
-const ROLLBACK_55 = 'supabase/rollbacks/20260902100055_treatment_goal_progress.down.sql'
-const ROLLBACK_54 = 'supabase/rollbacks/20260902100054_doctor_identity_columns_fixed.down.sql'
+const ROLLBACK_61 = 'supabase/rollbacks/20260902100061_discharge_care_plan.down.sql'
 const ROLLBACK_53 = 'supabase/rollbacks/20260902100053_web_push_notifications.down.sql'
 const ROLLBACK_48 = 'supabase/rollbacks/20260902100048_medication_dose_identity.down.sql'
 const script = (path: string) => readFile(join(process.cwd(), path), 'utf8')
@@ -1128,19 +1122,9 @@ describe('rolling back migration 48', () => {
   })
 
   it('returns the schema to exactly what 47 left, keeping every dose, then refuses a second time', async () => {
-    // Rollback 60 refuses while care-plan links exist; an operator exports
-    // and clears them first.
-    await database.asService('update public.prescription set treatment_plan_id = null where treatment_plan_id is not null')
-    await database.asService('update public.appointment set treatment_plan_id = null where treatment_plan_id is not null')
     const doseRows = await doseFingerprint(database)
-    // Migrations 59, 58, 57, 56, 55, 54 and 53 came after 48; they go first, newest first.
-    await database.db.exec(await script(ROLLBACK_60))
-    await database.db.exec(await script(ROLLBACK_59))
-    await database.db.exec(await script(ROLLBACK_58))
-    await database.db.exec(await script(ROLLBACK_57))
-    await database.db.exec(await script(ROLLBACK_56))
-    await database.db.exec(await script(ROLLBACK_55))
-    await database.db.exec(await script(ROLLBACK_54))
+    // Migrations 61 and 53 came after 48; they go first, newest first.
+    await database.db.exec(await script(ROLLBACK_61))
     await database.db.exec(await script(ROLLBACK_53))
     await database.db.exec(await script(ROLLBACK_48))
     expect(await catalog(database)).toEqual(await catalog(without48))

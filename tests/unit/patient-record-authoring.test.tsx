@@ -62,7 +62,6 @@ vi.mock('@/features/treatment-plans/hooks', () => ({
   useUpdateTreatmentPlan: () => noop,
   useCreateTreatmentGoal: () => noop,
   useUpdateGoalStatus: () => state.goalStatus,
-  useClinicToday: () => '2026-11-15',
   useDischargePlan: () => noop,
   useReopenPlan: () => noop,
 }))
@@ -120,9 +119,6 @@ const PLAN = {
   treatment_plan_status: 'active',
   treatment_plan_created_at: '2026-02-01T00:00:00Z',
   treatment_plan_updated_at: '2026-02-01T00:00:00Z',
-  treatment_plan_follow_up_appointment_id: null,
-  treatment_plan_closure_reason: null,
-  treatment_plan_discharged_at: null,
   treatment_goal: [
     {
       treatment_goal_id: 'goal-1',
@@ -197,39 +193,18 @@ describe('authoring from the patient record', () => {
     expect(screen.getByText('Walk 500 metres unaided')).toBeInTheDocument()
   })
 
-  it('shows each goal’s progress to the doctor, with no way to record it for the patient', () => {
-    // Migration 55: the patient records progress and the system marks a goal
-    // missed; the doctor monitors.
-    state.plans = [
-      {
-        ...PLAN,
-        treatment_goal: [
-          ...PLAN.treatment_goal,
-          {
-            ...PLAN.treatment_goal[0]!,
-            treatment_goal_id: 'goal-2',
-            treatment_goal_description: 'Climb one flight of stairs',
-            treatment_goal_target_date: '2026-03-01',
-            treatment_goal_status: 'missed',
-          },
-          {
-            ...PLAN.treatment_goal[0]!,
-            treatment_goal_id: 'goal-3',
-            treatment_goal_description: 'Kneel without pain',
-            treatment_goal_status: 'achieved',
-          },
-        ],
-      },
-    ]
+  it('records progress against a goal through the existing mutation', () => {
+    state.plans = [PLAN]
     openRecord('treatment')
 
-    expect(screen.getByText('In progress')).toBeInTheDocument()
-    expect(screen.getByText('Missed')).toBeInTheDocument()
-    expect(screen.getByText('Achieved')).toBeInTheDocument()
-    expect(screen.queryByLabelText(/progress/i)).not.toBeInTheDocument()
-    expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /mark achieved|start goal/i })).not.toBeInTheDocument()
-    expect(state.goalStatus.mutate).not.toHaveBeenCalled()
+    fireEvent.change(screen.getByLabelText(/progress/i), {
+      target: { value: 'achieved' },
+    })
+
+    expect(state.goalStatus.mutate).toHaveBeenCalledWith({
+      goalId: 'goal-1',
+      status: 'achieved',
+    })
   })
 
   it('offers a way to prescribe from the medication tab', () => {

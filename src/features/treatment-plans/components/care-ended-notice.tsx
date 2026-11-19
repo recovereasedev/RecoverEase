@@ -6,7 +6,7 @@ import { Notice } from '@/components/ui/notice'
 
 /**
  * What a patient sees where care-plan actions used to be, once their doctor
- * has discharged them and no other plan is open (migration 57). Their
+ * has discharged them and no other plan is active (migration 61). Their
  * account, history and appointments are untouched; booking stays open.
  */
 export function CareEndedNotice() {

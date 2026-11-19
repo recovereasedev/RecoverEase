@@ -64,8 +64,6 @@ vi.mock('@/features/treatment-plans/hooks', () => ({
     error: null,
     refetch: vi.fn(),
   }),
-  // The patient's progress buttons (migration 55), idle here.
-  useUpdateGoalStatus: () => ({ mutate: vi.fn(), isPending: false, isError: false, isSuccess: false }),
 }))
 
 import { captureDownloads } from './support/capture-download'
@@ -95,9 +93,6 @@ const PLAN = {
   treatment_plan_status: 'active',
   treatment_plan_created_at: '2026-09-01T00:00:00Z',
   treatment_plan_updated_at: '2026-09-01T00:00:00Z',
-  treatment_plan_follow_up_appointment_id: null,
-  treatment_plan_closure_reason: null,
-  treatment_plan_discharged_at: null,
   treatment_goal: [
     {
       treatment_goal_id: 'goal-1',

@@ -4,7 +4,7 @@ import { parseISO } from 'date-fns'
 import { ErrorState, LoadingState } from '@/components/feedback/state-view'
 import { ProgressBar } from '@/components/ui/progress'
 import { periodWindow, type ProgressRange } from '@/features/recovery-progress/progress'
-import { isOpenCare, type PlanWithGoals } from '@/features/treatment-plans/api'
+import type { PlanWithGoals } from '@/features/treatment-plans/api'
 import { formatDate } from '@/lib/format'
 
 import { useGoalStatusEvents, useRoadmap } from '../hooks'
@@ -37,7 +37,7 @@ export function RoadmapProgress({
   period: string
   live?: boolean
 }) {
-  const active = plans.filter((plan) => isOpenCare(plan.treatment_plan_status))
+  const active = plans.filter((plan) => plan.treatment_plan_status === 'active')
   const roadmapQuery = useRoadmap(patientId, active, { live })
   const bounds = periodWindow(range, parseISO(today))
   const goalIds = active.flatMap((plan) => plan.treatment_goal.map((goal) => goal.treatment_goal_id))

@@ -1,6 +1,5 @@
 import type { AppointmentWithPatient } from '@/features/appointments/api'
 import type { DoseWithSchedule } from '@/features/medications/api'
-import { remindersAllowedFor } from '@/features/treatment-plans/api'
 import { formatTime } from '@/lib/format'
 import { fullName } from '@/lib/utils'
 
@@ -93,31 +92,6 @@ export type ReminderState = {
 
 const isHidden = (id: string, state: ReminderState, now: number) =>
   state.dismissed.has(id) || (state.snoozedUntil[id] ?? 0) > now
-
-/**
- * Only what belongs to care that is still open (migration 60): a dose or an
- * appointment of a discharged plan is not reminded of, by the server or here.
- * A follow-up request - booked after discharge - always is. Nothing is
- * hidden anywhere else: the records stay on their own pages.
- */
-export function dosesOfOpenCare(
-  doses: readonly DoseWithSchedule[],
-  plans: Parameters<typeof remindersAllowedFor>[1],
-): DoseWithSchedule[] {
-  return doses.filter((dose) =>
-    remindersAllowedFor(dose.medication_schedule?.prescription?.treatment_plan_id, plans),
-  )
-}
-
-export function appointmentsOfOpenCare<
-  T extends Pick<AppointmentWithPatient, 'treatment_plan_id' | 'appointment_follow_up_of_plan_id'>,
->(appointments: readonly T[], plans: Parameters<typeof remindersAllowedFor>[1]): T[] {
-  return appointments.filter(
-    (appointment) =>
-      appointment.appointment_follow_up_of_plan_id !== null ||
-      remindersAllowedFor(appointment.treatment_plan_id, plans),
-  )
-}
 
 /** The patient's doses to remind them of now. */
 export function doseReminders(

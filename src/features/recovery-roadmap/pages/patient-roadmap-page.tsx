@@ -20,7 +20,7 @@ import { buttonVariants } from '@/components/ui/button'
 import { Card, CardBody, CardHeader } from '@/components/ui/card'
 import { ProgressBar } from '@/components/ui/progress'
 import { Tabs } from '@/components/ui/tabs'
-import { fetchAppointments, type AppointmentWithPatient } from '@/features/appointments/api'
+import { fetchAppointments } from '@/features/appointments/api'
 import { useCurrentUser } from '@/features/auth/auth-context'
 import { useQueryKeys } from '@/features/auth/use-query-keys'
 import { addDays, deviceTimeZone, todayIn } from '@/features/calendar/calendar-model'
@@ -38,7 +38,7 @@ import { cn } from '@/lib/utils'
 import type { RecoveryActivity } from '../api'
 import { PhaseTimeline } from '../components/phase-timeline'
 import { useCompleteActivity, useReopenActivity, useRoadmap } from '../hooks'
-import { followUpAppointment, planRoadmap, upcomingTasks, type PlanRoadmap, type UpcomingTask, type UpcomingTaskKind } from '../roadmap'
+import { planRoadmap, upcomingTasks, type PlanRoadmap, type UpcomingTask, type UpcomingTaskKind } from '../roadmap'
 
 /** How far ahead Upcoming tasks looks: two weeks. */
 const UPCOMING_DAYS = 14
@@ -51,17 +51,16 @@ const TASK_ICON: Record<UpcomingTaskKind, LucideIcon> = {
 }
 
 /**
- * Module 5.7 "View Recovery Roadmap", enhanced (migration 45) and generated
- * (migration 56): the plan the patient's doctor set, laid out as Initial
- * Recovery, one Recovery and Monitoring phase per goal, and Follow-up and
- * Assessment, with the activities the patient marks done as they go, beside
- * their treatment goals and what is coming up.
+ * Module 5.7 "View Recovery Roadmap", enhanced (migration 45): the plan the
+ * patient's doctor set, laid out as numbered phases with the activities the
+ * patient marks done as they go, beside their treatment goals and what is
+ * coming up.
  *
  * Nothing here is a second copy. Goals are the plan's; doses, appointments
  * and check-ins are read from where they live, and each upcoming item links
  * there to be acted on. The roadmap's percentage counts only the doctor's
- * activities and the plan's goals (`roadmap.ts`); each active plan has its
- * own. It measures progress only: it never completes the plan.
+ * activities and the goals linked to a phase (`roadmap.ts`); each active plan
+ * has its own.
  */
 export function PatientRoadmapPage() {
   useDocumentTitle('Recovery Roadmap')
@@ -70,7 +69,7 @@ export function PatientRoadmapPage() {
   const patientId = user.profile.kind === 'patient' ? user.profile.patient.pat_id : ''
 
   const plansQuery = useTreatmentPlans(patientId)
-  // Open care: active plans (migration 60).
+  // Open care: active plans (migration 61: Active or Discharged).
   const activePlans = (plansQuery.data ?? []).filter((plan) => isOpenCare(plan.treatment_plan_status))
   const ended = plansQuery.data ? careHasEnded(plansQuery.data) : false
   const roadmapQuery = useRoadmap(patientId, plansQuery.data ? activePlans : undefined)
@@ -186,8 +185,6 @@ export function PatientRoadmapPage() {
               plan={current}
               roadmap={roadmap}
               roadmapQuery={roadmapQuery}
-              followUp={followUpAppointment(current, appointmentsQuery.data ?? [])}
-              zone={zone}
               onComplete={markDone}
               onReopen={markNotDone}
               savingId={saving ?? null}
@@ -246,8 +243,6 @@ function PlanView({
   plan,
   roadmap,
   roadmapQuery,
-  followUp,
-  zone,
   onComplete,
   onReopen,
   savingId,
@@ -259,8 +254,6 @@ function PlanView({
   plan: PlanWithGoals
   roadmap: PlanRoadmap | null
   roadmapQuery: { isPending: boolean; error: unknown; refetch: () => unknown }
-  followUp: AppointmentWithPatient | null | undefined
-  zone: string
   onComplete: (activity: RecoveryActivity) => void
   onReopen: (activity: RecoveryActivity) => void
   savingId: string | null
@@ -278,29 +271,20 @@ function PlanView({
           <h2 id="phases-heading" className="text-headline-md text-heading">
             Recovery phases
           </h2>
-          <p className="mt-0.5 text-sm text-muted">
-            Your first steps, then one phase for each of your goals, then your follow-up and assessment.
-          </p>
+          <p className="mt-0.5 text-sm text-muted">In the order your doctor set them.</p>
           <div className="mt-5">
             {roadmapQuery.isPending ? (
               <LoadingState label="Loading the phases…" />
             ) : roadmapQuery.error ? (
               <ErrorState error={roadmapQuery.error} onRetry={() => void roadmapQuery.refetch()} />
             ) : roadmap && roadmap.phases.length > 0 ? (
-              <PhaseTimeline
-                roadmap={roadmap}
-                followUp={followUp}
-                zone={zone}
-                onComplete={onComplete}
-                onReopen={onReopen}
-                savingId={savingId}
-              />
+              <PhaseTimeline roadmap={roadmap} onComplete={onComplete} onReopen={onReopen} savingId={savingId} />
             ) : (
               <Card>
                 <CardBody>
                   <p className="font-medium text-heading">No phases yet</p>
                   <p className="mt-1 text-sm text-muted">
-                    Your roadmap's phases appear here once your plan is ready. Its goals are beside it.
+                    Your doctor has not laid this plan out in phases yet. Its goals are beside it.
                   </p>
                 </CardBody>
               </Card>
@@ -370,9 +354,8 @@ function CurrentPlanCard({ plan, roadmap }: { plan: PlanWithGoals; roadmap: Plan
                 </div>
               </dl>
               <p className="mt-3 text-xs text-muted">
-                Counts the activities your doctor assigned and your goals achieved. Medicines, appointments
-                and check-ins have their own charts. Finishing your roadmap does not by itself end your
-                treatment; your doctor decides that with you.
+                Counts the activities your doctor assigned and the goals placed in a phase. Medicines,
+                appointments and check-ins have their own charts.
               </p>
             </>
           )}
@@ -382,7 +365,7 @@ function CurrentPlanCard({ plan, roadmap }: { plan: PlanWithGoals; roadmap: Plan
   )
 }
 
-/** The plan's goals and where each stands, as the patient has recorded it (or missed, by the system). */
+/** The plan's goals, as the doctor has marked them. */
 function GoalsCard({ plan, roadmap }: { plan: PlanWithGoals; roadmap: PlanRoadmap | null }) {
   const goals = [...plan.treatment_goal].sort(byTargetDate)
   const summary = summariseGoals(plan.treatment_goal)

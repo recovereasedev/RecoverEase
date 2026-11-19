@@ -110,18 +110,11 @@ export function groupPrescriptions(
   )
 }
 
-/**
- * How often and when, in the words the screen uses - then, on lines of their
- * own, the doctor's instructions for this one medicine (migration 58), when
- * there are any. The cell wraps them and keeps the doctor's line breaks; a
- * medicine with none shows its times alone.
- */
+/** How often and when, in the words the screen uses. */
 export function scheduleInstructions(schedule: ScheduleWithPrescription): string {
   const times = schedule.medication_schedule_times.map(formatScheduleTime).join(', ')
   const frequency = schedule.medication_schedule_frequency
-  const when = `${frequency} ${frequency === 1 ? 'time' : 'times'} a day at ${times}`
-  const own = schedule.medication_schedule_instructions?.trim()
-  return own ? `${when}\n${own}` : when
+  return `${frequency} ${frequency === 1 ? 'time' : 'times'} a day at ${times}`
 }
 
 /** The course, from its start to its end or "ongoing". */
