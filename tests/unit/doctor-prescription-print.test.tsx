@@ -96,9 +96,6 @@ vi.mock('@/features/medications/hooks', () => ({
   useCreatePrescription: () => noop,
   useCreateMedicationSchedule: () => noop,
   useEndMedicationSchedule: () => noop,
-  // Instructions (migration 58) and the reminder switch (migration 59).
-  useUpdateMedicationInstructions: () => noop,
-  useSetMedicationReminders: () => noop,
 }))
 
 vi.mock('@/features/recovery-logs/hooks', () => ({
@@ -204,16 +201,6 @@ describe('print controls on the patient record', () => {
       expect(letterhead()).toBeNull()
     },
   )
-
-  it('gives every medicine its own reminder switch, on by default, and keeps it off the paper', () => {
-    openRecord('medication')
-
-    const switches = screen.getAllByRole('switch')
-    expect(switches).toHaveLength(state.schedules.length)
-    const amoxicillin = screen.getByRole('switch', { name: 'Medication reminders: Amoxicillin' })
-    expect(amoxicillin).toHaveAttribute('aria-checked', 'true')
-    expect(amoxicillin.closest('.print\\:hidden')).not.toBeNull()
-  })
 
   it('offers Print prescription on the medication tab', () => {
     openRecord('medication')

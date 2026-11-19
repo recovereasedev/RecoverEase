@@ -1,27 +1,23 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 /**
- * The doctor chooses which of the patient's appointments is the plan's
- * follow-up (migration 56). The database checks it is the patient's own;
- * row-level security returns no row, rather than an error, to anyone else.
+ * Placing a goal in a phase, as the doctor's roadmap editor sends it. The
+ * database refuses at once, rather than wait, when the phase is being
+ * changed at that moment (migration 45); the doctor is told to try again.
  */
 
 const client = vi.hoisted(() => {
   const state = {
-    rows: [{ treatment_plan_id: 'plan-1' }] as unknown[] | null,
+    rows: [{ treatment_goal_id: 'goal-1' }] as unknown[] | null,
     error: null as { code?: string; message: string } | null,
-    sent: [] as unknown[],
   }
   const supabase = {
     from: vi.fn(() => ({
-      update: (changes: unknown) => {
-        state.sent.push(changes)
-        return {
-          eq: () => ({
-            select: async () => ({ data: state.error ? null : state.rows, error: state.error }),
-          }),
-        }
-      },
+      update: () => ({
+        eq: () => ({
+          select: async () => ({ data: state.error ? null : state.rows, error: state.error }),
+        }),
+      }),
     })),
   }
   return { state, supabase }
@@ -29,32 +25,32 @@ const client = vi.hoisted(() => {
 
 vi.mock('@/lib/supabase/client', () => ({ supabase: client.supabase }))
 
-const { setFollowUpAppointment } = await import('@/features/recovery-roadmap/api')
+const { linkGoalToPhase } = await import('@/features/recovery-roadmap/api')
 
-describe('setFollowUpAppointment', () => {
+describe('linkGoalToPhase', () => {
   beforeEach(() => {
-    client.state.rows = [{ treatment_plan_id: 'plan-1' }]
+    client.state.rows = [{ treatment_goal_id: 'goal-1' }]
     client.state.error = null
-    client.state.sent = []
   })
 
-  it('sets the plan’s follow-up appointment, or clears it', async () => {
-    await setFollowUpAppointment('plan-1', 'appt-1')
-    await setFollowUpAppointment('plan-1', null)
-    expect(client.supabase.from).toHaveBeenCalledWith('treatment_plan')
-    expect(client.state.sent).toEqual([
-      { treatment_plan_follow_up_appointment_id: 'appt-1' },
-      { treatment_plan_follow_up_appointment_id: null },
-    ])
+  it('places the goal', async () => {
+    await expect(linkGoalToPhase('goal-1', 'phase-1')).resolves.toBeUndefined()
   })
 
-  it('passes a refusal on as it is', async () => {
-    client.state.error = { code: '23503', message: 'violates foreign key constraint' }
-    await expect(setFollowUpAppointment('plan-1', 'appt-x')).rejects.toMatchObject({ code: '23503' })
+  it('says to try again when the phase is being changed at that moment', async () => {
+    client.state.error = { code: '55P03', message: 'could not obtain lock on row in relation "recovery_phase"' }
+    await expect(linkGoalToPhase('goal-1', 'phase-1')).rejects.toThrow(
+      'That phase is being changed right now. Try again in a moment.',
+    )
+  })
+
+  it('passes any other refusal on as it is', async () => {
+    client.state.error = { code: '23514', message: 'This phase is archived; link the goal to a current phase' }
+    await expect(linkGoalToPhase('goal-1', 'phase-1')).rejects.toMatchObject({ code: '23514' })
   })
 
   it('fails when row-level security changed nothing', async () => {
     client.state.rows = []
-    await expect(setFollowUpAppointment('plan-1', 'appt-1')).rejects.toThrow('The follow-up appointment was not saved.')
+    await expect(linkGoalToPhase('goal-1', 'phase-1')).rejects.toThrow('The goal was not moved.')
   })
 })

@@ -42,7 +42,7 @@ export function RecoveryPage() {
   const logsQuery = useRecoveryLogs(patientId)
   const saveLog = useSaveRecoveryLog(patientId)
   // Once the doctor has discharged the patient and no care is open, the
-  // database refuses new check-ins (migration 57); the form gives way to
+  // database refuses new check-ins (migration 61); the form gives way to
   // saying so, and the journal below stays.
   const plansQuery = useTreatmentPlans(patientId)
   const ended = plansQuery.data ? careHasEnded(plansQuery.data) : false

@@ -82,7 +82,6 @@ function recordFor(overrides: Partial<PatientReportData> = {}): PatientReportDat
         treatment_plan_status: 'active',
         treatment_plan_created_at: '2026-02-01T00:00:00Z',
         treatment_plan_updated_at: '2026-02-01T00:00:00Z',
-        treatment_plan_follow_up_appointment_id: null,
         treatment_plan_closure_reason: null,
         treatment_plan_discharged_at: null,
         treatment_goal: [
@@ -110,9 +109,6 @@ function recordFor(overrides: Partial<PatientReportData> = {}): PatientReportDat
     schedules: [
       {
         medication_schedule_id: 's-1',
-        medication_schedule_instructions: null,
-        medication_schedule_reminders_is_enabled: true,
-        medication_schedule_reminders_enabled_at: null,
         prescription_id: 'rx-1',
         medication_schedule_name: 'Paracetamol',
         medication_schedule_dosage: '500mg',
@@ -137,7 +133,6 @@ function recordFor(overrides: Partial<PatientReportData> = {}): PatientReportDat
         appointment_created_at: '2026-09-01T00:00:00Z',
         appointment_reminder_sent_at: null,
         appointment_follow_up_of_plan_id: null,
-      treatment_plan_id: null,
       },
       {
         appointment_id: 'a-2',
@@ -148,7 +143,6 @@ function recordFor(overrides: Partial<PatientReportData> = {}): PatientReportDat
         appointment_created_at: '2026-07-01T00:00:00Z',
         appointment_reminder_sent_at: null,
         appointment_follow_up_of_plan_id: null,
-      treatment_plan_id: null,
       },
     ],
     weekAdherence: { taken: 5, missed: 1, skipped: 0, pending: 2, resolved: 6, rate: 83 },

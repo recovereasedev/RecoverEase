@@ -22,13 +22,7 @@ import { assuredSuperAdmin, createSignIn, type Claims } from './helpers/super-ad
  * the comparison includes the enum, so it shows that is all that remains.
  */
 
-const ROLLBACK_60 = 'supabase/rollbacks/20260902100060_simplify_discharge_lifecycle.down.sql'
-const ROLLBACK_59 = 'supabase/rollbacks/20260902100059_medication_schedule_reminder_control.down.sql'
-const ROLLBACK_58 = 'supabase/rollbacks/20260902100058_medication_schedule_instructions.down.sql'
-const ROLLBACK_57 = 'supabase/rollbacks/20260902100057_discharge_reopen_treatment_case.down.sql'
-const ROLLBACK_56 = 'supabase/rollbacks/20260902100056_automatic_recovery_roadmap.down.sql'
-const ROLLBACK_55 = 'supabase/rollbacks/20260902100055_treatment_goal_progress.down.sql'
-const ROLLBACK_54 = 'supabase/rollbacks/20260902100054_doctor_identity_columns_fixed.down.sql'
+const ROLLBACK_61 = 'supabase/rollbacks/20260902100061_discharge_care_plan.down.sql'
 const ROLLBACK_53 = 'supabase/rollbacks/20260902100053_web_push_notifications.down.sql'
 const ROLLBACK_48 = 'supabase/rollbacks/20260902100048_medication_dose_identity.down.sql'
 const ROLLBACK_46 = 'supabase/rollbacks/20260902100046_super_admin_platform_overview.down.sql'
@@ -63,7 +57,7 @@ const rows = async (database: TestDatabase) => ({
   ),
 })
 
-describe('rolling back migrations 57, 56, 55, 54, 53, 48, 46, 45, 43, 44, 41, 42, 38, 37, 36, 35, 34 and 33 with their down-scripts', () => {
+describe('rolling back migrations 61, 53, 48, 46, 45, 43, 44, 41, 42, 38, 37, 36, 35, 34 and 33 with their down-scripts', () => {
   let used: TestDatabase
   let through32: TestDatabase
   let fx: Fixture
@@ -105,19 +99,9 @@ describe('rolling back migrations 57, 56, 55, 54, 53, 48, 46, 45, 43, 44, 41, 42
   })
 
   it('returns the schema to exactly what 32 left, and keeps every row', async () => {
-    // Rollback 60 refuses while care-plan links exist; an operator exports
-    // and clears them first.
-    await used.asService('update public.prescription set treatment_plan_id = null where treatment_plan_id is not null')
-    await used.asService('update public.appointment set treatment_plan_id = null where treatment_plan_id is not null')
     const before = await rows(used)
 
-    await used.db.exec(await script(ROLLBACK_60))
-    await used.db.exec(await script(ROLLBACK_59))
-    await used.db.exec(await script(ROLLBACK_58))
-    await used.db.exec(await script(ROLLBACK_57))
-    await used.db.exec(await script(ROLLBACK_56))
-    await used.db.exec(await script(ROLLBACK_55))
-    await used.db.exec(await script(ROLLBACK_54))
+    await used.db.exec(await script(ROLLBACK_61))
     await used.db.exec(await script(ROLLBACK_53))
     await used.db.exec(await script(ROLLBACK_48))
     await used.db.exec(await script(ROLLBACK_46))

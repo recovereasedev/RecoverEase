@@ -22,8 +22,6 @@ const created = vi.hoisted(() => ({
   goal: { mutate: vi.fn(), isPending: false, isError: false, error: null as unknown },
   prescription: { mutate: vi.fn(), isPending: false, isError: false, error: null as unknown },
   schedule: { mutate: vi.fn(), isPending: false, isError: false, error: null as unknown },
-  /** The clinic's today, as `useClinicToday` reads it; null until its zone is known. */
-  clinicToday: '2026-11-15' as string | null,
   /** Arguments the hook factories were called with, i.e. the context. */
   context: [] as { hook: string; args: unknown[] }[],
 }))
@@ -43,7 +41,6 @@ vi.mock('@/features/treatment-plans/hooks', () => ({
   },
   useUpdateGoalStatus: () => ({ mutate: vi.fn(), isPending: false, isError: false, error: null }),
   useTreatmentPlans: () => ({ data: [], isPending: false, error: null }),
-  useClinicToday: () => created.clinicToday,
 }))
 
 vi.mock('@/features/medications/hooks', () => ({
@@ -86,9 +83,6 @@ const PLAN = {
   treatment_plan_status: 'active',
   treatment_plan_created_at: '2026-02-01T00:00:00Z',
   treatment_plan_updated_at: '2026-02-01T00:00:00Z',
-  treatment_plan_follow_up_appointment_id: null,
-  treatment_plan_closure_reason: null,
-  treatment_plan_discharged_at: null,
   treatment_goal: [
     {
       treatment_goal_id: 'goal-1',
@@ -130,7 +124,6 @@ beforeEach(() => {
     created[key].error = null
   }
   created.context = []
-  created.clinicToday = '2026-11-15'
 })
 
 function typeInto(label: RegExp, value: string) {
@@ -260,86 +253,12 @@ describe('defining treatment goals (module 3.3)', () => {
   it('keeps the target date when one is given', () => {
     render(<TreatmentGoalForm patientId={PATIENT} planId="plan-1" />)
     typeInto(/goal/i, 'Climb one flight of stairs')
-    typeInto(/target date/i, '2099-06-01')
+    typeInto(/target date/i, '2026-06-01')
     fireEvent.click(screen.getByRole('button', { name: /add goal/i }))
 
     expect(created.goal.mutate.mock.calls[0][0]).toMatchObject({
-      targetDate: '2099-06-01',
+      targetDate: '2026-06-01',
     })
-  })
-
-  it('refuses a target date in the past, which would be missed at once', () => {
-    render(<TreatmentGoalForm patientId={PATIENT} planId="plan-1" />)
-    typeInto(/goal/i, 'Climb one flight of stairs')
-    typeInto(/target date/i, '2000-01-01')
-    fireEvent.click(screen.getByRole('button', { name: /add goal/i }))
-
-    expect(screen.getByText('Choose today or a later date.')).toBeInTheDocument()
-    expect(created.goal.mutate).not.toHaveBeenCalled()
-  })
-
-  it('says when the plan has already ended, rather than asking for a later date', () => {
-    render(<TreatmentGoalForm patientId={PATIENT} planId="plan-1" planStartDate="2020-01-01" planEndDate="2020-06-01" />)
-    typeInto(/goal/i, 'Climb one flight of stairs')
-    typeInto(/target date/i, '2020-05-01')
-    fireEvent.click(screen.getByRole('button', { name: /add goal/i }))
-
-    expect(screen.getByText(/This plan ended on .*; add the goal without a target date./)).toBeInTheDocument()
-    expect(created.goal.mutate).not.toHaveBeenCalled()
-  })
-
-  it('judges the past by the clinic’s day, not this device’s', () => {
-    // The clinic is already on the 16th; the 15th is in its past.
-    created.clinicToday = '2026-11-16'
-    render(<TreatmentGoalForm patientId={PATIENT} planId="plan-1" />)
-    expect(screen.getByLabelText(/target date/i)).toHaveAttribute('min', '2026-11-16')
-    typeInto(/goal/i, 'Climb one flight of stairs')
-    typeInto(/target date/i, '2026-11-15')
-    fireEvent.click(screen.getByRole('button', { name: /add goal/i }))
-    expect(screen.getByText('Choose today or a later date.')).toBeInTheDocument()
-    expect(created.goal.mutate).not.toHaveBeenCalled()
-
-    // The clinic's own today is accepted.
-    typeInto(/target date/i, '2026-11-16')
-    fireEvent.click(screen.getByRole('button', { name: /add goal/i }))
-    expect(created.goal.mutate.mock.calls[0][0]).toMatchObject({ targetDate: '2026-11-16' })
-  })
-
-  it('gives no past-date hint until the clinic’s day is known, and shows the database’s refusal', () => {
-    created.clinicToday = null
-    render(<TreatmentGoalForm patientId={PATIENT} planId="plan-1" />)
-    expect(screen.getByLabelText(/target date/i)).not.toHaveAttribute('min')
-    typeInto(/goal/i, 'Climb one flight of stairs')
-    typeInto(/target date/i, '2000-01-01')
-    fireEvent.click(screen.getByRole('button', { name: /add goal/i }))
-    expect(screen.queryByText('Choose today or a later date.')).not.toBeInTheDocument()
-    expect(created.goal.mutate).toHaveBeenCalledTimes(1)
-  })
-
-  it('shows why the database refused the goal', () => {
-    created.goal.isError = true
-    created.goal.error = { code: '23514', message: "A goal's target date cannot be in the past" }
-    render(<TreatmentGoalForm patientId={PATIENT} planId="plan-1" />)
-    expect(screen.getByText('The goal was not added')).toBeInTheDocument()
-    expect(screen.getByText(/target date cannot be in the past/)).toBeInTheDocument()
-  })
-
-  it('refuses a target date after the plan ends', () => {
-    render(
-      <TreatmentGoalForm
-        patientId={PATIENT}
-        planId="plan-1"
-        planStartDate="2099-01-01"
-        planEndDate="2099-02-01"
-      />,
-    )
-    typeInto(/goal/i, 'Climb one flight of stairs')
-    typeInto(/target date/i, '2099-03-01')
-    fireEvent.click(screen.getByRole('button', { name: /add goal/i }))
-
-    expect(screen.getByText(/on or before the plan ends/)).toBeInTheDocument()
-    expect(screen.getByLabelText(/target date/i)).toHaveAttribute('max', '2099-02-01')
-    expect(created.goal.mutate).not.toHaveBeenCalled()
   })
 
   it('clears itself after each goal, so several can be added in a row', () => {
@@ -415,8 +334,6 @@ describe('issuing a prescription and its schedule (modules 4.3 and 4.1)', () => 
 
     expect(created.prescription.mutate.mock.calls[0][0]).toEqual({
       notes: 'Take with food.',
-      // No active plan in this test's record: the database decides (migration 60).
-      planId: null,
     })
     expect(created.schedule.mutate.mock.calls[0][0]).toEqual({
       prescriptionId: 'presc-new',
@@ -425,8 +342,6 @@ describe('issuing a prescription and its schedule (modules 4.3 and 4.1)', () => 
       times: ['08:00'],
       startDate: '2026-03-01',
       endDate: null,
-      // The medicine's own instructions (migration 58), left empty here.
-      instructions: null,
     })
   })
 

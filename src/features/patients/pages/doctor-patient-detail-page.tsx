@@ -28,7 +28,7 @@ import { useQueryKeys } from '@/features/auth/use-query-keys'
 import { fetchChatSessions, type ChatSession } from '@/features/chat/api'
 import { Button } from '@/components/ui/button'
 import { Card, CardBody, CardHeader } from '@/components/ui/card'
-import { Field, Textarea } from '@/components/ui/field'
+import { Field, Select, Textarea } from '@/components/ui/field'
 import { ProgressBar } from '@/components/ui/progress'
 import { Tabs } from '@/components/ui/tabs'
 import { useCurrentUser } from '@/features/auth/auth-context'
@@ -44,11 +44,6 @@ import {
 import { summariseConflicts } from '@/features/medications/conflicts'
 import { EndMedicationAction } from '@/features/medications/components/end-medication'
 import { MedicationForm } from '@/features/medications/components/medication-form'
-import {
-  EditInstructionsAction,
-  MedicineInstructions,
-} from '@/features/medications/components/medication-instructions'
-import { MedicationReminderSwitch } from '@/features/medications/components/medication-reminder-control'
 import { PrescriptionPrintHeader } from '@/features/medications/components/prescription-print-header'
 import { summariseAdherence, type Adherence } from '@/features/medications/api'
 import {
@@ -66,10 +61,13 @@ import { MoodTrend } from '@/features/recovery-logs/components/mood-trend'
 import { useRecoveryLogs } from '@/features/recovery-logs/hooks'
 import { RecoveryProgress } from '@/features/recovery-progress/components/recovery-progress'
 import { RoadmapEditor } from '@/features/recovery-roadmap/components/roadmap-editor'
-import { TreatmentGoalForm } from '@/features/treatment-plans/components/treatment-goal-form'
 import { CaseLifecycle } from '@/features/treatment-plans/components/case-lifecycle'
+import { TreatmentGoalForm } from '@/features/treatment-plans/components/treatment-goal-form'
 import { TreatmentPlanForm } from '@/features/treatment-plans/components/treatment-plan-form'
-import { useTreatmentPlans } from '@/features/treatment-plans/hooks'
+import {
+  useTreatmentPlans,
+  useUpdateGoalStatus,
+} from '@/features/treatment-plans/hooks'
 import {
   isOpenCare,
   summariseGoals,
@@ -213,6 +211,8 @@ export function DoctorPatientDetailPage() {
     queryFn: () => fetchDoctorNotes(patientId),
     enabled: Boolean(patientId),
   })
+
+  const goalStatus = useUpdateGoalStatus(patientId)
 
   // A second medicine belongs to the prescription already issued, not to a
   // new one. Only prescriptions carrying a schedule are visible to this
@@ -623,7 +623,7 @@ export function DoctorPatientDetailPage() {
                               }
                             />
                             <CardBody>
-                              {/* Migration 57: discharge an open plan, or
+                              {/* Migration 61: discharge an active plan, or
                                   reopen a discharged one. */}
                               {isOpenCare(plan.treatment_plan_status) ||
                               plan.treatment_plan_status === 'discharged' ? (
@@ -680,7 +680,7 @@ export function DoctorPatientDetailPage() {
                                     />
                                     {/* Restates the count already in the card
                                         description. `summariseGoals` counts
-                                        goals the patient has marked; nothing
+                                        goals the clinician has marked; nothing
                                         here is inferred. */}
                                     <ProgressBar
                                       value={progress.percentage ?? 0}
@@ -705,8 +705,9 @@ export function DoctorPatientDetailPage() {
                                       className="flex flex-col gap-2.5 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
                                     >
                                       <div className="flex min-w-0 gap-3 sm:flex-1">
-                                        {/* The state as an icon; the badge
-                                            beside it says it in words. */}
+                                        {/* The state as an icon; the select
+                                            beside it says it in words, and is
+                                            where it is changed. */}
                                         <GoalIcon
                                           className={cn(
                                             'mt-0.5 size-5 shrink-0',
@@ -728,12 +729,59 @@ export function DoctorPatientDetailPage() {
                                         ) : null}
                                         </div>
                                       </div>
-                                      {/* Monitoring only: the patient
-                                          records progress and the system
-                                          marks a goal missed once its
-                                          date has passed (migration 55). */}
-                                      <div className="sm:shrink-0">
-                                        <StatusBadge status={goalState} />
+                                      <div className="flex items-center gap-2 sm:shrink-0">
+                                        {/* Module 3.3's other half: the
+                                            clinician records progress
+                                            against the goal they set. */}
+                                        <Field
+                                          label="Progress"
+                                          className="[&>label]:sr-only"
+                                        >
+                                          <Select
+                                            // 44px on a phone, where it is
+                                            // the only way to record progress.
+                                            className="h-11 w-auto text-sm sm:h-9 aria-disabled:cursor-not-allowed aria-disabled:bg-neutral-100 aria-disabled:text-muted"
+                                            value={goal.treatment_goal_status}
+                                            // Held while a change saves, as a
+                                            // saving Button is: unavailable
+                                            // but still focusable. `disabled`
+                                            // made the browser drop keyboard
+                                            // focus to the top of the page.
+                                            aria-disabled={
+                                              goalStatus.isPending || undefined
+                                            }
+                                            aria-busy={
+                                              (goalStatus.isPending &&
+                                                goalStatus.variables?.goalId ===
+                                                  goal.treatment_goal_id) ||
+                                              undefined
+                                            }
+                                            onChange={(event) => {
+                                              // A change made while another
+                                              // saves is not taken; the
+                                              // select keeps its value.
+                                              if (goalStatus.isPending) return
+                                              goalStatus.mutate({
+                                                goalId: goal.treatment_goal_id,
+                                                status: event.target
+                                                  .value as TreatmentGoalStatus,
+                                              })
+                                            }}
+                                          >
+                                            <option value="pending">
+                                              Not started
+                                            </option>
+                                            <option value="in_progress">
+                                              In progress
+                                            </option>
+                                            <option value="achieved">
+                                              Achieved
+                                            </option>
+                                            <option value="missed">
+                                              Missed
+                                            </option>
+                                          </Select>
+                                        </Field>
                                       </div>
                                     </li>
                                     )
@@ -742,6 +790,15 @@ export function DoctorPatientDetailPage() {
                                 </>
                               )}
 
+                              {goalStatus.isError ? (
+                                <div className="mt-4">
+                                  <FormError
+                                    error={goalStatus.error}
+                                    title="The goal was not updated"
+                                  />
+                                </div>
+                              ) : null}
+
                               {/* Adding a goal to a plan that already exists,
                                   outside a guided consultation. */}
                               <div className="mt-5 border-t border-[var(--color-border)] pt-5">
@@ -749,8 +806,6 @@ export function DoctorPatientDetailPage() {
                                   <TreatmentGoalForm
                                     patientId={patientId}
                                     planId={plan.treatment_plan_id}
-                                    planStartDate={plan.treatment_plan_start_date}
-                                    planEndDate={plan.treatment_plan_end_date}
                                   />
                                 ) : (
                                   <Button
@@ -887,21 +942,6 @@ export function DoctorPatientDetailPage() {
                                       ? ` until ${formatDate(schedule.medication_schedule_end_date)}`
                                       : ', ongoing'}
                                   </p>
-                                  {/* This medicine's own instructions
-                                      (migration 58); nothing when none. */}
-                                  {schedule.medication_schedule_instructions ? (
-                                    <div className="mt-2">
-                                      <MedicineInstructions
-                                        text={schedule.medication_schedule_instructions}
-                                      />
-                                    </div>
-                                  ) : null}
-                                  {/* The doctor's reminder switch for this
-                                      medicine (migration 59). */}
-                                  <MedicationReminderSwitch
-                                    patientId={patientId}
-                                    schedule={schedule}
-                                  />
                                   {/* The prescription's notes, which the
                                       patient's own printed prescription also
                                       carries. Paper only (QA 9/12). */}
@@ -917,10 +957,6 @@ export function DoctorPatientDetailPage() {
                                     keeps the row's layout exactly as it was;
                                     the control stays off the paper. */}
                                 <div className="contents print:hidden">
-                                  <EditInstructionsAction
-                                    patientId={patientId}
-                                    schedule={schedule}
-                                  />
                                   <EndMedicationAction
                                     patientId={patientId}
                                     schedule={schedule}
@@ -1154,8 +1190,8 @@ function RecordSummary({
         new Date(a.appointment_date).getTime() -
         new Date(b.appointment_date).getTime(),
     )[0]
-  const activePlan = plans?.find((plan) =>
-    isOpenCare(plan.treatment_plan_status),
+  const activePlan = plans?.find(
+    (plan) => plan.treatment_plan_status === 'active',
   )
   const goals = activePlan ? summariseGoals(activePlan.treatment_goal) : null
   const flagged =

@@ -19,13 +19,9 @@ import { documentFileName, type DownloadableFile } from '@/lib/documents/downloa
  * - **The doses that exist.** Only pending dose slots from now to the end of
  *   the slots the scheduled job has made (30 days ahead) - the same doses
  *   the Medications page lists. Nothing is projected past them.
- * - **Not a medicine the doctor switched reminders off for.** The doctor's
- *   per-medicine switch (migration 59) covers this file too: those doses are
- *   left out of a new download, and stay on the checklist.
  * - **A copy, not a link.** The file does not update itself. A changed or
- *   ended prescription, or a medicine whose reminders were turned off after
- *   the download, needs the old events removed by the patient, so the page
- *   says so. Recording a dose is still done in RecoverEase.
+ *   ended prescription needs a new file, and the old events removed, so the
+ *   page says so. Recording a dose is still done in RecoverEase.
  * - **The patient's choice of words.** With names off, an event says only
  *   "Medicine due (RecoverEase)", for a calendar that syncs to an account
  *   the patient would rather not hold medicine names.
@@ -90,28 +86,13 @@ export function foldLine(line: string): string {
 
 type DoseTime = { at: Date; doses: DoseWithSchedule[] }
 
-/** The doctor turned reminders off for this dose's medicine (migration 59). */
-function remindersOff(dose: DoseWithSchedule): boolean {
-  // Only an explicit false: a dose read without the setting counts as on.
-  return dose.medication_schedule?.medication_schedule_reminders_is_enabled === false
-}
-
-function isUpcoming(dose: DoseWithSchedule, now: Date): boolean {
-  if (dose.medication_log_status !== 'pending') return false
-  const at = new Date(dose.medication_log_scheduled_at).getTime()
-  return !Number.isNaN(at) && at > now.getTime()
-}
-
-/**
- * The pending doses still to come, gathered by the moment they are due. A
- * medicine whose reminders the doctor has turned off is left out: its doses
- * stay on the patient's checklist, but the phone is not told to ring.
- */
+/** The pending doses still to come, gathered by the moment they are due. */
 export function upcomingDoseTimes(doses: readonly DoseWithSchedule[], now: Date): DoseTime[] {
   const byTime = new Map<number, DoseWithSchedule[]>()
   for (const dose of doses) {
-    if (!isUpcoming(dose, now) || remindersOff(dose)) continue
+    if (dose.medication_log_status !== 'pending') continue
     const at = new Date(dose.medication_log_scheduled_at).getTime()
+    if (Number.isNaN(at) || at <= now.getTime()) continue
     byTime.set(at, [...(byTime.get(at) ?? []), dose])
   }
   return [...byTime.entries()]
@@ -132,14 +113,7 @@ function medicineNames(doses: readonly DoseWithSchedule[]): string {
     .join(', ')
 }
 
-export function buildReminderCalendar(
-  input: ReminderCalendarInput,
-): DownloadableFile & {
-  /** Dose times in the file. */
-  count: number
-  /** Upcoming doses left out because the doctor turned their reminders off. */
-  withheld: number
-} {
+export function buildReminderCalendar(input: ReminderCalendarInput): DownloadableFile & { count: number } {
   const stamp = icsInstant(input.generatedAt)
   const times = upcomingDoseTimes(input.doses, input.generatedAt)
   const lines: string[] = [
@@ -202,8 +176,5 @@ export function buildReminderCalendar(
       'ics',
     ),
     count: times.length,
-    withheld: input.doses.filter(
-      (dose) => isUpcoming(dose, input.generatedAt) && remindersOff(dose),
-    ).length,
   }
 }

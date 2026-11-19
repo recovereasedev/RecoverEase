@@ -6,8 +6,8 @@ import {
   CalendarClock,
   CheckCircle2,
   CircleDashed,
-  DoorOpen,
   Clock,
+  DoorOpen,
   Flag,
   MinusCircle,
   Pause,
@@ -110,7 +110,7 @@ export const rescheduleRequestStatus: Record<
 }
 
 /**
- * A care case is Active or Discharged (migration 60); the doctor alone moves
+ * A care plan is Active or Discharged (migration 61); the doctor alone moves
  * it between the two.
  */
 export const treatmentPlanStatus: Record<'active' | 'discharged', StatusDescriptor> = {
@@ -130,7 +130,8 @@ export const treatmentPlanStatus: Record<'active' | 'discharged', StatusDescript
 
 /**
  * The descriptor for a plan's stored status. The database type still lists
- * labels the database now refuses; anything not discharged is open care.
+ * migration 1's labels, which the database now refuses (PostgreSQL cannot
+ * drop an enum label); anything not discharged is open care.
  */
 export function treatmentPlanStatusOf(status: Enums<'treatment_plan_status'>): StatusDescriptor {
   return treatmentPlanStatus[status === 'discharged' ? 'discharged' : 'active']
@@ -155,12 +156,10 @@ export const treatmentGoalStatus: Record<
     icon: CheckCircle2,
     tone: 'success',
   },
-  // Set only by the system, once the target date has passed (migration 55).
   missed: {
-    label: 'Missed',
+    label: 'Not met',
     icon: MinusCircle,
     tone: 'warning',
-    description: 'The target date passed before this goal was achieved.',
   },
 }
 

@@ -1248,9 +1248,8 @@ describe('rollback and reapply', () => {
 
   beforeAll(async () => {
     ;[scratch, before53] = await Promise.all([
-      // Through 53 only, so a later migration is not part of what is rolled
-      // back and compared.
-      createTestDatabase({ stopAfter: MIGRATION_53 }),
+      // Through 53: later migrations (61) are not this comparison's subject.
+      createTestDatabase({ stopAfter: '20260902100053' }),
       createTestDatabase({ stopAfter: '20260902100048' }),
     ])
     seeded = await seedFixture(scratch)

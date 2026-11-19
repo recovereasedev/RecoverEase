@@ -5,11 +5,6 @@ import { FormError } from '@/components/feedback/form-error'
 import { Button } from '@/components/ui/button'
 import { Field, Input, Textarea } from '@/components/ui/field'
 import {
-  InstructionsField,
-  instructionsError,
-  instructionsToSave,
-} from '@/features/medications/components/medication-instructions'
-import {
   calculateDoseTimes,
   needsInterval,
   type DoseTimeField,
@@ -18,7 +13,6 @@ import {
   useCreateMedicationSchedule,
   useCreatePrescription,
 } from '@/features/medications/hooks'
-import { CarePlanField, type CarePlanChoice } from '@/features/treatment-plans/components/care-plan-field'
 import { toDateKey } from '@/lib/format'
 
 /**
@@ -62,17 +56,13 @@ export function MedicationForm({
   const [notes, setNotes] = useState('')
   const [name, setName] = useState('')
   const [dosage, setDosage] = useState('')
-  const [instructions, setInstructions] = useState('')
   const [frequency, setFrequency] = useState('1')
   const [intervalHours, setIntervalHours] = useState('')
   const [startTime, setStartTime] = useState('08:00')
   const [startDate, setStartDate] = useState(toDateKey())
   const [endDate, setEndDate] = useState('')
-  // The care plan a new prescription belongs to (migration 60).
-  const [carePlan, setCarePlan] = useState('')
-  const [planChoice, setPlanChoice] = useState<CarePlanChoice>({ planId: null, needsChoice: false })
   const [errors, setErrors] = useState<
-    Partial<Record<'name' | 'dosage' | 'instructions' | DoseTimeField | 'startDate' | 'endDate' | 'plan', string>>
+    Partial<Record<'name' | 'dosage' | DoseTimeField | 'startDate' | 'endDate', string>>
   >({})
 
   const inFlight = useRef(false)
@@ -106,15 +96,10 @@ export function MedicationForm({
     const next: typeof errors = {}
     if (!name.trim()) next.name = 'Name the medicine.'
     if (!dosage.trim()) next.dosage = 'Say how much to take, e.g. 500 mg.'
-    const instructionsProblem = instructionsError(instructions)
-    if (instructionsProblem) next.instructions = instructionsProblem
     if (!doseTimes.ok) next[doseTimes.field] = doseTimes.message
     if (!startDate) next.startDate = 'Choose when the course starts.'
     if (endDate && startDate && endDate < startDate) {
       next.endDate = 'The end date cannot be before the start date.'
-    }
-    if (!prescriptionId && planChoice.needsChoice) {
-      next.plan = 'Choose which care plan this prescription is for.'
     }
     setErrors(next)
     if (Object.keys(next).length > 0 || !doseTimes.ok) return
@@ -137,7 +122,6 @@ export function MedicationForm({
           times,
           startDate,
           endDate: endDate || null,
-          instructions: instructionsToSave(instructions),
         },
         { onSuccess: () => onDone?.(id), onSettled: release },
       )
@@ -149,7 +133,7 @@ export function MedicationForm({
     }
 
     createPrescription.mutate(
-      { notes: notes.trim() || null, planId: planChoice.planId },
+      { notes: notes.trim() || null },
       {
         onSuccess: (prescription) =>
           writeSchedule(prescription.prescription_id),
@@ -182,20 +166,6 @@ export function MedicationForm({
         </Field>
       )}
 
-      {prescriptionId ? null : (
-        <CarePlanField
-          patientId={patientId}
-          value={carePlan}
-          onChange={(planId) => {
-            setCarePlan(planId)
-            setErrors(({ plan: _cleared, ...rest }) => rest)
-          }}
-          onResolved={setPlanChoice}
-          error={errors.plan}
-          endedNotice="This patient’s care has ended, so this medicine is on no care plan and no reminders are sent for it."
-        />
-      )}
-
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Medicine" required error={errors.name}>
           <Input
@@ -213,14 +183,6 @@ export function MedicationForm({
           />
         </Field>
       </div>
-
-      {/* This medicine's own instructions (migration 58), apart from the
-          prescription's notes above. Optional, and the doctor's own words. */}
-      <InstructionsField
-        value={instructions}
-        onChange={setInstructions}
-        error={errors.instructions}
-      />
 
       {/* `step="any"` rather than the default whole-number step: a value the
           browser considers invalid blocks submission before any handler

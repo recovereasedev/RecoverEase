@@ -11,11 +11,11 @@ import { CLOSURE_REASONS, closureReasonLabel, isOpenCare, type ClosureReason, ty
 import { useDischargePlan, useReopenPlan } from '../hooks'
 
 /**
- * Migrations 57 and 60 on the doctor's patient record: discharge an active
- * plan with a required reason, or reopen a discharged one. The database
- * allows each only to the patient's assigned, active doctor and only from the
- * right status; this offers the action that fits the plan and says plainly
- * what it does. Nothing discharges a plan but the doctor.
+ * Migration 61 on the doctor's patient record: discharge an active plan with
+ * a required reason, or reopen a discharged one. The database allows each
+ * only to the patient's assigned, active doctor and only from the right
+ * status; this offers the action that fits the plan and says plainly what it
+ * does. Nothing discharges a plan but the doctor.
  */
 export function CaseLifecycle({ patientId, plan }: { patientId: string; plan: TreatmentPlan }) {
   const discharge = useDischargePlan(patientId)
@@ -78,9 +78,8 @@ export function CaseLifecycle({ patientId, plan }: { patientId: string; plan: Tr
           }
         >
           <p className="text-body">
-            The patient can log check-ins and work on this plan’s activities and goals again, and reminders resume for
-            what comes next. Nothing is sent about the time the case was closed. The discharge stays in the plan’s
-            history.
+            The patient can log check-ins and mark this plan’s roadmap activities again. The discharge stays in the
+            plan’s history.
           </p>
           {reopen.error ? <FormError error={reopen.error} title="The case was not reopened" /> : null}
         </Dialog>
@@ -130,7 +129,11 @@ export function CaseLifecycle({ patientId, plan }: { patientId: string; plan: Tr
         <div className="space-y-4">
           <p className="text-body">
             This ends this care plan. The patient keeps their account, records and appointment booking, and can book a
-            follow-up; daily check-ins and reminders for this care stop. You can reopen the case later.
+            follow-up; daily check-ins and roadmap activities stop. You can reopen the case later.
+          </p>
+          <p className="text-body">
+            Medicine and appointment reminders are not changed by a discharge. End any medicine that should stop, and
+            cancel any appointment that is no longer needed.
           </p>
           <Field label="Closure reason" required error={missingReason ? 'Choose a reason for the discharge.' : undefined}>
             <Select

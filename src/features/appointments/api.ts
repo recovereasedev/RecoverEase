@@ -44,12 +44,6 @@ export async function createAppointment(input: {
   patientId: string
   doctorId: string
   scheduledFor: string
-  /**
-   * The care plan it belongs to (migration 60). Left out, the database puts
-   * it on the patient's only active plan, or marks it a follow-up request
-   * once their care has ended.
-   */
-  planId?: string | null
 }): Promise<Appointment> {
   const { data, error } = await supabase
     .from('appointment')
@@ -57,7 +51,6 @@ export async function createAppointment(input: {
       pat_id: input.patientId,
       doc_id: input.doctorId,
       appointment_date: input.scheduledFor,
-      ...(input.planId ? { treatment_plan_id: input.planId } : {}),
     })
     .select()
     .single()

@@ -268,7 +268,7 @@ export function DoctorAppointmentsPage() {
                             <span className="flex flex-wrap items-center gap-1.5">
                               {/* Booked while the patient was discharged; it
                                   stays marked if the case is reopened
-                                  (migrations 57 and 60). */}
+                                  (migration 61). */}
                               {appointment.appointment_follow_up_of_plan_id ? (
                                 <Badge tone="info">Follow-up request</Badge>
                               ) : null}

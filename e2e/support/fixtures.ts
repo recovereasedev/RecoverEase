@@ -222,7 +222,6 @@ export function datasetFor(role: 'patient' | 'doctor' | 'admin'): TableRows {
           treatment_plan_status: 'active',
           treatment_plan_created_at: '2026-02-01T00:00:00Z',
           treatment_plan_updated_at: '2026-02-01T00:00:00Z',
-          treatment_plan_follow_up_appointment_id: null,
           treatment_plan_closure_reason: null,
           treatment_plan_discharged_at: null,
           treatment_goal: [
@@ -250,7 +249,6 @@ export function datasetFor(role: 'patient' | 'doctor' | 'admin'): TableRows {
       appointment: [
         {
           appointment_id: IDS.appointmentA,
-          treatment_plan_id: IDS.planA,
           pat_id: IDS.alicePat,
           doc_id: IDS.doctorA,
           appointment_date: inDays(3),
@@ -285,7 +283,6 @@ export function datasetFor(role: 'patient' | 'doctor' | 'admin'): TableRows {
         treatment_plan_status: 'active',
         treatment_plan_created_at: '2026-02-01T00:00:00Z',
         treatment_plan_updated_at: '2026-02-01T00:00:00Z',
-        treatment_plan_follow_up_appointment_id: null,
         treatment_plan_closure_reason: null,
         treatment_plan_discharged_at: null,
         treatment_goal: [
@@ -304,7 +301,6 @@ export function datasetFor(role: 'patient' | 'doctor' | 'admin'): TableRows {
     appointment: [
       {
         appointment_id: IDS.appointmentA,
-        treatment_plan_id: IDS.planA,
         pat_id: IDS.alicePat,
         doc_id: IDS.doctorA,
         appointment_date: inDays(3),
@@ -351,7 +347,7 @@ export function datasetFor(role: 'patient' | 'doctor' | 'admin'): TableRows {
           medication_schedule_id: IDS.scheduleA,
           medication_schedule_name: 'Paracetamol',
           medication_schedule_dosage: '500mg',
-          prescription: { pat_id: IDS.alicePat, treatment_plan_id: IDS.planA },
+          prescription: { pat_id: IDS.alicePat },
         },
       },
     ],

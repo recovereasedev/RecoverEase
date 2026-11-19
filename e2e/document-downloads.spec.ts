@@ -175,7 +175,7 @@ test.describe('downloading documents', () => {
             medication_schedule_id: IDS.scheduleA,
             medication_schedule_name: 'Paracetamol',
             medication_schedule_dosage: '500mg',
-            prescription: { pat_id: IDS.alicePat, treatment_plan_id: IDS.planA },
+            prescription: { pat_id: IDS.alicePat },
           },
         },
       ],
