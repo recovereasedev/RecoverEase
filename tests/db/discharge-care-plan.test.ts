@@ -507,6 +507,161 @@ describe('the care-plan lifecycle (migration 61)', () => {
     })
   })
 
+  describe('the follow-up mark stays with its own patient', () => {
+    const SAME_PATIENT = /appointment_follow_up_same_patient_fkey/
+    // Alice and Bob share doctorA, so the assigned-doctor check passes and
+    // only the (plan, patient) foreign key can refuse.
+    const followUpForAlice = async () => {
+      await quietOthers()
+      const planId = await newPlan()
+      await asDoctorA(DISCHARGE, [planId, 'completed_recovery'])
+      const [{ id }] = await asAlice<{ id: string }>(
+        `insert into public.appointment (pat_id, doc_id, appointment_date)
+         values ($1, $2, now() + interval '20 days') returning appointment_id as id`,
+        [fx.alicePatId, fx.doctorAId],
+      )
+      return { planId, appointmentId: id }
+    }
+    const appointment = async (id: string) =>
+      (await database.asService<{ pat: string; mark: string | null }>(
+        'select pat_id as pat, appointment_follow_up_of_plan_id as mark from public.appointment where appointment_id = $1',
+        [id],
+      ))[0]
+
+    it('has the unique key and the foreign key, each once', async () => {
+      expect(
+        await database.asService(
+          `select conname::text as name, contype::text as type, conrelid::regclass::text as on_table,
+                  pg_get_constraintdef(oid) as definition
+             from pg_constraint
+            where conname in ('treatment_plan_id_pat_id_key', 'appointment_follow_up_same_patient_fkey')
+            order by 1`,
+        ),
+      ).toEqual([
+        {
+          name: 'appointment_follow_up_same_patient_fkey',
+          type: 'f',
+          on_table: 'appointment',
+          definition:
+            'FOREIGN KEY (appointment_follow_up_of_plan_id, pat_id) REFERENCES treatment_plan(treatment_plan_id, pat_id) ON DELETE SET NULL (appointment_follow_up_of_plan_id)',
+        },
+        { name: 'treatment_plan_id_pat_id_key', type: 'u', on_table: 'treatment_plan', definition: 'UNIQUE (treatment_plan_id, pat_id)' },
+      ])
+      // No second, single-column key on the mark.
+      expect(
+        await database.asService(
+          `select count(*)::int as n from pg_constraint
+            where conrelid = 'public.appointment'::regclass and contype = 'f'
+              and conkey @> array[(select attnum from pg_attribute
+                                    where attrelid = 'public.appointment'::regclass
+                                      and attname = 'appointment_follow_up_of_plan_id')]`,
+        ),
+      ).toEqual([{ n: 1 }])
+    })
+
+    it('refuses the service role moving a marked appointment to another patient', async () => {
+      const { planId, appointmentId } = await followUpForAlice()
+      await expect(
+        database.asService('update public.appointment set pat_id = $2 where appointment_id = $1', [appointmentId, fx.bobPatId]),
+      ).rejects.toThrow(SAME_PATIENT)
+      expect(await appointment(appointmentId)).toEqual({ pat: fx.alicePatId, mark: planId })
+
+      // An unmarked appointment can still be moved by the service: the key
+      // is what refused, nothing else.
+      const [{ id: plain }] = await database.asService<{ id: string }>(
+        `insert into public.appointment (pat_id, doc_id, appointment_date)
+         values ($1, $2, now() + interval '21 days') returning appointment_id as id`,
+        [fx.bobPatId, fx.doctorAId],
+      )
+      expect(await appointment(plain)).toEqual({ pat: fx.bobPatId, mark: null })
+      await database.asService('update public.appointment set pat_id = $2 where appointment_id = $1', [plain, fx.alicePatId])
+      expect(await appointment(plain)).toEqual({ pat: fx.alicePatId, mark: null })
+    })
+
+    it('refuses the service role moving a referenced plan to another patient', async () => {
+      const { planId, appointmentId } = await followUpForAlice()
+      await expect(
+        database.asService('update public.treatment_plan set pat_id = $2 where treatment_plan_id = $1', [planId, fx.bobPatId]),
+      ).rejects.toThrow(SAME_PATIENT)
+      expect(
+        await database.asService('select pat_id as pat from public.treatment_plan where treatment_plan_id = $1', [planId]),
+      ).toEqual([{ pat: fx.alicePatId }])
+      expect(await appointment(appointmentId)).toEqual({ pat: fx.alicePatId, mark: planId })
+
+      // A plan nothing marks can still be moved by the service.
+      const unreferenced = await newPlan()
+      await database.asService('update public.treatment_plan set pat_id = $2 where treatment_plan_id = $1', [unreferenced, fx.bobPatId])
+    })
+
+    it('refuses the service role pointing a mark at another patient’s plan, and allows the patient’s own', async () => {
+      const { appointmentId } = await followUpForAlice()
+      const bobsPlan = await newPlan(fx.bobPatId)
+      await asDoctorA(DISCHARGE, [bobsPlan, 'transferred'])
+      await expect(
+        database.asService('update public.appointment set appointment_follow_up_of_plan_id = $2 where appointment_id = $1', [
+          appointmentId,
+          bobsPlan,
+        ]),
+      ).rejects.toThrow(SAME_PATIENT)
+
+      const alicesOther = await newPlan()
+      await database.asService('update public.appointment set appointment_follow_up_of_plan_id = $2 where appointment_id = $1', [
+        appointmentId,
+        alicesOther,
+      ])
+      expect(await appointment(appointmentId)).toEqual({ pat: fx.alicePatId, mark: alicesOther })
+      // A session still cannot change it at all.
+      await expect(
+        asDoctorA('update public.appointment set appointment_follow_up_of_plan_id = null where appointment_id = $1', [appointmentId]),
+      ).rejects.toThrow(/follow-up/)
+    })
+
+    it('marks the booking patient’s own plan, for each of two patients of one doctor', async () => {
+      await quietOthers()
+      const alicePlan = await newPlan()
+      const bobPlan = await newPlan(fx.bobPatId)
+      await asDoctorA(DISCHARGE, [alicePlan, 'withdrew'])
+      await asDoctorA(DISCHARGE, [bobPlan, 'referred'])
+      const book = async (userId: string, patId: string) =>
+        (await database.asUser<{ id: string }>(
+          userId,
+          `insert into public.appointment (pat_id, doc_id, appointment_date)
+           values ($1, $2, now() + interval '22 days') returning appointment_id as id`,
+          [patId, fx.doctorAId],
+        ))[0]!.id
+      expect(await appointment(await book(fx.aliceUserId, fx.alicePatId))).toEqual({ pat: fx.alicePatId, mark: alicePlan })
+      expect(await appointment(await book(fx.bobUserId, fx.bobPatId))).toEqual({ pat: fx.bobPatId, mark: bobPlan })
+      expect(await appointment(await book(fx.doctorAUserId, fx.bobPatId))).toEqual({ pat: fx.bobPatId, mark: bobPlan })
+    })
+
+    it('clears only the mark when the plan is deleted, keeping the appointment and its patient', async () => {
+      const { planId, appointmentId } = await followUpForAlice()
+      const [before] = await database.asService<Record<string, unknown>>(
+        'select * from public.appointment where appointment_id = $1',
+        [appointmentId],
+      )
+      await database.asService('delete from public.treatment_plan where treatment_plan_id = $1', [planId])
+      const [after] = await database.asService<Record<string, unknown>>(
+        'select * from public.appointment where appointment_id = $1',
+        [appointmentId],
+      )
+      expect(after).toEqual({ ...before, appointment_follow_up_of_plan_id: null })
+      expect(after!['pat_id']).toBe(fx.alicePatId)
+    })
+
+    it('leaves discharge and reopening as they were', async () => {
+      const { planId } = await followUpForAlice()
+      await asDoctorA(REOPEN, [planId])
+      await asDoctorA(DISCHARGE, [planId, 'transferred'])
+      expect(await plan(planId)).toEqual({ status: 'discharged', reason: 'transferred', discharged: true })
+      expect((await events(planId)).map((event) => [event.previous, event.next])).toEqual([
+        ['active', 'discharged'],
+        ['discharged', 'active'],
+        ['active', 'discharged'],
+      ])
+    })
+  })
+
   describe('reminders are left as they are', () => {
     it('still reminds a discharged patient of an appointment and a medicine dose', async () => {
       await quietOthers()

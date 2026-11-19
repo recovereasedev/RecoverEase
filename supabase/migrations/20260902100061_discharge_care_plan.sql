@@ -35,7 +35,9 @@
 --     the patient's care has ended (a discharged plan and no active one);
 --   * `appointment.appointment_follow_up_of_plan_id`: set by the database
 --     when a patient whose care has ended books, so the doctor sees a
---     follow-up after discharge.
+--     follow-up after discharge. A foreign key on (plan, patient), with the
+--     unique key `treatment_plan_id_pat_id_key` it needs, keeps the mark on
+--     a plan of the appointment's own patient for every writer.
 --
 -- Already true at 53 and unchanged: a patient marks a roadmap activity only
 -- while its plan is 'active' (migration 45), so a discharged plan's
@@ -379,8 +381,34 @@ revoke all on function public.recovery_log_guard_care_ended() from public, anon,
 -- list shows it as a follow-up after discharge. Booking itself is unchanged.
 
 alter table public.appointment
-  add column if not exists appointment_follow_up_of_plan_id uuid
-    references public.treatment_plan (treatment_plan_id) on delete set null;
+  add column if not exists appointment_follow_up_of_plan_id uuid;
+
+-- The mark always names a plan of the appointment's own patient, for every
+-- writer and every change - the service role included, and whatever the row
+-- policies let a session see: a foreign key on (plan, patient). It refuses
+-- an appointment moved to another patient with its mark left as it was, and
+-- a marked plan given to another patient. Deleting the plan clears only the
+-- mark, never the appointment's patient. The unique key on the plan is what
+-- the foreign key needs (the same name migration 60 used, so a later
+-- migration that adds it finds it there). (PostgreSQL 15 or later for the
+-- column list; production runs 17.)
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'treatment_plan_id_pat_id_key'
+                    and conrelid = 'public.treatment_plan'::regclass) then
+    alter table public.treatment_plan
+      add constraint treatment_plan_id_pat_id_key unique (treatment_plan_id, pat_id);
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'appointment_follow_up_same_patient_fkey'
+                    and conrelid = 'public.appointment'::regclass) then
+    alter table public.appointment
+      add constraint appointment_follow_up_same_patient_fkey
+      foreign key (appointment_follow_up_of_plan_id, pat_id)
+      references public.treatment_plan (treatment_plan_id, pat_id)
+      on delete set null (appointment_follow_up_of_plan_id);
+  end if;
+end
+$$;
 
 create index if not exists appointment_follow_up_of_plan_idx
   on public.appointment (appointment_follow_up_of_plan_id)

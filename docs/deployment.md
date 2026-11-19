@@ -2460,6 +2460,14 @@ plan into or out of a discharge (`docs/database.md`, section 22).
   `treatment_plan_record_lifecycle`, `treatment_plan_guard_lifecycle`,
   `recovery_log_guard_care_ended`, `appointment_mark_follow_up`; column
   `appointment.appointment_follow_up_of_plan_id` with a partial index;
+  unique key `treatment_plan_id_pat_id_key` on `treatment_plan
+  (treatment_plan_id, pat_id)` and foreign key
+  `appointment_follow_up_same_patient_fkey` on `appointment
+  (appointment_follow_up_of_plan_id, pat_id)` referencing it, `on delete
+  set null (appointment_follow_up_of_plan_id)` - so a follow-up mark always
+  names a plan of the appointment's own patient, for every writer
+  including the service role (PostgreSQL 15+ for the column list;
+  production runs 17.6);
   functions `doctor_discharge_treatment_plan(uuid, text)` and
   `doctor_reopen_treatment_plan(uuid)` for `authenticated`. No job, no
   cron schedule, no notification, and the migration writes no row.
@@ -2496,12 +2504,16 @@ plan into or out of a discharge (`docs/database.md`, section 22).
 - **Apply.** With approval, on its own: the file's text, unchanged, with its
   history row (name `discharge_care_plan`) in the same transaction. Never
   `supabase db push` (it would also run the held migration 34). MD5 at the
-  time of writing `31381c736b7f730a74f88386ce541e8d` (19,420 bytes) -
+  time of writing `c68f54eaf261a1b1e3eff7aa6df875eb` (20,963 bytes) -
   recompute from the file being applied.
 - **Verify, read-only.** One history entry matching the file's MD5; the
   enum lists `draft, active, discharged, completed, cancelled`; the four
   triggers exist on their tables; the three checks exist on
-  `treatment_plan`; `has_function_privilege('anon', 'public.doctor_discharge_treatment_plan(uuid, text)', 'execute')`
+  `treatment_plan`, plus `treatment_plan_id_pat_id_key` (unique) on
+  `treatment_plan` and `appointment_follow_up_same_patient_fkey` on
+  `appointment`
+  (`select conname, pg_get_constraintdef(oid) from pg_constraint where conname in ('treatment_plan_id_pat_id_key', 'appointment_follow_up_same_patient_fkey');`);
+  `has_function_privilege('anon', 'public.doctor_discharge_treatment_plan(uuid, text)', 'execute')`
   is false and for `authenticated` true (same for reopen);
   `treatment_plan_lifecycle_event` has RLS on, one select policy and no
   insert/update/delete grant to `anon` or `authenticated`; every plan still
@@ -2516,7 +2528,9 @@ plan into or out of a discharge (`docs/database.md`, section 22).
   `treatment_plan_lifecycle_event` and the follow-up marks (queries in the
   down-script's header), then
   `supabase/rollbacks/20260902100061_discharge_care_plan.down.sql`
-  (MD5 `bc57d99e5b370e5e4668e905dde63a60`). It refuses while any plan is
+  (MD5 `229e4b10a180847fb914407ac9084cbf`, 4,309 bytes). It drops the
+  same-patient foreign key and then the unique key before the column and
+  the enum rebuild. It refuses while any plan is
   discharged, and returns the schema to exactly what 53 left (the enum is
   rebuilt with migration 1's four values). Data loss: the lifecycle history
   and follow-up marks only; no patient, plan, appointment or check-in row.
@@ -2529,7 +2543,11 @@ once, from active only; reopen and repeated cycles with history; every
 direct-write bypass and migration 1's other statuses refused; service
 changes recorded as `service`; append-only history and who may read it;
 account and records untouched; check-ins blocked only with no active plan;
-roadmap activities closed and reopened; follow-up booking by patient and
+roadmap activities closed and reopened; the follow-up mark kept on the
+appointment's own patient - the service role cannot move a marked
+appointment or a marked plan to another patient, nor point a mark at
+another patient's plan, each patient's own plan is marked, and deleting
+a plan clears only the mark; follow-up booking by patient and
 doctor and its mark; most recent discharge chosen; appointment and
 medication reminders still sent; and against a 53 database: refusal on an
 old status, data unchanged, idempotent re-run, rollback refusal and round

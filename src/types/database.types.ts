@@ -156,18 +156,18 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: 'appointment_appointment_follow_up_of_plan_id_fkey'
-            columns: ['appointment_follow_up_of_plan_id']
-            isOneToOne: false
-            referencedRelation: 'treatment_plan'
-            referencedColumns: ['treatment_plan_id']
-          },
-          {
             foreignKeyName: 'appointment_doc_id_fkey'
             columns: ['doc_id']
             isOneToOne: false
             referencedRelation: 'doctor'
             referencedColumns: ['doc_id']
+          },
+          {
+            foreignKeyName: 'appointment_follow_up_same_patient_fkey'
+            columns: ['appointment_follow_up_of_plan_id', 'pat_id']
+            isOneToOne: false
+            referencedRelation: 'treatment_plan'
+            referencedColumns: ['treatment_plan_id', 'pat_id']
           },
           {
             foreignKeyName: 'appointment_pat_id_fkey'

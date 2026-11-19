@@ -3,8 +3,9 @@
 -- ===========================================================================
 -- Removes the care-plan discharge: the doctor's discharge and reopen
 -- functions, the guards, the check-in guard, the follow-up mark on
--- appointments, the lifecycle history, the discharge columns and
--- constraints, and the enum value - the schema is exactly what 53 left.
+-- appointments with its same-patient foreign key and the plan's
+-- (plan, patient) unique key, the lifecycle history, the discharge columns
+-- and constraints, and the enum value - the schema is exactly what 53 left.
 --
 -- It refuses, changing nothing, while any plan is discharged: no status is
 -- rewritten here. The doctor reopens each one first (Reopen case), or an
@@ -42,6 +43,10 @@ drop function if exists public.doctor_reopen_treatment_plan(uuid);
 
 drop trigger if exists appointment_mark_follow_up on public.appointment;
 drop function if exists public.appointment_mark_follow_up();
+-- The foreign key first, then the unique key it depends on, before the
+-- column goes and before the enum is rebuilt below.
+alter table public.appointment drop constraint if exists appointment_follow_up_same_patient_fkey;
+alter table public.treatment_plan drop constraint if exists treatment_plan_id_pat_id_key;
 drop index if exists public.appointment_follow_up_of_plan_idx;
 alter table public.appointment drop column if exists appointment_follow_up_of_plan_id;
 

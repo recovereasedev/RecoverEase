@@ -740,7 +740,12 @@ Migration 61, on top of 53 alone. `treatmentPlan.treatmentPlanStatus` gains
   patient has a discharged plan and no active one.
 - `appointment.appointment_follow_up_of_plan_id`: set by the database on
   booking while the patient's care has ended (their most recently
-  discharged plan); a session cannot set or change it.
+  discharged plan); a session cannot set or change it. A foreign key on
+  `(appointment_follow_up_of_plan_id, pat_id)` referencing the unique
+  `treatment_plan (treatment_plan_id, pat_id)` keeps it on a plan of the
+  appointment's own patient for every writer (an appointment or a plan
+  cannot be moved to another patient while marked); deleting the plan
+  clears only the mark.
 - Unchanged: reminders (no per-plan link exists at 53; see
   `docs/deployment.md`), roadmap activities (45 already requires an active
   plan), goals (doctor-only at 53), and every patient, account and record.
