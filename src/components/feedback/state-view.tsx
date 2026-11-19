@@ -244,7 +244,7 @@ export function describeError(error: unknown): {
       icon: Lock,
       title: 'You do not have access to this',
       description:
-        'Your account is not permitted to view or change this information. If you believe this is a mistake, contact your care team.',
+        "Your account can't view or change this. If this seems wrong, contact your care team.",
       detail: raw,
       kind: 'permission',
     }
@@ -324,8 +324,9 @@ export function ErrorState({
           tinted circle, and the title as a message rather than a heading. As
           an `<h3>` it sat straight under the page's `<h1>` wherever a list
           failed to load, and left a gap in the heading outline. The alert
-          role is what announces it. */}
-      <Icon className="mb-1 size-6 text-danger-700" aria-hidden="true" />
+          role is what announces it. Neutral, not red: a request that failed
+          is a technical fault, and red is kept for emergencies. */}
+      <Icon className="mb-1 size-6 text-neutral-500" aria-hidden="true" />
       {/* Tracked as the message it is in either element: as the page's
           `<h1>` it would otherwise take the headings' tighter tracking and
           no longer match EmptyState's title. */}
@@ -342,10 +343,10 @@ export function ErrorState({
 
       {detail && import.meta.env.DEV ? (
         <details className="mt-4 max-w-md text-left">
-          <summary className="cursor-pointer text-xs text-muted">
+          <summary className="cursor-pointer text-sm text-muted">
             Technical detail
           </summary>
-          <pre className="mt-2 overflow-x-auto rounded-[var(--radius-sm)] bg-neutral-100 p-3 text-xs text-body">
+          <pre className="mt-2 overflow-x-auto rounded-[var(--radius-sm)] bg-neutral-100 p-3 text-sm text-body">
             {detail}
           </pre>
         </details>

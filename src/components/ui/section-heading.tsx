@@ -20,7 +20,7 @@ export type SectionHeadingProps = {
  * RecoverEase 2.0 groups a page with space and a heading, not with a card per
  * group: the section rhythm (`--spacing-section`) is at least twice the gap
  * inside a group, so where one section ends is visible without a border. The
- * heading carries it - 20px semibold against a 30px page title and 16px body
+ * heading carries it - 22px bold against a 36px page title and 17px body
  * - so it needs no icon tile to be found.
  */
 export function SectionHeading({
