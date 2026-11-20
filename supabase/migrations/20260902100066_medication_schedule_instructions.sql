@@ -1,6 +1,10 @@
 -- ===========================================================================
--- RecoverEase — 58. A medicine's own instructions
+-- RecoverEase — 66. A medicine's own instructions
 -- ===========================================================================
+-- Re-landed from pending migration 58 (merged in PR #88, never applied to
+-- production), renumbered after 61. Unchanged but for this note and its
+-- numbers; "migration 58" below means this migration.
+--
 -- A prescription carries general notes (`prescription_notes`), which apply to
 -- every medicine on it. A medicine had nowhere for instructions of its own -
 -- "before meals" for one, "with water" for another. This adds that field to
@@ -31,7 +35,7 @@
 -- No trigger fires on this column: doses, reminders and the schedule itself
 -- are untouched by a change to it.
 --
--- Rollback: supabase/rollbacks/20260902100058_medication_schedule_instructions.down.sql
+-- Rollback: supabase/rollbacks/20260902100066_medication_schedule_instructions.down.sql
 -- ===========================================================================
 
 -- Adding the column and its check locks `medication_schedule`, which the

@@ -1,6 +1,9 @@
 -- ===========================================================================
--- RecoverEase — 54. A doctor's record ID and registration date are fixed
+-- RecoverEase — 62. A doctor's record ID and registration date are fixed
 -- ===========================================================================
+-- Re-landed from pending migration 54 unchanged but for this note and its numbers (PR #84, never applied
+-- to production), renumbered after 61. "54" below means this migration.
+--
 -- Migration 30's update policy lets a clinic's administrator update its
 -- doctors' rows (module 11.2), and a doctor their own (module 2.6). The
 -- guards of migrations 7, 29 and 42 already fix the linked account, the
@@ -19,7 +22,7 @@
 -- does, is not a change and is accepted. Nothing else about who may update
 -- what changes: the policy and the earlier guards are untouched.
 --
--- Rollback: supabase/rollbacks/20260902100054_doctor_identity_columns_fixed.down.sql
+-- Rollback: supabase/rollbacks/20260902100062_doctor_identity_columns_fixed.down.sql
 -- ===========================================================================
 
 -- The trigger locks `doctor`, which the reminder jobs read - the pre-dose job

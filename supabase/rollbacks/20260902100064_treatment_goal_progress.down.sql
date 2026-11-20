@@ -1,5 +1,5 @@
 -- ===========================================================================
--- Rollback of migration 55 (treatment_goal_progress)
+-- Rollback of migration 64 (treatment_goal_progress, re-landed from pending 55)
 -- ===========================================================================
 -- Removes the missed-goal job and its schedule, the patient's progress
 -- function and the guard on a goal's status, and puts the history's writer
@@ -17,7 +17,7 @@
 do $$
 begin
   if to_regprocedure('public.mark_missed_treatment_goals()') is null then
-    raise exception 'Migration 55 is not applied. Nothing was changed.';
+    raise exception 'Migration 64 is not applied. Nothing was changed.';
   end if;
 end
 $$;

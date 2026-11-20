@@ -1,7 +1,15 @@
 -- ===========================================================================
--- RecoverEase — 55. Treatment goal progress: the patient's own progress and
+-- RecoverEase — 64. Treatment goal progress: the patient's own progress and
 -- the system's missed status
 -- ===========================================================================
+-- Re-landed from pending migration 55 (merged in PR #85, never applied to
+-- production), renumbered after 61 and 63. Two changes from 55, both marked
+-- (64) below: the missed-goal job skips a patient whose care is discharged
+-- (63) and a plan that is discharged (61); and the patient's progress is
+-- refused while their care is discharged, in the patient's words (63's guard
+-- would refuse it anyway). Everything else is 55's text; "migration 55" in
+-- it means this migration.
+--
 -- Module 3.3 "Define Treatment Goals" and 5.8 "View Treatment Goals",
 -- completed. The doctor sets a goal; the patient records their progress
 -- (pending → in progress → achieved); once the target date has passed in the
@@ -29,7 +37,7 @@
 --   * `mark_missed_treatment_goals()`: the job, for the service role only,
 --     run hourly by pg_cron as `recoverease-mark-missed-treatment-goals`.
 --
--- Rollback: supabase/rollbacks/20260902100055_treatment_goal_progress.down.sql
+-- Rollback: supabase/rollbacks/20260902100064_treatment_goal_progress.down.sql
 -- ===========================================================================
 
 -- Adding the column and the triggers locks `treatment_goal_status_event` and
@@ -225,6 +233,13 @@ begin
     raise exception 'Progress can be recorded only while the treatment plan is active'
       using errcode = 'check_violation';
   end if;
+  -- (64) Not while the patient's care has ended.
+  if (select app_private.patient_care_is_discharged(
+        (select tp.pat_id from public.treatment_plan tp where tp.treatment_plan_id = goal_row.treatment_plan_id),
+        true)) then
+    raise exception 'Your care has ended. Book a follow-up if you need more care.'
+      using errcode = 'check_violation';
+  end if;
   if new_status = 'missed' then
     raise exception 'A goal is marked missed only by the system, once its target date has passed'
       using errcode = 'insufficient_privilege';
@@ -301,6 +316,9 @@ begin
     join public.doctor d on d.doc_id = p.doc_id
     join public.clinic c on c.clinic_id = d.clinic_id
    where tp.treatment_plan_id = g.treatment_plan_id
+     -- (64) Never for a patient whose care is discharged, nor a discharged plan.
+     and p.pat_care_status = 'in_care'
+     and tp.treatment_plan_status::text = 'active'
      and g.treatment_goal_status in ('pending', 'in_progress')
      and g.treatment_goal_target_date is not null
      and g.treatment_goal_target_date < (now() at time zone c.clinic_timezone)::date;

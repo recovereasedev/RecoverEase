@@ -24,6 +24,12 @@ import { assuredSuperAdmin, createSignIn } from './helpers/super-admin'
  */
 
 const MIGRATION_48 = 'supabase/migrations/20260902100048_medication_dose_identity.sql'
+const ROLLBACK_67 = 'supabase/rollbacks/20260902100067_medication_schedule_reminder_control.down.sql'
+const ROLLBACK_66 = 'supabase/rollbacks/20260902100066_medication_schedule_instructions.down.sql'
+const ROLLBACK_65 = 'supabase/rollbacks/20260902100065_automatic_recovery_roadmap.down.sql'
+const ROLLBACK_64 = 'supabase/rollbacks/20260902100064_treatment_goal_progress.down.sql'
+const ROLLBACK_63 = 'supabase/rollbacks/20260902100063_patient_care_lifecycle.down.sql'
+const ROLLBACK_62 = 'supabase/rollbacks/20260902100062_doctor_identity_columns_fixed.down.sql'
 const ROLLBACK_61 = 'supabase/rollbacks/20260902100061_discharge_care_plan.down.sql'
 const ROLLBACK_53 = 'supabase/rollbacks/20260902100053_web_push_notifications.down.sql'
 const ROLLBACK_48 = 'supabase/rollbacks/20260902100048_medication_dose_identity.down.sql'
@@ -1123,7 +1129,13 @@ describe('rolling back migration 48', () => {
 
   it('returns the schema to exactly what 47 left, keeping every dose, then refuses a second time', async () => {
     const doseRows = await doseFingerprint(database)
-    // Migrations 61 and 53 came after 48; they go first, newest first.
+    // Migrations 67-61 and 53 came after 48; they go first, newest first.
+    await database.db.exec(await script(ROLLBACK_67))
+    await database.db.exec(await script(ROLLBACK_66))
+    await database.db.exec(await script(ROLLBACK_65))
+    await database.db.exec(await script(ROLLBACK_64))
+    await database.db.exec(await script(ROLLBACK_63))
+    await database.db.exec(await script(ROLLBACK_62))
     await database.db.exec(await script(ROLLBACK_61))
     await database.db.exec(await script(ROLLBACK_53))
     await database.db.exec(await script(ROLLBACK_48))

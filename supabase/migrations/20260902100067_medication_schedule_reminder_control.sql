@@ -1,54 +1,130 @@
 -- ===========================================================================
--- Rollback of migration 59 (medication_schedule_reminder_control)
+-- RecoverEase — 67. The doctor switches a medicine's reminders on or off
 -- ===========================================================================
--- Removes the doctor's reminder switch: the two columns, the trigger and its
--- function go, and the three functions that read the switch go back to
--- exactly what migration 53 left. Applied as a new migration, with approval
--- (tests/db/medication-reminder-controls.test.ts).
+-- Re-landed from pending migration 59 (merged in PR #89/#88, never applied to
+-- production), renumbered after 61. Unchanged but for this note and its
+-- numbers; "migration 59" below means this migration.
 --
--- THIS DELETES DATA AND RESUMES REMINDERS: every doctor's "off" is lost with
--- the column, and every medicine is reminded about again from the next run
--- of the jobs, as before 59. List the medicines switched off first if they
--- must be known:
+-- Every medicine a patient is prescribed is reminded about: a reminder before
+-- each dose (migration 37) and a follow-up for a dose not recorded
+-- (migration 8). Some medicines should not be - one taken only when needed,
+-- for example. The patient's doctor can now switch reminders off for one
+-- medicine, and on again:
 --
---   select medication_schedule_id, medication_schedule_name
---     from public.medication_schedule
---    where not medication_schedule_reminders_is_enabled;
+--   medication_schedule.medication_schedule_reminders_is_enabled
+--     boolean, not null, default true
+--   medication_schedule.medication_schedule_reminders_enabled_at
+--     timestamptz, null until reminders are switched back on
 --
--- No dose, notification, schedule field or patient setting changes.
+-- The default is the behaviour until now: every existing schedule, and every
+-- new one, has reminders on unless the doctor switches them off. No row is
+-- rewritten and nothing is set to false.
 --
--- Roll the website back first: from 59 on it reads and writes the column.
--- 53's down-script refuses while 59 is installed, so 59 goes back before it.
+-- A reminder is sent only when BOTH hold: the doctor has reminders on for
+-- that medicine, and the patient wants medication reminders
+-- (`pat_reminder_is_enabled`, module 4.9). Neither overrides the other, and
+-- the patient's choice is not touched.
+--
+-- What reads the switch - three functions, each exactly as migration 53 left
+-- it but for the lines marked (59):
+--
+--   * public.dispatch_medication_pre_dose_reminders()  - the reminder before
+--     a dose;
+--   * public.dispatch_medication_reminders(integer)    - the follow-up;
+--   * app_private.push_source_is_current(...)          - the check a phone
+--     reminder already queued gets before it is delivered, so one waiting
+--     when the doctor switches the medicine off is dropped, as one is when
+--     the patient opts out.
+--
+-- Web Push has no writer of its own: it delivers the notifications the two
+-- jobs write. The doctor's dose-conflict alerts (migration 48) go to the
+-- doctor, not the patient, and are not reminders; they are unchanged.
+--
+-- Switching back on. The reminder before a dose resumes with the next dose
+-- still ahead. The follow-up resumes with doses that come due from then on:
+-- `medication_schedule_reminders_enabled_at` records the moment, and a dose
+-- that came due before it is not chased, so switching reminders on never
+-- sends a run of reminders about the hours they were off. The database
+-- stamps it itself; a value sent by a writer is ignored. A reminder already
+-- sent is never sent again: each job's own mark on the dose is unchanged.
+--
+-- What does not read it, and is unchanged: dose generation
+-- (`generate_medication_log_slots`, `extend_all_medication_log_slots`), the
+-- missed-dose job (`mark_overdue_medication_logs`), adherence, the patient's
+-- checklist, every job's schedule, the clinic's lead time and grace period,
+-- and appointment reminders. A dose of a medicine with reminders off is
+-- still generated, still recordable, and still becomes missed.
+--
+-- Who may change it is the row's existing rule (migration 6): only the
+-- patient's own doctor updates a schedule; the patient reads it and has no
+-- update policy. No policy or grant changes.
+--
+-- Rollback: supabase/rollbacks/20260902100067_medication_schedule_reminder_control.down.sql
 -- ===========================================================================
 
-do $$
-begin
-  if not exists (
-    select 1
-      from information_schema.columns
-     where table_schema = 'public'
-       and table_name = 'medication_schedule'
-       and column_name = 'medication_schedule_reminders_is_enabled'
-  ) then
-    raise exception 'Migration 59 is not applied. Nothing was changed.';
-  end if;
-
-  -- Migration 60 added "the patient's care is open" to the reminder functions
-  -- this restores. Restoring them over it would remind discharged patients.
-  if to_regprocedure('app_private.patient_care_is_open(uuid)') is not null then
-    raise exception 'Roll back migration 60 first: it replaced the reminder functions this restores. Nothing was changed.';
-  end if;
-end
-$$;
-
--- Dropping the trigger and columns locks `medication_schedule`, which the
--- reminder jobs read. Waiting at most 3 seconds for that lock, the rollback
--- fails rather than holding the website up behind it. It comes after the
--- check, so a refusal changes no setting, and it is reset at the end.
+-- Adding the columns and the trigger locks `medication_schedule`, which the
+-- reminder jobs read - the pre-dose job every minute. Waiting at most 3
+-- seconds for that lock, the migration fails rather than holding the website
+-- up behind it (docs/deployment.md, "Migration timing and run history"). A
+-- plain SET, not SET LOCAL, so it holds whether or not the runner wraps this
+-- file in one transaction; it is reset at the end.
 set lock_timeout = '3s';
 
--- The three readers first, as migration 53 left them, so nothing reads a
--- column that is about to go.
+-- One statement, so the table is locked once. A constant default is not a
+-- rewrite: every existing row reads true without being touched.
+alter table public.medication_schedule
+  add column if not exists medication_schedule_reminders_is_enabled boolean not null default true,
+  add column if not exists medication_schedule_reminders_enabled_at timestamptz;
+
+comment on column public.medication_schedule.medication_schedule_reminders_is_enabled is
+  'Whether RecoverEase reminds the patient about this medicine. Set by the '
+  'patient''s doctor; on unless switched off. A reminder also needs the '
+  'patient''s own pat_reminder_is_enabled. Doses are generated and become '
+  'missed regardless.';
+
+comment on column public.medication_schedule.medication_schedule_reminders_enabled_at is
+  'When reminders were last switched back on, or null if never switched '
+  'off and on. Follow-ups are sent only for doses due from then. Stamped by '
+  'the database; a value sent by a writer is ignored.';
+
+-- ---------------------------------------------------------------------------
+-- The moment reminders come back on is the database's to record
+-- ---------------------------------------------------------------------------
+
+create or replace function public.medication_schedule_stamp_reminders()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if tg_op = 'INSERT' then
+    new.medication_schedule_reminders_enabled_at := null;
+  elsif new.medication_schedule_reminders_is_enabled
+        and not old.medication_schedule_reminders_is_enabled then
+    new.medication_schedule_reminders_enabled_at := now();
+  else
+    new.medication_schedule_reminders_enabled_at := old.medication_schedule_reminders_enabled_at;
+  end if;
+  return new;
+end;
+$$;
+
+comment on function public.medication_schedule_stamp_reminders() is
+  'Records when a medicine''s reminders are switched back on, and ignores '
+  'any value a writer sends for that moment. Run only by its trigger.';
+
+revoke all on function public.medication_schedule_stamp_reminders() from public, anon, authenticated;
+
+drop trigger if exists medication_schedule_stamp_reminders on public.medication_schedule;
+create trigger medication_schedule_stamp_reminders
+  before insert or update on public.medication_schedule
+  for each row
+  execute function public.medication_schedule_stamp_reminders();
+
+-- ---------------------------------------------------------------------------
+-- The three readers, as migration 53 left them; only the lines marked (59)
+-- are new. CREATE OR REPLACE keeps each one's owner, grants and comment.
+-- ---------------------------------------------------------------------------
 
 create or replace function public.dispatch_medication_reminders(
   grace_minutes integer default 30
@@ -84,6 +160,12 @@ begin
        and ml.medication_log_follow_up_sent_at is null
        -- Module 4.9 opt-out.
        and p.pat_reminder_is_enabled
+       -- (59) The doctor has reminders on for this medicine ...
+       and ms.medication_schedule_reminders_is_enabled
+       -- (59) ... and the dose came due after they were last switched back on,
+       -- (59) so switching them on does not chase what came due while they were off.
+       and (ms.medication_schedule_reminders_enabled_at is null
+            or ml.medication_log_scheduled_at >= ms.medication_schedule_reminders_enabled_at)
        -- Give the patient a grace period to record it themselves before
        -- being chased about it.
        and ml.medication_log_scheduled_at
@@ -184,6 +266,8 @@ begin
        and ml.medication_log_pre_dose_sent_at is null
        -- Module 4.9 opt-out.
        and p.pat_reminder_is_enabled
+       -- (59) The doctor has reminders on for this medicine.
+       and ms.medication_schedule_reminders_is_enabled
        -- Not yet due, and due within the clinic's lead time. The half hour is
        -- the longest lead time a clinic can set: it bounds the read of
        -- medication_log_due_idx to the next 30 minutes, where the slots run
@@ -272,6 +356,8 @@ as $$
               or ml.medication_log_dose_date <= ms.medication_schedule_end_date)
          -- ... and the patient still wants medication reminders.
          and p.pat_reminder_is_enabled
+         -- (59) ... and the doctor has reminders on for this medicine.
+         and ms.medication_schedule_reminders_is_enabled
          -- A "due soon" reminder is pointless half an hour after the dose.
          and (push_source_is_current.source_event = 'medication_follow_up'
               or now() <= ml.medication_log_scheduled_at + interval '30 minutes')
@@ -300,11 +386,5 @@ as $$
   end
 $$;
 
-drop trigger if exists medication_schedule_stamp_reminders on public.medication_schedule;
-drop function if exists public.medication_schedule_stamp_reminders();
-
-alter table public.medication_schedule
-  drop column medication_schedule_reminders_is_enabled,
-  drop column medication_schedule_reminders_enabled_at;
-
+-- Back to the server's default for anything else this connection runs.
 reset lock_timeout;

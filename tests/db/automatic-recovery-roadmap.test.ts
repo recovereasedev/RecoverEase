@@ -17,9 +17,9 @@ import { seedFixture, type Fixture } from './helpers/fixtures'
  * doctor's to manage and the patient's to mark.
  */
 
-const MIGRATION_55 = '20260902100055'
-const MIGRATION_56 = '20260902100056'
-const ROLLBACK_56 = 'supabase/rollbacks/20260902100056_automatic_recovery_roadmap.down.sql'
+const MIGRATION_55 = '20260902100064'
+const MIGRATION_56 = '20260902100065'
+const ROLLBACK_56 = 'supabase/rollbacks/20260902100065_automatic_recovery_roadmap.down.sql'
 
 const script = (path: string) => readFile(join(process.cwd(), path), 'utf8')
 
@@ -605,7 +605,7 @@ describe('migration 56 over existing roadmaps', () => {
   it('rolls back to exactly what 55 left, keeping every phase, activity and event', async () => {
     const [full, through55] = await Promise.all([
       // Migration 57 builds on 56; this round trip is 56's alone.
-      createTestDatabase({ stopAfter: '20260902100056' }),
+      createTestDatabase({ stopAfter: '20260902100065' }),
       createTestDatabase({ stopAfter: MIGRATION_55 }),
     ])
     try {
@@ -625,7 +625,7 @@ describe('migration 56 over existing roadmaps', () => {
       await full.db.exec(await script(ROLLBACK_56))
       expect(await catalog(full)).toEqual(await catalog(through55))
       expect(await rows()).toEqual(before)
-      await expect(full.db.exec(await script(ROLLBACK_56))).rejects.toThrow(/Migration 56 is not applied/)
+      await expect(full.db.exec(await script(ROLLBACK_56))).rejects.toThrow(/Migration 65 is not applied/)
 
       await full.applyMigration(MIGRATION_56)
       expect(await catalog(full)).toEqual(after56)
