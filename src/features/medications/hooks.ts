@@ -9,6 +9,7 @@ import {
   fetchDoses,
   fetchSchedules,
   setDoseStatus,
+  updateMedicationInstructions,
   type MedicationLogStatus,
 } from './api'
 import { fetchConflicts, resolveConflict, type DoctorResolution } from './conflicts'
@@ -98,6 +99,22 @@ export function useCreateMedicationSchedule(patientId: string) {
       })
       void queryClient.invalidateQueries({
         queryKey: queryKeys.prescriptions.forPatient(patientId),
+      })
+    },
+  })
+}
+
+/** The doctor's change to one medicine's instructions (migration 58). */
+export function useUpdateMedicationInstructions(patientId: string) {
+  const queryKeys = useQueryKeys()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: updateMedicationInstructions,
+    onSuccess: () => {
+      // Only the schedule's text moved; its doses did not.
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.medications.schedulesFor(patientId),
       })
     },
   })

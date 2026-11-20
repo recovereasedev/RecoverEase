@@ -421,6 +421,8 @@ describe('issuing a prescription and its schedule (modules 4.3 and 4.1)', () => 
       times: ['08:00'],
       startDate: '2026-03-01',
       endDate: null,
+      // The medicine's own instructions (migration 58), left empty here.
+      instructions: null,
     })
   })
 

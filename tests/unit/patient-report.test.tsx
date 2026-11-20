@@ -110,6 +110,7 @@ function recordFor(overrides: Partial<PatientReportData> = {}): PatientReportDat
     schedules: [
       {
         medication_schedule_id: 's-1',
+        medication_schedule_instructions: null,
         prescription_id: 'rx-1',
         medication_schedule_name: 'Paracetamol',
         medication_schedule_dosage: '500mg',
