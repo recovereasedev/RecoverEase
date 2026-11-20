@@ -1,6 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { useQueryKeys } from '@/features/auth/use-query-keys'
+import { todayIn } from '@/features/calendar/calendar-model'
+import { fetchOwnClinicTimeZone } from '@/features/patients/api'
+import { useNow } from '@/hooks/use-now'
 import type { TablesUpdate } from '@/types/database.types'
 
 import {
@@ -12,8 +15,24 @@ import {
   updateTreatmentGoalStatus,
   updateTreatmentPlan,
   type ClosureReason,
-  type TreatmentGoalStatus,
+  type PatientGoalProgress,
 } from './api'
+
+/**
+ * Today in the signed-in member's clinic - the day the database judges a
+ * goal's target date against (migration 55) - read the way the calendar and
+ * the roadmap read it. Null until the clinic's time zone is known: no
+ * device's day stands in for it.
+ */
+export function useClinicToday(): string | null {
+  const queryKeys = useQueryKeys()
+  const zone = useQuery({
+    queryKey: queryKeys.ownClinic.timeZone(),
+    queryFn: fetchOwnClinicTimeZone,
+  })
+  const now = useNow()
+  return zone.data ? todayIn(zone.data, new Date(now)) : null
+}
 
 export function useTreatmentPlans(patientId: string) {
   const queryKeys = useQueryKeys()
@@ -83,7 +102,7 @@ export function useUpdateGoalStatus(patientId: string) {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (input: { goalId: string; status: TreatmentGoalStatus }) =>
+    mutationFn: (input: { goalId: string; status: PatientGoalProgress }) =>
       updateTreatmentGoalStatus(input.goalId, input.status),
     onSuccess: () => {
       void queryClient.invalidateQueries({

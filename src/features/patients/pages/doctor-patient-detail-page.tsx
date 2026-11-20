@@ -28,7 +28,7 @@ import { useQueryKeys } from '@/features/auth/use-query-keys'
 import { fetchChatSessions, type ChatSession } from '@/features/chat/api'
 import { Button } from '@/components/ui/button'
 import { Card, CardBody, CardHeader } from '@/components/ui/card'
-import { Field, Select, Textarea } from '@/components/ui/field'
+import { Field, Textarea } from '@/components/ui/field'
 import { ProgressBar } from '@/components/ui/progress'
 import { Tabs } from '@/components/ui/tabs'
 import { useCurrentUser } from '@/features/auth/auth-context'
@@ -64,10 +64,7 @@ import { RoadmapEditor } from '@/features/recovery-roadmap/components/roadmap-ed
 import { CaseLifecycle } from '@/features/treatment-plans/components/case-lifecycle'
 import { TreatmentGoalForm } from '@/features/treatment-plans/components/treatment-goal-form'
 import { TreatmentPlanForm } from '@/features/treatment-plans/components/treatment-plan-form'
-import {
-  useTreatmentPlans,
-  useUpdateGoalStatus,
-} from '@/features/treatment-plans/hooks'
+import { useTreatmentPlans } from '@/features/treatment-plans/hooks'
 import {
   isOpenCare,
   summariseGoals,
@@ -211,8 +208,6 @@ export function DoctorPatientDetailPage() {
     queryFn: () => fetchDoctorNotes(patientId),
     enabled: Boolean(patientId),
   })
-
-  const goalStatus = useUpdateGoalStatus(patientId)
 
   // A second medicine belongs to the prescription already issued, not to a
   // new one. Only prescriptions carrying a schedule are visible to this
@@ -680,7 +675,7 @@ export function DoctorPatientDetailPage() {
                                     />
                                     {/* Restates the count already in the card
                                         description. `summariseGoals` counts
-                                        goals the clinician has marked; nothing
+                                        goals the patient has marked; nothing
                                         here is inferred. */}
                                     <ProgressBar
                                       value={progress.percentage ?? 0}
@@ -705,9 +700,8 @@ export function DoctorPatientDetailPage() {
                                       className="flex flex-col gap-2.5 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
                                     >
                                       <div className="flex min-w-0 gap-3 sm:flex-1">
-                                        {/* The state as an icon; the select
-                                            beside it says it in words, and is
-                                            where it is changed. */}
+                                        {/* The state as an icon; the badge
+                                            beside it says it in words. */}
                                         <GoalIcon
                                           className={cn(
                                             'mt-0.5 size-5 shrink-0',
@@ -729,59 +723,12 @@ export function DoctorPatientDetailPage() {
                                         ) : null}
                                         </div>
                                       </div>
-                                      <div className="flex items-center gap-2 sm:shrink-0">
-                                        {/* Module 3.3's other half: the
-                                            clinician records progress
-                                            against the goal they set. */}
-                                        <Field
-                                          label="Progress"
-                                          className="[&>label]:sr-only"
-                                        >
-                                          <Select
-                                            // 44px on a phone, where it is
-                                            // the only way to record progress.
-                                            className="h-11 w-auto text-sm sm:h-9 aria-disabled:cursor-not-allowed aria-disabled:bg-neutral-100 aria-disabled:text-muted"
-                                            value={goal.treatment_goal_status}
-                                            // Held while a change saves, as a
-                                            // saving Button is: unavailable
-                                            // but still focusable. `disabled`
-                                            // made the browser drop keyboard
-                                            // focus to the top of the page.
-                                            aria-disabled={
-                                              goalStatus.isPending || undefined
-                                            }
-                                            aria-busy={
-                                              (goalStatus.isPending &&
-                                                goalStatus.variables?.goalId ===
-                                                  goal.treatment_goal_id) ||
-                                              undefined
-                                            }
-                                            onChange={(event) => {
-                                              // A change made while another
-                                              // saves is not taken; the
-                                              // select keeps its value.
-                                              if (goalStatus.isPending) return
-                                              goalStatus.mutate({
-                                                goalId: goal.treatment_goal_id,
-                                                status: event.target
-                                                  .value as TreatmentGoalStatus,
-                                              })
-                                            }}
-                                          >
-                                            <option value="pending">
-                                              Not started
-                                            </option>
-                                            <option value="in_progress">
-                                              In progress
-                                            </option>
-                                            <option value="achieved">
-                                              Achieved
-                                            </option>
-                                            <option value="missed">
-                                              Missed
-                                            </option>
-                                          </Select>
-                                        </Field>
+                                      {/* Monitoring only: the patient
+                                          records progress and the system
+                                          marks a goal missed once its
+                                          date has passed (migration 55). */}
+                                      <div className="sm:shrink-0">
+                                        <StatusBadge status={goalState} />
                                       </div>
                                     </li>
                                     )
@@ -790,15 +737,6 @@ export function DoctorPatientDetailPage() {
                                 </>
                               )}
 
-                              {goalStatus.isError ? (
-                                <div className="mt-4">
-                                  <FormError
-                                    error={goalStatus.error}
-                                    title="The goal was not updated"
-                                  />
-                                </div>
-                              ) : null}
-
                               {/* Adding a goal to a plan that already exists,
                                   outside a guided consultation. */}
                               <div className="mt-5 border-t border-[var(--color-border)] pt-5">
@@ -806,6 +744,8 @@ export function DoctorPatientDetailPage() {
                                   <TreatmentGoalForm
                                     patientId={patientId}
                                     planId={plan.treatment_plan_id}
+                                    planStartDate={plan.treatment_plan_start_date}
+                                    planEndDate={plan.treatment_plan_end_date}
                                   />
                                 ) : (
                                   <Button

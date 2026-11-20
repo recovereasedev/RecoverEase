@@ -1166,6 +1166,7 @@ export type Database = {
           treatment_goal_new_status: Database['public']['Enums']['treatment_goal_status']
           treatment_goal_changed_by: string | null
           treatment_goal_changed_at: string
+          treatment_goal_change_source: 'user' | 'system' | 'service' | null
         }
         Insert: {
           treatment_goal_status_event_id?: string
@@ -1174,6 +1175,7 @@ export type Database = {
           treatment_goal_new_status: Database['public']['Enums']['treatment_goal_status']
           treatment_goal_changed_by?: string | null
           treatment_goal_changed_at?: string
+          treatment_goal_change_source?: 'user' | 'system' | 'service' | null
         }
         Update: {
           treatment_goal_status_event_id?: string
@@ -1182,6 +1184,7 @@ export type Database = {
           treatment_goal_new_status?: Database['public']['Enums']['treatment_goal_status']
           treatment_goal_changed_by?: string | null
           treatment_goal_changed_at?: string
+          treatment_goal_change_source?: 'user' | 'system' | 'service' | null
         }
         Relationships: [
           {
@@ -1382,6 +1385,10 @@ export type Database = {
       patient_complete_recovery_activity: {
         Args: { target_activity_id: string }
         Returns: Database['public']['Tables']['recovery_activity']['Row']
+      }
+      patient_update_treatment_goal_status: {
+        Args: { target_goal_id: string; new_status: Database['public']['Enums']['treatment_goal_status'] }
+        Returns: Database['public']['Tables']['treatment_goal']['Row']
       }
       patient_reopen_recovery_activity: {
         Args: { target_activity_id: string }

@@ -64,6 +64,8 @@ vi.mock('@/features/treatment-plans/hooks', () => ({
     error: null,
     refetch: vi.fn(),
   }),
+  // The patient's progress buttons (migration 55), idle here.
+  useUpdateGoalStatus: () => ({ mutate: vi.fn(), isPending: false, isError: false, isSuccess: false }),
 }))
 
 import { captureDownloads } from './support/capture-download'

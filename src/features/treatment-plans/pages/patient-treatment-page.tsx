@@ -19,6 +19,7 @@ import {
   type TreatmentGoalStatus,
 } from '@/features/treatment-plans/api'
 import { CareEndedNotice } from '@/features/treatment-plans/components/care-ended-notice'
+import { GoalProgressActions } from '@/features/treatment-plans/components/goal-progress-actions'
 import { useTreatmentPlans } from '@/features/treatment-plans/hooks'
 import { useDocumentTitle } from '@/hooks/use-document-title'
 import { useDocumentFile } from '@/lib/documents/use-document-file'
@@ -228,7 +229,7 @@ export function PatientTreatmentPage() {
                           </p>
                           {/* Restates the count above it. The percentage
                               comes from `summariseGoals` over goals the
-                              doctor has already marked - nothing here is
+                              patient has marked achieved - nothing here is
                               inferred. */}
                           <ProgressBar
                             className="mt-2"
@@ -304,6 +305,12 @@ export function PatientTreatmentPage() {
                                     </span>
                                     <StatusBadge status={status} />
                                   </div>
+                                  {plan.treatment_plan_status === 'active' ? (
+                                    <GoalProgressActions
+                                      patientId={patientId}
+                                      goal={goal}
+                                    />
+                                  ) : null}
                                 </div>
                               </li>
                             )
