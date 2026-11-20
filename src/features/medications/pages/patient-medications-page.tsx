@@ -21,6 +21,10 @@ import {
   PatientConflictNotices,
 } from '@/features/medications/components/dose-conflicts'
 import { MedicineInstructions } from '@/features/medications/components/medication-instructions'
+import {
+  remindersAreOn,
+  RemindersOffNotice,
+} from '@/features/medications/components/medication-reminder-control'
 import { PhoneReminders } from '@/features/medications/components/phone-reminders'
 import { PrescriptionPrintHeader } from '@/features/medications/components/prescription-print-header'
 import { summariseConflicts } from '@/features/medications/conflicts'
@@ -513,6 +517,10 @@ export function PatientMedicationsPage() {
                               )}{' '}
                               · {prescribedBy(schedule, doctorQuery.data)}
                             </span>
+                            {/* The doctor's switch (migration 59). Said only
+                                when off; the patient cannot change it, and
+                                the doses stay on the checklist above. */}
+                            {remindersAreOn(schedule) ? null : <RemindersOffNotice />}
                           </>
                         }
                       >

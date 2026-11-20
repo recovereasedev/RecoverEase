@@ -561,6 +561,8 @@ export type Database = {
           medication_schedule_end_date: string | null
           medication_schedule_created_at: string
           medication_schedule_instructions: string | null
+          medication_schedule_reminders_is_enabled: boolean
+          medication_schedule_reminders_enabled_at: string | null
         }
         Insert: {
           medication_schedule_id?: string
@@ -573,6 +575,8 @@ export type Database = {
           medication_schedule_end_date?: string | null
           medication_schedule_created_at?: string
           medication_schedule_instructions?: string | null
+          medication_schedule_reminders_is_enabled?: boolean
+          medication_schedule_reminders_enabled_at?: string | null
         }
         Update: {
           medication_schedule_id?: string
@@ -585,6 +589,8 @@ export type Database = {
           medication_schedule_end_date?: string | null
           medication_schedule_created_at?: string
           medication_schedule_instructions?: string | null
+          medication_schedule_reminders_is_enabled?: boolean
+          medication_schedule_reminders_enabled_at?: string | null
         }
         Relationships: [
           {

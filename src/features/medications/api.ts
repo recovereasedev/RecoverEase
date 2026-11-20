@@ -249,6 +249,29 @@ export async function updateMedicationInstructions(input: {
 }
 
 /**
+ * The doctor's reminder switch for one medicine (migration 59). Only that
+ * column is sent: the schedule, its doses and the patient's own reminder
+ * choice do not move.
+ */
+export async function setMedicationReminders(input: {
+  scheduleId: string
+  enabled: boolean
+}): Promise<void> {
+  const { data, error } = await supabase
+    .from('medication_schedule')
+    .update({ medication_schedule_reminders_is_enabled: input.enabled })
+    .eq('medication_schedule_id', input.scheduleId)
+    .select('medication_schedule_id')
+
+  if (error) throw error
+  // RLS reports a refused update as zero rows rather than an error. Showing
+  // reminders as switched when nothing changed would be worse than failing.
+  if (!data || data.length === 0) {
+    throw new Error('The reminder setting could not be saved.')
+  }
+}
+
+/**
  * Ends a medication course (QA-01): its end date becomes the clinic's today.
  *
  * The date comes from the database rather than the browser's clock, so the
