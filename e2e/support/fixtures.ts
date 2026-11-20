@@ -91,6 +91,9 @@ export function datasetFor(role: 'patient' | 'doctor' | 'admin'): TableRows {
     pat_status: 'active',
     pat_reminder_preferred_time: '08:00:00',
     pat_reminder_is_enabled: true,
+    pat_care_status: 'in_care',
+    pat_care_closure_reason: null,
+    pat_care_discharged_at: null,
   }
 
   const bob = {
@@ -224,6 +227,7 @@ export function datasetFor(role: 'patient' | 'doctor' | 'admin'): TableRows {
           treatment_plan_updated_at: '2026-02-01T00:00:00Z',
           treatment_plan_closure_reason: null,
           treatment_plan_discharged_at: null,
+          treatment_plan_follow_up_appointment_id: null,
           treatment_goal: [
             {
               treatment_goal_id: IDS.goalA,
@@ -285,6 +289,7 @@ export function datasetFor(role: 'patient' | 'doctor' | 'admin'): TableRows {
         treatment_plan_updated_at: '2026-02-01T00:00:00Z',
         treatment_plan_closure_reason: null,
         treatment_plan_discharged_at: null,
+        treatment_plan_follow_up_appointment_id: null,
         treatment_goal: [
           {
             treatment_goal_id: IDS.goalA,

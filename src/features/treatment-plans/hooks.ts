@@ -1,19 +1,35 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { useQueryKeys } from '@/features/auth/use-query-keys'
+import { todayIn } from '@/features/calendar/calendar-model'
+import { fetchOwnClinicTimeZone } from '@/features/patients/api'
+import { useNow } from '@/hooks/use-now'
 import type { TablesUpdate } from '@/types/database.types'
 
 import {
   createTreatmentGoal,
   createTreatmentPlan,
-  dischargeTreatmentPlan,
   fetchTreatmentPlans,
-  reopenTreatmentPlan,
   updateTreatmentGoalStatus,
   updateTreatmentPlan,
-  type ClosureReason,
-  type TreatmentGoalStatus,
+  type PatientGoalProgress,
 } from './api'
+
+/**
+ * Today in the signed-in member's clinic - the day the database judges a
+ * goal's target date against (migration 55) - read the way the calendar and
+ * the roadmap read it. Null until the clinic's time zone is known: no
+ * device's day stands in for it.
+ */
+export function useClinicToday(): string | null {
+  const queryKeys = useQueryKeys()
+  const zone = useQuery({
+    queryKey: queryKeys.ownClinic.timeZone(),
+    queryFn: fetchOwnClinicTimeZone,
+  })
+  const now = useNow()
+  return zone.data ? todayIn(zone.data, new Date(now)) : null
+}
 
 export function useTreatmentPlans(patientId: string) {
   const queryKeys = useQueryKeys()
@@ -56,6 +72,10 @@ export function useUpdateTreatmentPlan(patientId: string) {
       void queryClient.invalidateQueries({
         queryKey: queryKeys.treatment.plansFor(patientId),
       })
+      // The plan's dates are its roadmap's fixed phases' (migration 56).
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.roadmap.forPatient(patientId),
+      })
     },
   })
 }
@@ -74,6 +94,10 @@ export function useCreateTreatmentGoal(patientId: string) {
       void queryClient.invalidateQueries({
         queryKey: queryKeys.treatment.plansFor(patientId),
       })
+      // A new goal has a new roadmap phase, generated with it (migration 56).
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.roadmap.forPatient(patientId),
+      })
     },
   })
 }
@@ -83,7 +107,7 @@ export function useUpdateGoalStatus(patientId: string) {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (input: { goalId: string; status: TreatmentGoalStatus }) =>
+    mutationFn: (input: { goalId: string; status: PatientGoalProgress }) =>
       updateTreatmentGoalStatus(input.goalId, input.status),
     onSuccess: () => {
       void queryClient.invalidateQueries({
@@ -97,26 +121,3 @@ export function useUpdateGoalStatus(patientId: string) {
     },
   })
 }
-
-/**
- * Discharging or reopening changes the plan, which roadmap the patient sees
- * and whether they may check in, so the plans and the roadmap are read again.
- */
-function useCaseChange<TInput>(patientId: string, change: (input: TInput) => Promise<unknown>) {
-  const queryKeys = useQueryKeys()
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: change,
-    onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.treatment.plansFor(patientId) })
-      void queryClient.invalidateQueries({ queryKey: queryKeys.roadmap.forPatient(patientId) })
-    },
-  })
-}
-
-export const useDischargePlan = (patientId: string) =>
-  useCaseChange(patientId, (input: { planId: string; reason: ClosureReason }) =>
-    dischargeTreatmentPlan(input.planId, input.reason),
-  )
-export const useReopenPlan = (patientId: string) =>
-  useCaseChange(patientId, (planId: string) => reopenTreatmentPlan(planId))

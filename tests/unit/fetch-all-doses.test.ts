@@ -22,6 +22,7 @@ const client = vi.hoisted(() => {
     failOn: null as number | null,
     requests: [] as { from: number; to: number; count: string | undefined }[],
     calls: [] as unknown[][],
+    selects: [] as string[],
   }
 
   const supabase = {
@@ -29,7 +30,8 @@ const client = vi.hoisted(() => {
       state.calls.push(['from', table])
       let count: string | undefined
       const builder = {
-        select: (_columns: string, options?: { count?: string }) => {
+        select: (columns: string, options?: { count?: string }) => {
+          state.selects.push(columns)
           count = options?.count
           return builder
         },
@@ -93,6 +95,7 @@ beforeEach(() => {
   client.state.failOn = null
   client.state.requests.length = 0
   client.state.calls.length = 0
+  client.state.selects.length = 0
 })
 
 describe('fetchAllDoses', () => {
@@ -165,6 +168,25 @@ describe('fetchAllDoses', () => {
     await expect(fetchAllDoses(WINDOW)).rejects.toMatchObject({
       message: expect.stringMatching(/timeout/),
     })
+  })
+
+  it('reads the doctor’s reminder setting only when asked, on every page', async () => {
+    client.state.rows = rows(1500)
+
+    await fetchAllDoses(WINDOW)
+    expect(client.state.selects).toHaveLength(2)
+    for (const columns of client.state.selects) {
+      expect(columns).not.toContain('medication_schedule_reminders_is_enabled')
+    }
+
+    client.state.selects.length = 0
+    await fetchAllDoses({ ...WINDOW, withReminderSetting: true })
+    expect(client.state.selects).toHaveLength(2)
+    for (const columns of client.state.selects) {
+      expect(columns).toContain('medication_schedule_reminders_is_enabled')
+      // Still joined through to the patient the dose belongs to.
+      expect(columns).toContain('prescription!inner ( pat_id )')
+    }
   })
 
   it('makes one request for an empty window', async () => {

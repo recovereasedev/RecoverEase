@@ -17,10 +17,10 @@ import { seedFixture, type Fixture } from './helpers/fixtures'
  * or update a schedule, and give a patient no way to write one.
  */
 
-const MIGRATION_57 = '20260902100057'
-const MIGRATION_58 = '20260902100058'
+const MIGRATION_57 = '20260902100065'
+const MIGRATION_58 = '20260902100066'
 const ROLLBACK_58 =
-  'supabase/rollbacks/20260902100058_medication_schedule_instructions.down.sql'
+  'supabase/rollbacks/20260902100066_medication_schedule_instructions.down.sql'
 
 const script = (path: string) => readFile(join(process.cwd(), path), 'utf8')
 
@@ -229,7 +229,7 @@ describe('migration 58 on existing data, and its rollback', () => {
       expect(await schedules()).toEqual(before)
 
       await expect(database.db.exec(await script(ROLLBACK_58))).rejects.toThrow(
-        /Migration 58 is not applied/,
+        /Migration 66 is not applied/,
       )
 
       await database.applyMigration(MIGRATION_58)

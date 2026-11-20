@@ -1,5 +1,5 @@
 -- ===========================================================================
--- Rollback of migration 54 (doctor_identity_columns_fixed)
+-- Rollback of migration 62 (doctor_identity_columns_fixed, re-landed from pending 54)
 -- ===========================================================================
 -- Removes the guard on a doctor's `doc_id` and `doc_created_at`, back to the
 -- rules before 54: an administrator may again rewrite both on their clinic's
@@ -13,7 +13,7 @@
 do $$
 begin
   if to_regprocedure('public.doctor_identity_is_fixed()') is null then
-    raise exception 'Migration 54 is not applied. Nothing was changed.';
+    raise exception 'Migration 62 is not applied. Nothing was changed.';
   end if;
 end
 $$;

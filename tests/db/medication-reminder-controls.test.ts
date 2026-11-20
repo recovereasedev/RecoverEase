@@ -18,12 +18,12 @@ import { seedFixture, type Fixture } from './helpers/fixtures'
  * recordable, and still become missed.
  */
 
-const MIGRATION_58 = '20260902100058'
-const MIGRATION_59 = '20260902100059'
+const MIGRATION_58 = '20260902100066'
+const MIGRATION_59 = '20260902100067'
 const MIGRATION_59_FILE =
-  'supabase/migrations/20260902100059_medication_schedule_reminder_control.sql'
+  'supabase/migrations/20260902100067_medication_schedule_reminder_control.sql'
 const ROLLBACK_59 =
-  'supabase/rollbacks/20260902100059_medication_schedule_reminder_control.down.sql'
+  'supabase/rollbacks/20260902100067_medication_schedule_reminder_control.down.sql'
 
 const ROLLBACK_53 = 'supabase/rollbacks/20260902100053_web_push_notifications.down.sql'
 
@@ -555,7 +555,7 @@ describe('migration 59 on existing data, and its rollback', () => {
       ).toEqual([])
 
       await expect(database.db.exec(await script(ROLLBACK_59))).rejects.toThrow(
-        /Migration 59 is not applied/,
+        /Migration 67 is not applied/,
       )
 
       // 53's down-script restores the reminder functions without the switch,

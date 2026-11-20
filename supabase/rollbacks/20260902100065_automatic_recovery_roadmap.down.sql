@@ -1,5 +1,5 @@
 -- ===========================================================================
--- Rollback of migration 56 (automatic_recovery_roadmap)
+-- Rollback of migration 65 (automatic_recovery_roadmap, re-landed from pending 56)
 -- ===========================================================================
 -- Puts the roadmap back as migration 45 left it: the doctor builds phases by
 -- hand again (insert and update policies, doctor_reorder_recovery_phases(),
@@ -24,7 +24,7 @@ begin
     select 1 from information_schema.columns
      where table_schema = 'public' and table_name = 'recovery_phase' and column_name = 'recovery_phase_kind'
   ) then
-    raise exception 'Migration 56 is not applied. Nothing was changed.';
+    raise exception 'Migration 65 is not applied. Nothing was changed.';
   end if;
 end
 $$;

@@ -1,7 +1,17 @@
 -- ===========================================================================
--- RecoverEase — 55. Treatment goal progress: the patient's own progress and
+-- RecoverEase — 64. Treatment goal progress: the patient's own progress and
 -- the system's missed status
 -- ===========================================================================
+-- Re-landed from pending migration 55 (merged in PR #85, never applied to
+-- production), renumbered after 61 and 63. Three changes from 55, each
+-- marked (64) below: the missed-goal job skips a patient whose care is
+-- discharged (63) and a plan that is discharged (61); the patient's progress
+-- is refused while their care is discharged, in the patient's words (63's
+-- guard would refuse it anyway); and the job's FIRST run may change only a
+-- set of goals approved in advance - all of them or none (see "The first
+-- run" below). Everything else is 55's text; "migration 55" in it means this
+-- migration.
+--
 -- Module 3.3 "Define Treatment Goals" and 5.8 "View Treatment Goals",
 -- completed. The doctor sets a goal; the patient records their progress
 -- (pending → in progress → achieved); once the target date has passed in the
@@ -28,8 +38,11 @@
 --     plan's dates (the rule migration 45 gave activities).
 --   * `mark_missed_treatment_goals()`: the job, for the service role only,
 --     run hourly by pg_cron as `recoverease-mark-missed-treatment-goals`.
+--   * (64) `app_private.missed_goal_bootstrap` and
+--     `app_private.arm_missed_goal_bootstrap()`: the job's one-time first
+--     run, limited to an approved set of goals.
 --
--- Rollback: supabase/rollbacks/20260902100055_treatment_goal_progress.down.sql
+-- Rollback: supabase/rollbacks/20260902100064_treatment_goal_progress.down.sql
 -- ===========================================================================
 
 -- Adding the column and the triggers locks `treatment_goal_status_event` and
@@ -225,6 +238,13 @@ begin
     raise exception 'Progress can be recorded only while the treatment plan is active'
       using errcode = 'check_violation';
   end if;
+  -- (64) Not while the patient's care has ended.
+  if (select app_private.patient_care_is_discharged(
+        (select tp.pat_id from public.treatment_plan tp where tp.treatment_plan_id = goal_row.treatment_plan_id),
+        true)) then
+    raise exception 'Your care has ended. Book a follow-up if you need more care.'
+      using errcode = 'check_violation';
+  end if;
   if new_status = 'missed' then
     raise exception 'A goal is marked missed only by the system, once its target date has passed'
       using errcode = 'insufficient_privilege';
@@ -282,6 +302,193 @@ create index if not exists treatment_goal_open_target_idx
   where treatment_goal_status in ('pending', 'in_progress')
     and treatment_goal_target_date is not null;
 
+-- ---------------------------------------------------------------------------
+-- (64) The first run: an approved set of goals, all of them or none
+-- ---------------------------------------------------------------------------
+-- Goals already overdue when this migration is installed would all turn
+-- missed at the job's first run. That first run is therefore limited to a
+-- set of goals approved in advance, and is all-or-nothing:
+--
+--   unarmed --(the owner arms it with the approved set)--> armed
+--   armed --(the first run marks every approved goal)--> consumed, for good
+--
+--   * Unarmed, the job refuses to run (SQLSTATE RE64A) and changes nothing.
+--   * `app_private.arm_missed_goal_bootstrap(ids)` arms it - the database
+--     owner only, never a session or the service role. The set must be
+--     exactly the goals the job would mark at that moment (RE64B otherwise),
+--     so nothing is approved that is not overdue and nothing overdue is left
+--     unapproved. The deployment applies this migration and arms it in one
+--     transaction; the approved IDs are given at that time and are written
+--     in no migration. It may be re-armed (the same rule) until it has run.
+--   * Armed, the job locks the approved goals (FOR UPDATE NOWAIT), their
+--     plans and patients (FOR SHARE NOWAIT) - a goal someone is changing at
+--     that moment makes the whole run fail (55P03) - then re-checks every
+--     approved goal against the job's own rule. If any is no longer eligible
+--     it marks nothing (RE64B). Otherwise it marks exactly those goals, no
+--     other, and records the first run consumed in the same transaction:
+--     any failure leaves it armed and every goal as it was.
+--   * Consumed, the job is the ordinary hourly automation below. The record
+--     cannot be re-armed, rewound or removed (RE64C; its trigger refuses).
+--
+-- No session can read or write the record: `app_private` is not exposed
+-- through the Data API, and every privilege on it is revoked.
+
+create table if not exists app_private.missed_goal_bootstrap (
+  missed_goal_bootstrap_singleton   boolean primary key default true,
+  missed_goal_bootstrap_state       text not null default 'unarmed',
+  missed_goal_bootstrap_goal_ids    uuid[],
+  missed_goal_bootstrap_armed_at    timestamptz,
+  missed_goal_bootstrap_consumed_at timestamptz,
+  missed_goal_bootstrap_marked      integer,
+
+  constraint missed_goal_bootstrap_one_row check (missed_goal_bootstrap_singleton),
+  constraint missed_goal_bootstrap_state_valid
+    check (missed_goal_bootstrap_state in ('unarmed', 'armed', 'consumed')),
+  constraint missed_goal_bootstrap_shape check (
+    (missed_goal_bootstrap_state = 'unarmed'
+       and missed_goal_bootstrap_goal_ids is null and missed_goal_bootstrap_armed_at is null
+       and missed_goal_bootstrap_consumed_at is null and missed_goal_bootstrap_marked is null)
+    or (missed_goal_bootstrap_state = 'armed'
+       and missed_goal_bootstrap_goal_ids is not null and missed_goal_bootstrap_armed_at is not null
+       and missed_goal_bootstrap_consumed_at is null and missed_goal_bootstrap_marked is null)
+    or (missed_goal_bootstrap_state = 'consumed'
+       and missed_goal_bootstrap_goal_ids is not null and missed_goal_bootstrap_armed_at is not null
+       and missed_goal_bootstrap_consumed_at is not null
+       and missed_goal_bootstrap_marked = cardinality(missed_goal_bootstrap_goal_ids))
+  )
+);
+
+insert into app_private.missed_goal_bootstrap (missed_goal_bootstrap_singleton)
+values (true)
+on conflict do nothing;
+
+revoke all on table app_private.missed_goal_bootstrap from public, anon, authenticated, service_role;
+
+comment on table app_private.missed_goal_bootstrap is
+  'Migration 64: the missed-goal job''s one-time first run - unarmed, armed '
+  'with the approved goals, or consumed. One row; no session reads or '
+  'writes it.';
+
+-- The record moves only forward: unarmed, armed (armed again), consumed.
+create or replace function app_private.missed_goal_bootstrap_guard()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if tg_op in ('DELETE', 'TRUNCATE') then
+    raise exception 'The missed-goal first-run record is kept'
+      using errcode = 'RE64C';
+  end if;
+  if old.missed_goal_bootstrap_state = 'consumed' then
+    raise exception 'The missed-goal first run has already been consumed'
+      using errcode = 'RE64C';
+  end if;
+  if not ((old.missed_goal_bootstrap_state = 'unarmed' and new.missed_goal_bootstrap_state = 'armed')
+          or (old.missed_goal_bootstrap_state = 'armed'
+              and new.missed_goal_bootstrap_state in ('armed', 'consumed'))) then
+    raise exception 'The missed-goal first run moves only forward'
+      using errcode = 'RE64C';
+  end if;
+  return new;
+end;
+$$;
+
+revoke all on function app_private.missed_goal_bootstrap_guard() from public, anon, authenticated, service_role;
+
+drop trigger if exists missed_goal_bootstrap_guard on app_private.missed_goal_bootstrap;
+create trigger missed_goal_bootstrap_guard
+  before update or delete on app_private.missed_goal_bootstrap
+  for each row execute function app_private.missed_goal_bootstrap_guard();
+drop trigger if exists missed_goal_bootstrap_keep on app_private.missed_goal_bootstrap;
+create trigger missed_goal_bootstrap_keep
+  before truncate on app_private.missed_goal_bootstrap
+  for each statement execute function app_private.missed_goal_bootstrap_guard();
+
+-- The job's rule, once: the goals it would mark missed right now.
+create or replace function app_private.missable_treatment_goal_ids()
+returns setof uuid
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select g.treatment_goal_id
+    from public.treatment_goal g
+    join public.treatment_plan tp on tp.treatment_plan_id = g.treatment_plan_id
+    join public.patient p on p.pat_id = tp.pat_id
+    join public.doctor d on d.doc_id = p.doc_id
+    join public.clinic c on c.clinic_id = d.clinic_id
+   where p.pat_care_status = 'in_care'
+     and tp.treatment_plan_status::text = 'active'
+     and g.treatment_goal_status in ('pending', 'in_progress')
+     and g.treatment_goal_target_date is not null
+     and g.treatment_goal_target_date < (now() at time zone c.clinic_timezone)::date
+$$;
+
+revoke all on function app_private.missable_treatment_goal_ids() from public, anon, authenticated, service_role;
+
+-- The owner arms the first run with the approved goals: exactly those the
+-- job would mark now, each once. Returns how many.
+create or replace function app_private.arm_missed_goal_bootstrap(approved_goal_ids uuid[])
+returns integer
+language plpgsql
+volatile
+security definer
+set search_path = ''
+as $$
+declare
+  current_state text;
+  approved      uuid[];
+  eligible      uuid[];
+begin
+  if approved_goal_ids is null or array_position(approved_goal_ids, null) is not null then
+    raise exception 'Name each approved goal once each, with no empty entry'
+      using errcode = '22023';
+  end if;
+  approved := array(select distinct x from unnest(approved_goal_ids) x order by x);
+  if cardinality(approved) <> cardinality(approved_goal_ids) then
+    raise exception 'Name each approved goal once each, with no empty entry'
+      using errcode = '22023';
+  end if;
+
+  select b.missed_goal_bootstrap_state into current_state
+    from app_private.missed_goal_bootstrap b
+   where b.missed_goal_bootstrap_singleton
+     for update;
+  if current_state = 'consumed' then
+    raise exception 'The missed-goal first run has already been consumed'
+      using errcode = 'RE64C';
+  end if;
+
+  -- Hold the approved goals while the rule is read; a goal being changed
+  -- right now makes arming fail rather than wait.
+  perform 1 from public.treatment_goal g
+    where g.treatment_goal_id = any(approved)
+    order by g.treatment_goal_id
+      for update nowait;
+  eligible := array(select id from app_private.missable_treatment_goal_ids() id order by id);
+  if approved is distinct from eligible then
+    raise exception 'The approved set must be exactly the goals the job would mark missed now (% approved, % eligible)',
+      cardinality(approved), cardinality(eligible)
+      using errcode = 'RE64B';
+  end if;
+
+  update app_private.missed_goal_bootstrap b
+     set missed_goal_bootstrap_state = 'armed',
+         missed_goal_bootstrap_goal_ids = approved,
+         missed_goal_bootstrap_armed_at = now()
+   where b.missed_goal_bootstrap_singleton;
+  return cardinality(approved);
+end;
+$$;
+
+revoke all on function app_private.arm_missed_goal_bootstrap(uuid[]) from public, anon, authenticated, service_role;
+
+comment on function app_private.arm_missed_goal_bootstrap(uuid[]) is
+  'Migration 64: arms the missed-goal job''s first run with the approved '
+  'goals - exactly those it would mark now. Database owner only.';
+
 create or replace function public.mark_missed_treatment_goals()
 returns integer
 language plpgsql
@@ -290,8 +497,67 @@ security definer
 set search_path = ''
 as $$
 declare
-  changed integer;
+  changed        integer;
+  first_run      text;
+  approved       uuid[];
+  still_eligible integer;
 begin
+  -- (64) One run at a time, and the first run only as approved.
+  select b.missed_goal_bootstrap_state, b.missed_goal_bootstrap_goal_ids
+    into first_run, approved
+    from app_private.missed_goal_bootstrap b
+   where b.missed_goal_bootstrap_singleton
+     for update;
+
+  if first_run is distinct from 'consumed' then
+    if first_run is distinct from 'armed' then
+      raise exception 'The missed-goal job has no approved first run yet'
+        using errcode = 'RE64A';
+    end if;
+
+    perform 1 from public.treatment_goal g
+      where g.treatment_goal_id = any(approved)
+      order by g.treatment_goal_id
+        for update nowait;
+    perform 1 from public.treatment_plan tp
+      where tp.treatment_plan_id in (select g.treatment_plan_id from public.treatment_goal g
+                                      where g.treatment_goal_id = any(approved))
+      order by tp.treatment_plan_id
+        for share nowait;
+    perform 1 from public.patient p
+      where p.pat_id in (select tp.pat_id from public.treatment_plan tp
+                           join public.treatment_goal g on g.treatment_plan_id = tp.treatment_plan_id
+                          where g.treatment_goal_id = any(approved))
+      order by p.pat_id
+        for share nowait;
+
+    select count(*) into still_eligible
+      from app_private.missable_treatment_goal_ids() id
+     where id = any(approved);
+    if still_eligible <> cardinality(approved) then
+      raise exception 'An approved goal is no longer eligible; the first run marks nothing'
+        using errcode = 'RE64B';
+    end if;
+
+    perform set_config('recoverease.goal_status_source', 'system', true);
+    update public.treatment_goal g
+       set treatment_goal_status = 'missed'
+     where g.treatment_goal_id = any(approved);
+    get diagnostics changed = row_count;
+    perform set_config('recoverease.goal_status_source', '', true);
+    if changed <> cardinality(approved) then
+      raise exception 'The first run did not mark every approved goal; it marks nothing'
+        using errcode = 'RE64B';
+    end if;
+
+    update app_private.missed_goal_bootstrap b
+       set missed_goal_bootstrap_state = 'consumed',
+           missed_goal_bootstrap_consumed_at = now(),
+           missed_goal_bootstrap_marked = changed
+     where b.missed_goal_bootstrap_singleton;
+    return changed;
+  end if;
+
   perform set_config('recoverease.goal_status_source', 'system', true);
 
   update public.treatment_goal g
@@ -301,6 +567,9 @@ begin
     join public.doctor d on d.doc_id = p.doc_id
     join public.clinic c on c.clinic_id = d.clinic_id
    where tp.treatment_plan_id = g.treatment_plan_id
+     -- (64) Never for a patient whose care is discharged, nor a discharged plan.
+     and p.pat_care_status = 'in_care'
+     and tp.treatment_plan_status::text = 'active'
      and g.treatment_goal_status in ('pending', 'in_progress')
      and g.treatment_goal_target_date is not null
      and g.treatment_goal_target_date < (now() at time zone c.clinic_timezone)::date;

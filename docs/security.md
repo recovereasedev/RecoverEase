@@ -866,3 +866,31 @@ Recorded honestly rather than left for someone to discover:
 - **No clinical instruction:** nothing suggests a time, a dose or a change to
   a prescription. The clinical rules are PENDING the adviser
   (`docs/medication-clock-change-decisions.md`).
+
+## Patient care is the doctor's decision alone (migration 63)
+
+Discharging a patient changes what they and their doctor may write, so it
+is enforced in the database, never only by hiding buttons:
+
+- **Who.** `doctor_discharge_patient_care` / `doctor_reopen_patient_care`
+  (`SECURITY DEFINER`, `search_path = ''`, `authenticated` only) accept only
+  the patient's assigned, *active* doctor (`app_private.is_my_patient`). The
+  patient, another doctor, a deactivated doctor, a Clinic Admin and an
+  anonymous visitor are refused with the same message, whether or not the
+  patient exists. `patient_guard_care` refuses a direct write of
+  `pat_care_status`, `pat_care_closure_reason` or `pat_care_discharged_at`
+  by any session, so the patient `UPDATE` policy (own row / assigned doctor)
+  cannot be used to change care.
+- **No automation.** No job, trigger or other function sets a patient
+  discharged; a DB test asserts the only function whose body does so is
+  `doctor_discharge_patient_care`.
+- **History.** `patient_care_event` is select-only for sessions (RLS:
+  `can_access_patient`), written only by a trigger, and no writer - the
+  service role included - may change an event.
+- **Read-only care.** While discharged, `care_record_guard_discharged`
+  refuses any write by a signed-in user to the patient's plans, goals and
+  roadmap, including writes made through `SECURITY DEFINER` functions
+  (it checks `auth.uid()`, not `current_user`). Check-ins are refused by
+  `recovery_log_guard_care_ended`.
+- **Same-patient keys.** A follow-up's discharge event is held to the
+  appointment's own patient by a composite foreign key, for every writer.

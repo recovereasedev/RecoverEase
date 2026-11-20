@@ -34,6 +34,9 @@ const fixture = vi.hoisted(() => {
     pat_status: 'active',
     pat_reminder_preferred_time: null,
     pat_reminder_is_enabled: false,
+    pat_care_status: 'in_care',
+    pat_care_closure_reason: null,
+    pat_care_discharged_at: null,
   })
 
   return {

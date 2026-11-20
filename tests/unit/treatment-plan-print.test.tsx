@@ -57,6 +57,11 @@ vi.mock('@/features/patients/api', async (importOriginal) => ({
   fetchOwnClinicName: clinic.name,
 }))
 
+// The patient's care (migration 63): in care.
+vi.mock('@/features/patient-care/hooks', () => ({
+  usePatientCare: () => ({ data: { pat_care_status: 'in_care' }, isPending: false, error: null }),
+}))
+
 vi.mock('@/features/treatment-plans/hooks', () => ({
   useTreatmentPlans: () => ({
     data: plans.data,
@@ -64,6 +69,8 @@ vi.mock('@/features/treatment-plans/hooks', () => ({
     error: null,
     refetch: vi.fn(),
   }),
+  // The patient's progress buttons (migration 55), idle here.
+  useUpdateGoalStatus: () => ({ mutate: vi.fn(), isPending: false, isError: false, isSuccess: false }),
 }))
 
 import { captureDownloads } from './support/capture-download'
@@ -93,6 +100,7 @@ const PLAN = {
   treatment_plan_status: 'active',
   treatment_plan_created_at: '2026-09-01T00:00:00Z',
   treatment_plan_updated_at: '2026-09-01T00:00:00Z',
+  treatment_plan_follow_up_appointment_id: null,
   treatment_goal: [
     {
       treatment_goal_id: 'goal-1',

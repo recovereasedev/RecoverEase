@@ -1,5 +1,5 @@
 -- ===========================================================================
--- Rollback of migration 58 (medication_schedule_instructions)
+-- Rollback of migration 66 (medication_schedule_instructions, re-landed from pending 58)
 -- ===========================================================================
 -- Removes `medication_schedule.medication_schedule_instructions` and its
 -- check, back to the schema before 58. Applied as a new migration, with
@@ -29,7 +29,7 @@ begin
        and table_name = 'medication_schedule'
        and column_name = 'medication_schedule_instructions'
   ) then
-    raise exception 'Migration 58 is not applied. Nothing was changed.';
+    raise exception 'Migration 66 is not applied. Nothing was changed.';
   end if;
 end
 $$;

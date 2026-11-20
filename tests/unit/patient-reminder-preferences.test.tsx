@@ -32,6 +32,9 @@ const PATIENT = {
   pat_address: null,
   pat_status: 'active',
   pat_reminder_is_enabled: true,
+  pat_care_status: 'in_care',
+  pat_care_closure_reason: null,
+  pat_care_discharged_at: null,
   pat_reminder_preferred_time: null as string | null,
 }
 
@@ -118,6 +121,9 @@ describe('the patient’s reminder preferences', () => {
     patient = {
       ...PATIENT,
       pat_reminder_is_enabled: false,
+      pat_care_status: 'in_care',
+      pat_care_closure_reason: null,
+      pat_care_discharged_at: null,
       pat_reminder_preferred_time: '07:30:00',
     }
     renderPage()

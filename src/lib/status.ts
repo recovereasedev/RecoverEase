@@ -156,10 +156,12 @@ export const treatmentGoalStatus: Record<
     icon: CheckCircle2,
     tone: 'success',
   },
+  // Set only by the system, once the target date has passed (migration 55).
   missed: {
-    label: 'Not met',
+    label: 'Missed',
     icon: MinusCircle,
     tone: 'warning',
+    description: 'The target date passed before this goal was achieved.',
   },
 }
 
@@ -225,6 +227,31 @@ export const patientStatus: Record<
   active: { label: 'Active', icon: UserCheck, tone: 'success' },
   inactive: { label: 'Inactive', icon: Pause, tone: 'neutral' },
   discharged: { label: 'Discharged', icon: UserMinus, tone: 'neutral' },
+}
+
+/**
+ * A patient's care (migration 63): whether they are in the clinic's care.
+ * Apart from the account (`patientStatus`) and from any plan's status; only
+ * the assigned doctor's Discharge patient and Reopen case move it.
+ */
+export const patientCareStatus: Record<'in_care' | 'discharged', StatusDescriptor> = {
+  in_care: {
+    label: 'In Care',
+    icon: UserCheck,
+    tone: 'info',
+    description: 'The patient is in their doctor’s care.',
+  },
+  discharged: {
+    label: 'Discharged',
+    icon: DoorOpen,
+    tone: 'neutral',
+    description: 'The doctor discharged the patient from care.',
+  },
+}
+
+/** The descriptor for a stored care status; anything not discharged is in care. */
+export function patientCareStatusOf(status: string | null | undefined): StatusDescriptor {
+  return patientCareStatus[status === 'discharged' ? 'discharged' : 'in_care']
 }
 
 export const doctorAccountStatus = {
