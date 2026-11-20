@@ -17,7 +17,10 @@ export type DoseWithSchedule = MedicationLog & {
   medication_schedule: Pick<
     MedicationSchedule,
     'medication_schedule_id' | 'medication_schedule_name' | 'medication_schedule_dosage'
-  > | null
+  > & {
+    /** The doctor's reminder switch (migration 59); only read when asked for. */
+    medication_schedule_reminders_is_enabled?: boolean
+  } | null
 }
 
 /**
@@ -56,6 +59,19 @@ const DOSE_COLUMNS = `*,
          medication_schedule_id,
          medication_schedule_name,
          medication_schedule_dosage,
+         prescription!inner ( pat_id )
+       )`
+
+/**
+ * The same, with the doctor's reminder switch (migration 59). Its own list,
+ * so the checklist, charts and calendar page read exactly what they did.
+ */
+const DOSE_COLUMNS_WITH_REMINDER_SETTING = `*,
+       medication_schedule!inner (
+         medication_schedule_id,
+         medication_schedule_name,
+         medication_schedule_dosage,
+         medication_schedule_reminders_is_enabled,
          prescription!inner ( pat_id )
        )`
 
@@ -103,12 +119,17 @@ export const DOSE_PAGE_SIZE = 1000
  * a count it falls back to stopping at the first short page. The id breaks
  * ties between doses due at the same moment, so no row can fall between two
  * pages or appear in both; one that did would be dropped as a repeat.
+ *
+ * `withReminderSetting` also reads each dose's schedule's reminder switch,
+ * for the phone-calendar file, which leaves out medicines switched off.
  */
 export async function fetchAllDoses(input: {
   patientId: string
   from: string
   to: string
+  withReminderSetting?: boolean
 }): Promise<DoseWithSchedule[]> {
+  const columns = input.withReminderSetting ? DOSE_COLUMNS_WITH_REMINDER_SETTING : DOSE_COLUMNS
   const doses: DoseWithSchedule[] = []
   const seen = new Set<string>()
   let total: number | null = null
@@ -117,7 +138,7 @@ export async function fetchAllDoses(input: {
   for (;;) {
     const { data, error, count } = await supabase
       .from('medication_log')
-      .select(DOSE_COLUMNS, offset === 0 ? { count: 'exact' } : {})
+      .select(columns, offset === 0 ? { count: 'exact' } : {})
       .eq('medication_schedule.prescription.pat_id', input.patientId)
       .gte('medication_log_scheduled_at', input.from)
       .lte('medication_log_scheduled_at', input.to)
