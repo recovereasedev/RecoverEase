@@ -75,6 +75,10 @@ export function useUpdateTreatmentPlan(patientId: string) {
       void queryClient.invalidateQueries({
         queryKey: queryKeys.treatment.plansFor(patientId),
       })
+      // The plan's dates are its roadmap's fixed phases' (migration 56).
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.roadmap.forPatient(patientId),
+      })
     },
   })
 }
@@ -92,6 +96,10 @@ export function useCreateTreatmentGoal(patientId: string) {
     onSuccess: () => {
       void queryClient.invalidateQueries({
         queryKey: queryKeys.treatment.plansFor(patientId),
+      })
+      // A new goal has a new roadmap phase, generated with it (migration 56).
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.roadmap.forPatient(patientId),
       })
     },
   })

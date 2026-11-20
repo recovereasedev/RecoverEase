@@ -901,6 +901,8 @@ export type Database = {
           recovery_phase_archived_at: string | null
           recovery_phase_created_at: string
           recovery_phase_updated_at: string
+          recovery_phase_kind: 'initial' | 'goal' | 'follow_up' | null
+          treatment_goal_id: string | null
         }
         Insert: {
           recovery_phase_id?: string
@@ -913,6 +915,8 @@ export type Database = {
           recovery_phase_archived_at?: string | null
           recovery_phase_created_at?: string
           recovery_phase_updated_at?: string
+          recovery_phase_kind?: 'initial' | 'goal' | 'follow_up' | null
+          treatment_goal_id?: string | null
         }
         Update: {
           recovery_phase_id?: string
@@ -925,8 +929,17 @@ export type Database = {
           recovery_phase_archived_at?: string | null
           recovery_phase_created_at?: string
           recovery_phase_updated_at?: string
+          recovery_phase_kind?: 'initial' | 'goal' | 'follow_up' | null
+          treatment_goal_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: 'recovery_phase_goal_fk'
+            columns: ['treatment_goal_id']
+            isOneToOne: true
+            referencedRelation: 'treatment_goal'
+            referencedColumns: ['treatment_goal_id']
+          },
           {
             foreignKeyName: 'recovery_phase_treatment_plan_id_fkey'
             columns: ['treatment_plan_id']
@@ -1217,6 +1230,7 @@ export type Database = {
           treatment_plan_updated_at: string
           treatment_plan_closure_reason: string | null
           treatment_plan_discharged_at: string | null
+          treatment_plan_follow_up_appointment_id: string | null
         }
         Insert: {
           treatment_plan_id?: string
@@ -1231,6 +1245,7 @@ export type Database = {
           treatment_plan_updated_at?: string
           treatment_plan_closure_reason?: string | null
           treatment_plan_discharged_at?: string | null
+          treatment_plan_follow_up_appointment_id?: string | null
         }
         Update: {
           treatment_plan_id?: string
@@ -1245,6 +1260,7 @@ export type Database = {
           treatment_plan_updated_at?: string
           treatment_plan_closure_reason?: string | null
           treatment_plan_discharged_at?: string | null
+          treatment_plan_follow_up_appointment_id?: string | null
         }
         Relationships: [
           {
@@ -1253,6 +1269,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: 'doctor'
             referencedColumns: ['doc_id']
+          },
+          {
+            foreignKeyName: 'treatment_plan_follow_up_appointment_fk'
+            columns: ['treatment_plan_follow_up_appointment_id', 'pat_id']
+            isOneToOne: false
+            referencedRelation: 'appointment'
+            referencedColumns: ['appointment_id', 'pat_id']
           },
           {
             foreignKeyName: 'treatment_plan_pat_id_fkey'
@@ -1393,10 +1416,6 @@ export type Database = {
       patient_reopen_recovery_activity: {
         Args: { target_activity_id: string }
         Returns: Database['public']['Tables']['recovery_activity']['Row']
-      }
-      doctor_reorder_recovery_phases: {
-        Args: { target_plan_id: string; phase_ids: string[] }
-        Returns: undefined
       }
       doctor_reorder_recovery_activities: {
         Args: { target_phase_id: string; activity_ids: string[] }

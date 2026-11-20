@@ -19,8 +19,8 @@ import type { RecoveryActivity, RecoveryPhase, Roadmap } from './api'
  *
  *   - the activities the doctor assigned in its current phases, done when
  *     the patient has marked them done;
- *   - the plan's treatment goals linked to one of those phases, done when
- *     the doctor has marked them achieved.
+ *   - the plan's treatment goals, each in its own Recovery and Monitoring
+ *     phase (migration 56), done when the patient has marked them achieved.
  *
  *   progress = (activities done + linked goals achieved)
  *              / (activities + linked goals) × 100
@@ -30,6 +30,10 @@ import type { RecoveryActivity, RecoveryPhase, Roadmap } from './api'
  * has its own progress; plans are never added together. With nothing to
  * count there is no percentage at all - "No activities yet" - rather than a
  * 0% that would read as no progress made.
+ *
+ * This is a measure of progress only. A roadmap fully done does not complete
+ * the treatment plan or discharge the patient: that stays the doctor's
+ * clinical decision.
  */
 
 export type RoadmapCount = {
@@ -51,6 +55,15 @@ export function countItems(activities: readonly RecoveryActivity[], goals: reado
     remaining: total - done,
     percentage: total === 0 ? null : Math.round((done / total) * 100),
   }
+}
+
+export type PhaseKind = NonNullable<RecoveryPhase['recovery_phase_kind']>
+
+/** The three kinds of generated phase (migration 56), as patients and doctors read them. */
+export const PHASE_KIND_LABEL: Record<PhaseKind, string> = {
+  initial: 'Initial Recovery',
+  goal: 'Recovery and Monitoring',
+  follow_up: 'Follow-up and Assessment',
 }
 
 export type PhaseStatus = 'completed' | 'in_progress' | 'upcoming'
@@ -79,8 +92,11 @@ export function phaseStatus(phase: RecoveryPhase, count: RoadmapCount, today: st
 
 export type RoadmapPhase = {
   phase: RecoveryPhase
-  /** 1, 2, 3… in the order the doctor set. */
+  /** 1, 2, 3… by position: Initial Recovery first, Follow-up and Assessment last. */
   number: number
+  kind: PhaseKind
+  /** A Recovery and Monitoring phase's own goal, read from the goal itself; null otherwise. */
+  goal: TreatmentGoal | null
   activities: RecoveryActivity[]
   goals: TreatmentGoal[]
   count: RoadmapCount
@@ -90,8 +106,6 @@ export type RoadmapPhase = {
 export type PlanRoadmap = {
   phases: RoadmapPhase[]
   count: RoadmapCount
-  /** Goals of the plan in no phase: shown with the plan's goals, not counted. */
-  unlinkedGoals: TreatmentGoal[]
 }
 
 /** One plan's roadmap: its phases in order, each with its items and state. */
@@ -104,7 +118,6 @@ export function planRoadmap(
   const phases = roadmap.phases
     .filter((phase) => phase.treatment_plan_id === planId)
     .sort((a, b) => a.recovery_phase_order - b.recovery_phase_order)
-  const phaseIds = new Set(phases.map((phase) => phase.recovery_phase_id))
 
   const built = phases.map((phase, index) => {
     const activities = roadmap.activities
@@ -115,6 +128,9 @@ export function planRoadmap(
     return {
       phase,
       number: index + 1,
+      // Every current phase has a kind from migration 56 on.
+      kind: phase.recovery_phase_kind ?? 'initial',
+      goal: goals.find((goal) => goal.treatment_goal_id === phase.treatment_goal_id) ?? null,
       activities,
       goals: linked,
       count,
@@ -128,8 +144,28 @@ export function planRoadmap(
       built.flatMap((phase) => phase.activities),
       built.flatMap((phase) => phase.goals),
     ),
-    unlinkedGoals: goals.filter((goal) => goal.recovery_phase_id === null || !phaseIds.has(goal.recovery_phase_id)),
   }
+}
+
+/** A phase's heading: its kind, and for a goal's phase the goal itself. */
+export function phaseHeading(item: Pick<RoadmapPhase, 'kind' | 'goal'>): string {
+  const label = PHASE_KIND_LABEL[item.kind]
+  return item.kind === 'goal' && item.goal ? `${label}: ${item.goal.treatment_goal_description}` : label
+}
+
+/**
+ * The appointment the doctor chose as the plan's follow-up, as it is now -
+ * its date and status read from the appointment. Null when none was chosen;
+ * undefined when one was chosen but is not among `appointments` (still
+ * loading, or unreadable), which must never be shown as "none chosen". No
+ * other appointment is ever taken for it.
+ */
+export function followUpAppointment<T extends { appointment_id: string }>(
+  plan: { treatment_plan_follow_up_appointment_id: string | null },
+  appointments: readonly T[],
+): T | null | undefined {
+  const id = plan.treatment_plan_follow_up_appointment_id
+  return id === null ? null : appointments.find((appointment) => appointment.appointment_id === id)
 }
 
 // ---------------------------------------------------------------------------

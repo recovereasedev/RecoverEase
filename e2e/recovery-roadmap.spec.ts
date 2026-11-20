@@ -1,11 +1,14 @@
 import { expect, IDS, test, type Page } from './support/fixtures'
 
 /**
- * Module 5.7, the enhanced Recovery Roadmap (migration 45), in a real
- * browser against the stub: the patient's page - progress, phases, marking
- * an activity done, upcoming tasks, the way to the charts - and the doctor's
- * editor on the record. Who may do what is the database's
- * (tests/db/recovery-roadmap.test.ts); this is what each screen does with it.
+ * Module 5.7, the Recovery Roadmap (migrations 45, 56), in a real browser
+ * against the stub: the patient's page - progress, the generated phases,
+ * marking an activity done, the follow-up appointment, upcoming tasks, the
+ * way to the charts - and the doctor's roadmap on the record, which monitors
+ * phases and manages activities but cannot add, move or archive a phase.
+ * Generation and who may do what are the database's
+ * (tests/db/automatic-recovery-roadmap.test.ts); this is what each screen
+ * does with it.
  */
 
 /** A `YYYY-MM-DD` day `days` from today, in this machine's zone. */
@@ -17,10 +20,11 @@ function dayFromToday(days: number): string {
 }
 
 const stamp = { recovery_phase_archived_at: null, recovery_phase_created_at: '2026-02-01T00:00:00Z', recovery_phase_updated_at: '2026-02-01T00:00:00Z' }
+// As the database generates them for a plan with one goal: 1 + 2 = 3 phases.
 const PHASES = [
-  { recovery_phase_id: 'ph-1', treatment_plan_id: IDS.planA, recovery_phase_title: 'Initial Recovery', recovery_phase_description: 'Rest and settle into the routine.', recovery_phase_order: 1, recovery_phase_start_date: null, recovery_phase_target_end_date: null, ...stamp },
-  { recovery_phase_id: 'ph-2', treatment_plan_id: IDS.planA, recovery_phase_title: 'Rehabilitation', recovery_phase_description: null, recovery_phase_order: 2, recovery_phase_start_date: '2026-03-01', recovery_phase_target_end_date: null, ...stamp },
-  { recovery_phase_id: 'ph-3', treatment_plan_id: IDS.planA, recovery_phase_title: 'Strength Building', recovery_phase_description: null, recovery_phase_order: 3, recovery_phase_start_date: null, recovery_phase_target_end_date: null, ...stamp },
+  { recovery_phase_id: 'ph-1', treatment_plan_id: IDS.planA, recovery_phase_kind: 'initial', treatment_goal_id: null, recovery_phase_title: 'Initial Recovery', recovery_phase_description: 'Rest and settle into the routine.', recovery_phase_order: 1, recovery_phase_start_date: '2026-02-01', recovery_phase_target_end_date: null, ...stamp },
+  { recovery_phase_id: 'ph-2', treatment_plan_id: IDS.planA, recovery_phase_kind: 'goal', treatment_goal_id: IDS.goalA, recovery_phase_title: 'Recovery and Monitoring', recovery_phase_description: null, recovery_phase_order: 2, recovery_phase_start_date: null, recovery_phase_target_end_date: '2026-05-01', ...stamp },
+  { recovery_phase_id: 'ph-3', treatment_plan_id: IDS.planA, recovery_phase_kind: 'follow_up', treatment_goal_id: null, recovery_phase_title: 'Follow-up and Assessment', recovery_phase_description: null, recovery_phase_order: 1000000, recovery_phase_start_date: null, recovery_phase_target_end_date: null, ...stamp },
 ]
 
 const activity = (id: string, phaseId: string, order: number, title: string, extra: Record<string, unknown> = {}) => ({
@@ -45,10 +49,10 @@ const ACTIVITIES = [
   }),
   activity('act-2', 'ph-2', 1, 'Begin light physical therapy', { recovery_activity_target_date: dayFromToday(2) }),
   activity('act-3', 'ph-2', 2, 'Monitor symptoms and energy levels'),
-  activity('act-4', 'ph-3', 1, 'Gradually increase physical activity'),
+  activity('act-4', 'ph-3', 1, 'Final mobility assessment'),
 ]
 
-/** Alice's plan with its goal placed in Rehabilitation. */
+/** Alice's plan, its one goal in its own Recovery and Monitoring phase. */
 const PLAN = {
   treatment_plan_id: IDS.planA,
   pat_id: IDS.alicePat,
@@ -60,6 +64,7 @@ const PLAN = {
   treatment_plan_status: 'active',
   treatment_plan_created_at: '2026-02-01T00:00:00Z',
   treatment_plan_updated_at: '2026-02-01T00:00:00Z',
+  treatment_plan_follow_up_appointment_id: null,
   treatment_goal: [
     {
       treatment_goal_id: IDS.goalA,
@@ -103,8 +108,13 @@ test.describe('the patient’s Recovery Roadmap', () => {
 
     const one = page.getByRole('region', { name: 'Phase 1 — Initial Recovery' })
     await expect(one.getByText('Completed')).toBeVisible()
-    await expect(page.getByRole('region', { name: 'Phase 2 — Rehabilitation' }).getByText('Goal:')).toBeVisible()
-    await expect(page.getByRole('region', { name: 'Phase 3 — Strength Building' }).getByText('Upcoming')).toBeVisible()
+    const goalPhase = page.getByRole('region', { name: 'Phase 2 — Recovery and Monitoring: Walk 500 metres unaided' })
+    await expect(goalPhase.getByText('Goal target date 1 May')).toBeVisible()
+    await expect(goalPhase.getByRole('link', { name: 'Update your progress' })).toHaveAttribute('href', '/patient/treatment')
+    const last = page.getByRole('region', { name: 'Phase 3 — Follow-up and Assessment' })
+    await expect(last.getByText('Upcoming')).toBeVisible()
+    await expect(last.getByText('Your doctor has not chosen a follow-up appointment yet.')).toBeVisible()
+    await expect(page.getByRole('button', { name: /phase/i })).toHaveCount(0)
 
     const upcoming = page.getByRole('complementary', { name: 'Treatment goals and upcoming tasks' })
     await expect(upcoming.getByRole('link', { name: /Begin light physical therapy/ })).toHaveAttribute('href', '#activity-act-2')
@@ -154,45 +164,50 @@ test.describe('the patient’s Recovery Roadmap', () => {
     await page.setViewportSize({ width: 360, height: 780 })
     await signInAs('patient', ROADMAP())
     await page.goto('/patient/roadmap')
-    await expect(page.getByRole('region', { name: 'Phase 3 — Strength Building' })).toBeVisible()
+    await expect(page.getByRole('region', { name: 'Phase 3 — Follow-up and Assessment' })).toBeVisible()
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
     expect(overflow).toBeLessThanOrEqual(0)
   })
 })
 
-test.describe('the doctor’s roadmap editor', () => {
+test.describe('the doctor’s roadmap', () => {
   const openTreatment = async (page: Page) => {
     await page.goto(`/doctor/patients/${IDS.alicePat}?tab=treatment`)
     await expect(page.getByRole('heading', { name: 'Recovery roadmap' })).toBeVisible()
   }
 
-  test('shows the patient’s completions, and builds the roadmap: a phase, an activity, a new order', async ({ page, signInAs }) => {
+  test('monitors the generated phases, adds an assessment, and chooses the follow-up appointment', async ({
+    page,
+    signInAs,
+  }) => {
     const errors = watchForErrors(page)
-    await signInAs('doctor', ROADMAP())
+    const stub = await signInAs('doctor', ROADMAP())
     await openTreatment(page)
 
     await expect(page.getByText('20% · 1 of 5 done')).toBeVisible()
     await expect(page.getByText(/Done by the patient on 10 February/)).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Phase 2 — Recovery and Monitoring: Walk 500 metres unaided' })).toBeVisible()
+    // No phase is the doctor's to add, edit, move or archive.
+    for (const name of [/Add phase/, /Edit phase/, /Move phase/, /Archive phase/]) {
+      await expect(page.getByRole('button', { name })).toHaveCount(0)
+    }
 
-    await page.getByRole('button', { name: 'Add phase' }).click()
-    const phaseForm = page.getByRole('form', { name: 'Add phase' })
-    await phaseForm.getByLabel(/Phase title/).fill('Long-Term Maintenance')
-    await phaseForm.getByRole('button', { name: 'Add phase' }).click()
-    const added = page.getByRole('heading', { name: 'Phase 4 — Long-Term Maintenance' })
-    await expect(added).toBeVisible()
-
-    const phaseItem = page.getByRole('listitem').filter({ has: added })
-    await phaseItem.getByRole('button', { name: 'Add activity' }).click()
+    const last = page
+      .getByRole('listitem')
+      .filter({ has: page.getByRole('heading', { name: 'Phase 3 — Follow-up and Assessment' }) })
+    await last.getByRole('button', { name: 'Add activity to Follow-up and Assessment' }).click()
     const activityForm = page.getByRole('form', { name: 'Add activity' })
-    await activityForm.getByLabel(/Activity/).fill('Attend the final follow-up appointment')
+    await activityForm.getByLabel(/Activity/).fill('Final strength assessment')
     await activityForm.getByRole('button', { name: 'Add activity' }).click()
-    await expect(page.getByText('Attend the final follow-up appointment')).toBeVisible()
+    await expect(page.getByText('Final strength assessment')).toBeVisible()
     // 1 of 6 now: 17%.
     await expect(page.getByText('17% · 1 of 6 done')).toBeVisible()
 
-    await page.getByRole('button', { name: 'Move phase Long-Term Maintenance up' }).click()
-    await expect(page.getByRole('heading', { name: 'Phase 3 — Long-Term Maintenance' })).toBeVisible()
-    await expect(page.getByRole('heading', { name: 'Phase 4 — Strength Building' })).toBeVisible()
+    await expect(last.getByText('No follow-up appointment chosen yet.')).toBeVisible()
+    await last.getByLabel('Follow-up appointment').selectOption(IDS.appointmentA)
+    await last.getByRole('button', { name: 'Save follow-up' }).click()
+    await expect(last.getByText(/^Follow-up appointment \d/)).toBeVisible()
+    expect(stub.requests.filter((request) => /^(POST|PATCH|DELETE) recovery_phase/.test(request))).toEqual([])
     expect(errors).toEqual([])
   })
 
@@ -207,8 +222,8 @@ test.describe('the doctor’s roadmap editor', () => {
 
     await page.getByRole('button', { name: 'Archive activity Follow prescribed rest instructions' }).click()
     await expect(page.getByText(/that they did it stays on record/)).toBeVisible()
-    await page.getByRole('button', { name: 'Show archived' }).click()
-    await expect(page.getByText('Nothing in this plan is archived.')).toBeVisible()
+    await page.getByRole('button', { name: 'Show archived activities' }).click()
+    await expect(page.getByText('No activity in this plan is archived.')).toBeVisible()
 
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
     expect(overflow).toBeLessThanOrEqual(0)

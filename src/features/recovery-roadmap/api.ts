@@ -2,16 +2,20 @@ import { supabase } from '@/lib/supabase/client'
 import type { Tables, TablesInsert, TablesUpdate } from '@/types/database.types'
 
 /**
- * Module 5.7 "View Recovery Roadmap", enhanced (migration 45).
+ * Module 5.7 "View Recovery Roadmap", enhanced (migration 45) and generated
+ * (migration 56).
  *
- * A treatment plan is the roadmap's parent. Its phases and the activities a
- * doctor assigns in them are read here; everything else on the roadmap is
+ * A treatment plan is the roadmap's parent. Its phases are made by the
+ * database - Initial Recovery, one Recovery and Monitoring phase per goal,
+ * Follow-up and Assessment - and no one writes them from here. The phases
+ * and the activities a doctor assigns in them are read here; everything else on the roadmap is
  * read from where it already lives - goals with their plans
  * (`fetchTreatmentPlans`), doses (`fetchAllDoses`), appointments
  * (`fetchAppointments`) - and is never copied.
  *
- * Archived phases and activities are not read: archiving is how a doctor
- * takes one off the roadmap while its history stays in the database.
+ * Archived phases and activities are not read: an archived activity is one
+ * the doctor took off the roadmap, an archived phase a deleted goal's or one
+ * made by hand before 56; their history stays in the database.
  */
 
 export type RecoveryPhase = Tables<'recovery_phase'>
@@ -93,72 +97,26 @@ export async function reopenActivity(activityId: string): Promise<RecoveryActivi
 }
 
 // ---------------------------------------------------------------------------
-// The doctor: build and change the roadmap
+// The doctor: the activities in each phase, and the follow-up appointment
 // ---------------------------------------------------------------------------
 // The database decides who may (`is_my_patient`: the patient's assigned,
 // active doctor), numbers new rows at the end, and checks every date
-// against the plan's.
+// against the plan's. Phases themselves are never written here.
 
-export type PhaseInput = {
-  title: string
-  description: string | null
-  startDate: string | null
-  targetEndDate: string | null
-}
-
-export async function createPhase(planId: string, input: PhaseInput): Promise<RecoveryPhase> {
-  // No place in the order: the database puts it last (`recovery_phase_prepare`).
-  const row: Omit<TablesInsert<'recovery_phase'>, 'recovery_phase_order'> = {
-    treatment_plan_id: planId,
-    recovery_phase_title: input.title,
-    recovery_phase_description: input.description,
-    recovery_phase_start_date: input.startDate,
-    recovery_phase_target_end_date: input.targetEndDate,
-  }
+/**
+ * Chooses which of the patient's appointments the plan's Follow-up and
+ * Assessment phase shows, or none (null). The database refuses another
+ * patient's appointment.
+ */
+export async function setFollowUpAppointment(planId: string, appointmentId: string | null): Promise<void> {
   const { data, error } = await supabase
-    .from('recovery_phase')
-    .insert(row as TablesInsert<'recovery_phase'>)
-    .select()
-    .single()
+    .from('treatment_plan')
+    .update({ treatment_plan_follow_up_appointment_id: appointmentId })
+    .eq('treatment_plan_id', planId)
+    .select('treatment_plan_id')
   if (error) throw error
-  return data
-}
-
-export async function updatePhase(phaseId: string, input: PhaseInput): Promise<RecoveryPhase> {
-  return changePhase(phaseId, {
-    recovery_phase_title: input.title,
-    recovery_phase_description: input.description,
-    recovery_phase_start_date: input.startDate,
-    recovery_phase_target_end_date: input.targetEndDate,
-  })
-}
-
-/** Takes a phase off the roadmap; its goals stay in the plan, unlinked. */
-export async function archivePhase(phaseId: string): Promise<RecoveryPhase> {
-  // The database stamps its own time; any non-null value asks for it.
-  return changePhase(phaseId, { recovery_phase_archived_at: new Date().toISOString() })
-}
-
-async function changePhase(
-  phaseId: string,
-  changes: TablesUpdate<'recovery_phase'>,
-): Promise<RecoveryPhase> {
-  const { data, error } = await supabase
-    .from('recovery_phase')
-    .update(changes)
-    .eq('recovery_phase_id', phaseId)
-    .select()
-    .single()
-  if (error) throw error
-  return data
-}
-
-export async function reorderPhases(planId: string, phaseIds: readonly string[]): Promise<void> {
-  const { error } = await supabase.rpc('doctor_reorder_recovery_phases', {
-    target_plan_id: planId,
-    phase_ids: [...phaseIds],
-  })
-  if (error) throw error
+  // Row-level security returns no row rather than an error.
+  if (data.length === 0) throw new Error('The follow-up appointment was not saved.')
 }
 
 export type ActivityInput = {
@@ -198,15 +156,6 @@ export async function archiveActivity(activityId: string): Promise<RecoveryActiv
 }
 
 /**
- * Puts an archived phase back on the roadmap, at the end of its plan's order,
- * with its activities and whatever was done in them; its goals were taken
- * out when it was archived and stay out until placed again.
- */
-export async function restorePhase(phaseId: string): Promise<RecoveryPhase> {
-  return changePhase(phaseId, { recovery_phase_archived_at: null })
-}
-
-/**
  * Puts an archived activity back, at the end of its phase, done or not as it
  * was. The database refuses it while the phase itself is archived.
  */
@@ -214,40 +163,27 @@ export async function restoreActivity(activityId: string): Promise<RecoveryActiv
   return changeActivity(activityId, { recovery_activity_archived_at: null })
 }
 
-export type ArchivedRoadmap = {
-  /** The plan's archived phases. */
-  phases: RecoveryPhase[]
-  /** Archived activities in the plan's current phases; one in an archived phase comes back with it. */
-  activities: RecoveryActivity[]
-}
-
-/** What the doctor has archived in a plan, for restoring. */
-export async function fetchArchived(planId: string): Promise<ArchivedRoadmap> {
-  // Read whole and sorted here, where the archive is told apart.
+/** What the doctor has archived in a plan's current phases, newest first, for restoring. */
+export async function fetchArchived(planId: string): Promise<RecoveryActivity[]> {
   const { data: phases, error: phaseError } = await supabase
     .from('recovery_phase')
-    .select('*')
+    .select('recovery_phase_id')
     .eq('treatment_plan_id', planId)
+    .is('recovery_phase_archived_at', null)
   if (phaseError) throw phaseError
-  const current = new Set(
-    phases.filter((phase) => phase.recovery_phase_archived_at === null).map((phase) => phase.recovery_phase_id),
-  )
-  let activities: RecoveryActivity[] = []
-  if (current.size > 0) {
-    const { data, error } = await supabase
-      .from('recovery_activity')
-      .select('*')
-      .in('recovery_phase_id', [...current])
-    if (error) throw error
-    activities = data.filter((activity) => activity.recovery_activity_archived_at !== null)
-  }
-  const newestFirst = (a: string | null, b: string | null) => (b ?? '').localeCompare(a ?? '')
-  return {
-    phases: phases
-      .filter((phase) => phase.recovery_phase_archived_at !== null)
-      .sort((a, b) => newestFirst(a.recovery_phase_archived_at, b.recovery_phase_archived_at)),
-    activities: activities.sort((a, b) => newestFirst(a.recovery_activity_archived_at, b.recovery_activity_archived_at)),
-  }
+  if (phases.length === 0) return []
+  // Read whole and sorted here, where the archive is told apart.
+  const { data, error } = await supabase
+    .from('recovery_activity')
+    .select('*')
+    .in(
+      'recovery_phase_id',
+      phases.map((phase) => phase.recovery_phase_id),
+    )
+  if (error) throw error
+  return data
+    .filter((activity) => activity.recovery_activity_archived_at !== null)
+    .sort((a, b) => (b.recovery_activity_archived_at ?? '').localeCompare(a.recovery_activity_archived_at ?? ''))
 }
 
 async function changeActivity(
@@ -270,23 +206,4 @@ export async function reorderActivities(phaseId: string, activityIds: readonly s
     activity_ids: [...activityIds],
   })
   if (error) throw error
-}
-
-/** Places an existing goal in a phase of its own plan, or takes it out (null). */
-const LOCK_NOT_AVAILABLE = '55P03'
-
-export async function linkGoalToPhase(goalId: string, phaseId: string | null): Promise<void> {
-  const { data, error } = await supabase
-    .from('treatment_goal')
-    .update({ recovery_phase_id: phaseId })
-    .eq('treatment_goal_id', goalId)
-    .select('treatment_goal_id')
-  // The database refuses at once, rather than wait, when the phase is being
-  // changed at that moment (migration 45); trying again is safe.
-  if (error?.code === LOCK_NOT_AVAILABLE) {
-    throw new Error('That phase is being changed right now. Try again in a moment.')
-  }
-  if (error) throw error
-  // Row-level security returns no row rather than an error.
-  if (data.length === 0) throw new Error('The goal was not moved.')
 }

@@ -5,23 +5,17 @@ import type { PlanWithGoals } from '@/features/treatment-plans/api'
 
 import {
   archiveActivity,
-  archivePhase,
   completeActivity,
   createActivity,
-  createPhase,
   fetchArchived,
   fetchGoalStatusEvents,
   fetchRoadmap,
-  linkGoalToPhase,
   reopenActivity,
   reorderActivities,
-  reorderPhases,
   restoreActivity,
-  restorePhase,
+  setFollowUpAppointment,
   updateActivity,
-  updatePhase,
   type ActivityInput,
-  type PhaseInput,
 } from './api'
 
 /**
@@ -48,7 +42,7 @@ export function useRoadmap(
   })
 }
 
-/** A plan's archived phases and activities, read when the doctor opens them. */
+/** A plan's archived activities, read when the doctor opens them. */
 export function useArchivedRoadmap(patientId: string, planId: string, enabled: boolean) {
   const queryKeys = useQueryKeys()
   return useQuery({
@@ -76,7 +70,7 @@ export function useGoalStatusEvents(
 
 /**
  * A change to the roadmap, refreshing everything that shows it: the
- * roadmap itself, and the plans (a goal's phase is part of the goal).
+ * roadmap itself, and the plans (the follow-up appointment is the plan's).
  */
 function useRoadmapChange<TInput, TResult>(patientId: string, change: (input: TInput) => Promise<TResult>) {
   const queryKeys = useQueryKeys()
@@ -96,17 +90,7 @@ export const useCompleteActivity = (patientId: string) =>
 export const useReopenActivity = (patientId: string) =>
   useRoadmapChange(patientId, (activityId: string) => reopenActivity(activityId))
 
-// The doctor's.
-export const useCreatePhase = (patientId: string) =>
-  useRoadmapChange(patientId, (input: { planId: string } & PhaseInput) => createPhase(input.planId, input))
-export const useUpdatePhase = (patientId: string) =>
-  useRoadmapChange(patientId, (input: { phaseId: string } & PhaseInput) => updatePhase(input.phaseId, input))
-export const useArchivePhase = (patientId: string) =>
-  useRoadmapChange(patientId, (phaseId: string) => archivePhase(phaseId))
-export const useReorderPhases = (patientId: string) =>
-  useRoadmapChange(patientId, (input: { planId: string; phaseIds: string[] }) =>
-    reorderPhases(input.planId, input.phaseIds),
-  )
+// The doctor's: activities in the generated phases, and the follow-up appointment.
 export const useCreateActivity = (patientId: string) =>
   useRoadmapChange(patientId, (input: { phaseId: string } & ActivityInput) => createActivity(input.phaseId, input))
 export const useUpdateActivity = (patientId: string) =>
@@ -119,11 +103,9 @@ export const useReorderActivities = (patientId: string) =>
   useRoadmapChange(patientId, (input: { phaseId: string; activityIds: string[] }) =>
     reorderActivities(input.phaseId, input.activityIds),
   )
-export const useRestorePhase = (patientId: string) =>
-  useRoadmapChange(patientId, (phaseId: string) => restorePhase(phaseId))
 export const useRestoreActivity = (patientId: string) =>
   useRoadmapChange(patientId, (activityId: string) => restoreActivity(activityId))
-export const useLinkGoal = (patientId: string) =>
-  useRoadmapChange(patientId, (input: { goalId: string; phaseId: string | null }) =>
-    linkGoalToPhase(input.goalId, input.phaseId),
+export const useSetFollowUpAppointment = (patientId: string) =>
+  useRoadmapChange(patientId, (input: { planId: string; appointmentId: string | null }) =>
+    setFollowUpAppointment(input.planId, input.appointmentId),
   )
