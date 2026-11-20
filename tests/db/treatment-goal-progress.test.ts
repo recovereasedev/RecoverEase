@@ -7,6 +7,7 @@ import { catalog } from './helpers/catalog'
 import { addClinic, liftSingleClinicGate } from './helpers/clinics'
 import { createTestDatabase, expectDenied, type TestDatabase } from './helpers/database'
 import { seedFixture, type Fixture } from './helpers/fixtures'
+import { completeMissedGoalFirstRun } from './helpers/missed-goal-bootstrap'
 
 /**
  * Migration 55: treatment goal progress. The doctor sets a goal; the patient
@@ -86,6 +87,8 @@ describe('treatment goal progress (migration 55)', () => {
   beforeAll(async () => {
     database = await createTestDatabase()
     fx = await seedFixture(database)
+    // Migration 64's one-time first run, done, so the job here is the hourly one.
+    await completeMissedGoalFirstRun(database)
     ;[{ today }] = await database.asService<{ today: string }>('select public.app_today()::text as today')
 
     // A second clinic, a day ahead of most of the world, with its own

@@ -1,7 +1,8 @@
 -- ===========================================================================
 -- Rollback of migration 64 (treatment_goal_progress, re-landed from pending 55)
 -- ===========================================================================
--- Removes the missed-goal job and its schedule, the patient's progress
+-- Removes the missed-goal job and its schedule, its first-run record, the
+-- patient's progress
 -- function and the guard on a goal's status, and puts the history's writer
 -- back as migration 45 left it. Goals keep the status they have, and every
 -- history event stays; only the `treatment_goal_change_source` column is
@@ -39,6 +40,12 @@ end
 $$;
 
 drop function if exists public.mark_missed_treatment_goals();
+-- (64) The first-run record and its functions; whether the first run was
+-- armed or consumed is lost with them (a re-apply starts unarmed).
+drop table if exists app_private.missed_goal_bootstrap;
+drop function if exists app_private.missed_goal_bootstrap_guard();
+drop function if exists app_private.arm_missed_goal_bootstrap(uuid[]);
+drop function if exists app_private.missable_treatment_goal_ids();
 drop index if exists public.treatment_goal_open_target_idx;
 drop function if exists public.patient_update_treatment_goal_status(uuid, public.treatment_goal_status);
 drop trigger if exists treatment_goal_guard_progress on public.treatment_goal;

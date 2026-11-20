@@ -409,7 +409,8 @@ guards of migrations 7, 29 and 42 are untouched.
 
 > Shipped as **migration 64** (pending 55, renumbered). From 64 the missed-goal
 > job skips a patient whose care is discharged (section 23) and a discharged
-> plan, and the patient's progress is refused while their care is discharged.
+> plan, the patient's progress is refused while their care is discharged, and
+> the job's first run is limited to an approved set of goals (below).
 
 Modules 3.3 and 5.8, completed by migration 55. The doctor sets a goal
 (RLS of migration 6, unchanged: the patient's assigned, active doctor); the
@@ -442,6 +443,29 @@ changes a goal's status.
   a second run changes nothing. Failures are raised with the SQLSTATE only.
   pg_cron runs it hourly as `recoverease-mark-missed-treatment-goals`
   (`10 * * * *`), guarded as migration 9.
+- **The first run (64).** Goals already overdue when 64 is installed would
+  all turn missed at once, so the job's first run is limited to a set of
+  goals approved in advance, all or none. `app_private.missed_goal_bootstrap`
+  (one row; every privilege revoked; `app_private` is not exposed through the
+  Data API) is `unarmed` → `armed` → `consumed`, forward only (its trigger
+  refuses anything else, a delete or a truncate - SQLSTATE `RE64C`).
+  - Unarmed, the job refuses to run (`RE64A`) and changes nothing.
+  - `app_private.arm_missed_goal_bootstrap(ids)` (database owner only) arms
+    it with exactly the goals the job would mark at that moment
+    (`app_private.missable_treatment_goal_ids()`), each once; any other set
+    is refused (`RE64B`). The deployment applies 64 and arms it in **one
+    transaction**; the IDs are given then and are in no tracked file. It may
+    be re-armed, the same rule, until it has run.
+  - Armed, the job locks the approved goals `FOR UPDATE NOWAIT` and their
+    plans and patients `FOR SHARE NOWAIT` (a goal being changed makes the
+    run fail with 55P03), re-checks each against the job's own rule, and
+    marks exactly those goals or, if any is no longer eligible, nothing
+    (`RE64B`). It records the run consumed in the same transaction, so any
+    failure leaves it armed and every goal as it was.
+  - Consumed, it is the ordinary hourly job above, for good.
+  Tested in `tests/db/missed-goal-first-run.test.ts` (real row locks held by
+  prepared transactions); suites that use the hourly job complete the first
+  run first (`tests/db/helpers/missed-goal-bootstrap.ts`).
 - **History.** `treatment_goal_status_event.treatment_goal_change_source`
   (new, nullable): `user` (a signed-in person, in `treatment_goal_changed_by`),
   `system` (the job: no actor, and only when no one is signed in), or

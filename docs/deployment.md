@@ -2600,7 +2600,7 @@ were: `begin;` + file + `insert into supabase_migrations.schema_migrations
 | --- | --- | --- | --- |
 | 62 | `20260902100062_doctor_identity_columns_fixed` | pending 54, text unchanged | nothing new |
 | 63 | `20260902100063_patient_care_lifecycle` | **new** | 61 (redefines its check-in guard and follow-up trigger) |
-| 64 | `20260902100064_treatment_goal_progress` | pending 55 + 2 marked changes | 63 (`pat_care_status`, `patient_care_is_discharged`), 61 |
+| 64 | `20260902100064_treatment_goal_progress` | pending 55 + 3 marked changes (incl. the approved first run) | 63 (`pat_care_status`, `patient_care_is_discharged`), 61 |
 | 65 | `20260902100065_automatic_recovery_roadmap` | pending 56, text unchanged | 64 (goal status is 64's to write), 45 |
 | 66 | `20260902100066_medication_schedule_instructions` | pending 58, text unchanged | nothing new |
 | 67 | `20260902100067_medication_schedule_reminder_control` | pending 59, text unchanged | 53's three reminder readers |
@@ -2619,6 +2619,16 @@ no feature here needs them.
   rewrite): every patient starts `in_care`; nothing is read from plans. 65
   rewrites roadmaps as section 18 of `docs/database.md` describes (archives
   hand-made phases, never deletes). 62, 64, 66 and 67 write no rows.
+- **64's first run.** Applied alone, 64 leaves its job unable to run
+  (`RE64A`). In the **same transaction** as 64, the deployment arms the
+  first run with the goals the owner approved:
+  `select app_private.arm_missed_goal_bootstrap(array[...]::uuid[]);` -
+  refused (and the whole apply rolled back) unless the set is exactly the
+  goals the job would mark at that moment. The IDs live only in the private,
+  untracked operations folder, never in this repository or the PR. The first
+  run then marks exactly those goals or none (see `docs/database.md`
+  section 17); verify `app_private.missed_goal_bootstrap` reads `consumed`
+  with the approved count after the first `:10`.
 - **Order with the website.** Database first. The current website
   (`df4706e`) keeps working on 62-67: it calls only 61's functions and reads
   plan statuses; after 63 a patient whose only plan is discharged may check
