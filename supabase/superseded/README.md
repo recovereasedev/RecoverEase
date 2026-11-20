@@ -20,3 +20,9 @@ What carries forward:
 
 `tests/` holds their database tests, for reference only (outside the test
 run; they read paths under `supabase/migrations` that no longer exist here).
+
+## After migration 63
+
+Discharge is now the **patient's** (migration 63, `pat_care_status`), not a
+plan's alone. 61's plan-level functions stay for compatibility; 57 and 60
+remain superseded and are never to be applied or renumbered.

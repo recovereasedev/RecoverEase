@@ -386,6 +386,8 @@ appointments and check-ins are never counted
 
 ### 16. A doctor's record ID and registration date are fixed
 
+> Shipped as **migration 62** (pending 54, renumbered after 61; see section 23).
+
 Module 11.2. A Clinic Admin edits a doctor's first and last name, licence
 number, specialisation and contact number from **Doctor accounts → Edit**,
 through migration 30's `doctor_update_self_or_admin` (their own clinic's
@@ -404,6 +406,10 @@ either back unchanged is not a change and is accepted. The policy and the
 guards of migrations 7, 29 and 42 are untouched.
 
 ### 17. Treatment goal progress and the missed status
+
+> Shipped as **migration 64** (pending 55, renumbered). From 64 the missed-goal
+> job skips a patient whose care is discharged (section 23) and a discharged
+> plan, and the patient's progress is refused while their care is discharged.
 
 Modules 3.3 and 5.8, completed by migration 55. The doctor sets a goal
 (RLS of migration 6, unchanged: the patient's assigned, active doctor); the
@@ -443,6 +449,9 @@ changes a goal's status.
   keep a null source; none is rewritten or deleted.
 
 ### 18. The recovery roadmap is generated
+
+> Shipped as **migration 65** (pending 56, renumbered). While a patient is
+> discharged, no signed-in person changes the roadmap (section 23).
 
 Module 5.7, migration 56 (**not applied to production**; see
 `docs/deployment.md`, "Automatic recovery roadmap (migration 56)"). It
@@ -508,6 +517,10 @@ achieved) / (activities + goals), now counting every goal, since every goal
 has its phase.
 
 ### 19. Discharging and reopening a treatment case
+
+> **Superseded.** Migrations 57 and 60 were never applied and stay in
+> `supabase/superseded/`. Discharge is now the patient's (section 23), with
+> the plan-level discharge of section 22 kept alongside.
 
 Migrations 57 and 60 (**neither applied to production**; see
 `docs/deployment.md`, "Discharge and reopen a treatment case (migration 57)"
@@ -645,6 +658,8 @@ only the patient's assigned, active doctor moves it between them:
 
 ### 20. A medicine has instructions of its own
 
+> Shipped as **migration 66** (pending 58, renumbered).
+
 The ERD gives a prescription notes (`prescription_notes`) and a medicine
 none. Migration 58 adds `medication_schedule_instructions` to
 `medication_schedule`: the doctor's instructions for that one medicine,
@@ -681,6 +696,8 @@ Covered by `tests/db/medication-instructions.test.ts`,
 `tests/unit/documents.test.ts`.
 
 ### 21. The doctor switches a medicine's reminders on or off
+
+> Shipped as **migration 67** (pending 59, renumbered).
 
 The ERD gives a patient a reminder setting and a medicine none. Migration 59
 adds two columns to `medication_schedule`:
@@ -749,6 +766,70 @@ Migration 61, on top of 53 alone. `treatmentPlan.treatmentPlanStatus` gains
 - Unchanged: reminders (no per-plan link exists at 53; see
   `docs/deployment.md`), roadmap activities (45 already requires an active
   plan), goals (doctor-only at 53), and every patient, account and record.
+
+### 23. A patient's care is In Care or Discharged (migration 63)
+
+The clinic's rule: **the doctor manually discharges the patient.** A
+patient's care never depends on a treatment plan existing or not, a plan's
+dates or status, goals, the roadmap, appointments, a date or any scheduled
+job. Three statuses are kept apart:
+
+| | Column | Means | Moved by |
+| --- | --- | --- | --- |
+| Account | `patient.pat_status` | Whether the patient can use their account | Administrators, as before. Never by a discharge |
+| Care | `patient.pat_care_status` (`in_care`, `discharged`) | Whether the patient is in the clinic's care | Only `doctor_discharge_patient_care` / `doctor_reopen_patient_care` |
+| Plan | `treatment_plan.treatment_plan_status` (`active`, `discharged`) | One plan's own state (section 22) | Only the 61 functions; never by the patient's discharge |
+
+- New patients, and every patient that existed before 63, are `in_care`.
+  Nothing is inferred from their plans or their plan-level history.
+- `pat_care_closure_reason` (the five reasons of section 22) and
+  `pat_care_discharged_at` are set together exactly while discharged, and
+  cleared on reopening (`patient_care_discharge_complete`).
+- `patient_care_event`: every change - previous and new status, reason,
+  `patient_care_changed_by` (account) and `patient_care_changed_by_doc_id`
+  (doctor), source (`doctor` or `service`), when. Written only by the
+  trigger `patient_record_care_event`; readable by the patient and their
+  assigned doctor; no session may insert, change or delete; no writer may
+  change an event (`patient_care_event_append_only`).
+- `doctor_discharge_patient_care(patient, reason)` and
+  `doctor_reopen_patient_care(patient)` are `SECURITY DEFINER`, granted to
+  `authenticated` only, and refuse anyone but the patient's assigned, active
+  doctor (`app_private.is_my_patient`) - the patient, another doctor, a
+  deactivated doctor, a Clinic Admin and a visitor - in the same words for a
+  patient who does not exist. They lock the patient row `FOR UPDATE`, so a
+  second press waits and is refused ("already discharged" / "already in
+  care"). `patient_guard_care` refuses every other session write of the
+  three columns.
+- **Read-only care.** `care_record_guard_discharged`, on `treatment_plan`,
+  `treatment_goal`, `recovery_phase` and `recovery_activity`, refuses every
+  insert, update and delete made by a signed-in person - directly or through
+  any function, the patient's activity and goal functions and the plan-level
+  61 functions included - while the patient's care is discharged. It holds
+  the patient row `FOR SHARE`, so it and a discharge cannot cross. The
+  service role and jobs are not stopped by it; the missed-goal job (64)
+  skips discharged care itself. Reading is never affected. Not blocked:
+  clinical notes, prescriptions and medicines (instructions and reminder
+  switches included), doses, appointments, messages, the patient's profile.
+- `recovery_log_guard_care_ended` (61's name and trigger) now reads the
+  patient's care: no new or changed check-in while discharged, whatever
+  plans they have; a patient in care checks in even with no plan, an
+  expired plan or only discharged plans.
+- `appointment.appointment_follow_up_of_care_event_id`: set by the database
+  when a discharged patient books - the discharge event their care is in
+  (`app_private.patient_current_discharge_event`). A foreign key on
+  `(appointment_follow_up_of_care_event_id, pat_id)` referencing the unique
+  `patient_care_event (patient_care_event_id, pat_id)` keeps it on an event
+  of the appointment's own patient for every writer. It stays after the
+  case is reopened, so each follow-up keeps its own discharge across cycles.
+  61's `appointment_follow_up_of_plan_id` keeps its existing marks and is no
+  longer set. No session can set or change either mark.
+- Unchanged by a discharge: reminders, medicines and appointments (nothing
+  is cancelled or ended), every plan's status, the account.
+
+Rollback: `supabase/rollbacks/20260902100063_patient_care_lifecycle.down.sql`
+refuses while any patient is discharged or while 64 is applied, and drops
+the care history and care follow-up marks (export them first); it restores
+61's two functions byte for byte.
 
 ## Assumptions where the ERD was silent
 

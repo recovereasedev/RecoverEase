@@ -582,6 +582,8 @@ export class SupabaseStub {
         result = this.rpcResults.get(name)
       } else if (ROADMAP_FUNCTIONS.has(name)) {
         result = this.roadmapCall(name, JSON.parse(request.postData() ?? '{}') as Record<string, unknown>)
+      } else if (name === 'doctor_discharge_patient_care' || name === 'doctor_reopen_patient_care') {
+        result = this.careCall(name, JSON.parse(request.postData() ?? '{}') as Record<string, unknown>)
       } else if (name === 'doctor_discharge_treatment_plan' || name === 'doctor_reopen_treatment_plan') {
         result = this.caseCall(name, JSON.parse(request.postData() ?? '{}') as Record<string, unknown>)
       } else if (name === 'super_admin_assured') {
@@ -693,10 +695,33 @@ export class SupabaseStub {
         return
       }
 
+      // Migration 63: no check-in while the patient's care has ended, as
+      // the database refuses it (recovery_log_guard_care_ended).
+      if (
+        table === 'recovery_log' &&
+        incoming.some((row) => this.currentDischargeEvent(row['pat_id']) !== null)
+      ) {
+        await route.fulfill({
+          status: 400,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            code: '23514',
+            message: 'Your care has ended. Book a follow-up if you need more care.',
+            details: null,
+            hint: null,
+          }),
+        })
+        return
+      }
+
       const created = incoming.map((row) => ({
         [primaryKeyOf(table)]: crypto.randomUUID(),
         ...this.defaultsFor(table, row),
         ...row,
+        // Set by the database when a discharged patient books (migration 63).
+        ...(table === 'appointment'
+          ? { appointment_follow_up_of_care_event_id: this.currentDischargeEvent(row['pat_id']) }
+          : {}),
       }))
 
       this.tables[table] = [...this.rowsIn(table), ...created]
@@ -816,6 +841,46 @@ export class SupabaseStub {
     plan['treatment_plan_closure_reason'] = discharging ? args['closure_reason'] : null
     plan['treatment_plan_discharged_at'] = discharging ? new Date().toISOString() : null
     return plan
+  }
+
+  /**
+   * The patient's care (migration 63), as far as the browser sees it: the
+   * status, reason and time on the patient row, and one history event per
+   * change. Who may is the database's to refuse
+   * (tests/db/patient-care-lifecycle.test.ts), not the stub's.
+   */
+  private careCall(name: string, args: Record<string, unknown>): unknown {
+    const patient = this.rowsIn('patient').find((row) => row['pat_id'] === args['target_pat_id'])
+    if (!patient) return null
+    const discharging = name === 'doctor_discharge_patient_care'
+    const previous = patient['pat_care_status']
+    patient['pat_care_status'] = discharging ? 'discharged' : 'in_care'
+    patient['pat_care_closure_reason'] = discharging ? args['closure_reason'] : null
+    patient['pat_care_discharged_at'] = discharging ? new Date().toISOString() : null
+    this.tables['patient_care_event'] = [
+      ...this.rowsIn('patient_care_event'),
+      {
+        patient_care_event_id: crypto.randomUUID(),
+        pat_id: patient['pat_id'],
+        patient_care_previous_status: previous,
+        patient_care_new_status: patient['pat_care_status'],
+        patient_care_closure_reason: discharging ? args['closure_reason'] : null,
+        patient_care_changed_by: this.session?.userId ?? null,
+        patient_care_change_source: 'doctor',
+        patient_care_changed_at: new Date().toISOString(),
+      },
+    ]
+    return patient
+  }
+
+  /** The current discharge event of a discharged patient, as migration 63 marks a booking. */
+  private currentDischargeEvent(patId: unknown): string | null {
+    const patient = this.rowsIn('patient').find((row) => row['pat_id'] === patId)
+    if (patient?.['pat_care_status'] !== 'discharged') return null
+    const events = this.rowsIn('patient_care_event').filter(
+      (row) => row['pat_id'] === patId && row['patient_care_new_status'] === 'discharged',
+    )
+    return (events.at(-1)?.['patient_care_event_id'] as string | undefined) ?? null
   }
 
   private roadmapCall(name: string, args: Record<string, unknown>): unknown {

@@ -132,6 +132,7 @@ export type Database = {
           appointment_status: Database['public']['Enums']['appointment_status']
           appointment_created_at: string
           appointment_reminder_sent_at: string | null
+          appointment_follow_up_of_care_event_id: string | null
           appointment_follow_up_of_plan_id: string | null
         }
         Insert: {
@@ -142,6 +143,7 @@ export type Database = {
           appointment_status?: Database['public']['Enums']['appointment_status']
           appointment_created_at?: string
           appointment_reminder_sent_at?: string | null
+          appointment_follow_up_of_care_event_id?: string | null
           appointment_follow_up_of_plan_id?: string | null
         }
         Update: {
@@ -152,6 +154,7 @@ export type Database = {
           appointment_status?: Database['public']['Enums']['appointment_status']
           appointment_created_at?: string
           appointment_reminder_sent_at?: string | null
+          appointment_follow_up_of_care_event_id?: string | null
           appointment_follow_up_of_plan_id?: string | null
         }
         Relationships: [
@@ -673,6 +676,9 @@ export type Database = {
           pat_consent_at: string | null
           pat_created_at: string
           pat_status: Database['public']['Enums']['patient_status']
+          pat_care_status: string
+          pat_care_closure_reason: string | null
+          pat_care_discharged_at: string | null
           pat_reminder_preferred_time: string | null
           pat_reminder_is_enabled: boolean
         }
@@ -689,6 +695,9 @@ export type Database = {
           pat_consent_at?: string | null
           pat_created_at?: string
           pat_status?: Database['public']['Enums']['patient_status']
+          pat_care_status?: string
+          pat_care_closure_reason?: string | null
+          pat_care_discharged_at?: string | null
           pat_reminder_preferred_time?: string | null
           pat_reminder_is_enabled?: boolean
         }
@@ -705,6 +714,9 @@ export type Database = {
           pat_consent_at?: string | null
           pat_created_at?: string
           pat_status?: Database['public']['Enums']['patient_status']
+          pat_care_status?: string
+          pat_care_closure_reason?: string | null
+          pat_care_discharged_at?: string | null
           pat_reminder_preferred_time?: string | null
           pat_reminder_is_enabled?: boolean
         }
@@ -1295,6 +1307,50 @@ export type Database = {
           },
         ]
       }
+      patient_care_event: {
+        Row: {
+          patient_care_event_id: string
+          pat_id: string
+          patient_care_previous_status: string
+          patient_care_new_status: string
+          patient_care_closure_reason: string | null
+          patient_care_changed_by: string | null
+          patient_care_changed_by_doc_id: string | null
+          patient_care_change_source: string
+          patient_care_changed_at: string
+        }
+        Insert: {
+          patient_care_event_id?: string
+          pat_id: string
+          patient_care_previous_status: string
+          patient_care_new_status: string
+          patient_care_closure_reason?: string | null
+          patient_care_changed_by?: string | null
+          patient_care_changed_by_doc_id?: string | null
+          patient_care_change_source: string
+          patient_care_changed_at?: string
+        }
+        Update: {
+          patient_care_event_id?: string
+          pat_id?: string
+          patient_care_previous_status?: string
+          patient_care_new_status?: string
+          patient_care_closure_reason?: string | null
+          patient_care_changed_by?: string | null
+          patient_care_changed_by_doc_id?: string | null
+          patient_care_change_source?: string
+          patient_care_changed_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'patient_care_event_pat_id_fkey'
+            columns: ['pat_id']
+            isOneToOne: false
+            referencedRelation: 'patient'
+            referencedColumns: ['pat_id']
+          },
+        ]
+      }
       treatment_plan_lifecycle_event: {
         Row: {
           treatment_plan_lifecycle_event_id: string
@@ -1445,6 +1501,14 @@ export type Database = {
       unregister_push_subscription: {
         Args: { endpoint: string }
         Returns: boolean
+      }
+      doctor_discharge_patient_care: {
+        Args: { target_pat_id: string; closure_reason: string }
+        Returns: Database['public']['Tables']['patient']['Row']
+      }
+      doctor_reopen_patient_care: {
+        Args: { target_pat_id: string }
+        Returns: Database['public']['Tables']['patient']['Row']
       }
       doctor_discharge_treatment_plan: {
         Args: { target_plan_id: string; closure_reason: string }

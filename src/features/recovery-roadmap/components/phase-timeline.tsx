@@ -99,6 +99,7 @@ export function PhaseTimeline({
   onComplete,
   onReopen,
   savingId,
+  readOnly = false,
 }: {
   roadmap: PlanRoadmap
   /** The plan's chosen follow-up appointment: null if none, undefined if not to hand. */
@@ -109,6 +110,8 @@ export function PhaseTimeline({
   onReopen: (activity: RecoveryActivity) => void
   /** The activity being saved, if any: its button shows it, and no other takes a press. */
   savingId: string | null
+  /** The patient's care has ended (migration 63): progress shows, nothing can be marked. */
+  readOnly?: boolean
 }) {
   return (
     <ol className="space-y-0">
@@ -214,7 +217,7 @@ export function PhaseTimeline({
                             </div>
                           </div>
                           <div className="sm:shrink-0">
-                            {done ? (
+                            {readOnly ? null : done ? (
                               <Button
                                 variant="ghost"
                                 size="sm"

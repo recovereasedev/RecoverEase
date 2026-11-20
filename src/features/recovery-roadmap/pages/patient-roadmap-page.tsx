@@ -26,7 +26,9 @@ import { useQueryKeys } from '@/features/auth/use-query-keys'
 import { addDays, deviceTimeZone, todayIn } from '@/features/calendar/calendar-model'
 import { fetchAllDoses } from '@/features/medications/api'
 import { fetchOwnClinicTimeZone } from '@/features/patients/api'
-import { byTargetDate, careHasEnded, isOpenCare, summariseGoals, type PlanWithGoals } from '@/features/treatment-plans/api'
+import { isDischarged } from '@/features/patient-care/api'
+import { usePatientCare } from '@/features/patient-care/hooks'
+import { byTargetDate, isOpenCare, summariseGoals, type PlanWithGoals } from '@/features/treatment-plans/api'
 import { CareEndedNotice } from '@/features/treatment-plans/components/care-ended-notice'
 import { useTreatmentPlans } from '@/features/treatment-plans/hooks'
 import { useDocumentTitle } from '@/hooks/use-document-title'
@@ -72,7 +74,9 @@ export function PatientRoadmapPage() {
   const plansQuery = useTreatmentPlans(patientId)
   // Open care: active plans (migration 61: Active or Discharged).
   const activePlans = (plansQuery.data ?? []).filter((plan) => isOpenCare(plan.treatment_plan_status))
-  const ended = plansQuery.data ? careHasEnded(plansQuery.data) : false
+  // The patient's care (migration 63), not their plans: while discharged the
+  // roadmap stays to read, and no activity can be marked.
+  const ended = isDischarged(usePatientCare(patientId).data)
   const roadmapQuery = useRoadmap(patientId, plansQuery.data ? activePlans : undefined)
 
   // Days and times in the clinic's zone, as the calendar keeps them.
@@ -150,6 +154,12 @@ export function PatientRoadmapPage() {
         }
       />
 
+      {ended && activePlans.length > 0 ? (
+        <div className="mb-6">
+          <CareEndedNotice />
+        </div>
+      ) : null}
+
       <StateView
         isPending={plansQuery.isPending}
         error={plansQuery.error}
@@ -191,6 +201,7 @@ export function PatientRoadmapPage() {
               onComplete={markDone}
               onReopen={markNotDone}
               savingId={saving ?? null}
+              readOnly={ended}
               tasks={
                 roadmaps && dosesQuery.data && appointmentsQuery.data
                   ? upcomingTasks({
@@ -251,6 +262,7 @@ function PlanView({
   onComplete,
   onReopen,
   savingId,
+  readOnly,
   tasks,
   tasksPending,
   tasksError,
@@ -264,6 +276,7 @@ function PlanView({
   onComplete: (activity: RecoveryActivity) => void
   onReopen: (activity: RecoveryActivity) => void
   savingId: string | null
+  readOnly: boolean
   tasks: UpcomingTask[] | null
   tasksPending: boolean
   tasksError: unknown
@@ -294,6 +307,7 @@ function PlanView({
                 onComplete={onComplete}
                 onReopen={onReopen}
                 savingId={savingId}
+                readOnly={readOnly}
               />
             ) : (
               <Card>

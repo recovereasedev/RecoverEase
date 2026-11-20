@@ -29,6 +29,8 @@ export function queryKeysFor(userId: string) {
       list: () => [...queryKeys.patients.all, 'list'] as const,
       detail: (patientId: string) =>
         [...queryKeys.patients.all, 'detail', patientId] as const,
+      care: (patientId: string) =>
+        [...queryKeys.patients.all, 'care', patientId] as const,
     },
 
     doctors: {

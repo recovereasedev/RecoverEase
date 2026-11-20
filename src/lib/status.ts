@@ -229,6 +229,31 @@ export const patientStatus: Record<
   discharged: { label: 'Discharged', icon: UserMinus, tone: 'neutral' },
 }
 
+/**
+ * A patient's care (migration 63): whether they are in the clinic's care.
+ * Apart from the account (`patientStatus`) and from any plan's status; only
+ * the assigned doctor's Discharge patient and Reopen case move it.
+ */
+export const patientCareStatus: Record<'in_care' | 'discharged', StatusDescriptor> = {
+  in_care: {
+    label: 'In Care',
+    icon: UserCheck,
+    tone: 'info',
+    description: 'The patient is in their doctor’s care.',
+  },
+  discharged: {
+    label: 'Discharged',
+    icon: DoorOpen,
+    tone: 'neutral',
+    description: 'The doctor discharged the patient from care.',
+  },
+}
+
+/** The descriptor for a stored care status; anything not discharged is in care. */
+export function patientCareStatusOf(status: string | null | undefined): StatusDescriptor {
+  return patientCareStatus[status === 'discharged' ? 'discharged' : 'in_care']
+}
+
 export const doctorAccountStatus = {
   active: { label: 'Active', icon: UserCheck, tone: 'success' },
   inactive: { label: 'Deactivated', icon: Ban, tone: 'danger' },

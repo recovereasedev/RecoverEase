@@ -57,6 +57,11 @@ vi.mock('@/features/patients/api', async (importOriginal) => ({
   fetchOwnClinicName: clinic.name,
 }))
 
+// The patient's care (migration 63): in care.
+vi.mock('@/features/patient-care/hooks', () => ({
+  usePatientCare: () => ({ data: { pat_care_status: 'in_care' }, isPending: false, error: null }),
+}))
+
 vi.mock('@/features/treatment-plans/hooks', () => ({
   useTreatmentPlans: () => ({
     data: plans.data,

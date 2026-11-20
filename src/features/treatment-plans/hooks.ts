@@ -9,12 +9,9 @@ import type { TablesUpdate } from '@/types/database.types'
 import {
   createTreatmentGoal,
   createTreatmentPlan,
-  dischargeTreatmentPlan,
   fetchTreatmentPlans,
-  reopenTreatmentPlan,
   updateTreatmentGoalStatus,
   updateTreatmentPlan,
-  type ClosureReason,
   type PatientGoalProgress,
 } from './api'
 
@@ -124,26 +121,3 @@ export function useUpdateGoalStatus(patientId: string) {
     },
   })
 }
-
-/**
- * Discharging or reopening changes the plan, which roadmap the patient sees
- * and whether they may check in, so the plans and the roadmap are read again.
- */
-function useCaseChange<TInput>(patientId: string, change: (input: TInput) => Promise<unknown>) {
-  const queryKeys = useQueryKeys()
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: change,
-    onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.treatment.plansFor(patientId) })
-      void queryClient.invalidateQueries({ queryKey: queryKeys.roadmap.forPatient(patientId) })
-    },
-  })
-}
-
-export const useDischargePlan = (patientId: string) =>
-  useCaseChange(patientId, (input: { planId: string; reason: ClosureReason }) =>
-    dischargeTreatmentPlan(input.planId, input.reason),
-  )
-export const useReopenPlan = (patientId: string) =>
-  useCaseChange(patientId, (planId: string) => reopenTreatmentPlan(planId))

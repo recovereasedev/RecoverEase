@@ -91,6 +91,9 @@ export function datasetFor(role: 'patient' | 'doctor' | 'admin'): TableRows {
     pat_status: 'active',
     pat_reminder_preferred_time: '08:00:00',
     pat_reminder_is_enabled: true,
+    pat_care_status: 'in_care',
+    pat_care_closure_reason: null,
+    pat_care_discharged_at: null,
   }
 
   const bob = {

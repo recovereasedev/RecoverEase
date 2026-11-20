@@ -19,7 +19,7 @@ import { RegisterAccountDialog } from '@/features/patients/components/register-a
 import { useMyPatients } from '@/features/patients/hooks'
 import { useDocumentTitle } from '@/hooks/use-document-title'
 import { calculateAge, formatDate } from '@/lib/format'
-import { patientStatus } from '@/lib/status'
+import { patientCareStatusOf, patientStatus } from '@/lib/status'
 import { fullName, initials } from '@/lib/utils'
 
 /**
@@ -152,8 +152,13 @@ export function DoctorPatientsPage() {
                               {/* Full badge, not icon-only. A status a
                                   clinician has to decode from a glyph is a
                                   status they will not read. */}
+                              <span className="sr-only">Account:</span>
                               <StatusBadge
                                 status={patientStatus[patient.pat_status]}
+                              />
+                              <span className="sr-only">Care:</span>
+                              <StatusBadge
+                                status={patientCareStatusOf(patient.pat_care_status)}
                               />
                             </span>
 
@@ -187,7 +192,11 @@ export function DoctorPatientsPage() {
                         <TH>Age</TH>
                         <TH>Contact</TH>
                         <TH>Registered</TH>
-                        <TH>Status</TH>
+                        {/* Two statuses, kept apart: whether the account can
+                            sign in, and whether the patient is in care
+                            (migration 63). A patient with no plan is In Care. */}
+                        <TH>Account Status</TH>
+                        <TH>Care Status</TH>
                       </tr>
                     </THead>
                     <TBody>
@@ -216,6 +225,11 @@ export function DoctorPatientsPage() {
                             <TD>
                               <StatusBadge
                                 status={patientStatus[patient.pat_status]}
+                              />
+                            </TD>
+                            <TD>
+                              <StatusBadge
+                                status={patientCareStatusOf(patient.pat_care_status)}
                               />
                             </TD>
                           </TR>

@@ -66,12 +66,12 @@ import { MoodTrend } from '@/features/recovery-logs/components/mood-trend'
 import { useRecoveryLogs } from '@/features/recovery-logs/hooks'
 import { RecoveryProgress } from '@/features/recovery-progress/components/recovery-progress'
 import { RoadmapEditor } from '@/features/recovery-roadmap/components/roadmap-editor'
-import { CaseLifecycle } from '@/features/treatment-plans/components/case-lifecycle'
+import { isDischarged } from '@/features/patient-care/api'
+import { PatientCareControls } from '@/features/patient-care/components/patient-care-controls'
 import { TreatmentGoalForm } from '@/features/treatment-plans/components/treatment-goal-form'
 import { TreatmentPlanForm } from '@/features/treatment-plans/components/treatment-plan-form'
 import { useTreatmentPlans } from '@/features/treatment-plans/hooks'
 import {
-  isOpenCare,
   summariseGoals,
   type PlanWithGoals,
   type TreatmentGoalStatus,
@@ -94,6 +94,7 @@ import {
   refocusAfterKeyboardSubmit,
 } from '@/lib/form-focus'
 import {
+  patientCareStatusOf,
   patientStatus,
   treatmentGoalStatus,
   treatmentPlanStatusOf,
@@ -319,8 +320,17 @@ export function DoctorPatientDetailPage() {
               ]
                 .filter(Boolean)
                 .join(' · ')}
+              // Two statuses, kept apart: the account (sign-in) and the
+              // patient's care (migration 63) - visible on every tab.
               meta={
-                <StatusBadge status={patientStatus[patient.pat_status]} />
+                <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted">
+                  <span className="inline-flex items-center gap-1.5">
+                    Account <StatusBadge status={patientStatus[patient.pat_status]} />
+                  </span>
+                  <span className="inline-flex items-center gap-1.5" data-testid="patient-care-status">
+                    Care <StatusBadge status={patientCareStatusOf(patient.pat_care_status)} />
+                  </span>
+                </span>
               }
               actions={
                 <>
@@ -336,6 +346,9 @@ export function DoctorPatientDetailPage() {
                   <Button
                     className="max-sm:w-full"
                     onClick={startConsultation}
+                    // A consultation writes care plans, which are read-only
+                    // while the patient is discharged (migration 63).
+                    disabled={isDischarged(patient)}
                   >
                     <Stethoscope aria-hidden="true" />
                     Start consultation
@@ -381,6 +394,13 @@ export function DoctorPatientDetailPage() {
                 printedAt={new Date(now).toISOString()}
               />
             ) : null}
+
+            {/* The patient's care, and Discharge patient / Reopen case,
+                above every tab and whatever plans they have (migration 63). */}
+            <PatientCareControls
+              care={patient}
+              patientName={fullName(patient.pat_first_name, patient.pat_last_name)}
+            />
 
             {/* Clinical status first: the five things a clinician checks
                 before anything else, above every tab. */}
@@ -570,6 +590,7 @@ export function DoctorPatientDetailPage() {
                               No treatment plan has been created for this
                               patient.
                             </p>
+                            {isDischarged(patient) ? null : (
                             <Button
                               id="create-plan"
                               className="mt-4 max-sm:w-full"
@@ -578,6 +599,7 @@ export function DoctorPatientDetailPage() {
                               <ClipboardPlus aria-hidden="true" />
                               Create treatment plan
                             </Button>
+                            )}
                           </div>
                         )}
                       </CardBody>
@@ -604,6 +626,7 @@ export function DoctorPatientDetailPage() {
                                       treatmentPlanStatusOf(plan.treatment_plan_status)
                                     }
                                   />
+                                  {isDischarged(patient) ? null : (
                                   <Button
                                     id={`edit-plan-${plan.treatment_plan_id}`}
                                     variant="ghost"
@@ -619,18 +642,11 @@ export function DoctorPatientDetailPage() {
                                     <Pencil aria-hidden="true" />
                                     Edit plan
                                   </Button>
+                                  )}
                                 </div>
                               }
                             />
                             <CardBody>
-                              {/* Migration 61: discharge an active plan, or
-                                  reopen a discharged one. */}
-                              {isOpenCare(plan.treatment_plan_status) ||
-                              plan.treatment_plan_status === 'discharged' ? (
-                                <div className="mb-5 border-b border-[var(--color-border)] pb-5">
-                                  <CaseLifecycle patientId={patientId} plan={plan} />
-                                </div>
-                              ) : null}
                               {editingPlanId === plan.treatment_plan_id ? (
                                 <div className="mb-5 border-b border-[var(--color-border)] pb-5">
                                   <TreatmentPlanForm
@@ -743,7 +759,9 @@ export function DoctorPatientDetailPage() {
                               )}
 
                               {/* Adding a goal to a plan that already exists,
-                                  outside a guided consultation. */}
+                                  outside a guided consultation. Not while the
+                                  patient is discharged: the database refuses it. */}
+                              {isDischarged(patient) ? null : (
                               <div className="mt-5 border-t border-[var(--color-border)] pt-5">
                                 {goalPlanId === plan.treatment_plan_id ? (
                                   <TreatmentGoalForm
@@ -765,6 +783,7 @@ export function DoctorPatientDetailPage() {
                                   </Button>
                                 )}
                               </div>
+                              )}
 
                               {/* Module 5.7: the plan laid out as phases and
                                   activities for the patient (migration 45). */}

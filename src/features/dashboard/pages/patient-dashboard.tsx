@@ -29,7 +29,9 @@ import { calculateStreak } from '@/features/recovery-logs/api'
 import { useRecoveryLogs } from '@/features/recovery-logs/hooks'
 import { summariseGoals } from '@/features/treatment-plans/api'
 import { useTreatmentPlans } from '@/features/treatment-plans/hooks'
-import { careHasEnded, isOpenCare } from '@/features/treatment-plans/api'
+import { isDischarged } from '@/features/patient-care/api'
+import { usePatientCare } from '@/features/patient-care/hooks'
+import { isOpenCare } from '@/features/treatment-plans/api'
 import { CareEndedNotice } from '@/features/treatment-plans/components/care-ended-notice'
 import { useDocumentTitle } from '@/hooks/use-document-title'
 import { useFocusRecovery } from '@/hooks/use-focus-recovery'
@@ -114,7 +116,8 @@ export function PatientDashboard() {
   const activePlan = plansQuery.data?.find((plan) =>
     isOpenCare(plan.treatment_plan_status),
   )
-  const ended = plansQuery.data ? careHasEnded(plansQuery.data) : false
+  // The patient's care (migration 63) - never inferred from their plans.
+  const ended = isDischarged(usePatientCare(patientId).data)
   const goalProgress = activePlan
     ? summariseGoals(activePlan.treatment_goal)
     : null

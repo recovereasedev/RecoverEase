@@ -34,6 +34,9 @@ const ALICE = {
   pat_status: 'active',
   pat_reminder_preferred_time: null,
   pat_reminder_is_enabled: true,
+  pat_care_status: 'in_care',
+  pat_care_closure_reason: null,
+  pat_care_discharged_at: null,
 } as const
 
 function renderCard() {

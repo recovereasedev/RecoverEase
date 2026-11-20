@@ -13,9 +13,9 @@ import {
   useSaveRecoveryLog,
 } from '@/features/recovery-logs/hooks'
 import { RecoveryProgress } from '@/features/recovery-progress/components/recovery-progress'
-import { careHasEnded } from '@/features/treatment-plans/api'
+import { isDischarged } from '@/features/patient-care/api'
+import { usePatientCare } from '@/features/patient-care/hooks'
 import { CareEndedNotice } from '@/features/treatment-plans/components/care-ended-notice'
-import { useTreatmentPlans } from '@/features/treatment-plans/hooks'
 import { useDocumentTitle } from '@/hooks/use-document-title'
 import { formatDateRelative, toDateKey } from '@/lib/format'
 
@@ -41,11 +41,12 @@ export function RecoveryPage() {
 
   const logsQuery = useRecoveryLogs(patientId)
   const saveLog = useSaveRecoveryLog(patientId)
-  // Once the doctor has discharged the patient and no care is open, the
-  // database refuses new check-ins (migration 61); the form gives way to
-  // saying so, and the journal below stays.
-  const plansQuery = useTreatmentPlans(patientId)
-  const ended = plansQuery.data ? careHasEnded(plansQuery.data) : false
+  // Once the doctor has discharged the patient, the database refuses new
+  // check-ins (migration 63); the form gives way to saying so, and the
+  // journal below stays. Read fresh on every visit, so a reopened case brings
+  // the form straight back.
+  const careQuery = usePatientCare(patientId)
+  const ended = isDischarged(careQuery.data)
 
   // Arriving from the Recovery Roadmap's "View Progress Charts", the page
   // opens at the charts. A client-side link does not scroll to a fragment.
@@ -71,8 +72,8 @@ export function RecoveryPage() {
       <div className="grid gap-section lg:grid-cols-3 lg:gap-8">
         <div className="space-y-section lg:col-span-2">
           {/* --- Today's entry ------------------------------------------ */}
-          {plansQuery.isPending ? (
-            <LoadingState label="Checking your care plan…" />
+          {careQuery.isPending ? (
+            <LoadingState label="Checking your care…" />
           ) : ended ? (
             <CareEndedNotice />
           ) : (

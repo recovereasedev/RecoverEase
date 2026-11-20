@@ -62,8 +62,6 @@ vi.mock('@/features/treatment-plans/hooks', () => ({
   useUpdateTreatmentPlan: () => noop,
   useCreateTreatmentGoal: () => noop,
   useUpdateGoalStatus: () => state.goalStatus,
-  useDischargePlan: () => noop,
-  useReopenPlan: () => noop,
   useClinicToday: () => '2026-11-15',
 }))
 
