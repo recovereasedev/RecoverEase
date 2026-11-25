@@ -132,6 +132,7 @@ export type Database = {
           appointment_status: Database['public']['Enums']['appointment_status']
           appointment_created_at: string
           appointment_reminder_sent_at: string | null
+          appointment_follow_up_of_care_event_id: string | null
           appointment_follow_up_of_plan_id: string | null
         }
         Insert: {
@@ -142,6 +143,7 @@ export type Database = {
           appointment_status?: Database['public']['Enums']['appointment_status']
           appointment_created_at?: string
           appointment_reminder_sent_at?: string | null
+          appointment_follow_up_of_care_event_id?: string | null
           appointment_follow_up_of_plan_id?: string | null
         }
         Update: {
@@ -152,6 +154,7 @@ export type Database = {
           appointment_status?: Database['public']['Enums']['appointment_status']
           appointment_created_at?: string
           appointment_reminder_sent_at?: string | null
+          appointment_follow_up_of_care_event_id?: string | null
           appointment_follow_up_of_plan_id?: string | null
         }
         Relationships: [
@@ -560,6 +563,9 @@ export type Database = {
           medication_schedule_start_date: string
           medication_schedule_end_date: string | null
           medication_schedule_created_at: string
+          medication_schedule_instructions: string | null
+          medication_schedule_reminders_is_enabled: boolean
+          medication_schedule_reminders_enabled_at: string | null
         }
         Insert: {
           medication_schedule_id?: string
@@ -571,6 +577,9 @@ export type Database = {
           medication_schedule_start_date?: string
           medication_schedule_end_date?: string | null
           medication_schedule_created_at?: string
+          medication_schedule_instructions?: string | null
+          medication_schedule_reminders_is_enabled?: boolean
+          medication_schedule_reminders_enabled_at?: string | null
         }
         Update: {
           medication_schedule_id?: string
@@ -582,6 +591,9 @@ export type Database = {
           medication_schedule_start_date?: string
           medication_schedule_end_date?: string | null
           medication_schedule_created_at?: string
+          medication_schedule_instructions?: string | null
+          medication_schedule_reminders_is_enabled?: boolean
+          medication_schedule_reminders_enabled_at?: string | null
         }
         Relationships: [
           {
@@ -664,6 +676,9 @@ export type Database = {
           pat_consent_at: string | null
           pat_created_at: string
           pat_status: Database['public']['Enums']['patient_status']
+          pat_care_status: string
+          pat_care_closure_reason: string | null
+          pat_care_discharged_at: string | null
           pat_reminder_preferred_time: string | null
           pat_reminder_is_enabled: boolean
         }
@@ -680,6 +695,9 @@ export type Database = {
           pat_consent_at?: string | null
           pat_created_at?: string
           pat_status?: Database['public']['Enums']['patient_status']
+          pat_care_status?: string
+          pat_care_closure_reason?: string | null
+          pat_care_discharged_at?: string | null
           pat_reminder_preferred_time?: string | null
           pat_reminder_is_enabled?: boolean
         }
@@ -696,6 +714,9 @@ export type Database = {
           pat_consent_at?: string | null
           pat_created_at?: string
           pat_status?: Database['public']['Enums']['patient_status']
+          pat_care_status?: string
+          pat_care_closure_reason?: string | null
+          pat_care_discharged_at?: string | null
           pat_reminder_preferred_time?: string | null
           pat_reminder_is_enabled?: boolean
         }
@@ -901,6 +922,8 @@ export type Database = {
           recovery_phase_archived_at: string | null
           recovery_phase_created_at: string
           recovery_phase_updated_at: string
+          recovery_phase_kind: 'initial' | 'goal' | 'follow_up' | null
+          treatment_goal_id: string | null
         }
         Insert: {
           recovery_phase_id?: string
@@ -913,6 +936,8 @@ export type Database = {
           recovery_phase_archived_at?: string | null
           recovery_phase_created_at?: string
           recovery_phase_updated_at?: string
+          recovery_phase_kind?: 'initial' | 'goal' | 'follow_up' | null
+          treatment_goal_id?: string | null
         }
         Update: {
           recovery_phase_id?: string
@@ -925,8 +950,17 @@ export type Database = {
           recovery_phase_archived_at?: string | null
           recovery_phase_created_at?: string
           recovery_phase_updated_at?: string
+          recovery_phase_kind?: 'initial' | 'goal' | 'follow_up' | null
+          treatment_goal_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: 'recovery_phase_goal_fk'
+            columns: ['treatment_goal_id']
+            isOneToOne: true
+            referencedRelation: 'treatment_goal'
+            referencedColumns: ['treatment_goal_id']
+          },
           {
             foreignKeyName: 'recovery_phase_treatment_plan_id_fkey'
             columns: ['treatment_plan_id']
@@ -1166,6 +1200,7 @@ export type Database = {
           treatment_goal_new_status: Database['public']['Enums']['treatment_goal_status']
           treatment_goal_changed_by: string | null
           treatment_goal_changed_at: string
+          treatment_goal_change_source: 'user' | 'system' | 'service' | null
         }
         Insert: {
           treatment_goal_status_event_id?: string
@@ -1174,6 +1209,7 @@ export type Database = {
           treatment_goal_new_status: Database['public']['Enums']['treatment_goal_status']
           treatment_goal_changed_by?: string | null
           treatment_goal_changed_at?: string
+          treatment_goal_change_source?: 'user' | 'system' | 'service' | null
         }
         Update: {
           treatment_goal_status_event_id?: string
@@ -1182,6 +1218,7 @@ export type Database = {
           treatment_goal_new_status?: Database['public']['Enums']['treatment_goal_status']
           treatment_goal_changed_by?: string | null
           treatment_goal_changed_at?: string
+          treatment_goal_change_source?: 'user' | 'system' | 'service' | null
         }
         Relationships: [
           {
@@ -1214,6 +1251,7 @@ export type Database = {
           treatment_plan_updated_at: string
           treatment_plan_closure_reason: string | null
           treatment_plan_discharged_at: string | null
+          treatment_plan_follow_up_appointment_id: string | null
         }
         Insert: {
           treatment_plan_id?: string
@@ -1228,6 +1266,7 @@ export type Database = {
           treatment_plan_updated_at?: string
           treatment_plan_closure_reason?: string | null
           treatment_plan_discharged_at?: string | null
+          treatment_plan_follow_up_appointment_id?: string | null
         }
         Update: {
           treatment_plan_id?: string
@@ -1242,6 +1281,7 @@ export type Database = {
           treatment_plan_updated_at?: string
           treatment_plan_closure_reason?: string | null
           treatment_plan_discharged_at?: string | null
+          treatment_plan_follow_up_appointment_id?: string | null
         }
         Relationships: [
           {
@@ -1252,7 +1292,58 @@ export type Database = {
             referencedColumns: ['doc_id']
           },
           {
+            foreignKeyName: 'treatment_plan_follow_up_appointment_fk'
+            columns: ['treatment_plan_follow_up_appointment_id', 'pat_id']
+            isOneToOne: false
+            referencedRelation: 'appointment'
+            referencedColumns: ['appointment_id', 'pat_id']
+          },
+          {
             foreignKeyName: 'treatment_plan_pat_id_fkey'
+            columns: ['pat_id']
+            isOneToOne: false
+            referencedRelation: 'patient'
+            referencedColumns: ['pat_id']
+          },
+        ]
+      }
+      patient_care_event: {
+        Row: {
+          patient_care_event_id: string
+          pat_id: string
+          patient_care_previous_status: string
+          patient_care_new_status: string
+          patient_care_closure_reason: string | null
+          patient_care_changed_by: string | null
+          patient_care_changed_by_doc_id: string | null
+          patient_care_change_source: string
+          patient_care_changed_at: string
+        }
+        Insert: {
+          patient_care_event_id?: string
+          pat_id: string
+          patient_care_previous_status: string
+          patient_care_new_status: string
+          patient_care_closure_reason?: string | null
+          patient_care_changed_by?: string | null
+          patient_care_changed_by_doc_id?: string | null
+          patient_care_change_source: string
+          patient_care_changed_at?: string
+        }
+        Update: {
+          patient_care_event_id?: string
+          pat_id?: string
+          patient_care_previous_status?: string
+          patient_care_new_status?: string
+          patient_care_closure_reason?: string | null
+          patient_care_changed_by?: string | null
+          patient_care_changed_by_doc_id?: string | null
+          patient_care_change_source?: string
+          patient_care_changed_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'patient_care_event_pat_id_fkey'
             columns: ['pat_id']
             isOneToOne: false
             referencedRelation: 'patient'
@@ -1383,13 +1474,13 @@ export type Database = {
         Args: { target_activity_id: string }
         Returns: Database['public']['Tables']['recovery_activity']['Row']
       }
+      patient_update_treatment_goal_status: {
+        Args: { target_goal_id: string; new_status: Database['public']['Enums']['treatment_goal_status'] }
+        Returns: Database['public']['Tables']['treatment_goal']['Row']
+      }
       patient_reopen_recovery_activity: {
         Args: { target_activity_id: string }
         Returns: Database['public']['Tables']['recovery_activity']['Row']
-      }
-      doctor_reorder_recovery_phases: {
-        Args: { target_plan_id: string; phase_ids: string[] }
-        Returns: undefined
       }
       doctor_reorder_recovery_activities: {
         Args: { target_phase_id: string; activity_ids: string[] }
@@ -1410,6 +1501,14 @@ export type Database = {
       unregister_push_subscription: {
         Args: { endpoint: string }
         Returns: boolean
+      }
+      doctor_discharge_patient_care: {
+        Args: { target_pat_id: string; closure_reason: string }
+        Returns: Database['public']['Tables']['patient']['Row']
+      }
+      doctor_reopen_patient_care: {
+        Args: { target_pat_id: string }
+        Returns: Database['public']['Tables']['patient']['Row']
       }
       doctor_discharge_treatment_plan: {
         Args: { target_plan_id: string; closure_reason: string }

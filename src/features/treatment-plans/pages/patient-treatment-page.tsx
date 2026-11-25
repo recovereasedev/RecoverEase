@@ -11,14 +11,16 @@ import { Button, buttonVariants } from '@/components/ui/button'
 import { Card, CardBody } from '@/components/ui/card'
 import { useCurrentUser } from '@/features/auth/auth-context'
 import { fetchOwnClinicName } from '@/features/patients/api'
+import { isDischarged } from '@/features/patient-care/api'
+import { usePatientCare } from '@/features/patient-care/hooks'
 import { useMyDoctor } from '@/features/patients/hooks'
 import {
   byTargetDate,
-  careHasEnded,
   summariseGoals,
   type TreatmentGoalStatus,
 } from '@/features/treatment-plans/api'
 import { CareEndedNotice } from '@/features/treatment-plans/components/care-ended-notice'
+import { GoalProgressActions } from '@/features/treatment-plans/components/goal-progress-actions'
 import { useTreatmentPlans } from '@/features/treatment-plans/hooks'
 import { useDocumentTitle } from '@/hooks/use-document-title'
 import { useDocumentFile } from '@/lib/documents/use-document-file'
@@ -60,6 +62,8 @@ export function PatientTreatmentPage() {
     user.profile.kind === 'patient' ? user.profile.patient.pat_id : ''
 
   const plansQuery = useTreatmentPlans(patientId)
+  // The patient's care (migration 63), apart from each plan's own status.
+  const ended = isDischarged(usePatientCare(patientId).data)
   const planFile = useDocumentFile()
   const patient = user.profile.kind === 'patient' ? user.profile.patient : null
   // The plan names its doctor when that is the patient's current doctor, the
@@ -149,9 +153,9 @@ export function PatientTreatmentPage() {
         </div>
       ) : null}
       <PrintOutcomeNotice outcome={planFile.printOutcome} what="treatment plan" className="mb-6" />
-      {/* Migration 61: the doctor discharged the patient and no care is open.
-          The plans below stay, as history. */}
-      {plansQuery.data && careHasEnded(plansQuery.data) ? (
+      {/* Migration 63: the doctor discharged the patient. The plans below
+          stay, as history, each with its own status. */}
+      {ended ? (
         <div className="mb-6 print:hidden">
           <CareEndedNotice />
         </div>
@@ -228,7 +232,7 @@ export function PatientTreatmentPage() {
                           </p>
                           {/* Restates the count above it. The percentage
                               comes from `summariseGoals` over goals the
-                              doctor has already marked - nothing here is
+                              patient has marked achieved - nothing here is
                               inferred. */}
                           <ProgressBar
                             className="mt-2"
@@ -304,6 +308,12 @@ export function PatientTreatmentPage() {
                                     </span>
                                     <StatusBadge status={status} />
                                   </div>
+                                  {plan.treatment_plan_status === 'active' && !ended ? (
+                                    <GoalProgressActions
+                                      patientId={patientId}
+                                      goal={goal}
+                                    />
+                                  ) : null}
                                 </div>
                               </li>
                             )

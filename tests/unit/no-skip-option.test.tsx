@@ -57,6 +57,11 @@ vi.mock('@/features/appointments/hooks', () => ({
 vi.mock('@/features/recovery-logs/hooks', () => ({
   useRecoveryLogs: () => ({ data: [], isPending: false, error: null, refetch: vi.fn() }),
 }))
+// The patient's care (migration 63): in care.
+vi.mock('@/features/patient-care/hooks', () => ({
+  usePatientCare: () => ({ data: { pat_care_status: 'in_care' }, isPending: false, error: null }),
+}))
+
 vi.mock('@/features/treatment-plans/hooks', () => ({
   useTreatmentPlans: () => ({ data: [], isPending: false, error: null, refetch: vi.fn() }),
 }))

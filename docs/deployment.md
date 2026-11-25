@@ -1851,6 +1851,10 @@ database has one connection, so overlap is a transaction left open).
 
 ### Doctor record ID and registration date (migration 54)
 
+> **Re-landed as migration 62** (pending 54, renumbered after 61); see
+> "Patient-level care and the re-landed features (migrations 62-67)".
+> Read "54" below as 62.
+
 > **NOT APPLIED to production.** Applying it needs Kean's separate approval
 > and a quiet window, like every migration here.
 
@@ -1920,6 +1924,10 @@ change, and that nobody else may); and 54 rolled back first in
 
 ### Treatment goal progress and the missed status (migration 55)
 
+> **Re-landed as migration 64** (pending 55, renumbered after 61); see
+> "Patient-level care and the re-landed features (migrations 62-67)".
+> Read "55" below as 64.
+
 > **NOT APPLIED to production.** Applying it needs Kean's separate approval
 > and a quiet window, like every migration here.
 
@@ -1971,6 +1979,10 @@ the rollback round trip); the status-history case in
 (PGlite has none): the schedule is verified only after an approved apply.
 
 ### Automatic recovery roadmap (migration 56)
+
+> **Re-landed as migration 65** (pending 56, renumbered after 61); see
+> "Patient-level care and the re-landed features (migrations 62-67)".
+> Read "56" below as 65.
 
 > **NOT APPLIED to production.** Applying it needs Kean's separate approval
 > and a quiet window, like every migration here. It assumes 55 is applied
@@ -2031,6 +2043,9 @@ through 55; and 56 rolled back first in
 `tests/db/medication-dose-identity.test.ts`.
 
 ### Discharge and reopen a treatment case (migration 57)
+
+> **Superseded; never apply.** Kept in `supabase/superseded/` for the record.
+> Discharge is the patient's from migration 63.
 
 > **Superseded in part by migration 60**, which removes the "ready for
 > discharge" status, its daily job and its notifications (below).
@@ -2099,6 +2114,10 @@ in `tests/db/super-admin-rollback.test.ts` and
 schedule is verified only after an approved apply.
 
 ### Medicine-specific instructions (migration 58)
+
+> **Re-landed as migration 66** (pending 58, renumbered after 61); see
+> "Patient-level care and the re-landed features (migrations 62-67)".
+> Read "58" below as 66.
 
 > **NOT APPLIED to production.** Applying it needs Kean's separate approval
 > and a quiet window, like every migration here.
@@ -2177,6 +2196,9 @@ rolled back first in `tests/db/super-admin-rollback.test.ts` and
 `tests/db/medication-dose-identity.test.ts`.
 
 ### A care case is Active or Discharged (migration 60)
+
+> **Superseded; never apply.** Kept in `supabase/superseded/` for the record.
+> Discharge is the patient's from migration 63.
 
 > **NOT APPLIED to production.** Applying it needs Kean's separate approval
 > and a quiet window. It needs 57 (it redefines 57's functions) and 59 (it
@@ -2336,6 +2358,10 @@ patient's choice of plan; history still listed); `e2e/discharge-reopen.spec.ts`
 
 ### Doctor-controlled medication reminders (migration 59)
 
+> **Re-landed as migration 67** (pending 59, renumbered after 61); see
+> "Patient-level care and the re-landed features (migrations 62-67)".
+> Read "59" below as 67.
+
 > **NOT APPLIED to production.** Applying it needs Kean's separate approval
 > and a quiet window, like every migration here.
 
@@ -2441,9 +2467,10 @@ medicine on the record, off the paper); and 59 rolled back first in
 
 ### Discharge and reopen a care plan (migration 61)
 
-> **NOT APPLIED to production.** Applying it needs Kean's separate approval,
-> a manual backup (the Free plan has no backups or point-in-time recovery)
-> and a quiet window, like every migration here.
+> **APPLIED to production** 2026-11-19 18:32:36Z (history row
+> `20261119183236 discharge_care_plan`, statements MD5 `c68f54ea…` = the
+> file), with Kean's approval, after a verified pg_dump backup. Never edit,
+> renumber or re-apply it; 63 builds on it.
 
 A standalone release on top of migration 53: it needs nothing from 54-60.
 A care plan is Active or Discharged. The patient's assigned, active doctor
@@ -2555,6 +2582,67 @@ trip to exactly 53, re-apply); 61 rolled back first in
 `tests/db/super-admin-rollback.test.ts` and
 `tests/db/medication-dose-identity.test.ts`;
 `tests/unit/discharge-reopen.test.tsx`; `e2e/discharge-reopen.spec.ts`.
+
+### Patient-level care and the re-landed features (migrations 62-67)
+
+> **NOT APPLIED to production.** Applying them needs Kean's separate
+> approval, a fresh verified pg_dump backup (the Free plan has no backups or
+> point-in-time recovery) and a quiet window. Never `supabase db push`;
+> never apply 57 or 60.
+
+Production is at 61 (history `20261119183236`). Apply in this order, each
+byte-for-byte in its own transaction with its history row (as 53 and 61
+were: `begin;` + file + `insert into supabase_migrations.schema_migrations
+... ;` + `commit;` via `npx supabase@2.121.0 db query --linked
+--project-ref kwsezszstdagzllbyjuk -f ...` from the main checkout):
+
+| # | File | From | Depends on |
+| --- | --- | --- | --- |
+| 62 | `20260902100062_doctor_identity_columns_fixed` | pending 54, text unchanged | nothing new |
+| 63 | `20260902100063_patient_care_lifecycle` | **new** | 61 (redefines its check-in guard and follow-up trigger) |
+| 64 | `20260902100064_treatment_goal_progress` | pending 55 + 3 marked changes (incl. the approved first run) | 63 (`pat_care_status`, `patient_care_is_discharged`), 61 |
+| 65 | `20260902100065_automatic_recovery_roadmap` | pending 56, text unchanged | 64 (goal status is 64's to write), 45 |
+| 66 | `20260902100066_medication_schedule_instructions` | pending 58, text unchanged | nothing new |
+| 67 | `20260902100067_medication_schedule_reminder_control` | pending 59, text unchanged | 53's three reminder readers |
+
+Not included: 57 and 60 (superseded), and 60's per-plan
+`prescription.treatment_plan_id` / `appointment.treatment_plan_id` links -
+no feature here needs them.
+
+- **Preflight (read-only).** History has exactly one
+  `discharge_care_plan` row and none of 62-67's names;
+  `to_regprocedure('public.doctor_discharge_patient_care(uuid, text)')` is
+  null; no `pat_care_status` column; every plan `active` or `discharged`;
+  no waiting locks on `patient`, `treatment_plan`, `treatment_goal`,
+  `recovery_phase`, `recovery_activity`, `appointment`, `medication_schedule`.
+- **Data effects.** 63 adds three columns with constant defaults (no
+  rewrite): every patient starts `in_care`; nothing is read from plans. 65
+  rewrites roadmaps as section 18 of `docs/database.md` describes (archives
+  hand-made phases, never deletes). 62, 64, 66 and 67 write no rows.
+- **64's first run.** Applied alone, 64 leaves its job unable to run
+  (`RE64A`). In the **same transaction** as 64, the deployment arms the
+  first run with the goals the owner approved:
+  `select app_private.arm_missed_goal_bootstrap(array[...]::uuid[]);` -
+  refused (and the whole apply rolled back) unless the set is exactly the
+  goals the job would mark at that moment. The IDs live only in the private,
+  untracked operations folder, never in this repository or the PR. The first
+  run then marks exactly those goals or none (see `docs/database.md`
+  section 17); verify `app_private.missed_goal_bootstrap` reads `consumed`
+  with the approved count after the first `:10`.
+- **Order with the website.** Database first. The current website
+  (`df4706e`) keeps working on 62-67: it calls only 61's functions and reads
+  plan statuses; after 63 a patient whose only plan is discharged may check
+  in, which that website's plan-based notice hides (more restrictive, not
+  less). Then merge and let Vercel build; the new website needs 63's
+  functions and 64-67's columns.
+- **Verify after.** History has 62-67 once each, statement MD5s equal to
+  the files; `select distinct pat_care_status from patient` = `in_care`;
+  `patient_care_event` empty; the 6 existing cron jobs unchanged plus
+  `recoverease-mark-missed-treatment-goals` (64); no Postgres errors.
+- **Rollback**, newest first, each refusing if a later one is applied or
+  its own data would be lost unseen: 67, 66, 65, 64, 63 (refuses while any
+  patient is discharged; drops the care history and care follow-up marks -
+  export them first), 62. The rollback-chain tests run 67 -> 32 and 67 -> 47.
 
 ## Bundle budget
 

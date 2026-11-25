@@ -1,6 +1,10 @@
 -- ===========================================================================
--- RecoverEase — 56. The recovery roadmap is generated, not built by hand
+-- RecoverEase — 65. The recovery roadmap is generated, not built by hand
 -- ===========================================================================
+-- Re-landed from pending migration 56 (merged in PR #86, never applied to
+-- production), renumbered after 61. Unchanged but for this note and its
+-- numbers; "migration 56" below means this migration.
+--
 -- Module 5.7, as the adviser asked: every treatment plan's roadmap has
 -- exactly (its goals + 2) current phases, made and kept in step by the
 -- database alone:
@@ -47,7 +51,7 @@
 -- Nothing here reads or writes `treatment_plan_status`, a patient or an
 -- account: a roadmap fully done is progress, not recovery or discharge.
 --
--- Rollback: supabase/rollbacks/20260902100056_automatic_recovery_roadmap.down.sql
+-- Rollback: supabase/rollbacks/20260902100065_automatic_recovery_roadmap.down.sql
 -- ===========================================================================
 
 set lock_timeout = '3s';

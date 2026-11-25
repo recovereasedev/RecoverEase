@@ -81,7 +81,9 @@ describe('the care-plan lifecycle (migration 61)', () => {
   }
 
   beforeAll(async () => {
-    database = await createTestDatabase()
+    // 63 moves care to the patient (patient-care-lifecycle.test.ts); these
+    // suites describe 61 as it was applied, on the schema through 61.
+    database = await createTestDatabase({ stopAfter: MIGRATION_61 })
     fx = await seedFixture(database)
     ;[{ today }] = await database.asService<{ today: string }>('select public.app_today()::text as today')
 

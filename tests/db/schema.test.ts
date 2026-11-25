@@ -29,7 +29,8 @@ describe('database schema', () => {
 
     // 19 entities from the ERD, chat_message (the transcript the chat modules
     // need), clinic (Phase A, migration 28), super_admin (migration 33) and
-    // the recovery roadmap's phases, activities and histories (migration 45).
+    // the recovery roadmap's phases, activities and histories (migration 45),
+    // a plan's lifecycle history (61) and a patient's care history (63).
     // Web Push's devices and queue (migration 53) are in app_private, not here.
     expect(tables.map((row) => row.table_name)).toEqual([
       'admin',
@@ -46,6 +47,7 @@ describe('database schema', () => {
       'medication_schedule',
       'notification',
       'patient',
+      'patient_care_event',
       'prescription',
       'recovery_activity',
       'recovery_activity_event',

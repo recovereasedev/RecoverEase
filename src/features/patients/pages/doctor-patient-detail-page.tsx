@@ -28,7 +28,7 @@ import { useQueryKeys } from '@/features/auth/use-query-keys'
 import { fetchChatSessions, type ChatSession } from '@/features/chat/api'
 import { Button } from '@/components/ui/button'
 import { Card, CardBody, CardHeader } from '@/components/ui/card'
-import { Field, Select, Textarea } from '@/components/ui/field'
+import { Field, Textarea } from '@/components/ui/field'
 import { ProgressBar } from '@/components/ui/progress'
 import { Tabs } from '@/components/ui/tabs'
 import { useCurrentUser } from '@/features/auth/auth-context'
@@ -44,6 +44,11 @@ import {
 import { summariseConflicts } from '@/features/medications/conflicts'
 import { EndMedicationAction } from '@/features/medications/components/end-medication'
 import { MedicationForm } from '@/features/medications/components/medication-form'
+import {
+  EditInstructionsAction,
+  MedicineInstructions,
+} from '@/features/medications/components/medication-instructions'
+import { MedicationReminderSwitch } from '@/features/medications/components/medication-reminder-control'
 import { PrescriptionPrintHeader } from '@/features/medications/components/prescription-print-header'
 import { summariseAdherence, type Adherence } from '@/features/medications/api'
 import {
@@ -61,15 +66,12 @@ import { MoodTrend } from '@/features/recovery-logs/components/mood-trend'
 import { useRecoveryLogs } from '@/features/recovery-logs/hooks'
 import { RecoveryProgress } from '@/features/recovery-progress/components/recovery-progress'
 import { RoadmapEditor } from '@/features/recovery-roadmap/components/roadmap-editor'
-import { CaseLifecycle } from '@/features/treatment-plans/components/case-lifecycle'
+import { isDischarged } from '@/features/patient-care/api'
+import { PatientCareControls } from '@/features/patient-care/components/patient-care-controls'
 import { TreatmentGoalForm } from '@/features/treatment-plans/components/treatment-goal-form'
 import { TreatmentPlanForm } from '@/features/treatment-plans/components/treatment-plan-form'
+import { useTreatmentPlans } from '@/features/treatment-plans/hooks'
 import {
-  useTreatmentPlans,
-  useUpdateGoalStatus,
-} from '@/features/treatment-plans/hooks'
-import {
-  isOpenCare,
   summariseGoals,
   type PlanWithGoals,
   type TreatmentGoalStatus,
@@ -92,6 +94,7 @@ import {
   refocusAfterKeyboardSubmit,
 } from '@/lib/form-focus'
 import {
+  patientCareStatusOf,
   patientStatus,
   treatmentGoalStatus,
   treatmentPlanStatusOf,
@@ -212,8 +215,6 @@ export function DoctorPatientDetailPage() {
     enabled: Boolean(patientId),
   })
 
-  const goalStatus = useUpdateGoalStatus(patientId)
-
   // A second medicine belongs to the prescription already issued, not to a
   // new one. Only prescriptions carrying a schedule are visible to this
   // query, which is exactly the set another medicine could join.
@@ -319,8 +320,17 @@ export function DoctorPatientDetailPage() {
               ]
                 .filter(Boolean)
                 .join(' · ')}
+              // Two statuses, kept apart: the account (sign-in) and the
+              // patient's care (migration 63) - visible on every tab.
               meta={
-                <StatusBadge status={patientStatus[patient.pat_status]} />
+                <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted">
+                  <span className="inline-flex items-center gap-1.5">
+                    Account <StatusBadge status={patientStatus[patient.pat_status]} />
+                  </span>
+                  <span className="inline-flex items-center gap-1.5" data-testid="patient-care-status">
+                    Care <StatusBadge status={patientCareStatusOf(patient.pat_care_status)} />
+                  </span>
+                </span>
               }
               actions={
                 <>
@@ -336,6 +346,9 @@ export function DoctorPatientDetailPage() {
                   <Button
                     className="max-sm:w-full"
                     onClick={startConsultation}
+                    // A consultation writes care plans, which are read-only
+                    // while the patient is discharged (migration 63).
+                    disabled={isDischarged(patient)}
                   >
                     <Stethoscope aria-hidden="true" />
                     Start consultation
@@ -381,6 +394,13 @@ export function DoctorPatientDetailPage() {
                 printedAt={new Date(now).toISOString()}
               />
             ) : null}
+
+            {/* The patient's care, and Discharge patient / Reopen case,
+                above every tab and whatever plans they have (migration 63). */}
+            <PatientCareControls
+              care={patient}
+              patientName={fullName(patient.pat_first_name, patient.pat_last_name)}
+            />
 
             {/* Clinical status first: the five things a clinician checks
                 before anything else, above every tab. */}
@@ -570,6 +590,7 @@ export function DoctorPatientDetailPage() {
                               No treatment plan has been created for this
                               patient.
                             </p>
+                            {isDischarged(patient) ? null : (
                             <Button
                               id="create-plan"
                               className="mt-4 max-sm:w-full"
@@ -578,6 +599,7 @@ export function DoctorPatientDetailPage() {
                               <ClipboardPlus aria-hidden="true" />
                               Create treatment plan
                             </Button>
+                            )}
                           </div>
                         )}
                       </CardBody>
@@ -604,6 +626,7 @@ export function DoctorPatientDetailPage() {
                                       treatmentPlanStatusOf(plan.treatment_plan_status)
                                     }
                                   />
+                                  {isDischarged(patient) ? null : (
                                   <Button
                                     id={`edit-plan-${plan.treatment_plan_id}`}
                                     variant="ghost"
@@ -619,18 +642,11 @@ export function DoctorPatientDetailPage() {
                                     <Pencil aria-hidden="true" />
                                     Edit plan
                                   </Button>
+                                  )}
                                 </div>
                               }
                             />
                             <CardBody>
-                              {/* Migration 61: discharge an active plan, or
-                                  reopen a discharged one. */}
-                              {isOpenCare(plan.treatment_plan_status) ||
-                              plan.treatment_plan_status === 'discharged' ? (
-                                <div className="mb-5 border-b border-[var(--color-border)] pb-5">
-                                  <CaseLifecycle patientId={patientId} plan={plan} />
-                                </div>
-                              ) : null}
                               {editingPlanId === plan.treatment_plan_id ? (
                                 <div className="mb-5 border-b border-[var(--color-border)] pb-5">
                                   <TreatmentPlanForm
@@ -680,7 +696,7 @@ export function DoctorPatientDetailPage() {
                                     />
                                     {/* Restates the count already in the card
                                         description. `summariseGoals` counts
-                                        goals the clinician has marked; nothing
+                                        goals the patient has marked; nothing
                                         here is inferred. */}
                                     <ProgressBar
                                       value={progress.percentage ?? 0}
@@ -705,9 +721,8 @@ export function DoctorPatientDetailPage() {
                                       className="flex flex-col gap-2.5 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
                                     >
                                       <div className="flex min-w-0 gap-3 sm:flex-1">
-                                        {/* The state as an icon; the select
-                                            beside it says it in words, and is
-                                            where it is changed. */}
+                                        {/* The state as an icon; the badge
+                                            beside it says it in words. */}
                                         <GoalIcon
                                           className={cn(
                                             'mt-0.5 size-5 shrink-0',
@@ -729,59 +744,12 @@ export function DoctorPatientDetailPage() {
                                         ) : null}
                                         </div>
                                       </div>
-                                      <div className="flex items-center gap-2 sm:shrink-0">
-                                        {/* Module 3.3's other half: the
-                                            clinician records progress
-                                            against the goal they set. */}
-                                        <Field
-                                          label="Progress"
-                                          className="[&>label]:sr-only"
-                                        >
-                                          <Select
-                                            // 44px on a phone, where it is
-                                            // the only way to record progress.
-                                            className="h-11 w-auto text-sm sm:h-9 aria-disabled:cursor-not-allowed aria-disabled:bg-neutral-100 aria-disabled:text-muted"
-                                            value={goal.treatment_goal_status}
-                                            // Held while a change saves, as a
-                                            // saving Button is: unavailable
-                                            // but still focusable. `disabled`
-                                            // made the browser drop keyboard
-                                            // focus to the top of the page.
-                                            aria-disabled={
-                                              goalStatus.isPending || undefined
-                                            }
-                                            aria-busy={
-                                              (goalStatus.isPending &&
-                                                goalStatus.variables?.goalId ===
-                                                  goal.treatment_goal_id) ||
-                                              undefined
-                                            }
-                                            onChange={(event) => {
-                                              // A change made while another
-                                              // saves is not taken; the
-                                              // select keeps its value.
-                                              if (goalStatus.isPending) return
-                                              goalStatus.mutate({
-                                                goalId: goal.treatment_goal_id,
-                                                status: event.target
-                                                  .value as TreatmentGoalStatus,
-                                              })
-                                            }}
-                                          >
-                                            <option value="pending">
-                                              Not started
-                                            </option>
-                                            <option value="in_progress">
-                                              In progress
-                                            </option>
-                                            <option value="achieved">
-                                              Achieved
-                                            </option>
-                                            <option value="missed">
-                                              Missed
-                                            </option>
-                                          </Select>
-                                        </Field>
+                                      {/* Monitoring only: the patient
+                                          records progress and the system
+                                          marks a goal missed once its
+                                          date has passed (migration 55). */}
+                                      <div className="sm:shrink-0">
+                                        <StatusBadge status={goalState} />
                                       </div>
                                     </li>
                                     )
@@ -790,22 +758,17 @@ export function DoctorPatientDetailPage() {
                                 </>
                               )}
 
-                              {goalStatus.isError ? (
-                                <div className="mt-4">
-                                  <FormError
-                                    error={goalStatus.error}
-                                    title="The goal was not updated"
-                                  />
-                                </div>
-                              ) : null}
-
                               {/* Adding a goal to a plan that already exists,
-                                  outside a guided consultation. */}
+                                  outside a guided consultation. Not while the
+                                  patient is discharged: the database refuses it. */}
+                              {isDischarged(patient) ? null : (
                               <div className="mt-5 border-t border-[var(--color-border)] pt-5">
                                 {goalPlanId === plan.treatment_plan_id ? (
                                   <TreatmentGoalForm
                                     patientId={patientId}
                                     planId={plan.treatment_plan_id}
+                                    planStartDate={plan.treatment_plan_start_date}
+                                    planEndDate={plan.treatment_plan_end_date}
                                   />
                                 ) : (
                                   <Button
@@ -820,6 +783,7 @@ export function DoctorPatientDetailPage() {
                                   </Button>
                                 )}
                               </div>
+                              )}
 
                               {/* Module 5.7: the plan laid out as phases and
                                   activities for the patient (migration 45). */}
@@ -942,6 +906,21 @@ export function DoctorPatientDetailPage() {
                                       ? ` until ${formatDate(schedule.medication_schedule_end_date)}`
                                       : ', ongoing'}
                                   </p>
+                                  {/* This medicine's own instructions
+                                      (migration 58); nothing when none. */}
+                                  {schedule.medication_schedule_instructions ? (
+                                    <div className="mt-2">
+                                      <MedicineInstructions
+                                        text={schedule.medication_schedule_instructions}
+                                      />
+                                    </div>
+                                  ) : null}
+                                  {/* The doctor's reminder switch for this
+                                      medicine (migration 59). */}
+                                  <MedicationReminderSwitch
+                                    patientId={patientId}
+                                    schedule={schedule}
+                                  />
                                   {/* The prescription's notes, which the
                                       patient's own printed prescription also
                                       carries. Paper only (QA 9/12). */}
@@ -957,6 +936,10 @@ export function DoctorPatientDetailPage() {
                                     keeps the row's layout exactly as it was;
                                     the control stays off the paper. */}
                                 <div className="contents print:hidden">
+                                  <EditInstructionsAction
+                                    patientId={patientId}
+                                    schedule={schedule}
+                                  />
                                   <EndMedicationAction
                                     patientId={patientId}
                                     schedule={schedule}

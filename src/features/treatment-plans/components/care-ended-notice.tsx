@@ -5,9 +5,10 @@ import { buttonVariants } from '@/components/ui/button'
 import { Notice } from '@/components/ui/notice'
 
 /**
- * What a patient sees where care-plan actions used to be, once their doctor
- * has discharged them and no other plan is active (migration 61). Their
- * account, history and appointments are untouched; booking stays open.
+ * What a patient sees where care actions used to be, once their doctor has
+ * discharged them (migration 63: the patient's own care status, never their
+ * plans). Their account, history and appointments are untouched; booking
+ * stays open.
  */
 export function CareEndedNotice() {
   return (
@@ -20,7 +21,7 @@ export function CareEndedNotice() {
         </Link>
       }
     >
-      Your care plan has ended. Book a follow-up if you need more care.
+      Your care has ended. Book a follow-up if you need more care.
     </Notice>
   )
 }

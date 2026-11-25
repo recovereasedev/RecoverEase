@@ -7,6 +7,7 @@ import { catalog } from './helpers/catalog'
 import { addClinic, liftSingleClinicGate } from './helpers/clinics'
 import { createTestDatabase, expectDenied, type TestDatabase } from './helpers/database'
 import { seedFixture, type Fixture } from './helpers/fixtures'
+import { completeMissedGoalFirstRun } from './helpers/missed-goal-bootstrap'
 
 /**
  * Migration 55: treatment goal progress. The doctor sets a goal; the patient
@@ -17,8 +18,8 @@ import { seedFixture, type Fixture } from './helpers/fixtures'
  * system's.
  */
 
-const MIGRATION_55_FILE = 'supabase/migrations/20260902100055_treatment_goal_progress.sql'
-const ROLLBACK_55 = 'supabase/rollbacks/20260902100055_treatment_goal_progress.down.sql'
+const MIGRATION_55_FILE = 'supabase/migrations/20260902100064_treatment_goal_progress.sql'
+const ROLLBACK_55 = 'supabase/rollbacks/20260902100064_treatment_goal_progress.down.sql'
 
 const script = (path: string) => readFile(join(process.cwd(), path), 'utf8')
 
@@ -86,6 +87,8 @@ describe('treatment goal progress (migration 55)', () => {
   beforeAll(async () => {
     database = await createTestDatabase()
     fx = await seedFixture(database)
+    // Migration 64's one-time first run, done, so the job here is the hourly one.
+    await completeMissedGoalFirstRun(database)
     ;[{ today }] = await database.asService<{ today: string }>('select public.app_today()::text as today')
 
     // A second clinic, a day ahead of most of the world, with its own
@@ -484,7 +487,7 @@ describe('treatment goal progress (migration 55)', () => {
 
     it('has a rollback that refuses to run where 55 is not applied', async () => {
       const rollback = await script(ROLLBACK_55)
-      expect(rollback).toMatch(/Migration 55 is not applied/)
+      expect(rollback).toMatch(/Migration 64 is not applied/)
     })
   })
 
@@ -518,12 +521,12 @@ describe('migration 55, before and after', () => {
   it('can be run twice, and rolls back to exactly what 54 left, keeping every goal and event', async () => {
     const [full, through54] = await Promise.all([
       // Migration 56 builds on 55; this round trip is 55's alone.
-      createTestDatabase({ stopAfter: '20260902100055' }),
-      createTestDatabase({ stopAfter: '20260902100054' }),
+      createTestDatabase({ stopAfter: '20260902100064' }),
+      createTestDatabase({ stopAfter: '20260902100063' }),
     ])
     try {
       const fx = await seedFixture(full)
-      await full.applyMigration('20260902100055')
+      await full.applyMigration('20260902100064')
       const [{ timeout }] = await full.asService<{ timeout: string }>("select current_setting('lock_timeout') as timeout")
       expect(timeout).toBe('0')
       const after55 = await catalog(full)
@@ -546,9 +549,9 @@ describe('migration 55, before and after', () => {
       expect(await catalog(full)).toEqual(await catalog(through54))
       expect(await fingerprint()).toEqual(goalsBefore)
       expect(await events()).toEqual(eventsBefore)
-      await expect(full.db.exec(await script(ROLLBACK_55))).rejects.toThrow(/Migration 55 is not applied/)
+      await expect(full.db.exec(await script(ROLLBACK_55))).rejects.toThrow(/Migration 64 is not applied/)
 
-      await full.applyMigration('20260902100055')
+      await full.applyMigration('20260902100064')
       expect(await catalog(full)).toEqual(after55)
 
       // Supabase grants EXECUTE on every new function to anon and
@@ -559,7 +562,7 @@ describe('migration 55, before and after', () => {
         grant execute on function public.mark_missed_treatment_goals() to anon, authenticated;
         grant execute on function public.patient_update_treatment_goal_status(uuid, public.treatment_goal_status) to anon;
         grant execute on function public.treatment_goal_guard_progress() to anon, authenticated;`)
-      await full.applyMigration('20260902100055')
+      await full.applyMigration('20260902100064')
       const [acl] = await full.asService<Record<string, boolean>>(
         `select has_function_privilege('anon', 'public.mark_missed_treatment_goals()', 'execute') as job_anon,
                 has_function_privilege('authenticated', 'public.mark_missed_treatment_goals()', 'execute') as job_auth,

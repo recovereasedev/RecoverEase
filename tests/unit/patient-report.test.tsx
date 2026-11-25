@@ -51,6 +51,9 @@ function recordFor(overrides: Partial<PatientReportData> = {}): PatientReportDat
       pat_status: 'active',
       pat_reminder_preferred_time: null,
       pat_reminder_is_enabled: false,
+      pat_care_status: 'in_care',
+      pat_care_closure_reason: null,
+      pat_care_discharged_at: null,
     },
     recoveryLogs: [
       {
@@ -84,6 +87,7 @@ function recordFor(overrides: Partial<PatientReportData> = {}): PatientReportDat
         treatment_plan_updated_at: '2026-02-01T00:00:00Z',
         treatment_plan_closure_reason: null,
         treatment_plan_discharged_at: null,
+        treatment_plan_follow_up_appointment_id: null,
         treatment_goal: [
           {
             treatment_goal_id: 'g-1',
@@ -109,6 +113,9 @@ function recordFor(overrides: Partial<PatientReportData> = {}): PatientReportDat
     schedules: [
       {
         medication_schedule_id: 's-1',
+        medication_schedule_instructions: null,
+        medication_schedule_reminders_is_enabled: true,
+        medication_schedule_reminders_enabled_at: null,
         prescription_id: 'rx-1',
         medication_schedule_name: 'Paracetamol',
         medication_schedule_dosage: '500mg',
@@ -132,6 +139,7 @@ function recordFor(overrides: Partial<PatientReportData> = {}): PatientReportDat
         appointment_status: 'scheduled',
         appointment_created_at: '2026-09-01T00:00:00Z',
         appointment_reminder_sent_at: null,
+        appointment_follow_up_of_care_event_id: null,
         appointment_follow_up_of_plan_id: null,
       },
       {
@@ -142,6 +150,7 @@ function recordFor(overrides: Partial<PatientReportData> = {}): PatientReportDat
         appointment_status: 'completed',
         appointment_created_at: '2026-07-01T00:00:00Z',
         appointment_reminder_sent_at: null,
+        appointment_follow_up_of_care_event_id: null,
         appointment_follow_up_of_plan_id: null,
       },
     ],

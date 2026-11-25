@@ -21,10 +21,10 @@ import { seedFixture, type Fixture } from './helpers/fixtures'
  * is refused by the guard, not by a foreign key.
  */
 
-const MIGRATION_53 = '20260902100053'
-const MIGRATION_54 = '20260902100054'
-const MIGRATION_54_FILE = 'supabase/migrations/20260902100054_doctor_identity_columns_fixed.sql'
-const ROLLBACK_54 = 'supabase/rollbacks/20260902100054_doctor_identity_columns_fixed.down.sql'
+const MIGRATION_53 = '20260902100061'
+const MIGRATION_54 = '20260902100062'
+const MIGRATION_54_FILE = 'supabase/migrations/20260902100062_doctor_identity_columns_fixed.sql'
+const ROLLBACK_54 = 'supabase/rollbacks/20260902100062_doctor_identity_columns_fixed.down.sql'
 
 const ID_GUARD = /A doctor's record ID cannot be changed/
 const DATE_GUARD = /A doctor's registration date cannot be changed/
@@ -267,7 +267,7 @@ describe('migration 54, before and after', () => {
       await expect(set54(database, fx.adminUserId, fx.doctorBId)).resolves.toHaveLength(1)
 
       await expect(database.db.exec(await script(ROLLBACK_54))).rejects.toThrow(
-        /Migration 54 is not applied/,
+        /Migration 62 is not applied/,
       )
 
       await database.applyMigration(MIGRATION_54)

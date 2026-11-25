@@ -5,6 +5,11 @@ import { FormError } from '@/components/feedback/form-error'
 import { Button } from '@/components/ui/button'
 import { Field, Input, Textarea } from '@/components/ui/field'
 import {
+  InstructionsField,
+  instructionsError,
+  instructionsToSave,
+} from '@/features/medications/components/medication-instructions'
+import {
   calculateDoseTimes,
   needsInterval,
   type DoseTimeField,
@@ -56,13 +61,14 @@ export function MedicationForm({
   const [notes, setNotes] = useState('')
   const [name, setName] = useState('')
   const [dosage, setDosage] = useState('')
+  const [instructions, setInstructions] = useState('')
   const [frequency, setFrequency] = useState('1')
   const [intervalHours, setIntervalHours] = useState('')
   const [startTime, setStartTime] = useState('08:00')
   const [startDate, setStartDate] = useState(toDateKey())
   const [endDate, setEndDate] = useState('')
   const [errors, setErrors] = useState<
-    Partial<Record<'name' | 'dosage' | DoseTimeField | 'startDate' | 'endDate', string>>
+    Partial<Record<'name' | 'dosage' | 'instructions' | DoseTimeField | 'startDate' | 'endDate', string>>
   >({})
 
   const inFlight = useRef(false)
@@ -96,6 +102,8 @@ export function MedicationForm({
     const next: typeof errors = {}
     if (!name.trim()) next.name = 'Name the medicine.'
     if (!dosage.trim()) next.dosage = 'Say how much to take, e.g. 500 mg.'
+    const instructionsProblem = instructionsError(instructions)
+    if (instructionsProblem) next.instructions = instructionsProblem
     if (!doseTimes.ok) next[doseTimes.field] = doseTimes.message
     if (!startDate) next.startDate = 'Choose when the course starts.'
     if (endDate && startDate && endDate < startDate) {
@@ -122,6 +130,7 @@ export function MedicationForm({
           times,
           startDate,
           endDate: endDate || null,
+          instructions: instructionsToSave(instructions),
         },
         { onSuccess: () => onDone?.(id), onSettled: release },
       )
@@ -183,6 +192,14 @@ export function MedicationForm({
           />
         </Field>
       </div>
+
+      {/* This medicine's own instructions (migration 58), apart from the
+          prescription's notes above. Optional, and the doctor's own words. */}
+      <InstructionsField
+        value={instructions}
+        onChange={setInstructions}
+        error={errors.instructions}
+      />
 
       {/* `step="any"` rather than the default whole-number step: a value the
           browser considers invalid blocks submission before any handler
