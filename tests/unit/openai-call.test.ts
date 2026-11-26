@@ -371,6 +371,13 @@ describe('replies that cannot be trusted', () => {
     expect(await failure(call(fetchImpl))).toBeInstanceOf(ProviderReplyError)
   })
 
+  it('puts the 911 instruction first in an urgent reply that opens with something else', async () => {
+    const urgentReply = { message: 'That could be serious. Please call 911.', safety_level: 'urgent', should_contact_provider: true }
+    const { fetchImpl } = fakeOpenAI(json(200, responseBody({}, JSON.stringify(urgentReply))))
+    const outcome = await call(fetchImpl)
+    expect(outcome.reply.message).toBe('Call 911 or go to the nearest emergency room now. That could be serious. Please call 911.')
+  })
+
   it('returns a valid reply with its sizes and timings', async () => {
     const { fetchImpl } = fakeOpenAI(json(200, responseBody()))
     const outcome = await call(fetchImpl)

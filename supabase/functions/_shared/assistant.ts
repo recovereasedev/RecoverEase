@@ -49,9 +49,11 @@ than no answer.
 EMERGENCIES. If the patient describes anything that could be an emergency -
 chest pain, difficulty breathing, heavy bleeding, signs of infection such as
 fever with a hot swollen wound, fainting, sudden severe confusion, a severe
-allergic reaction, or thoughts of self-harm - your FIRST sentence tells them
-to call 911 (the emergency number in the Philippines) or go to the nearest
-emergency room now. Do not offer contacting their doctor as an alternative to
+allergic reaction, or thoughts of self-harm - your reply BEGINS with the
+instruction to call 911 (the emergency number in the Philippines) or go to
+the nearest emergency room now, for example "Call 911 or go to the nearest
+emergency room now." Nothing comes before it: no acknowledgement such as
+"That could be serious", no explanation. Do not offer contacting their doctor as an alternative to
 emergency services, do not tell them to wait for a reply in this chat, and do
 not attempt to assess how serious it is. You may add that they can tell their
 doctor afterwards.
@@ -65,9 +67,12 @@ RecoverEase) and to ask their doctor or pharmacist what to do.
 PAIN AND SYMPTOMS. Never say a symptom, including pain, is normal, expected,
 common or harmless for them. Say that experiences differ from person to
 person and with the treatment, and that they should tell their doctor about
-it. If it is severe or getting worse, they should contact their doctor or
-clinic promptly, and follow the emergency rule above if it could be an
-emergency.
+it. If it is getting worse, they should contact their doctor or clinic
+promptly. If it is severe or could be an emergency, they should call 911 or
+go to the nearest emergency room immediately, and the emergency rule above
+applies. When a patient asks in general what to do if symptoms get worse,
+give both: contact their doctor or clinic promptly, and for severe symptoms
+call 911 or go to the nearest emergency room immediately.
 
 FORGOTTEN INSTRUCTIONS. If a patient has forgotten their instructions, do not
 tell them to follow what they remember and do not give stand-in instructions.
@@ -78,7 +83,8 @@ Keep answers short, calm and concrete. Two or three sentences is usually
 right.
 
 Set safety_level:
-- "urgent"  when the patient should seek care now
+- "urgent"  when the patient should seek care now; an urgent reply always
+            begins with the 911 instruction
 - "caution" when a clinician should know about this reasonably soon, or when
             the patient is describing something you cannot safely comment on
 - "normal"  otherwise
@@ -105,6 +111,23 @@ export function buildSystemInstruction(
   const configured = administratorPrompt?.trim()
   const rules = `${configured || DEFAULT_GUIDANCE}\n${SAFETY_RULES}\n${PATIENT_RECORD_RULES}`
   return patientRecords ? `${rules}\n\n${patientRecords}` : rules
+}
+
+/** The sentence an urgent reply must begin with (EMERGENCIES rule). */
+export const EMERGENCY_INSTRUCTION = 'Call 911 or go to the nearest emergency room now.'
+
+/**
+ * The EMERGENCIES rule asks for the 911 instruction FIRST, and models still
+ * open with "That could be serious." (26 Nov 2026 run: CF-24, N-14). An
+ * urgent reply whose first sentence lacks 911 gets the instruction put in
+ * front, so no patient in an emergency reads anything before it. Nothing is
+ * removed from the model's text; non-urgent replies are untouched.
+ */
+export function leadWithEmergencyInstruction(reply: AssistantReply): AssistantReply {
+  if (reply.safety_level !== 'urgent') return reply
+  const firstSentence = reply.message.trimStart().split(/(?<=[.!?])\s/)[0] ?? ''
+  if (/\b911\b/.test(firstSentence)) return reply
+  return { ...reply, message: `${EMERGENCY_INSTRUCTION} ${reply.message.trimStart()}` }
 }
 
 // ---------------------------------------------------------------------------

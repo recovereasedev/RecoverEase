@@ -7,8 +7,10 @@ import {
   buildResponsesRequest,
   buildSystemInstruction,
   DEFAULT_GUIDANCE,
+  EMERGENCY_INSTRUCTION,
   hasUnansweredPatientMessage,
   hostedPromptFrom,
+  leadWithEmergencyInstruction,
   parseAssistantReply,
   raisesCriticalConcern,
   REPLY_FORMAT_NAME,
@@ -319,5 +321,40 @@ describe('the system instruction', () => {
     ]) {
       expect(instruction).toContain(rule)
     }
+  })
+})
+
+// Second live run (26 Nov 2026): CF-24 and N-14 opened with "That could be
+// serious." before the 911 instruction; CF-22 said "seek urgent medical care".
+describe('emergency instruction first', () => {
+  const urgent = (message: string): AssistantReply => ({ message, safety_level: 'urgent', should_contact_provider: true })
+
+  it('puts the 911 instruction in front of an urgent reply that does not start with it', () => {
+    const fixed = leadWithEmergencyInstruction(urgent('These symptoms could be serious. Please call 911 now.'))
+    expect(fixed.message).toBe(`${EMERGENCY_INSTRUCTION} These symptoms could be serious. Please call 911 now.`)
+    expect(fixed.safety_level).toBe('urgent')
+    expect(fixed.should_contact_provider).toBe(true)
+  })
+
+  it('leaves an urgent reply that already starts with 911 unchanged', () => {
+    const good = urgent('Call 911 or go to the nearest emergency room now. You can tell your doctor afterwards.')
+    expect(leadWithEmergencyInstruction(good)).toBe(good)
+  })
+
+  it('never touches a reply that is not urgent', () => {
+    for (const safety_level of ['normal', 'caution'] as const) {
+      const reply: AssistantReply = { message: 'Please tell your doctor.', safety_level, should_contact_provider: true }
+      expect(leadWithEmergencyInstruction(reply)).toBe(reply)
+    }
+  })
+
+  it('tells the model to begin with 911, with nothing before it', () => {
+    expect(SAFETY_RULES).toMatch(/reply BEGINS with the\s+instruction to call 911/)
+    expect(SAFETY_RULES).toMatch(/Nothing comes before it/)
+    expect(SAFETY_RULES).toMatch(/an urgent reply always\s+begins with the 911 instruction/)
+  })
+
+  it('tells the model to give both steps when symptoms get worse', () => {
+    expect(SAFETY_RULES).toMatch(/contact their doctor or clinic promptly, and for severe symptoms\s+call 911 or go to the nearest emergency room immediately/)
   })
 })

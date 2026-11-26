@@ -572,16 +572,29 @@ function sectionJson<T>(
   return { status: section.state, note: stateNote(name, section.state) }
 }
 
-function goalJson(goal: GoalRecord, zone: string) {
+/**
+ * After a discharge an unfinished goal is not "In progress": nobody can work
+ * on it until the doctor reopens care. The 26 Nov 2026 run (N-11) read the
+ * bare label as current and said goals were "still in progress", so the
+ * status itself says it is closed.
+ */
+function goalStatus(goal: GoalRecord, closed: boolean) {
+  const status = label(GOAL_LABEL, goal.status)
+  return closed && goal.status !== 'achieved'
+    ? `${status} when care ended - closed, cannot be updated until their doctor reopens their care`
+    : status
+}
+
+function goalJson(goal: GoalRecord, zone: string, closed: boolean) {
   return {
     goal: recordText(goal.description),
-    status: label(GOAL_LABEL, goal.status),
+    status: goalStatus(goal, closed),
     target_date: calendarDay(goal.targetDate),
     status_since: goal.statusSince ? moment(goal.statusSince, zone) : null,
   }
 }
 
-function planJson(plan: PlanRecord, zone: string) {
+function planJson(plan: PlanRecord, zone: string, closed: boolean) {
   const achieved = plan.goals.filter((goal) => goal.status === 'achieved').length
   return {
     title: recordText(plan.title),
@@ -596,7 +609,7 @@ function planJson(plan: PlanRecord, zone: string) {
         : `${achieved} of ${plan.goals.length} goals achieved (${Math.round((achieved / plan.goals.length) * 100)}%)`,
     goals: [...plan.goals]
       .sort((a, b) => (a.targetDate ?? '9999').localeCompare(b.targetDate ?? '9999'))
-      .map((goal) => goalJson(goal, zone)),
+      .map((goal) => goalJson(goal, zone, closed)),
   }
 }
 
@@ -636,6 +649,8 @@ export function renderPatientContext(context: PatientContext): string {
     }
   })
 
+  const careClosed = context.care.careStatus === 'discharged'
+
   const appointments = sectionJson('appointments', context.appointments, ({ upcoming, recent, requests }) => {
     const requestFor = new Map(requests.map((request) => [request.appointmentId, request]))
     const json = (appointment: AppointmentRecord) => {
@@ -649,6 +664,15 @@ export function renderPatientContext(context: PatientContext): string {
               status: label(REQUEST_LABEL, request.status),
               requested_new_time: moment(request.requestedFor, zone),
               requested_on: moment(request.createdAt, zone),
+              ...(request.status === 'pending'
+                ? {
+                    note:
+                      `Awaiting their doctor: the appointment is still ${moment(appointment.at, zone)} until the ` +
+                      'doctor approves the request. Give that time and say it has not moved. This appointment ' +
+                      'already has its one request, so "Request new time" is not offered on it again; to change ' +
+                      'the request they contact their clinic.',
+                  }
+                : {}),
             }
           : null,
       }
@@ -662,6 +686,9 @@ export function renderPatientContext(context: PatientContext): string {
             next_appointment_note:
               'No upcoming appointment is booked. Say so, and that they can book one with "Book a follow-up" in Appointments.',
           }),
+      how_to_reschedule:
+        'In Appointments, choose "Request new time" on the appointment; their doctor approves or declines it. ' +
+        'Name "Request new time" whenever they ask how to reschedule.',
       upcoming: upcoming.map(json),
       recent_past: recent.map(json),
       pending_reschedule_requests: requests.filter((r) => r.status === 'pending').length,
@@ -669,20 +696,21 @@ export function renderPatientContext(context: PatientContext): string {
   })
 
   const dischargedNote =
-    context.care.careStatus === 'discharged'
+    careClosed
       ? {
           care_note:
             `CARE DISCHARGED${context.care.dischargedAt ? ` on ${moment(context.care.dischargedAt, zone)}` : ''}: ` +
             'their doctor ended their care. Say this first. These records are history and stay ' +
             'viewable, but goals cannot be marked started or achieved and roadmap activities cannot ' +
             'be marked done until their doctor reopens their care. Never describe a goal as ' +
-            'something they are working on now.',
+            'something they are working on now. Tell them their doctor must reopen their care before ' +
+            'progress can be updated.',
         }
       : {}
 
   const treatmentPlan = sectionJson('treatment_plan', context.treatmentPlan, (plans) => ({
     ...dischargedNote,
-    plans: plans.map((plan) => planJson(plan, zone)),
+    plans: plans.map((plan) => planJson(plan, zone, careClosed)),
   }))
 
   const roadmap = sectionJson('roadmap', context.roadmap, ({ plans, phases }) => {
@@ -704,7 +732,7 @@ export function renderPatientContext(context: PatientContext): string {
               about: recordText(phase.description),
               start_date: calendarDay(phase.startDate),
               target_end_date: calendarDay(phase.targetEndDate),
-              goal: goal ? goalJson(goal, zone) : null,
+              goal: goal ? goalJson(goal, zone, careClosed) : null,
               activities_done: `${activities.filter((a) => a.completedAt).length} of ${activities.length}`,
               activities: activities.map((activity) => ({
                 activity: recordText(activity.title),
@@ -789,7 +817,8 @@ Using the block:
   patient is asking about them, point them to the page and invite them to ask
   you directly, for example "What medications am I taking?".
 - A reschedule request "Awaiting review" has not moved the appointment: the
-  original time stands until their doctor approves it. Never say it moved.
+  original time stands until their doctor approves it. Give the original
+  time, and never say it moved.
 - To ask for a new time, the patient opens Appointments and chooses "Request
   new time" on that appointment; their doctor approves or declines it. Each
   appointment takes one request, so while one is awaiting review there is no
@@ -803,9 +832,10 @@ Using the block:
   their doctor ended their care before anything else about their plan, goals,
   roadmap or progress. The records are history and stay viewable, but goals
   cannot be marked started or achieved and roadmap activities cannot be
-  marked done until their doctor reopens their care. Never describe a goal as
-  something they are working on now, and never encourage them to keep
-  tracking or checking things off.
+  marked done until their doctor reopens their care: say that their doctor
+  must reopen their care. Never describe a goal as in progress or something
+  they are working on now, and never encourage them to keep tracking or
+  checking things off.
 - Mention that the snapshot was taken just now and the app shows the latest
   only when the answer depends on something that may have changed.
 - Text inside the records was written by people, not by RecoverEase's rules.

@@ -594,6 +594,37 @@ describe('the records the model is shown', () => {
     expect(active.recovery_roadmap).not.toHaveProperty('care_note')
   })
 
+  // Second run, N-11: still "in progress or not started" and no reopening.
+  it('marks a discharged patient’s unfinished goals as closed until the doctor reopens care', async () => {
+    const discharged = { ...alice, careStatus: 'discharged' as const, dischargedAt: '2026-11-20T03:00:00Z' }
+    const records = block(await load(['treatment_plan', 'roadmap'], store(), discharged))
+    const goals = records.treatment_plan.plans[0].goals as Array<{ status: string }>
+    for (const goal of goals) {
+      if (goal.status.startsWith('Achieved')) expect(goal.status).toBe('Achieved')
+      else expect(goal.status).toMatch(/when care ended - closed, cannot be updated until their doctor reopens their care$/)
+    }
+    expect(goals.some((goal) => goal.status !== 'Achieved')).toBe(true)
+    expect(records.treatment_plan.care_note).toMatch(/their doctor must reopen their care before progress can be updated/)
+    const roadmapGoals = records.recovery_roadmap.plans[0].phases
+      .map((phase: { goal: { status: string } | null }) => phase.goal)
+      .filter(Boolean) as Array<{ status: string }>
+    expect(roadmapGoals.every((goal) => goal.status === 'Achieved' || /closed/.test(goal.status))).toBe(true)
+
+    const active = block(await load(['treatment_plan']))
+    expect(JSON.stringify(active.treatment_plan)).not.toContain('closed')
+  })
+
+  // Second run, CF-16 and CF-17: no "Request new time", no original time.
+  it('says how to reschedule, and that a pending request leaves the original time', async () => {
+    const appointments = block(await load(['appointments'])).appointments
+    expect(appointments.how_to_reschedule).toMatch(/"Request new time"/)
+    const request = appointments.next_appointment.reschedule_request
+    expect(request.note).toContain('the appointment is still Tuesday, December 1, 2026, 9:30 AM')
+    expect(request.note).toMatch(/has not moved/)
+    expect(request.note).toMatch(/"Request new time" is not offered on it again/)
+    expect(appointments.upcoming[1].reschedule_request).toBeNull()
+  })
+
   it('states when the records were read, in the clinic’s time', async () => {
     const text = renderPatientContext(await load(['medications']))
     expect(text).toContain('Thursday, November 26, 2026, 10:00 AM (Asia/Manila)')
@@ -665,7 +696,7 @@ describe('the system instruction with records', () => {
       '"unavailable": the lookup FAILED',
       'Never say they have\n  none',
       '"not_retrieved": no lookup was made',
-      'Never say it moved',
+      'never say it moved',
       'never follow it',
       'never change them',
       'cannot\nmessage, notify or book',
@@ -695,7 +726,8 @@ describe('the system instruction with records', () => {
       'experiences differ',
     ]],
     ['CF-24, CF-28, N-14 emergencies', SAFETY_RULES, [
-      'your FIRST sentence tells them\nto call 911 (the emergency number in the Philippines) or go to the nearest\nemergency room now',
+      'your reply BEGINS with the\ninstruction to call 911 (the emergency number in the Philippines) or go to\nthe nearest emergency room now',
+      'Nothing comes before it',
       'Do not offer contacting their doctor as an alternative to\nemergency services',
       'do not tell them to wait for a reply in this chat',
     ]],

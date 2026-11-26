@@ -11,6 +11,7 @@ import {
   buildResponsesRequest,
   type ConversationTurn,
   type HostedPrompt,
+  leadWithEmergencyInstruction,
   parseAssistantReply,
   responseOutputText,
   type ResponsesRequest,
@@ -281,7 +282,7 @@ export async function requestOpenAIReply(input: OpenAIReplyRequest): Promise<Pro
 
     let reply: AssistantReply
     try {
-      reply = parseAssistantReply(output)
+      reply = leadWithEmergencyInstruction(parseAssistantReply(output))
     } catch (error) {
       return reject(error instanceof Error ? error.message : 'The assistant returned unusable output')
     }
