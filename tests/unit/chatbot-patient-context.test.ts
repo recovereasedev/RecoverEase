@@ -973,3 +973,64 @@ describe('a section not looked up this turn never retracts an earlier answer', (
     expect(PATIENT_RECORD_RULES).toMatch(/"not_retrieved": no lookup was made for this message\. Never guess/)
   })
 })
+
+// v33 production smoke test, 26 Nov 2026 20:17Z (27 Nov 4:17 AM Manila), the
+// smoke patient's data shape: the only appointment still ahead is cancelled.
+// Run 1 of turn 2 replied "I don't have your appointment details for this
+// message" while the log said appointments were available; run 2 answered
+// correctly. These pin what each turn's block actually contains, so a model
+// slip can be told apart from a records fault.
+describe('three-turn sequence: medicines, next appointment, doctor (v33 smoke test)', () => {
+  const RUN_AT = new Date('2026-11-26T20:17:25Z')
+  const smokeShape = (overrides: Partial<PatientRecordStore> = {}) =>
+    store({
+      appointments: vi.fn(async () => ({
+        upcoming: [{ appointmentId: 'appt-cancelled', at: '2026-11-27T02:00:00Z', status: 'cancelled' }],
+        recent: [{ appointmentId: 'appt-old', at: '2026-10-22T19:35:00Z', status: 'confirmed' }],
+      })),
+      rescheduleRequests: vi.fn(async () => []),
+      ...overrides,
+    })
+  const turn = async (newestFirst: string[], s = smokeShape()) =>
+    block(await loadPatientContext({ store: s, topics: topicsForQuestion(newestFirst), patient: alice, now: RUN_AT }))
+
+  const Q1 = 'What medications am I taking?'
+  const Q2 = 'When is my next appointment?'
+  const Q3 = 'Who is my doctor?'
+
+  it('turn 1 looks up medicines only', async () => {
+    const records = await turn([Q1])
+    expect(records.medications.status).toBe('available')
+    expect(records.appointments.status).toBe('not_retrieved')
+  })
+
+  it('turn 2 includes the appointments, with no "not looked up" note on them', async () => {
+    const records = await turn([Q2, Q1])
+    expect(records.medications.status).toBe('available')
+    const appointments = records.appointments
+    expect(appointments.status).toBe('available')
+    expect(appointments.note).toBeUndefined()
+    expect(JSON.stringify(appointments)).not.toMatch(/Not looked up/)
+    expect(appointments.next_appointment).toBeNull()
+    expect(appointments.next_appointment_note).toMatch(/^No upcoming appointment is booked\. Say so/)
+    expect(appointments.upcoming).toEqual([
+      expect.objectContaining({ when: 'Friday, November 27, 2026, 10:00 AM', status: 'Cancelled' }),
+    ])
+  })
+
+  it('turn 2 tells an empty list, a failed read and records apart', async () => {
+    const empty = await turn([Q2, Q1], smokeShape({ appointments: vi.fn(async () => ({ upcoming: [], recent: [] })) }))
+    expect(empty.appointments.status).toBe('none_found')
+    const failed = await turn([Q2, Q1], smokeShape({ appointments: vi.fn(async () => { throw new Error('timeout') }) }))
+    expect(failed.appointments.status).toBe('unavailable')
+    expect(failed.appointments.note).toMatch(/does not mean/i)
+  })
+
+  it('turn 3 includes the doctor and appointments; medicines are not looked up, and the rules forbid retracting turn 1', async () => {
+    const records = await turn([Q3, Q2, Q1])
+    expect(records.assigned_doctor_and_clinic.status).toBe('available')
+    expect(records.appointments.status).toBe('available')
+    expect(records.medications.status).toBe('not_retrieved')
+    expect(PATIENT_RECORD_RULES).toMatch(/never\s+withdraw, correct or cast doubt on an earlier answer because a section is\s+"not_retrieved" now/)
+  })
+})
