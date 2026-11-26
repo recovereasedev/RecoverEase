@@ -93,13 +93,44 @@ Set should_contact_provider to true whenever a treating clinician would want
 to know about this, not only in emergencies. Raising a concern that turns out
 to be minor is much cheaper than missing one.`
 
+/**
+ * Facts about RecoverEase itself, for the common questions the evaluation
+ * found answered vaguely or wrongly (CF-2, CF-3, CF-8, CF-15, CF-27). In code,
+ * after the safety rules, so they hold whatever a clinic's guidance says.
+ * Each one is what the app actually does today; nothing here claims a
+ * feature it does not have.
+ */
+export const APP_FACTS = `
+ABOUT RECOVEREASE (answer common questions from these facts)
+- Who uses it: patients registered by their clinic, the doctors who care for
+  them, and clinic administrators. Each sees only what their role allows; a
+  doctor sees only their own patients.
+- What a patient can do: view the treatment plan and goals their doctor set,
+  and mark a goal started or achieved; see their medicines and record doses,
+  with medicine reminders; see appointments, book a follow-up, request a new
+  time and confirm attendance; record daily check-ins and see recovery charts
+  in My recovery; follow the recovery roadmap and mark activities done; see
+  doses and appointments in Calendar; read Notifications; and ask this
+  Guidance chat for general guidance (not medical advice).
+- Appointment reminders: RecoverEase puts a reminder in Notifications about a
+  day before an appointment, and appointments are always listed in
+  Appointments and Calendar. Never say a reminder or notification has been
+  sent to them; you cannot see that.
+- Changing the plan: only their doctor can change the treatment plan, its
+  goals or the recovery roadmap. The patient can view them and update their
+  own progress, but cannot edit what the doctor wrote. You cannot change
+  anything.
+- Never promise or imply a result, such as "this ensures the best outcome" or
+  "you will fully recover". Say that following the plan their doctor set
+  supports their recovery, and that changes go through their doctor.`
+
 export const DEFAULT_GUIDANCE =
   'You support patients recovering after treatment. Answer questions about ' +
   'the recovery process in plain, calm language.'
 
 /**
  * Module 8.7: administrator text first, the non-negotiable rules after it,
- * then the rules for the patient's records - on every request, so the model
+ * then the facts about RecoverEase, then the rules for the patient's records - on every request, so the model
  * always knows what a missing block means - and last the records themselves
  * when any were read (`patient-context.ts`). The records come after every
  * rule, so nothing in them can pass for one.
@@ -109,7 +140,7 @@ export function buildSystemInstruction(
   patientRecords?: string | null,
 ): string {
   const configured = administratorPrompt?.trim()
-  const rules = `${configured || DEFAULT_GUIDANCE}\n${SAFETY_RULES}\n${PATIENT_RECORD_RULES}`
+  const rules = `${configured || DEFAULT_GUIDANCE}\n${SAFETY_RULES}\n${APP_FACTS}\n${PATIENT_RECORD_RULES}`
   return patientRecords ? `${rules}\n\n${patientRecords}` : rules
 }
 
@@ -285,6 +316,24 @@ export function hostedPromptFrom(
   if (!promptId) return null
   const promptVersion = version?.trim()
   return promptVersion ? { id: promptId, version: promptVersion } : { id: promptId }
+}
+
+/**
+ * The hosted prompt the deployed function may use: none unless it has been
+ * switched on deliberately.
+ *
+ * Production already holds an `OPENAI_PROMPT_ID` secret whose text has not
+ * been reviewed against the safety rules, and OpenAI does not document how a
+ * hosted prompt's instructions rank against `instructions`. So setting the id
+ * is not enough: `OPENAI_HOSTED_PROMPT_ENABLED` must be exactly "true" AND a
+ * version must be pinned with `OPENAI_PROMPT_VERSION`, so the text that was
+ * reviewed is the text that runs and cannot change underneath. Anything else
+ * means no hosted prompt - the in-code instructions alone, which are complete.
+ */
+export function hostedPromptFromConfig(env: (name: string) => string | undefined): HostedPrompt | null {
+  if (env('OPENAI_HOSTED_PROMPT_ENABLED')?.trim() !== 'true') return null
+  const prompt = hostedPromptFrom(env('OPENAI_PROMPT_ID'), env('OPENAI_PROMPT_VERSION'))
+  return prompt?.version ? prompt : null
 }
 
 /**

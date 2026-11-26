@@ -44,11 +44,11 @@ Every request (`buildResponsesRequest` in `assistant.ts`):
 | Field | Value |
 | --- | --- |
 | `model` | `OPENAI_MODEL` (required) |
-| `instructions` | The whole system instruction, assembled in code: clinic guidance (or the built-in default), `SAFETY_RULES`, `PATIENT_RECORD_RULES`, then the records block when any were read. The API gives `instructions` priority over messages in `input`. |
+| `instructions` | The whole system instruction, assembled in code: clinic guidance (or the built-in default), `SAFETY_RULES`, `APP_FACTS`, `PATIENT_RECORD_RULES`, then the records block when any were read. The API gives `instructions` priority over messages in `input`. |
 | `input` | This conversation's newest 40 messages, `{ role: 'user' \| 'assistant', content }`, text only |
 | `store` | `false` |
 | `text.format` | `{ type: 'json_schema', name: 'recovery_guidance_reply', schema, strict: true }`; the schema has `additionalProperties: false` and all three fields required |
-| `prompt` | `{ id, version }` only when `OPENAI_PROMPT_ID` is set. No `variables`. |
+| `prompt` | `{ id, version }` only when `OPENAI_HOSTED_PROMPT_ENABLED=true`, `OPENAI_PROMPT_ID` and a pinned `OPENAI_PROMPT_VERSION` are all set. No `variables`. |
 | not sent | `user`, `safety_identifier`, `metadata`, `prompt_cache_key`, `previous_response_id`, `conversation`, tools |
 
 The reply is accepted only when `status` is `completed`, the assistant message
@@ -78,9 +78,12 @@ emergency handling and escalation. The hosted prompt
 (`pmpt_6af5542e5a7481958da7a15e8422762108b3ff89c477af8c`, version 1) is
 supported, never depended on:
 
-- `OPENAI_PROMPT_ID` set → `prompt: { id, version }` is added to the request,
-  beside the full `instructions`. Unset → it is left out, and nothing else
-  changes.
+- **Off by default.** `prompt: { id, version }` is added beside the full
+  `instructions` only when `OPENAI_HOSTED_PROMPT_ENABLED` is exactly `true`,
+  `OPENAI_PROMPT_ID` is set, and `OPENAI_PROMPT_VERSION` pins the reviewed
+  version (`hostedPromptFromConfig`). Otherwise it is left out and nothing else
+  changes. Production holds an `OPENAI_PROMPT_ID` today; with this branch it
+  is ignored until someone reviews the prompt's text and switches it on.
 - OpenAI refuses the prompt (400, 404 or 422 — not found, retired, a bad
   version, or a variable it requires and RecoverEase does not send) → the
   same request is sent again without it, within the same time budget, and
@@ -163,19 +166,21 @@ this branch can be rolled back to it. Differences that matter:
 | | Production v31 | This branch |
 | --- | --- | --- |
 | Patient records | none | read as the patient, when asked |
-| `OPENAI_PROMPT_ID` | **ignored** on purpose | **sent** when set |
+| `OPENAI_PROMPT_ID` | **ignored** on purpose | ignored unless `OPENAI_HOSTED_PROMPT_ENABLED=true` with a pinned version |
+| Assigned doctor and clinic | not known | read as the patient, when asked |
 | Model when `OPENAI_MODEL` is unset | `gpt-4.1-mini` | not configured (503) |
 | `OPENAI_REASONING_EFFORT` | supported | not supported (the secret is not set) |
 | Output cap | 2500 tokens | 2500 tokens |
 | Quota / unknown model | not configured | not configured |
 | Transport | `fetch` | official SDK |
 
-**Release warning:** the production project already has an
-`OPENAI_PROMPT_ID` secret that v31 ignores. Deploying this branch as is would
-start sending that hosted prompt with every reply. Its text has not been
-reviewed, and how OpenAI orders it against `instructions` is not documented,
-so it could weaken the safety rules. Unset `OPENAI_PROMPT_ID` before
-deploying unless its text has been reviewed.
+**Hosted prompt in production:** the project has an `OPENAI_PROMPT_ID` secret
+(names checked 27 Nov 2026: `OPENAI_API_KEY`, `OPENAI_MODEL` and
+`OPENAI_PROMPT_ID` present; `OPENAI_PROMPT_VERSION` and
+`OPENAI_HOSTED_PROMPT_ENABLED` absent). Its text has not been reviewed. This
+branch does not send it: the hosted prompt needs
+`OPENAI_HOSTED_PROMPT_ENABLED=true` and a pinned version. Removing the unused
+secret is still recommended.
 
 ## Deployment requirements (not done)
 
@@ -183,11 +188,12 @@ deploying unless its text has been reviewed.
    secret `OPENAI_API_KEY` holds the new one. The project's current
    `OPENAI_API_KEY` secret was last updated 2026-11-12 and **is in live use by
    production v31 now**: if it is the exposed key, production is using it.
-2. `OPENAI_MODEL` is present as a secret; confirm it supports structured
-   outputs. **Unset `OPENAI_PROMPT_ID`** (see the release warning) unless the
-   hosted prompt's text has been reviewed. `OPENAI_PROMPT_VERSION` is not set.
+2. `OPENAI_MODEL` is present as a secret; confirm it names a model with
+   structured outputs (the evaluations used `gpt-4.1-mini`). Leave
+   `OPENAI_HOSTED_PROMPT_ENABLED` unset: the hosted prompt stays off for this
+   release. A secret being present does not prove it is correct.
 3. Owner approves the privacy points above.
-4. Run the 44-case evaluation with the new key (below) and review it.
+4. Run the 48-case evaluation with the new key (below) and review it.
 5. Ship the patient disclosure (`docs/chatbot-ai-disclosure-proposal.md`),
    or decide not to, before or with the deploy.
 6. Deploy `chatbot-reply` from the merged branch; smoke-test one question with
@@ -203,6 +209,7 @@ deploying unless its text has been reviewed.
 | Role from the database; non-patients refused (403) | `patient-context.ts` `resolveConversationPatient` |
 | Another patient's conversation id refused (403) before anything is read | same |
 | Patient id never taken from the request | `parseReplyRequest` |
+| Doctor id never taken from the request: the assigned doctor is the patient row's `doc_id`, read with the verified conversation; RLS (`doctor_select` via `is_my_doctor`, `clinic_select_member`) lets a patient see only their own doctor and clinic; the returned doctor is checked against it | `resolveConversationPatient`, store `careTeam` |
 | Records read as the patient: RLS (`can_access_patient`) applies to every row | `patient-record-store.ts`, `callerClient` |
 | Every query also filtered by the derived patient id; every returned row checked, and a foreign row fails the whole read | `patient-record-store.ts` (`RecordOwnershipError`) |
 | No service-role read of patient records | the store only gets the caller client |
@@ -245,6 +252,14 @@ ended by the clinic's date.
 - **Recovery roadmap** (`recovery_phase`, `recovery_activity`): current phases
   in order with kind, dates, linked goal and activities (done or not).
 - **Care status**: active, or discharged with the date.
+- **Assigned doctor and clinic** (`doctor`, `clinic`), for questions such as
+  "Who is my doctor?", "Which clinic am I registered with?" or "Kinsa akong
+  doktor?": the doctor's first and last name, specialty, whether the doctor is
+  still active, the clinic's name and whether it is active. Not the licence
+  number, the doctor's contact number, email, account or any id. The
+  patient's `doc_id` is required, so a doctor that cannot be read is
+  `unavailable`, never "no doctor". An inactive doctor is named as no longer
+  active, with no replacement suggested.
 
 No database migration was needed.
 
@@ -388,9 +403,34 @@ names only patients (not registered healthcare professionals) and CF-15 gives
 the next appointment but not that reminders arrive in Notifications. Clinical
 cases still need a clinician's review whatever the verdict.
 
-**A third live run is required** before deployment: the fixes above are again
-prompt rules and record notes (except the 911 guard, which is code), and only
-real responses show whether the model follows them.
+### Third run, 26 Nov 2026 (gpt-4.1-mini, no hosted prompt, proposed clinic guidance)
+
+Report: `without-prompt-v3.md`. Result: **25 PASS, 0 FAIL, 19 REVIEW.** Every
+second-run finding passed. Of the REVIEW replies, five had a clear wording gap,
+now addressed by `APP_FACTS` (facts about RecoverEase, in code after the
+safety rules):
+
+| Case | Reply | Fix |
+| --- | --- | --- |
+| CF-2 | Named only patients | Patients registered by their clinic, their doctors and clinic administrators; each sees only what their role allows |
+| CF-3 | Fair, but no Guidance chat | The verified feature list, with this chat as general guidance, not medical advice |
+| CF-8 | "helps ensure the best healing outcome", "full recovery" | Never promise or imply a result; new check `keepPlanNoPromise` |
+| CF-15 | Gave the appointment, not how they are reminded | A reminder goes to Notifications about a day before; never say one was sent |
+| CF-27 | "view and manage your treatment plan and goals yourself" | Only the doctor changes the plan; the patient views it and updates their own progress; new check `onlyDoctorChangesPlan` |
+
+The other 14 REVIEW replies were read by hand and are acceptable as general
+guidance; the clinical ones still need a clinician's review.
+
+### Fourth run: not yet run
+
+The evaluation now has **48 cases**: the 44 above, plus N-15 "Who is my
+doctor?", N-16 "Which clinic am I registered with?", N-17 "Kinsa akong
+doktor?" (Cebuano), and N-18, the doctor lookup failing. It uses an invented
+doctor (Mara Velasco, Orthopaedics, Bayside Test Clinic). A dry run against a
+local stand-in for the API (no OpenAI call) confirmed all 48 run end to end,
+with `store: false`, no hosted prompt and the records attached. A live run is
+required before deployment; it needs a newly rotated key that was never
+exposed.
 
 Review of expected results against the new behaviour:
 

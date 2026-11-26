@@ -104,7 +104,7 @@ export function resolveConversationPatient(
 // Which records a question needs
 // ---------------------------------------------------------------------------
 
-export const RECORD_TOPICS = ['medications', 'appointments', 'treatment_plan', 'roadmap'] as const
+export const RECORD_TOPICS = ['medications', 'appointments', 'treatment_plan', 'roadmap', 'care_team'] as const
 export type RecordTopic = (typeof RECORD_TOPICS)[number]
 
 /**
@@ -132,6 +132,14 @@ const TOPIC_WORDS: Record<RecordTopic, readonly string[]> = {
   roadmap: [
     'roadmap', 'phase', 'activit', 'milestone', 'goal', 'progress', 'step', 'stage',
     'achiev', 'complet',
+  ],
+  // Their assigned doctor and clinic ("Kinsa akong doktor?", "Unsa nga clinic
+  // ko naka-register?"). Narrower than "doctor" alone: "can you message my
+  // doctor?" does not need the doctor's name.
+  care_team: [
+    'who is my doctor', "who's my doctor", 'my doctor\'s name', 'name of my doctor',
+    'which doctor', 'doktor', 'physician', 'specialist', 'clinic am i', 'my clinic',
+    'which clinic', 'what clinic', 'clinic ko', 'klinika', 'register', 'assigned',
   ],
 }
 
@@ -247,11 +255,27 @@ export type PhaseRecord = {
 }
 
 /**
+ * The patient's assigned doctor and that doctor's clinic: only what the app's
+ * own "Your doctor" section shows a patient, less the contact number. No
+ * licence number, email, account or ids.
+ */
+export type CareTeamRecord = {
+  doctorFirstName: string
+  doctorLastName: string
+  specialization: string | null
+  doctorActive: boolean
+  /** Null when the clinic could not be read with the doctor. */
+  clinicName: string | null
+  clinicActive: boolean | null
+}
+
+/**
  * The database side, bound to one patient (`patient-record-store.ts`). Every
- * method throws when its records cannot be read; an empty list means there
- * are none.
+ * method throws when its records cannot be read; an empty list (or a null
+ * care team) means there are none.
  */
 export type PatientRecordStore = {
+  careTeam(): Promise<CareTeamRecord | null>
   clinicTimeZone(): Promise<string>
   medications(): Promise<MedicationRecord[]>
   appointments(nowIso: string): Promise<{ upcoming: AppointmentRecord[]; recent: AppointmentRecord[] }>
@@ -285,6 +309,7 @@ export type PatientContext = {
   }>
   treatmentPlan: Section<PlanRecord[]>
   roadmap: Section<{ plans: PlanRecord[]; phases: PhaseRecord[] }>
+  careTeam: Section<CareTeamRecord>
 }
 
 const NOT_RETRIEVED = { state: 'not_retrieved' } as const
@@ -314,13 +339,23 @@ export async function loadPatientContext(input: {
   const wants = (topic: RecordTopic) => topics.has(topic)
   const needPlans = wants('treatment_plan') || wants('roadmap')
 
-  const [zone, medications, appointments, requests, plans] = await Promise.all([
+  const [zone, medications, appointments, requests, plans, careTeam] = await Promise.all([
     attempt(() => store.clinicTimeZone()),
     wants('medications') ? attempt(() => store.medications()) : null,
     wants('appointments') ? attempt(() => store.appointments(now.toISOString())) : null,
     wants('appointments') ? attempt(() => store.rescheduleRequests()) : null,
     needPlans ? attempt(() => store.treatmentPlans()) : null,
+    wants('care_team') ? attempt(() => store.careTeam()) : null,
   ])
+
+  const careTeamSection: PatientContext['careTeam'] =
+    careTeam === null
+      ? NOT_RETRIEVED
+      : !careTeam.ok
+        ? UNAVAILABLE
+        : careTeam.value === null
+          ? NONE_FOUND
+          : { state: 'available', data: careTeam.value }
 
   let roadmap: PatientContext['roadmap'] = NOT_RETRIEVED
   if (wants('roadmap')) {
@@ -369,6 +404,7 @@ export async function loadPatientContext(input: {
     appointments: appointmentSection,
     treatmentPlan: wants('treatment_plan') ? listSection(plans) : NOT_RETRIEVED,
     roadmap,
+    careTeam: careTeamSection,
   }
 }
 
@@ -380,6 +416,7 @@ export function contextStates(context: PatientContext | null): Record<string, Se
     appointments: context.appointments.state,
     treatment_plan: context.treatmentPlan.state,
     roadmap: context.roadmap.state,
+    care_team: context.careTeam.state,
   }
 }
 
@@ -528,6 +565,12 @@ export const SECTION_WORDS = {
     kind: 'recovery roadmap',
     page: 'Recovery roadmap',
     none: 'RecoverEase has no recovery roadmap for you yet.',
+  },
+  care_team: {
+    kind: 'assigned doctor and clinic',
+    page: 'My profile',
+    none:
+      'RecoverEase has no assigned doctor recorded for you. Please contact your clinic so they can check your registration.',
   },
 } as const
 
@@ -755,6 +798,23 @@ export function renderPatientContext(context: PatientContext): string {
         }
       : { status: 'Active care' }
 
+  const careTeam = sectionJson('care_team', context.careTeam, (team) => ({
+    assigned_doctor: [team.doctorFirstName, team.doctorLastName].map(recordText).filter(Boolean).join(' '),
+    specialty: recordText(team.specialization) ?? 'Not recorded',
+    ...(team.doctorActive
+      ? {}
+      : {
+          doctor_note:
+            'This doctor is no longer active in RecoverEase. Say so, and that their clinic can tell them ' +
+            'who is caring for them now. Do not suggest another doctor.',
+        }),
+    clinic: recordText(team.clinicName) ?? 'Could not be read just now',
+    ...(team.clinicActive === false
+      ? { clinic_note: 'This clinic is not active in RecoverEase. Suggest they contact the clinic directly.' }
+      : {}),
+    where_shown: 'My profile, under "Your doctor"',
+  }))
+
   const block = JSON.stringify(
     {
       retrieved_at: moment(context.retrievedAt.toISOString(), zone),
@@ -765,6 +825,7 @@ export function renderPatientContext(context: PatientContext): string {
       appointments,
       treatment_plan: treatmentPlan,
       recovery_roadmap: roadmap,
+      assigned_doctor_and_clinic: careTeam,
     },
     null,
     1,
@@ -825,6 +886,11 @@ Using the block:
   second one to make. To book a new visit they use "Book a follow-up" in
   Appointments. When they have no upcoming appointment, say so and mention
   "Book a follow-up".
+- "assigned_doctor_and_clinic" is the doctor RecoverEase has assigned to this
+  patient and that doctor's clinic. Give the doctor's name, specialty and
+  clinic as written; the patient can also see them in My profile under "Your
+  doctor". Never invent a doctor, clinic, phone number or email, and never
+  give details of any other doctor or patient.
 - "Confirmed" means the patient confirmed they will attend; "Scheduled" means
   it is booked.
 - Goal progress is the share of goals marked Achieved, as the app shows it.

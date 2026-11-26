@@ -101,7 +101,7 @@ Copy [`.env.example`](./.env.example) to `.env.local`.
 | `SUPABASE_SERVICE_ROLE_KEY` | Edge Function secrets | **Never** `VITE_`-prefixed, never in client code, never committed. Bypasses RLS entirely. |
 | `OPENAI_API_KEY` | Edge Function secrets | OpenAI, for the recovery guidance assistant. Without it (or without `OPENAI_MODEL`) the assistant returns 503 and the UI says so; everything else works. |
 | `OPENAI_MODEL` | Edge Function secrets | The OpenAI model every assistant request names. |
-| `OPENAI_PROMPT_ID`, `OPENAI_PROMPT_VERSION` | Edge Function secrets | Optional hosted prompt. Every instruction is assembled in code; the assistant works without these. |
+| `OPENAI_HOSTED_PROMPT_ENABLED`, `OPENAI_PROMPT_ID`, `OPENAI_PROMPT_VERSION` | Edge Function secrets | Optional hosted prompt, **off** unless enabled is `true` and a reviewed version is pinned. Every instruction is assembled in code; the assistant works without these. |
 | `ALLOWED_ORIGINS` | Edge Function secrets | CORS allowlist for the functions. |
 
 Anything prefixed `VITE_` is compiled into the browser bundle.

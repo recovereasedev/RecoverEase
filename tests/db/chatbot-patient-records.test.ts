@@ -106,6 +106,36 @@ describe('the guidance assistant’s patient records', () => {
     expect(clinics).toHaveLength(1)
   })
 
+  /** The store's careTeam query: the doctor named by the patient row, and its clinic. */
+  const CARE_TEAM = `
+    select d.doc_first_name, d.doc_last_name, d.doc_specialization, d.doc_is_active,
+           c.clinic_name, c.clinic_status
+      from public.doctor d
+      left join public.clinic c on c.clinic_id = d.clinic_id
+     where d.doc_id = $1`
+
+  it('lets a patient read their own assigned doctor and clinic', async () => {
+    const [team] = await database.asUser<Record<string, unknown>>(fx.aliceUserId, CARE_TEAM, [fx.doctorAId])
+    expect(team).toMatchObject({ doc_is_active: true, clinic_status: 'active' })
+    expect(typeof team!.doc_first_name).toBe('string')
+    expect(typeof team!.clinic_name).toBe('string')
+  })
+
+  it('gives a patient nothing of another patient’s doctor, even when asked by that doctor’s id', async () => {
+    // As if a request had supplied doctor B's id for Alice, or doctor A's for Carol.
+    expect(await database.asUser(fx.aliceUserId, CARE_TEAM, [fx.doctorBId])).toEqual([])
+    expect(await database.asUser(fx.carolUserId, CARE_TEAM, [fx.doctorAId])).toEqual([])
+  })
+
+  it('shows a deactivated assigned doctor as inactive rather than hiding them', async () => {
+    const [team] = await database.asUser<Record<string, unknown>>(fx.daveUserId, CARE_TEAM, [fx.doctorCId])
+    expect(team).toMatchObject({ doc_is_active: false })
+  })
+
+  it('gives an unauthenticated caller no doctor', async () => {
+    await expectDenied(() => database.asAnon(CARE_TEAM, [fx.doctorAId]))
+  })
+
   it('cannot be reached through another patient’s conversation', async () => {
     // The function proves ownership with the service key; this is the same
     // read the patient's own client would get, and it is empty.

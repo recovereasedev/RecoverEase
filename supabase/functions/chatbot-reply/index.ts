@@ -4,7 +4,7 @@ import {
   chronologicalWindow,
   hasUnansweredPatientMessage,
   HISTORY_LIMIT,
-  hostedPromptFrom,
+  hostedPromptFromConfig,
   toConversationInput,
 } from '../_shared/assistant.ts'
 import {
@@ -116,8 +116,10 @@ import {
  * Configuration (Supabase secrets; never sent to the browser):
  *   OPENAI_API_KEY         required
  *   OPENAI_MODEL           required - the model every request names
- *   OPENAI_PROMPT_ID       optional - a hosted prompt, added to each request
- *   OPENAI_PROMPT_VERSION  optional - that prompt's version
+ *   OPENAI_HOSTED_PROMPT_ENABLED  optional - "true" to use the hosted prompt;
+ *                          anything else, or unset, means none
+ *   OPENAI_PROMPT_ID       optional - the hosted prompt, used only when enabled
+ *   OPENAI_PROMPT_VERSION  required with it - the reviewed version, pinned
  * Every instruction the assistant follows is assembled here, in code
  * (_shared/assistant.ts). The hosted prompt is an addition, never a
  * dependency: without it, or when OpenAI refuses it, the request is answered
@@ -478,7 +480,7 @@ Deno.serve(async (request) => {
           const asPatient = callerClient(request) as unknown as RecordClient
           records = await timed('context', () =>
             loadPatientContext({
-              store: patientRecordStore(asPatient, patient.patId, dbDeadline),
+              store: patientRecordStore(asPatient, patient.patId, patient.docId, dbDeadline),
               topics,
               patient,
               now: new Date(),
@@ -504,10 +506,8 @@ Deno.serve(async (request) => {
             model: Deno.env.get('OPENAI_MODEL'),
             instructions,
             turns,
-            hostedPrompt: hostedPromptFrom(
-              Deno.env.get('OPENAI_PROMPT_ID'),
-              Deno.env.get('OPENAI_PROMPT_VERSION'),
-            ),
+            // Off unless deliberately switched on with a pinned version.
+            hostedPrompt: hostedPromptFromConfig((name) => Deno.env.get(name)),
             timeoutMs: providerDeadlineMs(Date.now() - startedAt),
           })
         } catch (error) {

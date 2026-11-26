@@ -658,7 +658,7 @@ the provider is called and survives every failure path.
 | --- | --- | --- |
 | Publishable (anon) key | `VITE_SUPABASE_PUBLISHABLE_KEY` | — it is public by design; RLS is what protects the data |
 | Service-role key | Supabase Edge Function secrets | Any `VITE_`-prefixed variable, any client file, the repo |
-| `OPENAI_API_KEY` (and `OPENAI_MODEL`, `OPENAI_PROMPT_ID`, `OPENAI_PROMPT_VERSION`) | Edge Function secrets | Same |
+| `OPENAI_API_KEY` (and `OPENAI_MODEL`, `OPENAI_HOSTED_PROMPT_ENABLED`, `OPENAI_PROMPT_ID`, `OPENAI_PROMPT_VERSION`) | Edge Function secrets | Same |
 
 Anything prefixed `VITE_` is compiled into the browser bundle. `src/lib/env.ts`
 declares only the two publishable values, so a service key cannot be read from

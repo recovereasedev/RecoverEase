@@ -126,7 +126,7 @@ caller checks, assistant, escalation).
 | `create-account` | Creates doctor and patient accounts with a temporary credential | service role |
 | `reset-account-password` | Reissues a temporary credential (Clinic Admin for their doctors, doctor for their patients) | service role |
 | `complete-password-setup` | Sets the new password and clears the forced-change flag in one call | service role |
-| `chatbot-reply` | The patient guidance assistant: clinic prompt, assistant switch, critical-concern escalation, validated reply | `OPENAI_API_KEY`, `OPENAI_MODEL` (optional `OPENAI_PROMPT_ID`/`_VERSION`) |
+| `chatbot-reply` | The patient guidance assistant: clinic prompt, assistant switch, critical-concern escalation, validated reply | `OPENAI_API_KEY`, `OPENAI_MODEL` (hosted prompt off unless `OPENAI_HOSTED_PROMPT_ENABLED`=true with `OPENAI_PROMPT_ID`/`_VERSION`) |
 
 Secrets are set as Edge Function secrets, never in the client. Variable names
 (no values) are in the [README](../README.md#environment-variables) and

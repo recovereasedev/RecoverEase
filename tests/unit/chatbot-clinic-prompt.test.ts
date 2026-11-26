@@ -4,6 +4,7 @@ import {
   buildSystemInstruction,
   DEFAULT_GUIDANCE,
   SAFETY_RULES,
+  APP_FACTS,
 } from '../../supabase/functions/_shared/assistant'
 import {
   loadClinicPrompt,
@@ -48,7 +49,7 @@ describe('the chatbot prompt for a conversation', () => {
     const prompt = await loadClinicPrompt(s, 'doc-west')
     expect(prompt).toBeNull()
     expect(buildSystemInstruction(prompt)).toBe(
-      `${DEFAULT_GUIDANCE}\n${SAFETY_RULES}\n${PATIENT_RECORD_RULES}`,
+      `${DEFAULT_GUIDANCE}\n${SAFETY_RULES}\n${APP_FACTS}\n${PATIENT_RECORD_RULES}`,
     )
   })
 
@@ -73,9 +74,9 @@ describe('the chatbot prompt for a conversation', () => {
     error.mockRestore()
   })
 
-  it('always follows the guidance with the safety rules, then the record rules', () => {
+  it('always follows the guidance with the safety rules, the app facts, then the record rules', () => {
     expect(buildSystemInstruction('Harborview guidance')).toBe(
-      `Harborview guidance\n${SAFETY_RULES}\n${PATIENT_RECORD_RULES}`,
+      `Harborview guidance\n${SAFETY_RULES}\n${APP_FACTS}\n${PATIENT_RECORD_RULES}`,
     )
   })
 })

@@ -74,6 +74,18 @@ describe('the reply request', () => {
     }
   })
 
+  it('ignores a doctor id in the body: the doctor comes from the patient row', () => {
+    expect(
+      parseReplyRequest({ chatSessionId: 'chat-alice', doctorId: 'doc-b', docId: 'doc-b', doc_id: 'doc-b', clinicId: 'clinic-b' }),
+    ).toEqual({ chatSessionId: 'chat-alice' })
+    const conversation = {
+      chat_session_id: 'chat-alice',
+      pat_id: 'pat-alice',
+      patient: { pat_id: 'pat-alice', user_id: 'user-alice', doc_id: 'doc-a', pat_care_status: null, pat_care_discharged_at: null },
+    }
+    expect(resolveConversationPatient(ALICE, conversation).docId).toBe('doc-a')
+  })
+
   it('reads the conversation id and nothing else - a patient id in the body is ignored', () => {
     expect(
       parseReplyRequest({ chatSessionId: 'chat-alice', patientId: 'pat-bob', pat_id: 'pat-bob', userId: 'user-bob' }),
@@ -152,7 +164,7 @@ describe('which records a question needs', () => {
 
   it('reads every kind for a question about the records themselves', () => {
     expect(topics('Why can’t you retrieve my records?')).toEqual(
-      ['appointments', 'medications', 'roadmap', 'treatment_plan'],
+      ['appointments', 'care_team', 'medications', 'roadmap', 'treatment_plan'],
     )
   })
 
@@ -260,6 +272,16 @@ const PHASES = [
   },
 ]
 
+/** A fictional doctor and clinic. */
+const CARE_TEAM = {
+  doctorFirstName: 'Mara',
+  doctorLastName: 'Velasco',
+  specialization: 'Orthopaedics',
+  doctorActive: true,
+  clinicName: 'Bayside Test Clinic',
+  clinicActive: true,
+}
+
 function store(overrides: Partial<PatientRecordStore> = {}): PatientRecordStore {
   return {
     clinicTimeZone: vi.fn(async () => 'Asia/Manila'),
@@ -282,6 +304,7 @@ function store(overrides: Partial<PatientRecordStore> = {}): PatientRecordStore 
     ]),
     treatmentPlans: vi.fn(async () => PLANS),
     roadmapPhases: vi.fn(async () => PHASES),
+    careTeam: vi.fn(async () => CARE_TEAM),
     ...overrides,
   }
 }
@@ -338,6 +361,7 @@ describe('loading the records', () => {
         rescheduleRequests: failing(),
         treatmentPlans: failing(),
         roadmapPhases: failing(),
+        careTeam: failing(),
       },
     )
     expect(contextStates(context)).toEqual({
@@ -345,6 +369,7 @@ describe('loading the records', () => {
       appointments: 'unavailable',
       treatment_plan: 'unavailable',
       roadmap: 'unavailable',
+      care_team: 'not_retrieved',
     })
     expect(context.timeZone).toBeNull()
   })
@@ -625,6 +650,66 @@ describe('the records the model is shown', () => {
     expect(appointments.upcoming[1].reschedule_request).toBeNull()
   })
 
+  it.each([
+    ['Who is my doctor?'],
+    ['Who is my assigned doctor?'],
+    ['Which clinic am I registered with?'],
+    ['Kinsa akong doktor?'],
+    ['Unsa nga clinic ko naka-register?'],
+  ])('looks up the assigned doctor and clinic for: %s', (question) => {
+    expect(topicsForQuestion([question]).has('care_team')).toBe(true)
+  })
+
+  it('shows the assigned doctor and clinic, and nothing private', async () => {
+    const s = store({
+      careTeam: vi.fn(async () => ({
+        ...CARE_TEAM,
+        // Fields a careless store might pass on: they must never reach the model.
+        ...({ licenceNo: 'LIC-12345', contactNo: '+63 900 000 0000', email: 'mara@example.invalid', docId: 'doc-a', userId: 'user-doc' } as object),
+      })),
+    })
+    const context = await load(['care_team'], s)
+    const team = block(context).assigned_doctor_and_clinic
+    expect(team).toEqual({
+      status: 'available',
+      assigned_doctor: 'Mara Velasco',
+      specialty: 'Orthopaedics',
+      clinic: 'Bayside Test Clinic',
+      where_shown: 'My profile, under "Your doctor"',
+    })
+    const text = renderPatientContext(context)
+    for (const secret of ['LIC-12345', '+63 900', 'mara@example', 'doc-a', 'user-doc', 'user-alice', 'pat-alice']) {
+      expect(text).not.toContain(secret)
+    }
+  })
+
+  it('says a doctor who is no longer active is no longer active, and invents no replacement', async () => {
+    const team = block(
+      await load(['care_team'], store({ careTeam: vi.fn(async () => ({ ...CARE_TEAM, doctorActive: false, clinicActive: false })) })),
+    ).assigned_doctor_and_clinic
+    expect(team.doctor_note).toMatch(/no longer active.*Do not suggest another doctor/)
+    expect(team.clinic_note).toMatch(/not active/)
+  })
+
+  it('tells "no doctor recorded" apart from "could not be read"', async () => {
+    const none = block(await load(['care_team'], store({ careTeam: vi.fn(async () => null) }))).assigned_doctor_and_clinic
+    expect(none.status).toBe('none_found')
+    expect(none.note).toMatch(/SUCCEEDED and found NO assigned doctor and clinic/)
+    expect(none.note).toMatch(/no assigned doctor recorded for you/)
+
+    const failed = block(await load(['care_team'], store({ careTeam: failing() }))).assigned_doctor_and_clinic
+    expect(failed.status).toBe('unavailable')
+    expect(failed.note).toMatch(/lookup FAILED.*does NOT mean/)
+    expect(failed.note).toMatch(/My profile/)
+  })
+
+  it('does not look up the doctor for a question that does not need it', async () => {
+    const s = store()
+    const context = await load(['medications'], s)
+    expect(s.careTeam).not.toHaveBeenCalled()
+    expect(block(context).assigned_doctor_and_clinic.status).toBe('not_retrieved')
+  })
+
   it('states when the records were read, in the clinic’s time', async () => {
     const text = renderPatientContext(await load(['medications']))
     expect(text).toContain('Thursday, November 26, 2026, 10:00 AM (Asia/Manila)')
@@ -737,6 +822,10 @@ describe('the system instruction with records', () => {
     ]],
     ['CF-16 rescheduling', PATIENT_RECORD_RULES, ['"Request\n  new time"', 'one request']],
     ['N-10 booking', PATIENT_RECORD_RULES, ['"Book a follow-up"']],
+    ['N-15 to N-18 assigned doctor', PATIENT_RECORD_RULES, [
+      'Never invent a doctor, clinic, phone number or email',
+      'never\n  give details of any other doctor or patient',
+    ]],
     ['N-11 discharge', PATIENT_RECORD_RULES, [
       'say that\n  their doctor ended their care before anything else',
       'until their doctor reopens their care',

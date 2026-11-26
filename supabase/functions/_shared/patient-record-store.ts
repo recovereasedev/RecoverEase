@@ -1,5 +1,6 @@
 import type {
   AppointmentRecord,
+  CareTeamRecord,
   MedicationRecord,
   PatientRecordStore,
   PhaseRecord,
@@ -78,6 +79,8 @@ const embedded = (value: unknown): Row | null =>
 export function patientRecordStore(
   client: RecordClient,
   patId: string,
+  /** The patient row's own doc_id, from the verified conversation. */
+  docId: string | null,
   deadline: () => AbortSignal,
 ): PatientRecordStore {
   const owned = (value: unknown) => {
@@ -92,6 +95,40 @@ export function patientRecordStore(
       )
       if (found.length !== 1) throw new Error('clinic not found')
       return text(found[0]!.clinic_timezone)
+    },
+
+    async careTeam(): Promise<CareTeamRecord | null> {
+      // `docId` is the patient row's own doc_id, read with the conversation
+      // the caller was proved to own - never a value from the request. RLS
+      // (doctor_select: app_private.is_my_doctor; clinic_select_member) lets
+      // a patient read only their own doctor and that doctor's clinic. No
+      // licence number, contact number, account or email is selected.
+      if (!docId) return null
+      const found = await rows(
+        client
+          .from('doctor')
+          .select(
+            'doc_id, doc_first_name, doc_last_name, doc_specialization, doc_is_active, ' +
+              'clinic ( clinic_name, clinic_status )',
+          )
+          .eq('doc_id', docId)
+          .limit(2)
+          .abortSignal(deadline()),
+      )
+      // doc_id is required on every patient, so a doctor that cannot be seen
+      // is a failed read, never "no doctor".
+      if (found.length !== 1) throw new Error('doctor not found')
+      const row = found[0]!
+      if (row.doc_id !== docId) throw new RecordOwnershipError()
+      const clinic = embedded(row.clinic)
+      return {
+        doctorFirstName: text(row.doc_first_name),
+        doctorLastName: text(row.doc_last_name),
+        specialization: textOrNull(row.doc_specialization),
+        doctorActive: row.doc_is_active !== false,
+        clinicName: clinic ? textOrNull(clinic.clinic_name) : null,
+        clinicActive: clinic ? clinic.clinic_status !== 'inactive' : null,
+      }
     },
 
     async medications(): Promise<MedicationRecord[]> {

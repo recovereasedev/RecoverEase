@@ -45,6 +45,7 @@ function fakeClient(answers: Record<string, unknown[] | Error>) {
 }
 
 const PAT = 'pat-alice'
+const DOC = 'doc-a'
 const deadline = () => new AbortController().signal
 
 const columnsOf = (query: Query) =>
@@ -53,7 +54,7 @@ const columnsOf = (query: Query) =>
 describe('the patient record store', () => {
   it('filters every patient query by the patient the conversation belongs to', async () => {
     const { client, queries } = fakeClient({})
-    const store = patientRecordStore(client, PAT, deadline)
+    const store = patientRecordStore(client, PAT, DOC, deadline)
     await store.medications()
     await store.appointments('2026-11-26T02:00:00Z')
     await store.rescheduleRequests()
@@ -79,20 +80,20 @@ describe('the patient record store', () => {
 
   it('reads the roadmap only for the plans it was given', async () => {
     const { client, queries } = fakeClient({})
-    await patientRecordStore(client, PAT, deadline).roadmapPhases(['plan-1'])
+    await patientRecordStore(client, PAT, DOC, deadline).roadmapPhases(['plan-1'])
     expect(queries[0]!.calls).toContainEqual({ method: 'in', args: ['treatment_plan_id', ['plan-1']] })
     expect(queries[0]!.calls).toContainEqual({ method: 'is', args: ['recovery_phase_archived_at', null] })
   })
 
   it('reads no roadmap at all without a plan', async () => {
     const { client, queries } = fakeClient({})
-    expect(await patientRecordStore(client, PAT, deadline).roadmapPhases([])).toEqual([])
+    expect(await patientRecordStore(client, PAT, DOC, deadline).roadmapPhases([])).toEqual([])
     expect(queries).toHaveLength(0)
   })
 
   it('selects no names, contact details, notes or patient-written reasons', async () => {
     const { client, queries } = fakeClient({})
-    const store = patientRecordStore(client, PAT, deadline)
+    const store = patientRecordStore(client, PAT, DOC, deadline)
     await store.medications()
     await store.appointments('2026-11-26T02:00:00Z')
     await store.rescheduleRequests()
@@ -122,7 +123,7 @@ describe('the patient record store', () => {
     ['treatmentPlans', 'treatment_plan', { pat_id: 'pat-bob', treatment_goal: [] }],
   ] as const)('refuses the whole read when %s returns another patient’s row', async (method, table, row) => {
     const { client } = fakeClient({ [table]: [row] })
-    await expect(patientRecordStore(client, PAT, deadline)[method]()).rejects.toBeInstanceOf(
+    await expect(patientRecordStore(client, PAT, DOC, deadline)[method]()).rejects.toBeInstanceOf(
       RecordOwnershipError,
     )
   })
@@ -130,20 +131,20 @@ describe('the patient record store', () => {
   it('refuses another patient’s appointment', async () => {
     const { client } = fakeClient({ appointment: [{ appointment_id: 'a', pat_id: 'pat-bob' }] })
     await expect(
-      patientRecordStore(client, PAT, deadline).appointments('2026-11-26T02:00:00Z'),
+      patientRecordStore(client, PAT, DOC, deadline).appointments('2026-11-26T02:00:00Z'),
     ).rejects.toBeInstanceOf(RecordOwnershipError)
   })
 
   it('refuses a roadmap phase of a plan it was not given', async () => {
     const { client } = fakeClient({ recovery_phase: [{ treatment_plan_id: 'plan-bob' }] })
     await expect(
-      patientRecordStore(client, PAT, deadline).roadmapPhases(['plan-1']),
+      patientRecordStore(client, PAT, DOC, deadline).roadmapPhases(['plan-1']),
     ).rejects.toBeInstanceOf(RecordOwnershipError)
   })
 
   it('throws, without the database’s wording, when a read fails', async () => {
     const { client } = fakeClient({ medication_schedule: new Error('permission denied for pat-alice') })
-    const failure = patientRecordStore(client, PAT, deadline).medications()
+    const failure = patientRecordStore(client, PAT, DOC, deadline).medications()
     await expect(failure).rejects.toThrow('records could not be read')
     await expect(failure).rejects.not.toThrow(/pat-alice/)
   })
@@ -189,7 +190,7 @@ describe('the patient record store', () => {
         },
       ],
     })
-    const store = patientRecordStore(client, PAT, deadline)
+    const store = patientRecordStore(client, PAT, DOC, deadline)
     expect(await store.medications()).toEqual([
       {
         name: 'Amoxicillin',
@@ -208,8 +209,60 @@ describe('the patient record store', () => {
 
   it('reads the clinic time zone only when exactly one clinic is visible', async () => {
     const one = fakeClient({ clinic: [{ clinic_timezone: 'Asia/Manila' }] })
-    expect(await patientRecordStore(one.client, PAT, deadline).clinicTimeZone()).toBe('Asia/Manila')
+    expect(await patientRecordStore(one.client, PAT, DOC, deadline).clinicTimeZone()).toBe('Asia/Manila')
     const two = fakeClient({ clinic: [{ clinic_timezone: 'Asia/Manila' }, { clinic_timezone: 'UTC' }] })
-    await expect(patientRecordStore(two.client, PAT, deadline).clinicTimeZone()).rejects.toThrow()
+    await expect(patientRecordStore(two.client, PAT, DOC, deadline).clinicTimeZone()).rejects.toThrow()
+  })
+})
+
+describe('the assigned doctor and clinic', () => {
+  const row = {
+    doc_id: DOC,
+    doc_first_name: 'Mara',
+    doc_last_name: 'Velasco',
+    doc_specialization: 'Orthopaedics',
+    doc_is_active: true,
+    clinic: { clinic_name: 'Bayside Test Clinic', clinic_status: 'active' },
+  }
+
+  it('reads only the verified doctor, and no private field', async () => {
+    const { client, queries } = fakeClient({ doctor: [row] })
+    expect(await patientRecordStore(client, PAT, DOC, deadline).careTeam()).toEqual({
+      doctorFirstName: 'Mara',
+      doctorLastName: 'Velasco',
+      specialization: 'Orthopaedics',
+      doctorActive: true,
+      clinicName: 'Bayside Test Clinic',
+      clinicActive: true,
+    })
+    const query = queries.find((q) => q.table === 'doctor')!
+    expect(query.calls).toContainEqual({ method: 'eq', args: ['doc_id', DOC] })
+    const columns = columnsOf(query)
+    for (const private_ of ['*', 'doc_license_no', 'doc_contact_no', 'user_id', 'email', 'clinic_id']) {
+      expect(columns).not.toContain(private_)
+    }
+  })
+
+  it('refuses the read when another doctor comes back', async () => {
+    const { client } = fakeClient({ doctor: [{ ...row, doc_id: 'doc-b' }] })
+    await expect(patientRecordStore(client, PAT, DOC, deadline).careTeam()).rejects.toBeInstanceOf(RecordOwnershipError)
+  })
+
+  it('treats a doctor it cannot see as a failed read, never as "no doctor"', async () => {
+    const { client } = fakeClient({ doctor: [] })
+    await expect(patientRecordStore(client, PAT, DOC, deadline).careTeam()).rejects.toThrow()
+  })
+
+  it('has no doctor when the patient has none, without querying', async () => {
+    const { client, queries } = fakeClient({ doctor: [row] })
+    expect(await patientRecordStore(client, PAT, null, deadline).careTeam()).toBeNull()
+    expect(queries).toEqual([])
+  })
+
+  it('reports an inactive doctor and clinic, and a clinic it could not read', async () => {
+    const inactive = fakeClient({ doctor: [{ ...row, doc_is_active: false, clinic: { clinic_name: 'Bayside Test Clinic', clinic_status: 'inactive' } }] })
+    expect(await patientRecordStore(inactive.client, PAT, DOC, deadline).careTeam()).toMatchObject({ doctorActive: false, clinicActive: false })
+    const noClinic = fakeClient({ doctor: [{ ...row, clinic: null }] })
+    expect(await patientRecordStore(noClinic.client, PAT, DOC, deadline).careTeam()).toMatchObject({ clinicName: null, clinicActive: null })
   })
 })
