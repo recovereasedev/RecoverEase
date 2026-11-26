@@ -99,7 +99,9 @@ Copy [`.env.example`](./.env.example) to `.env.local`.
 | `VITE_SUPABASE_URL` | Browser | Project URL |
 | `VITE_SUPABASE_PUBLISHABLE_KEY` | Browser | Publishable (anon) key. Public by design — RLS is what protects the data. |
 | `SUPABASE_SERVICE_ROLE_KEY` | Edge Function secrets | **Never** `VITE_`-prefixed, never in client code, never committed. Bypasses RLS entirely. |
-| `GEMINI_API_KEY` | Edge Function secrets | Google Gemini, for the recovery guidance assistant. Without it the assistant returns 503 and the UI says so; everything else works. |
+| `OPENAI_API_KEY` | Edge Function secrets | OpenAI, for the recovery guidance assistant. Without it (or without `OPENAI_MODEL`) the assistant returns 503 and the UI says so; everything else works. |
+| `OPENAI_MODEL` | Edge Function secrets | The OpenAI model every assistant request names. |
+| `OPENAI_PROMPT_ID`, `OPENAI_PROMPT_VERSION` | Edge Function secrets | Optional hosted prompt. Every instruction is assembled in code; the assistant works without these. |
 | `ALLOWED_ORIGINS` | Edge Function secrets | CORS allowlist for the functions. |
 
 Anything prefixed `VITE_` is compiled into the browser bundle.
@@ -211,11 +213,12 @@ Policy, immutable asset caching and the usual security headers.
 serves the same deployment; both are on the Edge Function CORS allow-list, so
 older links keep working.
 
-The recovery guidance assistant runs on **Google Gemini** and is verified end
-to end in production: a real request returns a structured reply, validated with
-Zod before anything is stored or rendered. The browser never calls the
-provider. If Gemini is unavailable the patient's message is still saved and the
-UI says so rather than inventing an answer.
+The recovery guidance assistant runs on the **OpenAI Responses API** (from PR
+#93; production ran on Google Gemini until that change is deployed). Every reply
+is structured output, validated with Zod before anything is stored or rendered.
+The browser never calls the provider. If OpenAI is unavailable the patient's
+message is still saved and the UI says so rather than inventing an answer. See
+`docs/chatbot-patient-records.md`.
 
 One item is outstanding, and it is external rather than code:
 

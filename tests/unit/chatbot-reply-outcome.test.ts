@@ -69,6 +69,7 @@ describe('replyLogLine', () => {
       history_messages: null,
       escalation_step: null,
       record_sections: null,
+      hosted_prompt: null,
     })
     expect(
       JSON.parse(replyLogLine({ requestId: 'r-2', status: 200, code: null, durationMs: 9_000 })),
@@ -97,6 +98,7 @@ describe('replyLogLine', () => {
         'phases_ms',
         'provider_status',
         'record_sections',
+        'hosted_prompt',
         'request_bytes',
         'request_id',
         'response_bytes',
@@ -114,24 +116,24 @@ describe('replyLogLine', () => {
       durationMs: 9_412.6,
       phases: {
         auth: 120.4,
-        gemini_headers: 8_000,
-        gemini_body: 12,
+        provider_headers: 8_000,
+        provider_body: 12,
         persistence: 30,
         escalation: null,
         // A phase name nobody declared, carrying text.
         ...({ 'Is swelling normal?': 5 } as object),
       },
       providerStatus: 200,
-      model: 'gemini-3.8-flash',
+      model: 'gpt-test-model',
       requestBytes: 7_210,
       responseBytes: 512,
       historyMessages: 3,
     })
     const parsed = JSON.parse(line)
-    expect(parsed.phases_ms).toEqual({ auth: 120, gemini_headers: 8_000, gemini_body: 12, persistence: 30 })
+    expect(parsed.phases_ms).toEqual({ auth: 120, provider_headers: 8_000, provider_body: 12, persistence: 30 })
     expect(parsed).toMatchObject({
       provider_status: 200,
-      model: 'gemini-3.8-flash',
+      model: 'gpt-test-model',
       request_bytes: 7_210,
       response_bytes: 512,
       history_messages: 3,
@@ -193,7 +195,7 @@ describe('chatbot-reply', () => {
   })
 
   it('reports the provider being too slow as a timeout, not as unavailable', () => {
-    // The provider module decides (tests/unit/gemini-call.test.ts); the
+    // The provider module decides (tests/unit/openai-call.test.ts); the
     // handler passes its code and status through unchanged.
     expect(source).toContain('throw new ReplyError(error.message, error.status, error.code)')
   })
@@ -232,6 +234,6 @@ describe('chatbot-reply', () => {
       ".select('chat_message_id, chat_message_role, chat_message_content, chat_message_created_at')",
     )
     // The provider still receives role and text only.
-    expect(source).toContain('const turns = toInteractionInput(history)')
+    expect(source).toContain('const turns = toConversationInput(history)')
   })
 })

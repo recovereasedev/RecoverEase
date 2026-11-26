@@ -13,8 +13,7 @@ import { PATIENT_RECORD_RULES } from './patient-context.ts'
  * toolchain — the parts most likely to be wrong are also the parts hardest to
  * exercise against a live provider.
  *
- * Provider: Google Gemini, Interactions API. There is no Anthropic dependency
- * anywhere in RecoverEase.
+ * Provider: OpenAI, Responses API (`openai-call.ts`).
  */
 
 // ---------------------------------------------------------------------------
@@ -114,6 +113,8 @@ export const ASSISTANT_RESPONSE_JSON_SCHEMA = {
     should_contact_provider: { type: 'boolean' },
   },
   required: ['message', 'safety_level', 'should_contact_provider'],
+  // Required by OpenAI's strict structured outputs.
+  additionalProperties: false,
 } as const
 
 /**
@@ -125,35 +126,36 @@ export function raisesCriticalConcern(reply: AssistantReply): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// Talking to the Interactions API
+// Talking to the OpenAI Responses API
 // ---------------------------------------------------------------------------
 
-export const GEMINI_MODEL = 'gemini-3.8-flash'
-export const GEMINI_ENDPOINT =
-  'https://generativelanguage.googleapis.com/v1beta/interactions'
-/** Pins the request/response shape; the API is versioned by date. */
-export const GEMINI_API_REVISION = '2026-05-20'
-
 /**
- * How much the model reasons before it answers. Left unset, Gemini 3.8 Flash
- * reasons at `medium`, and from 20 October 2026 every production request at
- * that level went past 30 s without even sending its response headers - the
- * same deployment and clinic prompt had answered in 8-13 s days before. The
- * provider documents `low` as the setting for latency-critical work
- * (`minimal` is rejected by this model). The rules the assistant follows are
- * unchanged: they are in the system instruction, the reply is still held to
- * the schema, and every reply is still checked for a critical concern.
+ * The provider: OpenAI, Responses API (`POST /v1/responses`), through the
+ * official SDK (`openai-call.ts`). The model is configuration
+ * (`OPENAI_MODEL`), not code, so it can be changed without a deploy.
+ *
+ * A hosted prompt (`OPENAI_PROMPT_ID`, optionally `OPENAI_PROMPT_VERSION`) is
+ * supported and OPTIONAL. Everything RecoverEase depends on - the clinic's
+ * guidance, the safety rules, the record rules, the patient's records and
+ * the reply schema - is sent from this code on every request, so the
+ * assistant behaves the same with or without it, and keeps working when
+ * OpenAI retires reusable prompt objects (shutdown announced for
+ * 30 November 2026). No variables are sent to the hosted prompt: nothing it
+ * declares is relied on.
  */
-export const GEMINI_THINKING_LEVEL = 'low'
+
+/** The name the reply schema is sent under. */
+export const REPLY_FORMAT_NAME = 'recovery_guidance_reply'
 
 export type StoredMessage = {
   chat_message_role: string | null
   chat_message_content: string | null
 }
 
-export type InteractionTurn = {
-  type: 'user_input' | 'model_output'
-  content: { type: 'text'; text: string }[]
+/** One turn of the conversation, as the Responses API takes it in `input`. */
+export type ConversationTurn = {
+  role: 'user' | 'assistant'
+  content: string
 }
 
 /**
@@ -163,54 +165,31 @@ export type InteractionTurn = {
  * else: not the patient's name, id, date of birth, contact details, other
  * conversations, other patients, or anything from the audit trail. (The
  * records a question needs - medicines, appointments, plan, roadmap - travel
- * separately, in the system instruction, chosen field by field in
- * `patient-context.ts`.) The caller passes rows straight from the
- * database, so this function is the boundary: it reads exactly two fields off
- * each row and discards the rest, which means adding a column to
- * `chat_message` later cannot silently widen what leaves the system.
+ * separately, in the instructions, chosen field by field in
+ * `patient-context.ts`.) The caller passes rows straight from the database,
+ * so this function is the boundary: it reads exactly two fields off each row
+ * and discards the rest, which means adding a column to `chat_message` later
+ * cannot silently widen what leaves the system.
  */
-export function toInteractionInput(
-  history: readonly StoredMessage[],
-): InteractionTurn[] {
-  const turns: InteractionTurn[] = []
-
+export function toConversationInput(history: readonly StoredMessage[]): ConversationTurn[] {
+  const turns: ConversationTurn[] = []
   for (const row of history) {
     const text = row.chat_message_content?.trim()
     if (!text) continue
-
     turns.push({
-      // `model_output` for a prior assistant turn - the same type the API
-      // uses for the step it returns, because history is resent as received.
-      //
-      // Worth pinning down, because two plausible-looking alternatives are
-      // both rejected: `model_response` and `model_response_step`. The
-      // documentation showed each of them, and the provider accepts neither.
-      // The failure only appears once a conversation already contains an
-      // assistant turn, so the first message in any conversation succeeds and
-      // the follow-up fails - which is why it survived until a real
-      // multi-turn request was made.
-      type: row.chat_message_role === 'patient' ? 'user_input' : 'model_output',
-      content: [{ type: 'text', text }],
+      role: row.chat_message_role === 'patient' ? 'user' : 'assistant',
+      content: text,
     })
   }
-
   return turns
 }
 
 /**
- * A conversation is only answerable if the patient spoke last.
- *
- * The provider rejects a request whose final turn is a model output, which is
- * reasonable - there is no question outstanding. In normal use the UI appends
- * the patient's message before calling, so this never trips; it trips on a
- * retry that adds no new message, and without this guard that becomes an
- * opaque provider error instead of the plain fact that there is nothing to
- * reply to.
+ * A conversation is only answerable if the patient spoke last. A retry that
+ * adds no new message would otherwise ask the model to answer its own reply.
  */
-export function hasUnansweredPatientMessage(
-  turns: readonly InteractionTurn[],
-): boolean {
-  return turns.at(-1)?.type === 'user_input'
+export function hasUnansweredPatientMessage(turns: readonly ConversationTurn[]): boolean {
+  return turns.at(-1)?.role === 'user'
 }
 
 /**
@@ -238,25 +217,71 @@ export function chronologicalWindow<T>(
   return newestFirst.slice(0, limit).reverse()
 }
 
-export function buildInteractionRequest(input: {
-  systemInstruction: string
-  turns: InteractionTurn[]
-}): Record<string, unknown> {
-  return {
-    model: GEMINI_MODEL,
-    system_instruction: input.systemInstruction,
-    input: input.turns,
-    // Stateless: the transcript lives in RecoverEase's database, and replaying
-    // it per request is what keeps the provider from retaining a copy of a
-    // patient's conversation. Supplying history in `input` requires this.
+/** A hosted prompt reference, when one is configured. */
+export type HostedPrompt = { id: string; version?: string }
+
+/**
+ * The hosted prompt from configuration, or null. A blank id means none; a
+ * blank version means the prompt's current version.
+ */
+export function hostedPromptFrom(
+  id: string | null | undefined,
+  version: string | null | undefined,
+): HostedPrompt | null {
+  const promptId = id?.trim()
+  if (!promptId) return null
+  const promptVersion = version?.trim()
+  return promptVersion ? { id: promptId, version: promptVersion } : { id: promptId }
+}
+
+/**
+ * The Responses API request for one reply.
+ *
+ * - `instructions` carries the whole system instruction from
+ *   `buildSystemInstruction`: clinic guidance, then the safety rules, then
+ *   the record rules, then the records. The API gives `instructions` priority
+ *   over the messages in `input`, which is where the patient's words are.
+ * - `input` is this conversation, role and text only.
+ * - `store: false`: OpenAI keeps no retrievable copy of the response as
+ *   application state; the transcript lives in RecoverEase's database and is
+ *   replayed per request. (This alone is not zero retention: see
+ *   docs/chatbot-patient-records.md.)
+ * - `text.format`: the reply schema, strict.
+ * - `prompt`: only when one is configured, with no variables.
+ *
+ * Nothing that identifies the patient is set: no `user`, no
+ * `safety_identifier`, no `metadata`, no `prompt_cache_key`.
+ */
+export function buildResponsesRequest(input: {
+  model: string
+  instructions: string
+  turns: readonly ConversationTurn[]
+  hostedPrompt?: HostedPrompt | null
+}) {
+  const request = {
+    model: input.model,
+    instructions: input.instructions,
+    input: input.turns.map((turn) => ({ role: turn.role, content: turn.content })),
     store: false,
-    generation_config: { thinking_level: GEMINI_THINKING_LEVEL },
-    response_format: {
-      type: 'text',
-      mime_type: 'application/json',
-      schema: ASSISTANT_RESPONSE_JSON_SCHEMA,
+    text: {
+      format: {
+        type: 'json_schema' as const,
+        name: REPLY_FORMAT_NAME,
+        schema: ASSISTANT_RESPONSE_JSON_SCHEMA as unknown as Record<string, unknown>,
+        strict: true,
+      },
     },
   }
+  return input.hostedPrompt ? { ...request, prompt: { ...input.hostedPrompt } } : request
+}
+
+export type ResponsesRequest = ReturnType<typeof buildResponsesRequest>
+
+/** The same request without the hosted prompt: the fallback when it is unavailable. */
+export function withoutHostedPrompt(request: ResponsesRequest): ResponsesRequest {
+  if (!('prompt' in request)) return request
+  const { prompt: _prompt, ...rest } = request
+  return rest
 }
 
 // ---------------------------------------------------------------------------
@@ -270,42 +295,27 @@ function isRecord(value: unknown): value is UnknownRecord {
 }
 
 /**
- * Pulls the model's text out of an Interactions response.
- *
- * The documentation describes two ways to reach it: an `output_text`
- * convenience field, and walking the `steps` timeline for the model's own
- * output. Both are handled, because a response shape that shifts under us
- * should degrade into a clean "assistant unavailable" rather than a crash or,
- * far worse, a confident empty answer.
+ * The model's text from a Responses API response: the `output_text` parts of
+ * its `message` output items, joined. Read from `output` itself rather than
+ * the SDK's `output_text` convenience, so a refusal is noticed instead of
+ * being read as an empty answer.
  */
-export function extractOutputText(payload: unknown): string | null {
-  if (!isRecord(payload)) return null
-
-  const interaction = isRecord(payload.interaction) ? payload.interaction : payload
-
-  const direct = interaction.output_text ?? interaction.outputText
-  if (typeof direct === 'string' && direct.trim() !== '') return direct
-
-  const steps = interaction.steps
-  if (!Array.isArray(steps)) return null
-
+export function responseOutputText(payload: unknown): { text: string | null; refused: boolean } {
+  if (!isRecord(payload) || !Array.isArray(payload.output)) return { text: null, refused: false }
   const collected: string[] = []
-  for (const step of steps) {
-    if (!isRecord(step)) continue
-    // Only the model's own output. A step recording the input we sent is not
-    // an answer, and treating it as one would echo the patient back to them.
-    if (step.type !== 'model_output' && step.type !== 'model_response') continue
-
-    const content = step.content
-    if (!Array.isArray(content)) continue
-
-    for (const part of content) {
-      if (isRecord(part) && typeof part.text === 'string') collected.push(part.text)
+  let refused = false
+  for (const item of payload.output) {
+    // Only the assistant's own messages: reasoning items and anything else
+    // are not the answer.
+    if (!isRecord(item) || item.type !== 'message' || !Array.isArray(item.content)) continue
+    for (const part of item.content) {
+      if (!isRecord(part)) continue
+      if (part.type === 'refusal') refused = true
+      if (part.type === 'output_text' && typeof part.text === 'string') collected.push(part.text)
     }
   }
-
   const joined = collected.join('').trim()
-  return joined === '' ? null : joined
+  return { text: joined === '' ? null : joined, refused }
 }
 
 export class AssistantReplyError extends Error {

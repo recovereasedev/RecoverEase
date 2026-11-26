@@ -35,7 +35,7 @@ export type ReplyFailure =
  * How long the browser waits for a reply before giving up.
  *
  * Longer than the server's own budget, so a reply the server is still
- * preparing is not abandoned by the browser. `chatbot-reply` gives Gemini
+ * preparing is not abandoned by the browser. `chatbot-reply` gives the provider
  * what is left of a 55 s window (at most 50 s, `_shared/reply-outcome.ts`)
  * and normally answers within about 57 s of starting; on top of that come
  * the CORS preflight (3.7 s measured on a cold start in production), the

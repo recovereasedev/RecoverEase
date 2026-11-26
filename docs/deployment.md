@@ -184,10 +184,11 @@ supabase functions deploy create-account
 supabase functions deploy chatbot-reply
 
 supabase secrets set ALLOWED_ORIGINS="https://<your-app>.vercel.app"
-supabase secrets set GEMINI_API_KEY="..."
+supabase secrets set OPENAI_API_KEY="..." OPENAI_MODEL="..."
+# optional, transitional: supabase secrets set OPENAI_PROMPT_ID="pmpt_..." OPENAI_PROMPT_VERSION="1"
 ```
 
-`chatbot-reply` imports `zod` by its bare name, so it needs an import map.
+`chatbot-reply` imports `zod` and `openai` by their bare names, so it needs an import map.
 Unless one is passed with `--import-map` or set in `config.toml`,
 `supabase functions deploy` reads it from the function's own folder —
 `supabase/functions/chatbot-reply/deno.json` — and never from
@@ -207,8 +208,10 @@ a request to them in front of a signed-in user's browser. Localhost origins
 are always permitted and are not reachable from outside the developer's
 machine.
 
-If `GEMINI_API_KEY` is unset, `chatbot-reply` returns 503 and the UI says
-the assistant is unavailable. Every other module works. That is a supported
+If `OPENAI_API_KEY` or `OPENAI_MODEL` is unset, `chatbot-reply` returns 503
+and the UI says the assistant is unavailable. `OPENAI_PROMPT_ID` is optional:
+without it, or when OpenAI refuses it, replies come from the instructions
+assembled in code (`docs/chatbot-patient-records.md`). Every other module works. That is a supported
 configuration, not a broken one.
 
 **`ALLOWED_ORIGINS` is no longer required for production.** The canonical
@@ -231,6 +234,11 @@ recovereasedev.vercel.app   -> Access-Control-Allow-Origin: recovereasedev.verce
 recoverease-zeta.vercel.app -> Access-Control-Allow-Origin: recoverease-zeta.vercel.app
 evil.example.com            -> no header (refused)
 ```
+
+**From PR #93 the provider is OpenAI** (`OPENAI_API_KEY`, `OPENAI_MODEL`,
+optionally `OPENAI_PROMPT_ID` / `OPENAI_PROMPT_VERSION`). `GEMINI_API_KEY`
+serves the version deployed before it and can be removed once the OpenAI
+version is deployed and verified. The history below is the Gemini set-up.
 
 **`GEMINI_API_KEY` is required and is not set.** It is the only AI provider
 secret RecoverEase uses, and it must be added in exactly one place:

@@ -24,7 +24,7 @@ modules, Table 31); see the [README](../README.md#what-it-does) and
 | Forms | React Hook Form + Zod |
 | Backend | Supabase: PostgreSQL, Auth, Edge Functions (Deno). No application server |
 | Authorization | PostgreSQL Row Level Security |
-| AI assistant | Google Gemini, called only from the `chatbot-reply` Edge Function |
+| AI assistant | OpenAI Responses API (from PR #93; Gemini before), called only from the `chatbot-reply` Edge Function |
 | Documents | `pdf-lib` (PDFs) and `fflate` (spreadsheet export), both client-side, in `src/lib/documents/` |
 | Tests | Vitest (jsdom + node), React Testing Library, PGlite, Playwright, axe |
 | Lint | oxlint |
@@ -126,7 +126,7 @@ caller checks, assistant, escalation).
 | `create-account` | Creates doctor and patient accounts with a temporary credential | service role |
 | `reset-account-password` | Reissues a temporary credential (Clinic Admin for their doctors, doctor for their patients) | service role |
 | `complete-password-setup` | Sets the new password and clears the forced-change flag in one call | service role |
-| `chatbot-reply` | The patient guidance assistant: clinic prompt, assistant switch, critical-concern escalation, validated reply | Gemini key |
+| `chatbot-reply` | The patient guidance assistant: clinic prompt, assistant switch, critical-concern escalation, validated reply | `OPENAI_API_KEY`, `OPENAI_MODEL` (optional `OPENAI_PROMPT_ID`/`_VERSION`) |
 
 Secrets are set as Edge Function secrets, never in the client. Variable names
 (no values) are in the [README](../README.md#environment-variables) and

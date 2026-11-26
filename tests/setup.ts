@@ -25,7 +25,7 @@ configure({ asyncUtilTimeout: 3000 })
  * `matchMedia` reports "no preference" for everything, which is the same
  * default a browser gives when the user has expressed none.
  */
-if (!window.matchMedia) {
+if (typeof window !== 'undefined' && !window.matchMedia) {
   window.matchMedia = (query: string) =>
     ({
       matches: false,
@@ -39,7 +39,7 @@ if (!window.matchMedia) {
     }) as MediaQueryList
 }
 
-if (!Element.prototype.scrollIntoView) {
+if (typeof Element !== 'undefined' && !Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = () => {}
 }
 

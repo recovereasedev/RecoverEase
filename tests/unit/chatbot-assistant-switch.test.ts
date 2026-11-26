@@ -62,7 +62,7 @@ describe('where chatbot-reply asks', () => {
     const handler = code.indexOf('Deno.serve(')
     const transcript = code.indexOf(".from('chat_message')", handler)
     const prompt = code.indexOf('loadClinicPrompt(', handler)
-    const provider = code.indexOf('requestGeminiReply({')
+    const provider = code.indexOf('requestOpenAIReply({')
 
     for (const position of [ownership, theSwitch, transcript, prompt, provider]) {
       expect(position).toBeGreaterThan(-1)

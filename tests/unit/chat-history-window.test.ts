@@ -7,7 +7,7 @@ import {
   chronologicalWindow,
   hasUnansweredPatientMessage,
   HISTORY_LIMIT,
-  toInteractionInput,
+  toConversationInput,
   type StoredMessage,
 } from '../../supabase/functions/_shared/assistant'
 
@@ -56,12 +56,9 @@ describe('the conversation window', () => {
 
   it('always ends on the patient’s latest message, so there is something to answer', () => {
     for (const count of [1, 39, 40, 41, 50, 120]) {
-      const turns = toInteractionInput(chronologicalWindow(asQueried(conversation(count))))
+      const turns = toConversationInput(chronologicalWindow(asQueried(conversation(count))))
 
-      expect(turns.at(-1)).toEqual({
-        type: 'user_input',
-        content: [{ type: 'text', text: `Message ${count}` }],
-      })
+      expect(turns.at(-1)).toEqual({ role: 'user', content: `Message ${count}` })
       expect(hasUnansweredPatientMessage(turns)).toBe(true)
     }
   })
@@ -94,7 +91,7 @@ describe('the conversation window', () => {
     const oldWindow = conversation(50).slice(0, HISTORY_LIMIT)
 
     expect(numbers(oldWindow)).toEqual(range(1, 40))
-    expect(toInteractionInput(oldWindow).at(-1)?.content[0]?.text).toBe('Message 40')
+    expect(toConversationInput(oldWindow).at(-1)?.content).toBe('Message 40')
   })
 })
 
@@ -119,12 +116,12 @@ describe('chatbot-reply', () => {
   it('puts the window back in order before building the model input', () => {
     expect(source).toContain('const history = chronologicalWindow(newestFirst)')
     expect(source.indexOf('chronologicalWindow(newestFirst)')).toBeLessThan(
-      source.indexOf('toInteractionInput(history)'),
+      source.indexOf('toConversationInput(history)'),
     )
   })
 
   it('still proves the conversation is the caller’s before reading any of it', () => {
-    expect(source.indexOf("'This conversation is not yours', 403")).toBeLessThan(
+    expect(source.indexOf('resolveConversationPatient(', source.indexOf('Deno.serve('))).toBeLessThan(
       source.indexOf(".from('chat_message')"),
     )
   })

@@ -26,6 +26,146 @@ roadmap. This page is the contract between the function and the guidance text.
 7. `renderPatientContext` builds a `PATIENT RECORDS` block that goes last in the
    system instruction: clinic guidance → `SAFETY_RULES` → `PATIENT_RECORD_RULES`
    → records.
+8. `requestOpenAIReply` (`_shared/openai-call.ts`) sends one Responses API
+   request; the reply is validated against the schema with Zod, escalated if
+   it raises a concern, then saved (unchanged).
+
+## Provider: OpenAI Responses API
+
+The SDK is `openai@7.64.0`, pinned in `package.json` as a dev dependency (only
+tests and the evaluation script use it in Node; the browser bundle never
+imports it) and in both `deno.json` import maps as `npm:openai@7.64.0` for the
+Edge Function. The client is made with `maxRetries: 0` (the request has one
+time budget) and a fixed `baseURL` of `https://api.openai.com/v1`, so an
+`OPENAI_BASE_URL` variable cannot redirect patient data.
+
+Every request (`buildResponsesRequest` in `assistant.ts`):
+
+| Field | Value |
+| --- | --- |
+| `model` | `OPENAI_MODEL` (required) |
+| `instructions` | The whole system instruction, assembled in code: clinic guidance (or the built-in default), `SAFETY_RULES`, `PATIENT_RECORD_RULES`, then the records block when any were read. The API gives `instructions` priority over messages in `input`. |
+| `input` | This conversation's newest 40 messages, `{ role: 'user' \| 'assistant', content }`, text only |
+| `store` | `false` |
+| `text.format` | `{ type: 'json_schema', name: 'recovery_guidance_reply', schema, strict: true }`; the schema has `additionalProperties: false` and all three fields required |
+| `prompt` | `{ id, version }` only when `OPENAI_PROMPT_ID` is set. No `variables`. |
+| not sent | `user`, `safety_identifier`, `metadata`, `prompt_cache_key`, `previous_response_id`, `conversation`, tools |
+
+The reply is accepted only when `status` is `completed`, the assistant message
+holds `output_text` (a `refusal` is rejected), and that text parses and passes
+the Zod schema. Otherwise the patient sees "unavailable" and the doctor gets a
+review request, as before.
+
+| Failure | Reported as |
+| --- | --- |
+| No `OPENAI_API_KEY` or `OPENAI_MODEL` | `not_configured` (503), nothing sent |
+| 401 / 403 | `not_configured` (503) |
+| 429, 5xx | `busy` (429) |
+| Other 4xx | `unavailable` (502) |
+| No answer in time / body stalls | `timeout` (504) |
+| Network failure | `unavailable` (503) |
+| Incomplete, failed, refused, empty, non-JSON or off-schema output | `invalid_reply` (502) |
+
+Logs carry only the HTTP status and OpenAI's `type`, `code` and `param` (each
+checked against a code/path pattern), never the error message, which can
+quote the conversation.
+
+## Hosted prompt (optional, transitional)
+
+The application code is the permanent source of every instruction: clinic
+guidance, safety rules, record rules, patient context, the JSON schema,
+emergency handling and escalation. The hosted prompt
+(`pmpt_6af5542e5a7481958da7a15e8422762108b3ff89c477af8c`, version 1) is
+supported, never depended on:
+
+- `OPENAI_PROMPT_ID` set → `prompt: { id, version }` is added to the request,
+  beside the full `instructions`. Unset → it is left out, and nothing else
+  changes.
+- OpenAI refuses the prompt (400, 404 or 422 — not found, retired, a bad
+  version, or a variable it requires and RecoverEase does not send) → the
+  same request is sent again without it, within the same time budget, and
+  the log line says `openai_hosted_prompt_skipped` with the status and code.
+  That prompt is then left out for 10 minutes in that running instance, so a
+  retired prompt does not cost every reply a second round trip.
+- 401, 403, 429 and 5xx are not retried: they are not about the prompt.
+
+OpenAI is retiring reusable prompt objects: its deprecations page lists
+"/v1/prompts and reusable prompt objects" with **shutdown on 30 November
+2026** and the replacement "Move prompt content into your application code".
+OpenAI's docs do not say whether a `prompt` reference on `/v1/responses` fails
+after that date; this design does not need to know. Recommended: remove
+`OPENAI_PROMPT_ID` once the replacement is deployed and verified, or by
+30 November 2026.
+
+**Contract for the hosted prompt, if it is kept:**
+
+- It must declare **no variables**. RecoverEase sends none; a prompt that
+  requires one is refused by OpenAI and skipped.
+- Its text must not contradict the in-code rules. It cannot remove them
+  (they are always sent in `instructions`), but contradicting text sent with
+  every request is noise at best. Clinic guidance belongs in the clinic's
+  `chatbot.system_prompt`, not in the hosted prompt.
+- Its own model and response format settings are not relied on: the request
+  sets `model` and `text.format` itself.
+- How OpenAI orders the hosted prompt's messages against `instructions` is
+  not documented; that is why nothing depends on the hosted prompt.
+
+The hosted prompt was not read or changed by this work (there is no key
+available here, and reading or publishing it is out of scope).
+
+## What is sent to OpenAI, and what OpenAI keeps
+
+Sent with each reply:
+
+- the instruction text (clinic guidance, rules);
+- up to the 40 newest messages of this conversation (the patient's words and
+  the assistant's replies) — which can contain anything the patient typed,
+  including health details;
+- when the question is about them, that patient's own records as listed in
+  *What is included* below: medicine names, dosages, times and the doctor's
+  instructions; appointment times and statuses; plan titles, descriptions and
+  goals; roadmap phases and activities; care status. These are health data.
+
+Never sent: the patient's name, birth date, contact details, address, any
+database id or auth token, prescription notes, doctor's notes, check-in notes,
+reschedule reasons, other patients' anything.
+
+Retention, from OpenAI's "your data" page (read 26 Nov 2026):
+
+- API data is not used for training unless the organisation opts in.
+- `store: false` means no response is kept as retrievable application state.
+  It is **not** zero retention.
+- **Abuse-monitoring logs are kept for up to 30 days** for all API use,
+  `/v1/responses` included, unless the organisation has Zero Data Retention
+  (or Modified Abuse Monitoring), which OpenAI grants only on approval.
+- Prompt-cache data may persist up to 24 hours on OpenAI's side.
+- The hosted prompt object itself is stored by OpenAI as configuration; it
+  holds no patient data.
+
+**Needs the owner's approval before deployment:** that patients' health
+records and messages may be held by OpenAI for up to 30 days for abuse
+monitoring unless ZDR is approved for the organisation; and the patient
+consent screen (`src/features/auth/components/consent-gate.tsx`), which names
+no outside AI provider and says only the patient and their doctor can see
+their records. It already did not mention that assistant conversations go to
+an outside provider; with this change their medicines, appointments and plan
+can go too. Updating that text is a separate decision and is not part of this
+change.
+
+## Deployment requirements (not done)
+
+1. Rotate the OpenAI key (the old one was exposed) and confirm the Supabase
+   secret `OPENAI_API_KEY` holds the new one. The project's current
+   `OPENAI_API_KEY` secret was last updated 2026-11-12.
+2. Set `OPENAI_MODEL` (already present as a secret — confirm its value is a
+   model that supports structured outputs). `OPENAI_PROMPT_ID` is present;
+   `OPENAI_PROMPT_VERSION` is not set (the prompt's current version is used).
+   Both may be left unset.
+3. Owner approves the privacy points above.
+4. Run the 44-case evaluation with the new key (below) and review it.
+5. Deploy `chatbot-reply` from the merged branch; smoke-test one question with
+   and one without records. `GEMINI_API_KEY` can then be removed.
+6. Apply the proposed clinic guidance below only after step 5.
 
 ## Security
 
@@ -139,12 +279,23 @@ Calm, kind, plain language, short answers - usually two or three sentences. Ask 
 ## Certainty-factor questions (30) against this change
 
 The 30 questions are unchanged and live in `scripts/chatbot-evaluation.ts`
-with 14 record, availability, injection and emergency cases. Run it with a
-Gemini key (`GEMINI_API_KEY=… node --experimental-strip-types
-scripts/chatbot-evaluation.ts --guidance <file>`) to record every actual
-response. **It has not been run yet: there is no Gemini key outside the
-Supabase secrets, so no response has been recorded and no question is claimed
-to pass.**
+with 14 record, availability, injection and emergency cases (44 in all). It
+sends each through the same adapter as `chatbot-reply`:
+
+```
+OPENAI_API_KEY=… OPENAI_MODEL=… [OPENAI_PROMPT_ID=… OPENAI_PROMPT_VERSION=…] \
+  node --experimental-strip-types scripts/chatbot-evaluation.ts \
+  [--guidance <file>] [--without-hosted-prompt] [--out report.md]
+```
+
+Run it twice — with the hosted prompt and with `--without-hosted-prompt` — to
+record the assistant answering both ways. **The live evaluation has NOT been
+run:** no rotated key is available to this work, the exposed key must not be
+used, and the production secret is not to be extracted. No response has been
+recorded and no question is claimed to pass. (The runner was checked end to
+end against a local fake server only: 45 requests for 44 cases, all with
+`store: false`, strict schema and the in-code rules, the refused hosted prompt
+retried without it. That proves the plumbing, not the answers.)
 
 Review of expected results against the new behaviour:
 
