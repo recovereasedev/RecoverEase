@@ -224,7 +224,7 @@ secret is still recommended.
 | `available` | Records were read | Answers from them, exactly as written |
 | `none_found` | Read successfully, none exist | "RecoverEase has no … for you right now" |
 | `unavailable` | The read failed or timed out | Could not retrieve them just now; this does not mean there are none; check the page or ask again |
-| `not_retrieved` | Not looked up for this message | Never guesses; points to the page and invites a direct question |
+| `not_retrieved` | Not looked up for this message | Never guesses; points to the page and invites a direct question. Never withdraws an earlier answer because of it |
 
 A database error is never turned into "you have no records". Appointments and
 their reschedule requests are read together; if either fails, both are
@@ -498,4 +498,12 @@ Review of expected results against the new behaviour:
 - Appointments name "their assigned doctor", not the doctor's name.
 - Up to 5 plans, 10 upcoming appointments and 50 medicine schedules are read.
 - Records are a snapshot per message; the app is always the current source.
+- Records are chosen from the patient's last two messages only. In the
+  production smoke test of 27 Nov 2026 (v32), after "What medications am I
+  taking?", "When is my next appointment?" and "Who is my doctor?", the third
+  reply wrongly retracted the correct medicines answer ("I did not have your
+  medication records"), because medications were `not_retrieved` on that
+  turn. The rules now say `not_retrieved` concerns the current message only
+  and never casts doubt on an earlier answer. Only local tests cover this fix;
+  no live multi-turn evaluation has run.
 - Dose history (taken/missed doses) and check-ins are not included.

@@ -948,3 +948,28 @@ describe('forgotten instructions name the doctor (sixth run, CF-7)', () => {
     expect(SAFETY_RULES).toMatch(/Always name their doctor or\s+clinic as the people to ask about anything unclear or missing, and do not\s+offer this chat in their place/)
   })
 })
+
+// Production smoke test, 27 Nov 2026 (v32): after "What medications am I
+// taking?" (answered correctly from the records), "When is my next
+// appointment?" and "Who is my doctor?", the third reply added "I also need to
+// correct my earlier answer: I did not have your medication records". Only the
+// last two messages choose the records, so medications were "not_retrieved" on
+// that turn, and the model read that as its earlier answer being a guess.
+describe('a section not looked up this turn never retracts an earlier answer', () => {
+  it('reproduces the production sequence: medications are not looked up on the third turn', () => {
+    const newestFirst = ['Who is my doctor?', 'When is my next appointment?', 'What medications am I taking?']
+    const topics = topicsForQuestion(newestFirst)
+    expect(topics.has('medications')).toBe(false)
+    expect(topics.has('care_team')).toBe(true)
+    expect(topics.has('appointments')).toBe(true)
+  })
+
+  it('the rules say "not_retrieved" concerns this message only', () => {
+    expect(PATIENT_RECORD_RULES).toMatch(/It concerns this\s+message only and says nothing about your earlier replies in this\s+conversation, which were given from the records attached then/)
+    expect(PATIENT_RECORD_RULES).toMatch(/never\s+withdraw, correct or cast doubt on an earlier answer because a section is\s+"not_retrieved" now/)
+  })
+
+  it('still never guesses a section that was not looked up', () => {
+    expect(PATIENT_RECORD_RULES).toMatch(/"not_retrieved": no lookup was made for this message\. Never guess/)
+  })
+})
