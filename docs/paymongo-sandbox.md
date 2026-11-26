@@ -88,8 +88,11 @@ Use PayMongo's published test cards with any future expiry and any 3-digit CVC:
 | Declined | `4111111111111111` (generic decline), `5100000000000198` (insufficient funds) |
 
 - **Success:** pay, and you return to Settings, which shows "Payment
-  successful". The Super Admin overview counts the clinic under the plan, and
-  the revenue figures rise by the plan's price.
+  successful". The Super Admin overview counts the clinic under the plan.
+  Revenue does **not** move: from migration 69 a sandbox payment is never
+  revenue (`payment_livemode` stays false). Run these tests only in an
+  isolated test project, never against a real clinic in production: the
+  payment still changes that clinic's plan.
 - **Failure:** use a decline card. The payment shows **Failed**. The plan does
   not change and revenue does not move. You can retry on the same checkout.
 - **Cancellation:** use the checkout's back or cancel link. Settings shows

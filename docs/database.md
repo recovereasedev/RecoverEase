@@ -898,7 +898,8 @@ and *subscription* status are separate and never move each other.
   `app_private.require_super_admin()` first, revoked from `public`/`anon`).
 - **The overview's figures.** `total_subscribers` = distinct clinics with an
   active subscription; per plan, distinct clinics with that active plan.
-  Revenue = the sum of `payment_amount_centavos` over `paid` rows only, split
+  Revenue = the sum of `payment_amount_centavos` over `paid` rows only (from
+  migration 69, live ones only: see section 25), split
   by the payment's own `plan_code` snapshot. It reports lifetime, the current
   Asia/Manila calendar month, the last twelve Asia/Manila months (each
   present, oldest first) and by plan. Changing a list price never changes
@@ -909,6 +910,23 @@ and *subscription* status are separate and never move each other.
 Rollback: `supabase/rollbacks/20260902100068_clinic_subscriptions.down.sql`.
 It **deletes all billing history**, so dump the four tables first. Tested in
 `tests/db/clinic-subscriptions.test.ts` (rollback, then re-apply).
+
+### 25. Revenue counts live payments only (migration 69)
+
+The integration is sandbox only (a live event is refused), so every paid row
+is a test-mode payment. Migration 69 keeps those out of revenue (the owner's
+decision, 2026-11-27):
+
+- `subscription_payment.payment_livemode boolean not null default false` -
+  true only for a payment taken in PayMongo's live mode. Nothing writes true
+  until live payments are implemented; every existing row is sandbox.
+- `super_admin_subscription_overview()` adds `payment_livemode` to every
+  revenue figure (lifetime, this month, the twelve months, by plan).
+  Subscriber counts are unchanged. A sandbox payment still moves its clinic
+  onto the plan it paid for; it is only kept out of revenue.
+
+Rollback: `supabase/rollbacks/20260902100069_subscription_payment_livemode.down.sql`
+puts back 68's overview and drops the column. Roll 69 back before 68.
 
 ## Assumptions where the ERD was silent
 

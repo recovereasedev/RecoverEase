@@ -2657,11 +2657,12 @@ no feature here needs them.
   patient is discharged; drops the care history and care follow-up marks -
   export them first), 62. The rollback-chain tests run 67 -> 32 and 67 -> 47.
 
-### Clinic subscriptions and PayMongo sandbox (migration 68)
+### Clinic subscriptions and PayMongo sandbox (migrations 68, 69)
 
-> **NOT APPLIED to production. The functions are NOT deployed, and no PayMongo
-> secret is set.** Each step needs Kean's separate approval, a fresh verified
-> backup and a quiet window. Never `supabase db push`.
+> **68 is APPLIED to production (2026-11-26 22:48Z, history
+> `20261126224819`). 69 is NOT applied. The functions are NOT deployed, and no
+> PayMongo secret is set.** Each step needs Kean's separate approval, a fresh
+> verified backup and a quiet window. Never `supabase db push`.
 
 Order:
 
@@ -2678,6 +2679,12 @@ Order:
    - **Verify:** `select plan_code, plan_price_centavos from
      public.subscription_plan order by plan_sort_order;` returns 0 / 99900 /
      249900 / NULL; every clinic has exactly one active subscription.
+   Then apply `20260902100069_subscription_payment_livemode.sql` the same
+   way, before any sandbox payment can reach the database: it keeps sandbox
+   payments out of revenue. **Preflight:** no `payment_livemode` column.
+   **Data effects:** one column, false on every row; the overview function is
+   replaced (same signature and grants). **Verify:** the column exists and
+   `super_admin_subscription_overview` mentions `payment_livemode`.
 2. Deploy the website (the overview and settings read the new objects; on a
    database without 68 those sections show their error state only).
 3. Sandbox only: set the secrets and deploy the two functions as
@@ -2686,7 +2693,9 @@ Order:
 
 Rollback (reverse order): undeploy or disable the two functions, roll the
 website back, then apply
-`supabase/rollbacks/20260902100068_clinic_subscriptions.down.sql`. The
+`supabase/rollbacks/20260902100069_subscription_payment_livemode.down.sql` and
+`supabase/rollbacks/20260902100068_clinic_subscriptions.down.sql`, in that
+order. The
 rollback **deletes every subscription and payment**, so dump those four
 tables first.
 

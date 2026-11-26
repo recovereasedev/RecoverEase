@@ -108,8 +108,9 @@ Full model, access matrix and known limitations: [`security.md`](./security.md).
 - Migrations from 29 onward ship a rollback in `supabase/rollbacks/`, except
   32 (PostgreSQL cannot remove an enum value). Migrations 41 onward set
   `lock_timeout = '3s'` so they stop rather than queue behind live traffic.
-- Migration 68 (clinic subscriptions, PayMongo sandbox) is NOT applied to production;
-  PR #75 holds 47. The next free number is 69.
+- Migration 68 (clinic subscriptions, PayMongo sandbox) is APPLIED to production
+  (2026-11-26 22:48Z). Migration 69 (revenue counts live payments only) is NOT
+  applied. PR #75 holds 47. The next free number is 70.
 - After changing a migration run `npm run db:types`; it applies the committed
   migrations to an in-process PostgreSQL and regenerates `src/types/`.
 - Applying to production is a separate step that needs the project owner's

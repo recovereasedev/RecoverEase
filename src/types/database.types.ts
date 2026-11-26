@@ -1533,6 +1533,7 @@ export type Database = {
           created_by_user_id: string | null
           payment_created_at: string
           payment_updated_at: string
+          payment_livemode: boolean
         }
         Insert: {
           payment_id?: string
@@ -1551,6 +1552,7 @@ export type Database = {
           created_by_user_id?: string | null
           payment_created_at?: string
           payment_updated_at?: string
+          payment_livemode?: boolean
         }
         Update: {
           payment_id?: string
@@ -1569,6 +1571,7 @@ export type Database = {
           created_by_user_id?: string | null
           payment_created_at?: string
           payment_updated_at?: string
+          payment_livemode?: boolean
         }
         Relationships: [
           {

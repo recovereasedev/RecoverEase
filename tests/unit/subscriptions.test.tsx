@@ -154,7 +154,9 @@ describe('the Super Admin’s subscriptions and revenue', () => {
       }),
     )
     renderWith(<SubscriptionOverviewSection />)
-    expect(await screen.findByText(/No payments yet/)).toBeInTheDocument()
+    expect(await screen.findByText(/No live payments yet/)).toBeInTheDocument()
+    // Sandbox payments are never revenue (migration 69), and the page says so.
+    expect(screen.getByText(/Sandbox \(test-mode\) payments are never counted/)).toBeInTheDocument()
     expect(screen.queryByRole('list', { name: 'Revenue by plan' })).toBeNull()
   })
 
