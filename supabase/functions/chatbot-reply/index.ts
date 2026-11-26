@@ -12,7 +12,7 @@ import {
   ASSISTANT_SWITCH_FUNCTION,
   readAssistantSwitch,
 } from '../_shared/assistant-switch.ts'
-import { AuthError, requireCaller, serviceClient } from '../_shared/auth.ts'
+import { AuthError, callerClient, requireCaller, serviceClient } from '../_shared/auth.ts'
 import { loadClinicPrompt, PROMPT_KEY, type PromptStore } from '../_shared/clinic-prompt.ts'
 import { handlePreflight, jsonResponse } from '../_shared/cors.ts'
 import {
@@ -27,6 +27,17 @@ import {
   type ProviderTimings,
   requestGeminiReply,
 } from '../_shared/gemini-call.ts'
+import {
+  type ConversationRow,
+  contextStates,
+  loadPatientContext,
+  parseReplyRequest,
+  type PatientContext,
+  renderPatientContext,
+  resolveConversationPatient,
+  topicsForQuestion,
+} from '../_shared/patient-context.ts'
+import { patientRecordStore, type RecordClient } from '../_shared/patient-record-store.ts'
 import {
   ReplyIdConflictError,
   replyIdFor,
@@ -92,6 +103,15 @@ import {
  * The assistant can be switched off for the platform or for a clinic
  * (migration 38): asked right after the conversation is proved the caller's,
  * and refused with `disabled` before any of it is read.
+ *
+ * Patient records (_shared/patient-context.ts): when the patient's latest
+ * question is about their medicines, appointments, treatment plan or recovery
+ * roadmap, those records are read and attached to the system instruction.
+ * They are read with the PATIENT'S OWN token (`callerClient`), not the
+ * service key, so Row Level Security applies to every row exactly as in the
+ * app, and every query is also filtered by - and every row checked against -
+ * the patient id of the conversation proved theirs. Nothing in the request
+ * body can name a patient. Only the state of each kind of record is logged.
  *
  * Deploy:
  *   supabase functions deploy chatbot-reply
@@ -322,9 +342,15 @@ Deno.serve(async (request) => {
     // 1. Who is calling. Verified against Supabase Auth, never taken from the
     //    request body.
     const caller = await timed('auth', () => requireCaller(request))
-    const { chatSessionId } = (await request.json()) as { chatSessionId?: string }
-
-    if (!chatSessionId) throw new AuthError('chatSessionId is required', 400)
+    // The conversation id is the only thing read from the body. A patient id
+    // or anything else the browser adds is ignored (parseReplyRequest).
+    let requestBody: unknown
+    try {
+      requestBody = await request.json()
+    } catch {
+      throw new AuthError('chatSessionId is required', 400)
+    }
+    const { chatSessionId } = parseReplyRequest(requestBody)
 
     // 2. Is this conversation theirs. Without this check any patient could
     //    pass another patient's session id and read that transcript back
@@ -332,23 +358,23 @@ Deno.serve(async (request) => {
     const { data: session, error: sessionError } = await timed('ownership', async () =>
       await admin
         .from('chat_session')
-        .select('chat_session_id, pat_id, patient!inner ( user_id, doc_id )')
+        .select(
+          'chat_session_id, pat_id, ' +
+            'patient!inner ( pat_id, user_id, doc_id, pat_care_status, pat_care_discharged_at )',
+        )
         .eq('chat_session_id', chatSessionId)
         .abortSignal(dbDeadline())
         .maybeSingle(),
     )
 
     if (sessionError) throw new AuthError('Could not load the conversation', 500)
-    if (!session) throw new AuthError('Conversation not found', 404)
 
-    const patient = session.patient as unknown as {
-      user_id: string
-      doc_id: string
-    }
-
-    if (patient.user_id !== caller.userId) {
-      throw new AuthError('This conversation is not yours', 403)
-    }
+    // A patient, and this conversation's patient - or refused. The patient id
+    // every later query uses comes from here and nowhere else.
+    const patient = resolveConversationPatient(
+      caller,
+      (session ?? null) as unknown as ConversationRow | null,
+    )
 
     // 2b. Is the assistant switched on - for the platform, and for this
     //     patient's clinic (migration 38). Asked before anything of the
@@ -358,7 +384,7 @@ Deno.serve(async (request) => {
     const assistantSwitch = readAssistantSwitch(
       await timed('switch', async () =>
         await admin
-          .rpc(ASSISTANT_SWITCH_FUNCTION, { target_doc_id: patient.doc_id })
+          .rpc(ASSISTANT_SWITCH_FUNCTION, { target_doc_id: patient.docId })
           .abortSignal(dbDeadline()),
       ),
     )
@@ -428,10 +454,35 @@ Deno.serve(async (request) => {
       async () => {
         // The patient's clinic's guidance; the built-in one if it cannot be
         // read. The clinic comes from the conversation proved theirs above.
-        const prompt = await timed('prompt', () => loadClinicPrompt(promptStore(admin), patient.doc_id))
+        const prompt = await timed('prompt', () => loadClinicPrompt(promptStore(admin), patient.docId))
+
+        // The patient's own records, only the kinds the question is about,
+        // read as the patient (see the header). Never throws: a kind that
+        // cannot be read is marked unavailable, not missing.
+        const topics = topicsForQuestion(
+          newestFirst
+            .filter((row) => row.chat_message_role === 'patient')
+            .map((row) => row.chat_message_content ?? ''),
+        )
+        let records: PatientContext | null = null
+        if (topics.size > 0) {
+          const asPatient = callerClient(request) as unknown as RecordClient
+          records = await timed('context', () =>
+            loadPatientContext({
+              store: patientRecordStore(asPatient, patient.patId, dbDeadline),
+              topics,
+              patient,
+              now: new Date(),
+            }),
+          )
+        }
+        facts.recordSections = contextStates(records)
 
         const body = buildInteractionRequest({
-          systemInstruction: buildSystemInstruction(prompt),
+          systemInstruction: buildSystemInstruction(
+            prompt,
+            records ? renderPatientContext(records) : null,
+          ),
           turns,
         })
         facts.requestBytes = new TextEncoder().encode(JSON.stringify(body)).length
@@ -469,7 +520,7 @@ Deno.serve(async (request) => {
         try {
           escalation = await timed('escalation', () =>
             escalateCriticalConcern(
-              criticalStore(admin, patient.doc_id, chatSessionId),
+              criticalStore(admin, patient.docId, chatSessionId),
               parsed,
               latestReplyAt,
             ),
@@ -565,7 +616,7 @@ Deno.serve(async (request) => {
           critical: escalation !== 'not_critical',
         }
       },
-      (error) => requestReview(reviewStore(admin, patient.doc_id, chatSessionId), reviewMessageFor(error)),
+      (error) => requestReview(reviewStore(admin, patient.docId, chatSessionId), reviewMessageFor(error)),
       (error) => console.error(reviewFailureLogLine(error, facts.escalationStep)),
       (line) => console.error(line),
     )

@@ -538,7 +538,7 @@ describe('chatbot-reply', () => {
 
   it('chooses the review message from the failure, as the tests above do', () => {
     expect(answerStep).toContain(
-      '(error) => requestReview(reviewStore(admin, patient.doc_id, chatSessionId), reviewMessageFor(error)),',
+      '(error) => requestReview(reviewStore(admin, patient.docId, chatSessionId), reviewMessageFor(error)),',
     )
   })
 

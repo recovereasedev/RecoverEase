@@ -19,6 +19,10 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
+      // Edge Functions import supabase-js from JSR under Deno. Mapped to the
+      // npm build of the same library so a test can import `_shared/auth.ts`
+      // (and mock the client) in Node.
+      'jsr:@supabase/supabase-js@2': '@supabase/supabase-js',
     },
   },
   test: {

@@ -9,6 +9,7 @@ import {
   loadClinicPrompt,
   type PromptStore,
 } from '../../supabase/functions/_shared/clinic-prompt'
+import { PATIENT_RECORD_RULES } from '../../supabase/functions/_shared/patient-context'
 
 /**
  * chatbot-reply's prompt lookup (migration 31): each clinic's own guidance,
@@ -46,7 +47,9 @@ describe('the chatbot prompt for a conversation', () => {
     const s = store({ clinicPrompt: vi.fn(async () => null) })
     const prompt = await loadClinicPrompt(s, 'doc-west')
     expect(prompt).toBeNull()
-    expect(buildSystemInstruction(prompt)).toBe(`${DEFAULT_GUIDANCE}\n${SAFETY_RULES}`)
+    expect(buildSystemInstruction(prompt)).toBe(
+      `${DEFAULT_GUIDANCE}\n${SAFETY_RULES}\n${PATIENT_RECORD_RULES}`,
+    )
   })
 
   it('is the built-in guidance, not another clinic’s, when the clinic is unknown', async () => {
@@ -70,7 +73,9 @@ describe('the chatbot prompt for a conversation', () => {
     error.mockRestore()
   })
 
-  it('always ends with the safety rules, whichever guidance it starts with', () => {
-    expect(buildSystemInstruction('Harborview guidance')).toBe(`Harborview guidance\n${SAFETY_RULES}`)
+  it('always follows the guidance with the safety rules, then the record rules', () => {
+    expect(buildSystemInstruction('Harborview guidance')).toBe(
+      `Harborview guidance\n${SAFETY_RULES}\n${PATIENT_RECORD_RULES}`,
+    )
   })
 })

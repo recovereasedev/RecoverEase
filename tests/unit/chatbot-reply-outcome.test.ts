@@ -68,6 +68,7 @@ describe('replyLogLine', () => {
       response_bytes: null,
       history_messages: null,
       escalation_step: null,
+      record_sections: null,
     })
     expect(
       JSON.parse(replyLogLine({ requestId: 'r-2', status: 200, code: null, durationMs: 9_000 })),
@@ -95,6 +96,7 @@ describe('replyLogLine', () => {
         'outcome',
         'phases_ms',
         'provider_status',
+        'record_sections',
         'request_bytes',
         'request_id',
         'response_bytes',

@@ -194,7 +194,7 @@ describe('chatbot-reply', () => {
     // The failure is passed on, so the request can say when it was a
     // concern's escalation that failed (tests/unit/escalation-failure-alert.test.ts).
     expect(answerStep).toContain(
-      '(error) => requestReview(reviewStore(admin, patient.doc_id, chatSessionId), reviewMessageFor(error)),',
+      '(error) => requestReview(reviewStore(admin, patient.docId, chatSessionId), reviewMessageFor(error)),',
     )
   })
 

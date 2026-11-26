@@ -52,12 +52,12 @@ describe('where chatbot-reply asks', () => {
   it('asks the database’s rule, for the patient’s assigned doctor', async () => {
     const code = await source()
     expect(ASSISTANT_SWITCH_FUNCTION).toBe('guidance_assistant_on_for_doctor')
-    expect(code).toContain('.rpc(ASSISTANT_SWITCH_FUNCTION, { target_doc_id: patient.doc_id })')
+    expect(code).toContain('.rpc(ASSISTANT_SWITCH_FUNCTION, { target_doc_id: patient.docId })')
   })
 
   it('asks after proving the conversation the caller’s, and before reading it or calling the provider', async () => {
     const code = await source()
-    const ownership = code.indexOf("throw new AuthError('This conversation is not yours', 403)")
+    const ownership = code.indexOf('resolveConversationPatient(', code.indexOf('Deno.serve('))
     const theSwitch = code.indexOf('.rpc(ASSISTANT_SWITCH_FUNCTION')
     const handler = code.indexOf('Deno.serve(')
     const transcript = code.indexOf(".from('chat_message')", handler)

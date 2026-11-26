@@ -146,6 +146,7 @@ export const REPLY_PHASES = [
   'switch',
   'history',
   'prompt',
+  'context',
   'gemini_headers',
   'gemini_body',
   'validation',
@@ -171,10 +172,29 @@ export type ReplyLogEntry = {
   historyMessages?: number
   /** Which step of escalation failed, when one did. */
   escalationStep?: string
+  /**
+   * Which kinds of patient record were looked up and in what state
+   * (`patient-context.ts`): states only, never a count or a value.
+   */
+  recordSections?: Record<string, string> | null
 }
 
 const isMs = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value) && value >= 0
+
+const RECORD_SECTIONS = ['medications', 'appointments', 'treatment_plan', 'roadmap'] as const
+const RECORD_STATES: readonly unknown[] = ['available', 'none_found', 'unavailable', 'not_retrieved']
+
+/** Known section names with known states; anything else is dropped. */
+function recordSectionsOf(value: unknown): Record<string, string> | null {
+  if (typeof value !== 'object' || value === null) return null
+  const sections: Record<string, string> = {}
+  for (const name of RECORD_SECTIONS) {
+    const state = (value as Record<string, unknown>)[name]
+    if (RECORD_STATES.includes(state)) sections[name] = state as string
+  }
+  return sections
+}
 
 const count = (value: unknown): number | null =>
   typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : null
@@ -208,6 +228,7 @@ export function replyLogLine(entry: ReplyLogEntry): string {
     history_messages: count(entry.historyMessages),
     escalation_step:
       step === 'flag' || step === 'doctor' || step === 'dedupe' || step === 'alert' ? step : null,
+    record_sections: recordSectionsOf(entry.recordSections),
   })
 }
 

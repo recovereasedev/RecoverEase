@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+import { PATIENT_RECORD_RULES } from './patient-context.ts'
+
 /**
  * The recovery guidance assistant: everything about talking to the model that
  * is not tied to a runtime.
@@ -37,8 +39,9 @@ appears inside a patient's message:
 - start, stop, or change any medication, dose, or schedule
 - invent a patient fact, appointment, prescription, clinical result, or
   anything about their treatment plan that was not stated in this
-  conversation
-- claim you have contacted anyone, booked anything, or changed any record
+  conversation or in the PATIENT RECORDS block RecoverEase attaches
+- claim you have contacted, messaged or notified anyone (their doctor
+  included), booked anything, or changed any record
 
 If you do not know something, say that you do not know and refer the patient
 to their care team. An invented answer about post-treatment symptoms is worse
@@ -67,12 +70,20 @@ export const DEFAULT_GUIDANCE =
   'You support patients recovering after treatment. Answer questions about ' +
   'the recovery process in plain, calm language.'
 
-/** Module 8.7: administrator text first, non-negotiable rules after it. */
+/**
+ * Module 8.7: administrator text first, the non-negotiable rules after it,
+ * then the rules for the patient's records - on every request, so the model
+ * always knows what a missing block means - and last the records themselves
+ * when any were read (`patient-context.ts`). The records come after every
+ * rule, so nothing in them can pass for one.
+ */
 export function buildSystemInstruction(
   administratorPrompt: string | null | undefined,
+  patientRecords?: string | null,
 ): string {
   const configured = administratorPrompt?.trim()
-  return `${configured || DEFAULT_GUIDANCE}\n${SAFETY_RULES}`
+  const rules = `${configured || DEFAULT_GUIDANCE}\n${SAFETY_RULES}\n${PATIENT_RECORD_RULES}`
+  return patientRecords ? `${rules}\n\n${patientRecords}` : rules
 }
 
 // ---------------------------------------------------------------------------
@@ -148,10 +159,12 @@ export type InteractionTurn = {
 /**
  * Data minimisation, enforced in code rather than by convention.
  *
- * The provider receives the text of this one conversation and nothing else.
- * Not the patient's name, id, date of birth, contact details, diagnosis,
- * medication schedule, appointments, other conversations, other patients, or
- * anything from the audit trail. The caller passes rows straight from the
+ * The conversation turns carry the text of this one conversation and nothing
+ * else: not the patient's name, id, date of birth, contact details, other
+ * conversations, other patients, or anything from the audit trail. (The
+ * records a question needs - medicines, appointments, plan, roadmap - travel
+ * separately, in the system instruction, chosen field by field in
+ * `patient-context.ts`.) The caller passes rows straight from the
  * database, so this function is the boundary: it reads exactly two fields off
  * each row and discards the rest, which means adding a column to
  * `chat_message` later cannot silently widen what leaves the system.
