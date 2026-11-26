@@ -902,3 +902,20 @@ describe('where the doctor and clinic are shown (fourth run, N-16 and N-18)', ()
     },
   )
 })
+
+// Fifth run, CF-16: the pending request was explained, the how-to was not.
+describe('rescheduling guidance with a pending request (fifth run, CF-16)', () => {
+  it('always names "Request new time" in Appointments, pending request or not', async () => {
+    const appointments = block(await load(['appointments'])).appointments
+    expect(appointments.how_to_reschedule).toMatch(/Whenever they ask about rescheduling, say this, naming "Request new time" and Appointments - even\s+when an appointment already has a request awaiting review/)
+    expect(appointments.how_to_reschedule).toMatch(/takes no\s+second request and that to change it they contact their clinic/)
+    expect(PATIENT_RECORD_RULES).toMatch(/Whenever they ask about rescheduling, name "Request new time" in\s+Appointments, even if an appointment already has a pending request/)
+    expect(PATIENT_RECORD_RULES).toMatch(/to change that request they contact their clinic/)
+  })
+
+  it('still says a pending request has not moved the appointment', async () => {
+    const request = block(await load(['appointments'])).appointments.next_appointment.reschedule_request
+    expect(request.status).toMatch(/Awaiting review.*NOT moved/)
+    expect(request.note).toMatch(/has not moved/)
+  })
+})

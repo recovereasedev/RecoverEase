@@ -432,3 +432,10 @@ describe('general worsening questions versus emergencies', () => {
     expect(SAFETY_RULES).toContain('Set should_contact_provider to true whenever a treating clinician would want\nto know about this, not only in emergencies.')
   })
 })
+
+// Fifth run: CF-22 asked one vague question; the rule now gives the question.
+describe('the general worsening question, asked in full', () => {
+  it('asks all three as one question, with the exact example', () => {
+    expect(SAFETY_RULES).toMatch(/all three, as one\s+question, for example "Which symptoms are getting worse, when did they start,\s+and how severe are they\?"/)
+  })
+})

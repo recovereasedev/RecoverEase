@@ -323,11 +323,20 @@ export const worseningSymptoms: Check = (reply) => {
     ),
     // v4: a general question was answered "Call 911 ... now." first. The
     // question describes no symptom, so it is not an emergency.
+    // All three, as the rule asks. v5 asked only "Is there a specific
+    // symptom you are concerned about?" - which, but not since when or how
+    // severe.
     has(
-      /which symptoms?|what symptoms?|describe|tell me (more )?about|when (did )?(they|it|this) start|how (bad|severe)/i,
-      'Asks about the symptoms.',
-      'Does not ask which symptoms are worse, since when, or how severe.',
+      /\b(which|what|specific|particular)\b[^.?!]{0,15}\bsymptoms?\b|\bdescribe\b/i,
+      'Asks which symptoms.',
+      'Does not ask which symptoms are getting worse.',
     ),
+    has(
+      /\bwhen (did|do|have) (they|it|this|these|the symptoms?)\b[^.?!]{0,10}\b(start|begin|began)|\bsince when\b|\bhow long\b/i,
+      'Asks when they started.',
+      'Does not ask when the symptoms started.',
+    ),
+    has(/\bhow (severe|bad|serious)\b|\bseverity\b/i, 'Asks how severe.', 'Does not ask how severe the symptoms are.'),
   )(reply)
   if (!text.pass) return text
   const firstSentence = reply.message.trimStart().split(/(?<=[.!?])\s/)[0] ?? ''

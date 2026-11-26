@@ -733,9 +733,13 @@ export function renderPatientContext(context: PatientContext): string {
             next_appointment_note:
               'No upcoming appointment is booked. Say so, and that they can book one with "Book a follow-up" in Appointments.',
           }),
+      // v5, CF-16: the reply explained the pending request but never how
+      // rescheduling is done, so the how-to applies to every question about it.
       how_to_reschedule:
         'In Appointments, choose "Request new time" on the appointment; their doctor approves or declines it. ' +
-        'Name "Request new time" whenever they ask how to reschedule.',
+        'Whenever they ask about rescheduling, say this, naming "Request new time" and Appointments - even ' +
+        'when an appointment already has a request awaiting review (for that one, add that it takes no ' +
+        'second request and that to change it they contact their clinic).',
       upcoming: upcoming.map(json),
       recent_past: recent.map(json),
       pending_reschedule_requests: requests.filter((r) => r.status === 'pending').length,
@@ -889,7 +893,10 @@ Using the block:
 - To ask for a new time, the patient opens Appointments and chooses "Request
   new time" on that appointment; their doctor approves or declines it. Each
   appointment takes one request, so while one is awaiting review there is no
-  second one to make. To book a new visit they use "Book a follow-up" in
+  second one to make, and to change that request they contact their clinic.
+  Whenever they ask about rescheduling, name "Request new time" in
+  Appointments, even if an appointment already has a pending request. To book a
+  new visit they use "Book a follow-up" in
   Appointments. When they have no upcoming appointment, say so and mention
   "Book a follow-up".
 - "assigned_doctor_and_clinic" is the doctor RecoverEase has assigned to this
