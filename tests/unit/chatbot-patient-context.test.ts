@@ -675,7 +675,9 @@ describe('the records the model is shown', () => {
       assigned_doctor: 'Mara Velasco',
       specialty: 'Orthopaedics',
       clinic: 'Bayside Test Clinic',
-      where_shown: 'My profile, under "Your doctor"',
+      where_shown:
+        'The doctor\'s name and specialty are in My profile, under "Your doctor". The clinic name is ' +
+        'not shown anywhere in the app: give it from this record, and never say it is in My profile.',
     })
     const text = renderPatientContext(context)
     for (const secret of ['LIC-12345', '+63 900', 'mara@example', 'doc-a', 'user-doc', 'user-alice', 'pat-alice']) {
@@ -700,7 +702,8 @@ describe('the records the model is shown', () => {
     const failed = block(await load(['care_team'], store({ careTeam: failing() }))).assigned_doctor_and_clinic
     expect(failed.status).toBe('unavailable')
     expect(failed.note).toMatch(/lookup FAILED.*does NOT mean/)
-    expect(failed.note).toMatch(/My profile/)
+    expect(failed.note).toMatch(/doctor's name and specialty in My profile/)
+    expect(failed.note).toMatch(/the clinic name is not shown there or elsewhere in the app; never say it is/)
   })
 
   it('does not look up the doctor for a question that does not need it', async () => {
@@ -823,8 +826,8 @@ describe('the system instruction with records', () => {
     ['CF-16 rescheduling', PATIENT_RECORD_RULES, ['"Request\n  new time"', 'one request']],
     ['N-10 booking', PATIENT_RECORD_RULES, ['"Book a follow-up"']],
     ['N-15 to N-18 assigned doctor', PATIENT_RECORD_RULES, [
-      'Never invent a doctor, clinic, phone number or email',
-      'never\n  give details of any other doctor or patient',
+      'Never invent a doctor, clinic,\n  phone number or email',
+      'never give details of any other doctor or\n  patient',
     ]],
     ['N-11 discharge', PATIENT_RECORD_RULES, [
       'say that\n  their doctor ended their care before anything else',
@@ -868,4 +871,34 @@ describe('what the log line says about records', () => {
     })
     expect(JSON.parse(line).record_sections).toEqual({})
   })
+})
+
+describe('where the doctor and clinic are shown (fourth run, N-16 and N-18)', () => {
+  it('tells the model the clinic is not in My profile, in the rules and the record', async () => {
+    expect(PATIENT_RECORD_RULES).toMatch(/the clinic name is not shown\s+there or anywhere else in the app, so never say it is/)
+    const team = block(await load(['care_team'], store())).assigned_doctor_and_clinic
+    expect(team.clinic).toBe('Bayside Test Clinic')
+    expect(team.where_shown).toMatch(/never say it is in My profile/)
+  })
+
+  it('says a clinic that could not be read could not be read, and names no other place', async () => {
+    const team = block(
+      await load(['care_team'], store({ careTeam: vi.fn(async () => ({ ...CARE_TEAM, clinicName: null, clinicActive: null })) })),
+    ).assigned_doctor_and_clinic
+    expect(team.clinic).toBe('Could not be read just now')
+    expect(team).not.toHaveProperty('clinic_note')
+    expect(PATIENT_RECORD_RULES).toMatch(/If the clinic could\s+not be read, say so and name no other place/)
+  })
+
+  it('points a not-looked-up question about the doctor only to the doctor in My profile', () => {
+    expect(stateNote('care_team', 'not_retrieved')).toMatch(/doctor's name and specialty in My profile/)
+    expect(stateNote('care_team', 'not_retrieved')).toMatch(/clinic name is not shown/)
+  })
+
+  it.each(['Kinsa akong doktor?', 'Unsa nga clinic ko naka-register?', 'Asa nga klinika ko?'])(
+    'looks up the doctor and clinic for the Cebuano question: %s',
+    (question) => {
+      expect(topicsForQuestion([question]).has('care_team')).toBe(true)
+    },
+  )
 })

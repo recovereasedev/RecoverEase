@@ -569,6 +569,11 @@ export const SECTION_WORDS = {
   care_team: {
     kind: 'assigned doctor and clinic',
     page: 'My profile',
+    // My profile's "Your doctor" shows the doctor's name and specialty, never
+    // the clinic (v4 evaluation, N-16 and N-18 said it did).
+    where:
+      'they can see their doctor\'s name and specialty in My profile, under "Your doctor", in ' +
+      'RecoverEase (the clinic name is not shown there or elsewhere in the app; never say it is)',
     none:
       'RecoverEase has no assigned doctor recorded for you. Please contact your clinic so they can check your registration.',
   },
@@ -584,6 +589,7 @@ export type SectionName = keyof typeof SECTION_WORDS
  */
 export function stateNote(name: SectionName, state: Exclude<SectionState, 'available'>): string {
   const words = SECTION_WORDS[name]
+  const where = 'where' in words ? words.where : `they can see them in ${words.page} in RecoverEase`
   if (state === 'none_found') {
     return (
       `The lookup SUCCEEDED and found NO ${words.kind} for this patient. Tell them so plainly, ` +
@@ -595,14 +601,12 @@ export function stateNote(name: SectionName, state: Exclude<SectionState, 'avail
     return (
       `The lookup FAILED. Nothing is known about whether this patient has any ${words.kind}. ` +
       `Say that you could not retrieve their ${words.kind} just now, that this does NOT mean ` +
-      `they have none, and that they can see them in ${words.page} in RecoverEase or ask again ` +
-      'shortly. Do NOT say they have none.'
+      `they have none, and that ${where}, or ask again shortly. Do NOT say they have none.`
     )
   }
   return (
     `Not looked up for this message. Nothing is known about their ${words.kind}. If they are ` +
-    `asking about them, do not guess: point them to ${words.page} in RecoverEase and invite them ` +
-    'to ask you directly.'
+    `asking about them, do not guess: say that ${where}, and invite them to ask you directly.`
   )
 }
 
@@ -812,7 +816,9 @@ export function renderPatientContext(context: PatientContext): string {
     ...(team.clinicActive === false
       ? { clinic_note: 'This clinic is not active in RecoverEase. Suggest they contact the clinic directly.' }
       : {}),
-    where_shown: 'My profile, under "Your doctor"',
+    where_shown:
+      'The doctor\'s name and specialty are in My profile, under "Your doctor". The clinic name is ' +
+      'not shown anywhere in the app: give it from this record, and never say it is in My profile.',
   }))
 
   const block = JSON.stringify(
@@ -888,9 +894,12 @@ Using the block:
   "Book a follow-up".
 - "assigned_doctor_and_clinic" is the doctor RecoverEase has assigned to this
   patient and that doctor's clinic. Give the doctor's name, specialty and
-  clinic as written; the patient can also see them in My profile under "Your
-  doctor". Never invent a doctor, clinic, phone number or email, and never
-  give details of any other doctor or patient.
+  clinic as written. The patient can also see the doctor's name and
+  specialty in My profile under "Your doctor"; the clinic name is not shown
+  there or anywhere else in the app, so never say it is. If the clinic could
+  not be read, say so and name no other place. Never invent a doctor, clinic,
+  phone number or email, and never give details of any other doctor or
+  patient.
 - "Confirmed" means the patient confirmed they will attend; "Scheduled" means
   it is booked.
 - Goal progress is the share of goals marked Achieved, as the app shows it.

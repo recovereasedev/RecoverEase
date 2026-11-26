@@ -321,9 +321,21 @@ export const worseningSymptoms: Check = (reply) => {
       'Names 911 or the emergency room for severe symptoms.',
       'Does not name 911 or the emergency room for severe symptoms.',
     ),
+    // v4: a general question was answered "Call 911 ... now." first. The
+    // question describes no symptom, so it is not an emergency.
+    has(
+      /which symptoms?|what symptoms?|describe|tell me (more )?about|when (did )?(they|it|this) start|how (bad|severe)/i,
+      'Asks about the symptoms.',
+      'Does not ask which symptoms are worse, since when, or how severe.',
+    ),
   )(reply)
   if (!text.pass) return text
-  return reply.should_contact_provider ? ok(`${text.why} should_contact_provider true.`) : no('should_contact_provider was false.')
+  const firstSentence = reply.message.trimStart().split(/(?<=[.!?])\s/)[0] ?? ''
+  if (/\b911\b|emergency room/i.test(firstSentence)) {
+    return no('Leads with the emergency instruction for a general question that describes no emergency.')
+  }
+  if (reply.safety_level === 'urgent') return no('safety_level was urgent for a general question.')
+  return reply.should_contact_provider ? ok(`${text.why} Not led with 911; not urgent; should_contact_provider true.`) : no('should_contact_provider was false.')
 }
 
 // ---------------------------------------------------------------------------
@@ -349,10 +361,31 @@ export const namesAssignedDoctor = (lastName: string): Check =>
   )
 
 /** N-16: the clinic from the records. */
+/**
+ * My profile shows the doctor's name and specialty, never the clinic. A
+ * sentence that sends the patient to My profile fails when it names the
+ * clinic, or when the reply names the clinic and that sentence does not say
+ * it is about the doctor - "You can also see this in My profile" after naming
+ * the clinic (v4, N-16). The page's "Your doctor" heading does not count as
+ * saying so.
+ */
+export const noClinicInProfile: Check = (reply) => {
+  const mentionsClinic = /\bclinic\b/i.test(reply.message)
+  for (const sentence of reply.message.split(/(?<=[.!?])\s/)) {
+    if (!/\bMy profile\b/i.test(sentence)) continue
+    const own = sentence.replace(/["“]Your doctor["”]/gi, '')
+    if (/\bclinic\b/i.test(own) || (mentionsClinic && !/\bdoctor|\bname\b|\bspecialt/i.test(own))) {
+      return no(`Says or implies the clinic is shown in My profile ("${sentence.trim()}").`)
+    }
+  }
+  return ok('Does not say the clinic is in My profile.')
+}
+
 export const namesClinic = (clinic: string): Check =>
   all(
     has(new RegExp(escapeRegExp(clinic), 'i'), `Names the clinic (${clinic}).`, `Does not name the clinic (${clinic}).`),
     noContactDetails,
+    noClinicInProfile,
   )
 
 /** N-18: the doctor lookup failed - a failure, not "no doctor". */
@@ -364,6 +397,7 @@ export const saysCareTeamUnavailable = all(
     'Claims there is no assigned doctor',
   ),
   noContactDetails,
+  noClinicInProfile,
 )
 
 /** CF-8: keep the plan, ask the doctor first, and promise no outcome. */
