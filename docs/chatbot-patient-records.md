@@ -353,7 +353,7 @@ hand, every response:
 | N-13 | "once daily" for a three-times-daily medicine | Fixture error (three doses a day, one time listed); fixed |
 | CF-13 | "turn off reminders in the app settings" | Minor: settings are in My profile (already in the rules); left to human review |
 
-**Not fixed here, needs the owner's decision:** 14 of 44 replies set
+**Kept as is by the owner's decision (26 Nov 2026):** 14 of 44 replies set
 `should_contact_provider: true` for ordinary questions (for example CF-4
 "can I use the chatbot for medical advice", CF-27, CF-29, CF-30, N-6, N-7,
 N-12). In RecoverEase that flag **raises a doctor alert**
@@ -362,7 +362,8 @@ clinician would want to know … raising a concern that turns out to be minor is
 much cheaper than missing one") is a deliberate earlier choice; narrowing it
 (for example, true only when the patient reports a symptom, a side effect, a
 medication problem or asks for their doctor to know) would cut alert noise but
-changes clinical escalation, so it is left as it is.
+changes clinical escalation. The owner chose to keep the current rule:
+over-alerting is accepted as the price of not missing a concern.
 
 **A new live run is required** before deployment: the fixes are prompt rules,
 and only real responses show whether the model follows them.
