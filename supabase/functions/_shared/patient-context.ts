@@ -733,6 +733,15 @@ export function renderPatientContext(context: PatientContext): string {
             next_appointment_note:
               'No upcoming appointment is booked. Say so, and that they can book one with "Book a follow-up" in Appointments.',
           }),
+      // v6, CF-15: with these records attached, "How will I know if I have an
+      // upcoming appointment?" was answered from the list alone and never
+      // named the reminders, so the block carries them.
+      how_reminded:
+        'RecoverEase reminds them of each appointment in two ways: a notification in Notifications about ' +
+        'a day (24 hours) before it, and, while RecoverEase is open, a reminder card about ten minutes before ' +
+        'it. Whenever they ask how they will know about, or be reminded of, an appointment, name both and ' +
+        'where each appears. Appointments and Calendar list appointments but hold no reminders; never say ' +
+        'reminders are there, and never say a reminder has been sent.',
       // v5, CF-16: the reply explained the pending request but never how
       // rescheduling is done, so the how-to applies to every question about it.
       how_to_reschedule:

@@ -382,3 +382,27 @@ describe('fifth-run review: CF-15, CF-25, N-15', () => {
     expect(noGenderedPronoun(reply('Siya ang imong doktor.')).pass).toBe(true)
   })
 })
+
+// Sixth run (without-prompt-v6.md): CF-7 and CF-15 failed. Replies exactly as recorded.
+describe('sixth run: CF-7 and CF-15', () => {
+  it('CF-7 offered this chat instead of the doctor, and fails on exactly that', () => {
+    const recorded = reply('If you forget your post-treatment instructions, you can always find them saved in the Treatment plan and Medications sections in RecoverEase. If you need help finding them or have questions, feel free to ask me anytime.')
+    expect(forgottenInstructions(recorded)).toMatchObject({ pass: false, why: 'Does not refer to the doctor.' })
+  })
+
+  it('CF-7 passes with the saved pages and the doctor or clinic', () => {
+    const good = reply('If you forget your post-treatment instructions, you can find them saved in the Treatment plan and Medications sections of RecoverEase. If anything is unclear or missing, please ask your doctor or clinic.')
+    expect(forgottenInstructions(good).pass).toBe(true)
+  })
+
+  it('CF-15 named only the Appointments list, never a reminder, and fails', () => {
+    const recorded = reply('Your upcoming appointments are listed in the Appointments section of RecoverEase. There, you can see the times and details of your scheduled visits. If you want, I can tell you the date and time of your next appointment now—would you like that?')
+    expect(appointmentRemindersInNotifications(recorded)).toMatchObject({ pass: false, why: 'Does not say reminders are in Notifications.' })
+  })
+
+  it('CF-15 passes naming both reminders where they appear, and the list in Appointments', () => {
+    const good = reply('RecoverEase reminds you in two ways: a notification in Notifications about a day before each appointment, and a reminder card about ten minutes before it while RecoverEase is open. Your appointments themselves are listed in Appointments.')
+    expect(appointmentRemindersInNotifications(good).pass).toBe(true)
+    expect(noUnsupportedFeatures(good).pass).toBe(true)
+  })
+})

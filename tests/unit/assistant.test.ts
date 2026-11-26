@@ -368,7 +368,7 @@ describe('facts about RecoverEase', () => {
     ['CF-2 who uses it', ['patients registered by their clinic', 'the doctors who care for', 'clinic administrators', 'a\n  doctor sees only their own patients']],
     ['CF-3 features', ['treatment plan and goals', 'medicine reminders', 'book a follow-up', 'My recovery', 'recovery roadmap', 'Guidance chat for general guidance (not medical advice)']],
     ['CF-8 no promised outcome', ['Never promise or imply a result', 'changes go through their doctor']],
-    ['CF-15 reminders', ['the reminder is a notification in Notifications,\n  about a day before', 'never say\n  reminders are in Appointments or Calendar', 'Never say a reminder or\n  notification has been sent']],
+    ['CF-15 reminders', ['the reminder is a notification in Notifications,\n  about a day before', 'never say\n  reminders are in Appointments or Calendar', 'name both reminders and\n  where each appears','Never say a reminder or notification has been sent']],
     ['CF-25 no telehealth', ['video or telehealth visits', 'never mention telehealth, video or online\n  consultations']],
     ['N-15 no gender from a name', ['never guess anyone\'s gender from their name', 'never "he", "she", "him", "her", "his" or "hers"']],
     ['CF-27 changing the plan', ['only their doctor can change the treatment plan', 'cannot edit what the doctor wrote']],

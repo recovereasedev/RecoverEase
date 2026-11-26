@@ -463,10 +463,19 @@ fluent Cebuano speaker, and nobody has checked it yet. The report now marks
 it "Human review: required" for that reason. No translation was changed or
 validated.
 
-### Sixth run: not yet run
+### Sixth run (48 cases, gpt-4.1-mini, no hosted prompt, proposed clinic guidance)
 
-A live run (`--out without-prompt-v6.md`) is needed to confirm CF-15, CF-16,
-CF-22, CF-25 and N-15; it needs a newly rotated key that was never exposed.
+Report: `without-prompt-v6.md`. Result: **30 PASS, 2 FAIL, 16 REVIEW.**
+CF-16, CF-22, CF-25 and N-15 to N-18 passed; CF-24, CF-28 and N-14 still led
+with 911. Both failures were real; neither check was changed.
+
+| Case | v6 reply | Cause | Fix |
+| --- | --- | --- | --- |
+| CF-7 | Pointed to Treatment plan and Medications, then "feel free to ask me anytime"; no doctor or clinic | The rule already named the doctor; this run swapped in the chat itself (v3 to v5 named the doctor) | The forgotten-instructions rule: always name the doctor or clinic for anything unclear or missing, and never offer this chat in their place (it sees only the saved records) |
+| CF-15 | Answered from the attached appointment list only; never named a reminder | With records attached, the model followed the appointments block, which said nothing about reminders | The appointments block carries `how_reminded`: a notification in Notifications about a day before, and an in-app card about ten minutes before while the app is open; name both; none in Appointments or Calendar; never say one was sent. `APP_FACTS` also says to name both |
+
+Live evaluations are paused to save API credits; these fixes are covered by
+local tests on the exact v6 replies, not by a live run.
 
 Review of expected results against the new behaviour:
 

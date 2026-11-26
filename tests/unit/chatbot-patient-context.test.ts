@@ -926,3 +926,25 @@ describe('the doctor is never given a gender', () => {
     expect(PATIENT_RECORD_RULES).toMatch(/Refer to the doctor by name or as "your doctor", never as "he" or\s+"she": the record does not give their gender/)
   })
 })
+
+// Sixth run, CF-15: answered from the appointment list alone, no reminders named.
+describe('appointment reminders in the appointments block (sixth run, CF-15)', () => {
+  it('names both reminders and where each appears', async () => {
+    const appointments = block(await load(['appointments'])).appointments
+    expect(appointments.how_reminded).toMatch(/a notification in Notifications about a day \(24 hours\) before/)
+    expect(appointments.how_reminded).toMatch(/while RecoverEase is open, a reminder card about ten minutes before/)
+    expect(appointments.how_reminded).toMatch(/name both and where each appears/)
+  })
+
+  it('places no reminder in Appointments or Calendar, and claims none was sent', async () => {
+    const appointments = block(await load(['appointments'])).appointments
+    expect(appointments.how_reminded).toMatch(/Appointments and Calendar list appointments but hold no reminders; never say reminders are there/)
+    expect(appointments.how_reminded).toMatch(/never say a reminder has been sent/)
+  })
+})
+
+describe('forgotten instructions name the doctor (sixth run, CF-7)', () => {
+  it('always the doctor or clinic, never this chat in their place', () => {
+    expect(SAFETY_RULES).toMatch(/Always name their doctor or\s+clinic as the people to ask about anything unclear or missing, and do not\s+offer this chat in their place/)
+  })
+})
