@@ -202,6 +202,8 @@ export async function requestOpenAIReply(input: OpenAIReplyRequest): Promise<Pro
       error instanceof APIError &&
       typeof error.status === 'number' &&
       REQUEST_REJECTED.has(error.status) &&
+      // An unknown model is not about the prompt: a retry would fail the same way.
+      !isConfigurationError(error) &&
       deadline - now() >= MIN_RETRY_MS
     if (!canRetry) throw classify(error)
     if (hostedPrompt) refusedPrompts.set(promptKey(hostedPrompt), now() + REFUSED_PROMPT_MEMORY_MS)
@@ -313,8 +315,12 @@ export async function requestOpenAIReply(input: OpenAIReplyRequest): Promise<Pro
     }
     if (error instanceof APIError && typeof error.status === 'number') {
       log(providerErrorSummary(error.status, errorFields(error)))
-      // A rejected key or project is configuration: trying again cannot help.
-      if (error.status === 401 || error.status === 403) return notConfigured(error.status)
+      // A rejected key, an empty account or an unknown model is
+      // configuration: trying again cannot help. Checked before 429, because
+      // `insufficient_quota` arrives as a 429 and is not "busy".
+      if (error.status === 401 || error.status === 403 || isConfigurationError(error)) {
+        return notConfigured(error.status)
+      }
       const busy = error.status === 429 || error.status >= 500
       return new ProviderError(
         busy ? 'The guidance assistant is busy. Try again in a moment.' : 'The guidance assistant is unavailable.',
@@ -327,6 +333,22 @@ export async function requestOpenAIReply(input: OpenAIReplyRequest): Promise<Pro
     log(JSON.stringify({ event: 'openai_failed', error: error instanceof Error ? error.name : 'unknown' }))
     return new ProviderError('The guidance assistant is unavailable.', 'unavailable', 503, null, timings)
   }
+}
+
+/**
+ * OpenAI error codes that mean this deployment is misconfigured or out of
+ * credit, rather than OpenAI being down (as production v31 already treats
+ * them).
+ */
+const CONFIGURATION_CODES = new Set([
+  'invalid_api_key',
+  'insufficient_quota',
+  'model_not_found',
+  'billing_not_active',
+])
+
+function isConfigurationError(error: APIError): boolean {
+  return typeof error.code === 'string' && CONFIGURATION_CODES.has(error.code)
 }
 
 /** The machine-readable parts of an SDK error: never its message. */

@@ -118,6 +118,7 @@ describe('the request sent to OpenAI', () => {
       instructions,
       input: [{ role: 'user', content: PATIENT_TEXT }],
       store: false,
+      max_output_tokens: 2500,
       text: { format: { type: 'json_schema', name: REPLY_FORMAT_NAME, strict: true } },
     })
   })
@@ -269,6 +270,24 @@ describe('configuration', () => {
 })
 
 describe('provider failures', () => {
+  it.each([
+    [429, 'insufficient_quota'],
+    [404, 'model_not_found'],
+    [401, 'invalid_api_key'],
+    [429, 'billing_not_active'],
+  ])('a %i %s is configuration, not "busy"', async (status, code) => {
+    const { fetchImpl } = fakeOpenAI(json(status, errorBody('invalid_request_error', code, null)))
+    const error = await failure(call(fetchImpl))
+    expect(error).toMatchObject({ code: 'not_configured', status: 503, providerStatus: status })
+  })
+
+  it('does not retry without the hosted prompt when the model is unknown', async () => {
+    const { calls, fetchImpl } = fakeOpenAI(json(404, errorBody('invalid_request_error', 'model_not_found', 'model')))
+    const error = await failure(call(fetchImpl, { hostedPrompt: { id: 'pmpt_test' } }))
+    expect(calls).toHaveLength(1)
+    expect(error).toMatchObject({ code: 'not_configured' })
+  })
+
   it.each([
     [401, 'not_configured', 503],
     [403, 'not_configured', 503],

@@ -522,7 +522,8 @@ The AI provider is the **OpenAI Responses API**, through the official SDK
 (`openai`, pinned, a dev dependency that the browser bundle never imports), in
 `supabase/functions/_shared/openai-call.ts`. What is sent, what OpenAI may
 retain, and the hosted-prompt contract are in `docs/chatbot-patient-records.md`.
-(Before PR #93 the provider was Google Gemini, called with `fetch`.)
+(Production has run an earlier OpenAI version, `fetch`-based and not in git,
+since 2026-11-12; Google Gemini before that.)
 
 **The browser never calls OpenAI.** Three separate things force that, and only
 the first is about the key:

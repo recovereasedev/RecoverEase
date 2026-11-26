@@ -235,10 +235,12 @@ recoverease-zeta.vercel.app -> Access-Control-Allow-Origin: recoverease-zeta.ver
 evil.example.com            -> no header (refused)
 ```
 
-**From PR #93 the provider is OpenAI** (`OPENAI_API_KEY`, `OPENAI_MODEL`,
-optionally `OPENAI_PROMPT_ID` / `OPENAI_PROMPT_VERSION`). `GEMINI_API_KEY`
-serves the version deployed before it and can be removed once the OpenAI
-version is deployed and verified. The history below is the Gemini set-up.
+**The provider is OpenAI** (`OPENAI_API_KEY`, `OPENAI_MODEL`, optionally
+`OPENAI_PROMPT_ID` / `OPENAI_PROMPT_VERSION`). Production `chatbot-reply` v31,
+deployed 2026-11-12, already calls OpenAI; its source was never committed (a
+reference copy is kept in the ops notes). PR #93 brings an OpenAI version into
+git. `GEMINI_API_KEY` is no longer used by production. The history below is
+the Gemini set-up.
 
 **`GEMINI_API_KEY` is required and is not set.** It is the only AI provider
 secret RecoverEase uses, and it must be added in exactly one place:

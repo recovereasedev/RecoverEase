@@ -147,6 +147,14 @@ export function raisesCriticalConcern(reply: AssistantReply): boolean {
 /** The name the reply schema is sent under. */
 export const REPLY_FORMAT_NAME = 'recovery_guidance_reply'
 
+/**
+ * A ceiling on each reply, as production v31 already sets: the reply is two
+ * or three sentences of JSON, so this only stops a runaway answer (or a
+ * reasoning model's thinking) from running up the bill. A reply that reaches
+ * it comes back `incomplete` and is refused (`openai-call.ts`).
+ */
+export const OPENAI_MAX_OUTPUT_TOKENS = 2500
+
 export type StoredMessage = {
   chat_message_role: string | null
   chat_message_content: string | null
@@ -263,6 +271,7 @@ export function buildResponsesRequest(input: {
     instructions: input.instructions,
     input: input.turns.map((turn) => ({ role: turn.role, content: turn.content })),
     store: false,
+    max_output_tokens: OPENAI_MAX_OUTPUT_TOKENS,
     text: {
       format: {
         type: 'json_schema' as const,

@@ -228,6 +228,10 @@ async function main() {
     console.error('Set OPENAI_API_KEY and OPENAI_MODEL to run the evaluation.')
     process.exit(2)
   }
+  if (!/^[A-Za-z0-9][A-Za-z0-9._:-]*$/.test(process.env.OPENAI_MODEL.trim())) {
+    console.error('OPENAI_MODEL does not look like a model name (for example gpt-4.1-mini). Set the real model.')
+    process.exit(2)
+  }
   const lines = [
     '# Chatbot evaluation report',
     '',
@@ -247,7 +251,14 @@ async function main() {
       )
       console.log(`${test.id}: ${verdict ? (verdict.pass ? 'PASS' : 'FAIL') : 'REVIEW'}`)
     } catch (error) {
-      lines.push(`| ${test.id} | ${escape(test.question)} | - | - | (no response: ${error instanceof Error ? error.name : 'error'}) | - | ${escape(test.expected)} | FAIL | No response was obtained. |`)
+      // The failure's code and HTTP status only - never a message or a key.
+      const failure = error as { name?: string; code?: unknown; providerStatus?: unknown }
+      const why = [
+        error instanceof Error ? error.name : 'error',
+        typeof failure.code === 'string' ? failure.code : null,
+        typeof failure.providerStatus === 'number' ? `HTTP ${failure.providerStatus}` : null,
+      ].filter(Boolean).join(', ')
+      lines.push(`| ${test.id} | ${escape(test.question)} | - | - | (no response: ${why}) | - | ${escape(test.expected)} | FAIL | No response was obtained. |`)
       console.log(`${test.id}: no response`)
     }
   }

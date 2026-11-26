@@ -214,7 +214,8 @@ serves the same deployment; both are on the Edge Function CORS allow-list, so
 older links keep working.
 
 The recovery guidance assistant runs on the **OpenAI Responses API** (from PR
-#93; production ran on Google Gemini until that change is deployed). Every reply
+#93; production has run an earlier OpenAI version since 2026-11-12, and Google
+Gemini before that). Every reply
 is structured output, validated with Zod before anything is stored or rendered.
 The browser never calls the provider. If OpenAI is unavailable the patient's
 message is still saved and the UI says so rather than inventing an answer. See

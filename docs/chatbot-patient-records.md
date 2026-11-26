@@ -152,20 +152,48 @@ an outside provider; with this change their medicines, appointments and plan
 can go too. Updating that text is a separate decision and is not part of this
 change.
 
+## What production runs today
+
+Production `chatbot-reply` is **v31, deployed 2026-11-12T06:35Z, already on
+OpenAI** (Responses API via `fetch`, instructions from code, no patient
+records). Its source is in no git branch; a read-only reference copy is kept
+outside the repo (ops notes, `chatbot/prod-chatbot-reply-v31/`) so a deploy of
+this branch can be rolled back to it. Differences that matter:
+
+| | Production v31 | This branch |
+| --- | --- | --- |
+| Patient records | none | read as the patient, when asked |
+| `OPENAI_PROMPT_ID` | **ignored** on purpose | **sent** when set |
+| Model when `OPENAI_MODEL` is unset | `gpt-4.1-mini` | not configured (503) |
+| `OPENAI_REASONING_EFFORT` | supported | not supported (the secret is not set) |
+| Output cap | 2500 tokens | 2500 tokens |
+| Quota / unknown model | not configured | not configured |
+| Transport | `fetch` | official SDK |
+
+**Release warning:** the production project already has an
+`OPENAI_PROMPT_ID` secret that v31 ignores. Deploying this branch as is would
+start sending that hosted prompt with every reply. Its text has not been
+reviewed, and how OpenAI orders it against `instructions` is not documented,
+so it could weaken the safety rules. Unset `OPENAI_PROMPT_ID` before
+deploying unless its text has been reviewed.
+
 ## Deployment requirements (not done)
 
 1. Rotate the OpenAI key (the old one was exposed) and confirm the Supabase
    secret `OPENAI_API_KEY` holds the new one. The project's current
-   `OPENAI_API_KEY` secret was last updated 2026-11-12.
-2. Set `OPENAI_MODEL` (already present as a secret — confirm its value is a
-   model that supports structured outputs). `OPENAI_PROMPT_ID` is present;
-   `OPENAI_PROMPT_VERSION` is not set (the prompt's current version is used).
-   Both may be left unset.
+   `OPENAI_API_KEY` secret was last updated 2026-11-12 and **is in live use by
+   production v31 now**: if it is the exposed key, production is using it.
+2. `OPENAI_MODEL` is present as a secret; confirm it supports structured
+   outputs. **Unset `OPENAI_PROMPT_ID`** (see the release warning) unless the
+   hosted prompt's text has been reviewed. `OPENAI_PROMPT_VERSION` is not set.
 3. Owner approves the privacy points above.
 4. Run the 44-case evaluation with the new key (below) and review it.
-5. Deploy `chatbot-reply` from the merged branch; smoke-test one question with
-   and one without records. `GEMINI_API_KEY` can then be removed.
-6. Apply the proposed clinic guidance below only after step 5.
+5. Ship the patient disclosure (`docs/chatbot-ai-disclosure-proposal.md`),
+   or decide not to, before or with the deploy.
+6. Deploy `chatbot-reply` from the merged branch; smoke-test one question with
+   and one without records. Roll back to the v31 copy if needed.
+   `GEMINI_API_KEY` is unused and can be removed.
+7. Apply the proposed clinic guidance below only after step 6.
 
 ## Security
 

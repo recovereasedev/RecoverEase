@@ -24,7 +24,7 @@ modules, Table 31); see the [README](../README.md#what-it-does) and
 | Forms | React Hook Form + Zod |
 | Backend | Supabase: PostgreSQL, Auth, Edge Functions (Deno). No application server |
 | Authorization | PostgreSQL Row Level Security |
-| AI assistant | OpenAI Responses API (from PR #93; Gemini before), called only from the `chatbot-reply` Edge Function |
+| AI assistant | OpenAI Responses API (production v31 since 2026-11-12, untracked; PR #93 brings it into git; Gemini before), called only from the `chatbot-reply` Edge Function |
 | Documents | `pdf-lib` (PDFs) and `fflate` (spreadsheet export), both client-side, in `src/lib/documents/` |
 | Tests | Vitest (jsdom + node), React Testing Library, PGlite, Playwright, axe |
 | Lint | oxlint |
