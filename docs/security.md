@@ -518,12 +518,14 @@ its clinic yet; the Clinic Admin policy resolves it as it is read.
 
 ## The recovery guidance assistant
 
-The AI provider is **Google Gemini** (Interactions API). There is no Anthropic
-dependency anywhere in RecoverEase, and no provider SDK is installed: the Edge
-Function calls the REST endpoint with `fetch`, which keeps the function's
-module graph small and removes a class of cold-start failure.
+The AI provider is the **OpenAI Responses API**, through the official SDK
+(`openai`, pinned, a dev dependency that the browser bundle never imports), in
+`supabase/functions/_shared/openai-call.ts`. What is sent, what OpenAI may
+retain, and the hosted-prompt contract are in `docs/chatbot-patient-records.md`.
+(Production has run an earlier OpenAI version, `fetch`-based and not in git,
+since 2026-11-12; Google Gemini before that.)
 
-**The browser never calls Gemini.** Three separate things force that, and only
+**The browser never calls OpenAI.** Three separate things force that, and only
 the first is about the key:
 
 - the credential must not ship in a client bundle;
@@ -548,7 +550,7 @@ should not depend on whether a provider key happens to be set.
 
 The adviser's "AI Chatbot On/Off" is enforced by the server, not by hiding a
 button (migration 38). Right after proving the conversation the caller's, and
-before reading any of it or calling Gemini, `chatbot-reply` asks
+before reading any of it or calling OpenAI, `chatbot-reply` asks
 `guidance_assistant_on_for_doctor()` - the platform's switch and the patient's
 clinic's both on. Only an explicit yes goes ahead. An explicit no is refused
 with `disabled`; an answer it cannot read is refused as `unavailable`, so a
@@ -583,12 +585,13 @@ through those functions, with no policy and no grant.
 
 ### Data minimisation
 
-`toInteractionInput()` is the boundary, and it is a function rather than a
-convention so it can be tested. It reads exactly two fields off each message
-row — the role and the text — and discards everything else. Gemini therefore
-receives the text of one conversation and nothing else: no name, patient id,
-date of birth, contact details, diagnosis, medication schedule, appointments,
-other conversations, other patients, and nothing from the audit trail.
+`toConversationInput()` is the boundary for the conversation, and it is a
+function rather than a convention so it can be tested. It reads exactly two
+fields off each message row — the role and the text — and discards everything
+else. The patient's own records, when a question needs them, are chosen field
+by field in `patient-context.ts` (no name, ids, birth date, contact details or
+notes) and read with the patient's own token. OpenAI receives nothing about
+other conversations or other patients, and nothing from the audit trail.
 
 Because it copies fields out rather than deleting fields off, adding a column
 to `chat_message` later cannot silently widen what leaves the system. A test
@@ -655,7 +658,7 @@ the provider is called and survives every failure path.
 | --- | --- | --- |
 | Publishable (anon) key | `VITE_SUPABASE_PUBLISHABLE_KEY` | — it is public by design; RLS is what protects the data |
 | Service-role key | Supabase Edge Function secrets | Any `VITE_`-prefixed variable, any client file, the repo |
-| `GEMINI_API_KEY` | Edge Function secrets | Same |
+| `OPENAI_API_KEY` (and `OPENAI_MODEL`, `OPENAI_HOSTED_PROMPT_ENABLED`, `OPENAI_PROMPT_ID`, `OPENAI_PROMPT_VERSION`) | Edge Function secrets | Same |
 
 Anything prefixed `VITE_` is compiled into the browser bundle. `src/lib/env.ts`
 declares only the two publishable values, so a service key cannot be read from

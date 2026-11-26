@@ -177,7 +177,7 @@ describe('chatbot-reply', () => {
   it('asks for a review only once the patient is owed an answer', () => {
     // Refusals - not yours, nothing to reply to - are not the assistant
     // failing to answer, and must not reach a doctor.
-    expect(source.indexOf("'This conversation is not yours', 403")).toBeLessThan(
+    expect(source.indexOf('resolveConversationPatient(', source.indexOf('Deno.serve('))).toBeLessThan(
       source.indexOf('await answerOrRequestReview('),
     )
     expect(source.indexOf('if (!hasUnansweredPatientMessage(turns))')).toBeLessThan(
@@ -186,15 +186,16 @@ describe('chatbot-reply', () => {
   })
 
   it('covers every way of failing to answer: configuration, the provider, escalation and saving it', () => {
-    expect(answerStep).toContain("apiKey: Deno.env.get('GEMINI_API_KEY')")
-    expect(answerStep).toContain('requestGeminiReply(')
+    expect(answerStep).toContain("apiKey: Deno.env.get('OPENAI_API_KEY')")
+    expect(answerStep).toContain("model: Deno.env.get('OPENAI_MODEL')")
+    expect(answerStep).toContain('requestOpenAIReply(')
     expect(answerStep).toContain('timeoutMs: providerDeadlineMs(Date.now() - startedAt)')
     expect(answerStep).toContain('escalateCriticalConcern(')
     expect(answerStep).toContain("chat_message_role: 'assistant'")
     // The failure is passed on, so the request can say when it was a
     // concern's escalation that failed (tests/unit/escalation-failure-alert.test.ts).
     expect(answerStep).toContain(
-      '(error) => requestReview(reviewStore(admin, patient.doc_id, chatSessionId), reviewMessageFor(error)),',
+      '(error) => requestReview(reviewStore(admin, patient.docId, chatSessionId), reviewMessageFor(error)),',
     )
   })
 

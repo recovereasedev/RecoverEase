@@ -184,10 +184,12 @@ supabase functions deploy create-account
 supabase functions deploy chatbot-reply
 
 supabase secrets set ALLOWED_ORIGINS="https://<your-app>.vercel.app"
-supabase secrets set GEMINI_API_KEY="..."
+supabase secrets set OPENAI_API_KEY="..." OPENAI_MODEL="..."
+# hosted prompt: OFF for this release. Only after its text is reviewed:
+# supabase secrets set OPENAI_HOSTED_PROMPT_ENABLED="true" OPENAI_PROMPT_ID="pmpt_..." OPENAI_PROMPT_VERSION="<reviewed version>"
 ```
 
-`chatbot-reply` imports `zod` by its bare name, so it needs an import map.
+`chatbot-reply` imports `zod` and `openai` by their bare names, so it needs an import map.
 Unless one is passed with `--import-map` or set in `config.toml`,
 `supabase functions deploy` reads it from the function's own folder —
 `supabase/functions/chatbot-reply/deno.json` — and never from
@@ -207,8 +209,11 @@ a request to them in front of a signed-in user's browser. Localhost origins
 are always permitted and are not reachable from outside the developer's
 machine.
 
-If `GEMINI_API_KEY` is unset, `chatbot-reply` returns 503 and the UI says
-the assistant is unavailable. Every other module works. That is a supported
+If `OPENAI_API_KEY` or `OPENAI_MODEL` is unset, `chatbot-reply` returns 503
+and the UI says the assistant is unavailable. The hosted prompt is off unless
+`OPENAI_HOSTED_PROMPT_ENABLED` is `true` and `OPENAI_PROMPT_VERSION` pins a
+reviewed version; without it, or when OpenAI refuses it, replies come from the
+instructions assembled in code (`docs/chatbot-patient-records.md`). Every other module works. That is a supported
 configuration, not a broken one.
 
 **`ALLOWED_ORIGINS` is no longer required for production.** The canonical
@@ -231,6 +236,14 @@ recovereasedev.vercel.app   -> Access-Control-Allow-Origin: recovereasedev.verce
 recoverease-zeta.vercel.app -> Access-Control-Allow-Origin: recoverease-zeta.vercel.app
 evil.example.com            -> no header (refused)
 ```
+
+**The provider is OpenAI** (`OPENAI_API_KEY`, `OPENAI_MODEL`, and, only when deliberately
+enabled, `OPENAI_HOSTED_PROMPT_ENABLED` / `OPENAI_PROMPT_ID` /
+`OPENAI_PROMPT_VERSION`). Production `chatbot-reply` v31,
+deployed 2026-11-12, already calls OpenAI; its source was never committed (a
+reference copy is kept in the ops notes). PR #93 brings an OpenAI version into
+git. `GEMINI_API_KEY` is no longer used by production. The history below is
+the Gemini set-up.
 
 **`GEMINI_API_KEY` is required and is not set.** It is the only AI provider
 secret RecoverEase uses, and it must be added in exactly one place:

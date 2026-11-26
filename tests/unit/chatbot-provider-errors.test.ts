@@ -11,103 +11,49 @@ import {
 
 /**
  * How `chatbot-reply` treats a provider that fails after answering: what of
- * an error response reaches the log, and how a body that stops arriving is
- * reported.
+ * an error reaches the log, and how a body that stops arriving is reported.
  */
 
 const PATIENT_TEXT = 'Is some swelling normal after the operation?'
 
-/** The shape of a Google API error, quoting the request as such errors can. */
-const googleError = (overrides: Record<string, unknown> = {}) =>
-  JSON.stringify({
-    error: {
-      code: 400,
-      message: `Invalid value at 'input[1].type' near "${PATIENT_TEXT}"`,
-      status: 'INVALID_ARGUMENT',
-      details: [
-        {
-          '@type': 'type.googleapis.com/google.rpc.BadRequest',
-          fieldViolations: [
-            { field: 'input[1].type', description: `Unknown turn type for "${PATIENT_TEXT}"` },
-          ],
-        },
-        {
-          '@type': 'type.googleapis.com/google.rpc.ErrorInfo',
-          reason: 'INVALID_TURN_TYPE',
-          domain: 'googleapis.com',
-          metadata: { text: PATIENT_TEXT },
-        },
-      ],
-      ...overrides,
-    },
-  })
-
 describe('providerErrorSummary', () => {
-  it('keeps the status and the machine-readable parts of a Google API error', () => {
-    expect(JSON.parse(providerErrorSummary(400, googleError()))).toEqual({
-      event: 'gemini_error',
+  it('keeps the status and the machine-readable parts of an OpenAI error', () => {
+    expect(
+      JSON.parse(
+        providerErrorSummary(400, { type: 'invalid_request_error', code: 'invalid_value', param: 'input[1].content' }),
+      ),
+    ).toEqual({
+      event: 'openai_error',
       status: 400,
-      provider_code: 400,
-      provider_status: 'INVALID_ARGUMENT',
-      reasons: ['INVALID_TURN_TYPE'],
-      fields: ['input[1].type'],
+      error_type: 'invalid_request_error',
+      error_code: 'invalid_value',
+      param: 'input[1].content',
     })
   })
 
-  it('never logs the message, a description or metadata, which can quote the patient', () => {
-    const line = providerErrorSummary(400, googleError())
-    expect(line).not.toContain('swelling')
-    expect(line).not.toContain('Invalid value')
-    expect(line).not.toContain('Unknown turn type')
-  })
-
-  it('drops anything that is not shaped like an enum name or a request path', () => {
-    const line = providerErrorSummary(
-      429,
-      googleError({
-        status: `RESOURCE EXHAUSTED: ${PATIENT_TEXT}`,
-        details: [
-          { reason: PATIENT_TEXT },
-          { fieldViolations: [{ field: `input[0].content = ${PATIENT_TEXT}` }, { field: 42 }] },
-        ],
-      }),
-    )
-    expect(JSON.parse(line)).toMatchObject({ provider_status: null, reasons: [], fields: [] })
+  it('drops anything that is not shaped like a code or a request path', () => {
+    const line = providerErrorSummary(429, {
+      type: `Rate limit reached: ${PATIENT_TEXT}`,
+      code: 42,
+      param: `input[0].content = ${PATIENT_TEXT}`,
+    })
+    expect(JSON.parse(line)).toEqual({
+      event: 'openai_error',
+      status: 429,
+      error_type: null,
+      error_code: null,
+      param: null,
+    })
     expect(line).not.toContain('swelling')
   })
 
-  it('logs only the status when the body is not a Google error', () => {
-    for (const body of ['', `<html><body>${PATIENT_TEXT}</body></html>`, '[]', 'null', '{"error":"busy"}']) {
-      expect(JSON.parse(providerErrorSummary(503, body)), body).toEqual({
-        event: 'gemini_error',
-        status: 503,
-        provider_code: null,
-        provider_status: null,
-        reasons: [],
-        fields: [],
-      })
-    }
-  })
-
-  it('does not parse a body larger than any error the provider sends', () => {
-    const line = providerErrorSummary(500, googleError({ padding: 'x'.repeat(70_000) }))
-    expect(JSON.parse(line)).toMatchObject({ provider_code: null, provider_status: null })
-  })
-
-  it('keeps a code only when it is an HTTP status, and at most five of each list', () => {
-    const many = Array.from({ length: 8 }, (_, index) => `REASON_${index}`)
-    const line = JSON.parse(
-      providerErrorSummary(
-        500,
-        googleError({
-          code: 'five hundred',
-          details: [...many, 'REASON_0'].map((reason) => ({ reason })),
-        }),
-      ),
-    )
-    expect(line.provider_code).toBeNull()
-    expect(line.reasons).toEqual(many.slice(0, 5))
-    expect(JSON.parse(providerErrorSummary(500, googleError({ code: 9_000 }))).provider_code).toBeNull()
+  it('cannot log a message, even when handed one', () => {
+    const line = providerErrorSummary(400, {
+      type: 'invalid_request_error',
+      ...({ message: `Could not process "${PATIENT_TEXT}"` } as object),
+    })
+    expect(line).not.toContain('swelling')
+    expect(Object.keys(JSON.parse(line)).sort()).toEqual(['error_code', 'error_type', 'event', 'param', 'status'])
   })
 })
 
@@ -126,7 +72,7 @@ describe('a provider that stalls after its headers', () => {
     // outside this suite, since there is no Deno here.
     server = createServer((_request, response) => {
       response.writeHead(200, { 'content-type': 'application/json' })
-      response.write('{"outputs": [')
+      response.write('{"output": [')
     })
     server.listen(0, '127.0.0.1')
     await once(server, 'listening')
@@ -156,4 +102,4 @@ describe('a provider that stalls after its headers', () => {
 })
 
 // How chatbot-reply reads the provider's body and logs its errors is tested
-// against a fake provider in tests/unit/gemini-call.test.ts.
+// against a fake provider in tests/unit/openai-call.test.ts.

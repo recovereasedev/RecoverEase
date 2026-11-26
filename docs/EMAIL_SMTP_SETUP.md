@@ -112,7 +112,7 @@ signal the architecture has drifted.
 
 Existing variables are unchanged: `VITE_SUPABASE_URL` and
 `VITE_SUPABASE_PUBLISHABLE_KEY` are public by design; the service-role key and
-the Gemini key stay in Supabase Edge Function secrets and are never exposed to
+the AI provider key stay in Supabase Edge Function secrets and are never exposed to
 the browser.
 
 ### 5. Migrations

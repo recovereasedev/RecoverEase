@@ -65,73 +65,31 @@ export function isProviderTimeout(cause: unknown): boolean {
   )
 }
 
-/** Longer than any error the provider sends; anything bigger is not parsed. */
-const MAX_PROVIDER_ERROR_BYTES = 65_536
-/** At most this many reasons, and this many fields, per line. */
-const MAX_PROVIDER_ERROR_ITEMS = 5
-/** `RESOURCE_EXHAUSTED`, `INVALID_ARGUMENT`: an enum name, never prose. */
-const PROVIDER_STATUS = /^[A-Z][A-Z_]{0,63}$/
-/** `API_KEY_INVALID`, `RATE_LIMIT_EXCEEDED`. */
-const PROVIDER_REASON = /^[A-Z][A-Z0-9_]{0,63}$/
-/** A path into the request such as `input[1].type` - never a value. */
+/** `invalid_request_error`, `rate_limit_exceeded`: a code, never prose. */
+const PROVIDER_CODE = /^[a-z][a-z0-9_]{0,63}$/
+/** A path into the request such as `prompt.id` or `input[1].content` - never a value. */
 const PROVIDER_FIELD = /^[A-Za-z0-9_.[\]]{1,120}$/
 
-type UnknownRecord = Record<string, unknown>
-
-const isRecord = (value: unknown): value is UnknownRecord =>
-  typeof value === 'object' && value !== null && !Array.isArray(value)
-
 /**
- * What of a provider's error response may be logged: its status, and the
- * machine-readable parts of a Google API error - the code, the status name,
- * each `ErrorInfo` reason and each `BadRequest` field path. Never its
- * `message` or any `description`: those are prose, and prose can quote the
- * request, which is a patient's conversation.
- *
- * The field paths are what made the `model_output` turn-type failure
- * diagnosable (`input[1].type`), so they stay; anything that does not look
- * like an enum name or a path is dropped rather than escaped.
+ * What of an OpenAI error may be logged: the HTTP status, and the
+ * machine-readable `type`, `code` and `param` of the error - for example
+ * `invalid_request_error` / `invalid_value` / `prompt.id`. Never its
+ * `message`: that is prose, and prose can quote the request, which is a
+ * patient's conversation. Anything that does not look like a code or a path
+ * is dropped rather than escaped.
  */
-export function providerErrorSummary(status: number, body: string): string {
-  let error: UnknownRecord = {}
-  if (body.length <= MAX_PROVIDER_ERROR_BYTES) {
-    try {
-      const parsed: unknown = JSON.parse(body)
-      if (isRecord(parsed) && isRecord(parsed.error)) error = parsed.error
-    } catch {
-      // Not JSON: nothing of it is logged.
-    }
-  }
-
-  const details = Array.isArray(error.details) ? error.details.filter(isRecord) : []
-  const matching = (values: unknown[], pattern: RegExp) => [
-    ...new Set(
-      values.filter((value): value is string => typeof value === 'string' && pattern.test(value)),
-    ),
-  ].slice(0, MAX_PROVIDER_ERROR_ITEMS)
-
-  const code = error.code
-  const providerStatus = error.status
-
+export function providerErrorSummary(
+  status: number,
+  error: { type?: unknown; code?: unknown; param?: unknown },
+): string {
+  const code = (value: unknown) =>
+    typeof value === 'string' && PROVIDER_CODE.test(value) ? value : null
   return JSON.stringify({
-    event: 'gemini_error',
+    event: 'openai_error',
     status,
-    provider_code:
-      typeof code === 'number' && Number.isInteger(code) && code >= 100 && code <= 599
-        ? code
-        : null,
-    provider_status:
-      typeof providerStatus === 'string' && PROVIDER_STATUS.test(providerStatus)
-        ? providerStatus
-        : null,
-    reasons: matching(details.map((detail) => detail.reason), PROVIDER_REASON),
-    fields: matching(
-      details
-        .flatMap((detail) => (Array.isArray(detail.fieldViolations) ? detail.fieldViolations : []))
-        .filter(isRecord)
-        .map((violation) => violation.field),
-      PROVIDER_FIELD,
-    ),
+    error_type: code(error.type),
+    error_code: code(error.code),
+    param: typeof error.param === 'string' && PROVIDER_FIELD.test(error.param) ? error.param : null,
   })
 }
 
@@ -146,8 +104,9 @@ export const REPLY_PHASES = [
   'switch',
   'history',
   'prompt',
-  'gemini_headers',
-  'gemini_body',
+  'context',
+  'provider_headers',
+  'provider_body',
   'validation',
   'escalation',
   'persistence',
@@ -162,7 +121,7 @@ export type ReplyLogEntry = {
   durationMs: number
   /** Milliseconds per phase; phases that did not run are left out. */
   phases?: Partial<Record<ReplyPhase, number | null>>
-  /** The HTTP status Gemini answered with, or null when it never answered. */
+  /** The HTTP status OpenAI answered with, or null when it never answered. */
   providerStatus?: number | null
   model?: string
   /** Sizes only - never the content. */
@@ -171,10 +130,31 @@ export type ReplyLogEntry = {
   historyMessages?: number
   /** Which step of escalation failed, when one did. */
   escalationStep?: string
+  /**
+   * Which kinds of patient record were looked up and in what state
+   * (`patient-context.ts`): states only, never a count or a value.
+   */
+  recordSections?: Record<string, string> | null
+  /** Whether the hosted prompt was part of the request that answered. */
+  hostedPrompt?: boolean | null
 }
 
 const isMs = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value) && value >= 0
+
+const RECORD_SECTIONS = ['medications', 'appointments', 'treatment_plan', 'roadmap'] as const
+const RECORD_STATES: readonly unknown[] = ['available', 'none_found', 'unavailable', 'not_retrieved']
+
+/** Known section names with known states; anything else is dropped. */
+function recordSectionsOf(value: unknown): Record<string, string> | null {
+  if (typeof value !== 'object' || value === null) return null
+  const sections: Record<string, string> = {}
+  for (const name of RECORD_SECTIONS) {
+    const state = (value as Record<string, unknown>)[name]
+    if (RECORD_STATES.includes(state)) sections[name] = state as string
+  }
+  return sections
+}
 
 const count = (value: unknown): number | null =>
   typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : null
@@ -208,6 +188,8 @@ export function replyLogLine(entry: ReplyLogEntry): string {
     history_messages: count(entry.historyMessages),
     escalation_step:
       step === 'flag' || step === 'doctor' || step === 'dedupe' || step === 'alert' ? step : null,
+    record_sections: recordSectionsOf(entry.recordSections),
+    hosted_prompt: typeof entry.hostedPrompt === 'boolean' ? entry.hostedPrompt : null,
   })
 }
 
@@ -216,9 +198,10 @@ export function replyLogLine(entry: ReplyLogEntry): string {
 // ---------------------------------------------------------------------------
 
 /**
- * How long Gemini may take, at most. Healthy replies measured 8-13 s in
- * production (October 2026); this is about four times the slowest, so a
- * slow-but-working provider is waited for, and still a finite deadline.
+ * How long the provider may take, at most, including a retry without the
+ * hosted prompt (`openai-call.ts`). Set when healthy Gemini replies took
+ * 8-13 s (October 2026) and kept for OpenAI until its timings are measured:
+ * a slow-but-working provider is waited for, and still a finite deadline.
  */
 export const PROVIDER_TIMEOUT_MS = 50_000
 

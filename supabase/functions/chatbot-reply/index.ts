@@ -1,18 +1,17 @@
 import {
   AssistantReplyError,
-  buildInteractionRequest,
   buildSystemInstruction,
   chronologicalWindow,
-  GEMINI_MODEL,
   hasUnansweredPatientMessage,
   HISTORY_LIMIT,
-  toInteractionInput,
+  hostedPromptFromConfig,
+  toConversationInput,
 } from '../_shared/assistant.ts'
 import {
   ASSISTANT_SWITCH_FUNCTION,
   readAssistantSwitch,
 } from '../_shared/assistant-switch.ts'
-import { AuthError, requireCaller, serviceClient } from '../_shared/auth.ts'
+import { AuthError, callerClient, requireCaller, serviceClient } from '../_shared/auth.ts'
 import { loadClinicPrompt, PROMPT_KEY, type PromptStore } from '../_shared/clinic-prompt.ts'
 import { handlePreflight, jsonResponse } from '../_shared/cors.ts'
 import {
@@ -25,8 +24,19 @@ import {
   ProviderError,
   ProviderReplyError,
   type ProviderTimings,
-  requestGeminiReply,
-} from '../_shared/gemini-call.ts'
+  requestOpenAIReply,
+} from '../_shared/openai-call.ts'
+import {
+  type ConversationRow,
+  contextStates,
+  loadPatientContext,
+  parseReplyRequest,
+  type PatientContext,
+  renderPatientContext,
+  resolveConversationPatient,
+  topicsForQuestion,
+} from '../_shared/patient-context.ts'
+import { patientRecordStore, type RecordClient } from '../_shared/patient-record-store.ts'
 import {
   ReplyIdConflictError,
   replyIdFor,
@@ -52,8 +62,9 @@ import {
 /**
  * Recovery guidance assistant - modules 8.1, 8.2 and 8.3.
  *
- * Provider: Google Gemini, Interactions API. The browser never calls Gemini.
- * Three separate reasons force that, and only the first is about the key:
+ * Provider: OpenAI, Responses API, through the official SDK
+ * (_shared/openai-call.ts). The browser never calls OpenAI. Three separate
+ * reasons force that, and only the first is about the key:
  *
  *   - the provider credential must not ship in a client bundle;
  *   - module 8.7 lets an administrator set the system prompt, and a prompt
@@ -68,7 +79,7 @@ import {
  * provider. Building the request earlier would mean a failed authorisation
  * had already leaked the transcript.
  *
- * If Gemini is unconfigured, unreachable, rate limited, slow, or returns
+ * If OpenAI is unconfigured, unreachable, rate limited, slow, or returns
  * something that does not satisfy the schema, this returns an error status
  * and the UI says the assistant is unavailable. The patient's own message is
  * already persisted by then and is never lost, and their doctor is asked to
@@ -83,7 +94,7 @@ import {
  * detected, not that the assistant could not answer.
  *
  * Time: one budget for the whole request (_shared/reply-outcome.ts). Every
- * database call has its own deadline, and Gemini is given what is left of
+ * database call has its own deadline, and OpenAI is given what is left of
  * the budget, at most PROVIDER_TIMEOUT_MS, covering its headers and its body.
  *
  * Each clinic writes its own guidance (migration 31): the prompt is the
@@ -93,9 +104,29 @@ import {
  * (migration 38): asked right after the conversation is proved the caller's,
  * and refused with `disabled` before any of it is read.
  *
+ * Patient records (_shared/patient-context.ts): when the patient's latest
+ * question is about their medicines, appointments, treatment plan or recovery
+ * roadmap, those records are read and attached to the system instruction.
+ * They are read with the PATIENT'S OWN token (`callerClient`), not the
+ * service key, so Row Level Security applies to every row exactly as in the
+ * app, and every query is also filtered by - and every row checked against -
+ * the patient id of the conversation proved theirs. Nothing in the request
+ * body can name a patient. Only the state of each kind of record is logged.
+ *
+ * Configuration (Supabase secrets; never sent to the browser):
+ *   OPENAI_API_KEY         required
+ *   OPENAI_MODEL           required - the model every request names
+ *   OPENAI_HOSTED_PROMPT_ENABLED  optional - "true" to use the hosted prompt;
+ *                          anything else, or unset, means none
+ *   OPENAI_PROMPT_ID       optional - the hosted prompt, used only when enabled
+ *   OPENAI_PROMPT_VERSION  required with it - the reviewed version, pinned
+ * Every instruction the assistant follows is assembled here, in code
+ * (_shared/assistant.ts). The hosted prompt is an addition, never a
+ * dependency: without it, or when OpenAI refuses it, the request is answered
+ * from the code's instructions alone (_shared/openai-call.ts).
+ *
  * Deploy:
  *   supabase functions deploy chatbot-reply
- *   supabase secrets set GEMINI_API_KEY=...
  */
 
 /** A row of `chat_message`, as `select('*')` returns it. */
@@ -282,7 +313,7 @@ Deno.serve(async (request) => {
   // and statuses - never what was asked or answered.
   const phases: Partial<Record<ReplyPhase, number | null>> = {}
   const facts: Omit<ReplyLogEntry, 'requestId' | 'status' | 'code' | 'durationMs' | 'phases'> = {
-    model: GEMINI_MODEL,
+    model: Deno.env.get('OPENAI_MODEL')?.trim(),
   }
   const timed = async <T>(phase: ReplyPhase, run: () => Promise<T>): Promise<T> => {
     const from = Date.now()
@@ -293,8 +324,8 @@ Deno.serve(async (request) => {
     }
   }
   const recordProvider = (timings: ProviderTimings) => {
-    phases.gemini_headers = timings.headersMs
-    phases.gemini_body = timings.bodyMs
+    phases.provider_headers = timings.headersMs
+    phases.provider_body = timings.bodyMs
     phases.validation = timings.validationMs
   }
 
@@ -322,9 +353,15 @@ Deno.serve(async (request) => {
     // 1. Who is calling. Verified against Supabase Auth, never taken from the
     //    request body.
     const caller = await timed('auth', () => requireCaller(request))
-    const { chatSessionId } = (await request.json()) as { chatSessionId?: string }
-
-    if (!chatSessionId) throw new AuthError('chatSessionId is required', 400)
+    // The conversation id is the only thing read from the body. A patient id
+    // or anything else the browser adds is ignored (parseReplyRequest).
+    let requestBody: unknown
+    try {
+      requestBody = await request.json()
+    } catch {
+      throw new AuthError('chatSessionId is required', 400)
+    }
+    const { chatSessionId } = parseReplyRequest(requestBody)
 
     // 2. Is this conversation theirs. Without this check any patient could
     //    pass another patient's session id and read that transcript back
@@ -332,23 +369,23 @@ Deno.serve(async (request) => {
     const { data: session, error: sessionError } = await timed('ownership', async () =>
       await admin
         .from('chat_session')
-        .select('chat_session_id, pat_id, patient!inner ( user_id, doc_id )')
+        .select(
+          'chat_session_id, pat_id, ' +
+            'patient!inner ( pat_id, user_id, doc_id, pat_care_status, pat_care_discharged_at )',
+        )
         .eq('chat_session_id', chatSessionId)
         .abortSignal(dbDeadline())
         .maybeSingle(),
     )
 
     if (sessionError) throw new AuthError('Could not load the conversation', 500)
-    if (!session) throw new AuthError('Conversation not found', 404)
 
-    const patient = session.patient as unknown as {
-      user_id: string
-      doc_id: string
-    }
-
-    if (patient.user_id !== caller.userId) {
-      throw new AuthError('This conversation is not yours', 403)
-    }
+    // A patient, and this conversation's patient - or refused. The patient id
+    // every later query uses comes from here and nowhere else.
+    const patient = resolveConversationPatient(
+      caller,
+      (session ?? null) as unknown as ConversationRow | null,
+    )
 
     // 2b. Is the assistant switched on - for the platform, and for this
     //     patient's clinic (migration 38). Asked before anything of the
@@ -358,7 +395,7 @@ Deno.serve(async (request) => {
     const assistantSwitch = readAssistantSwitch(
       await timed('switch', async () =>
         await admin
-          .rpc(ASSISTANT_SWITCH_FUNCTION, { target_doc_id: patient.doc_id })
+          .rpc(ASSISTANT_SWITCH_FUNCTION, { target_doc_id: patient.docId })
           .abortSignal(dbDeadline()),
       ),
     )
@@ -392,10 +429,10 @@ Deno.serve(async (request) => {
     facts.historyMessages = newestFirst.length
     const history = chronologicalWindow(newestFirst)
 
-    // `toInteractionInput` is the data-minimisation boundary: it takes the
+    // `toConversationInput` is the data-minimisation boundary: it takes the
     // role and the text off each row and drops everything else, so the
     // provider receives this conversation and no other patient data at all.
-    const turns = toInteractionInput(history)
+    const turns = toConversationInput(history)
     if (!hasUnansweredPatientMessage(turns)) {
       // The latest message already has its reply - typically a retry after a
       // reply that was saved but never reached the browser. Not a failure.
@@ -404,7 +441,7 @@ Deno.serve(async (request) => {
 
     // The message being answered: the newest, which is the patient's. Its id
     // decides the reply's id (_shared/reply-once.ts). It never reaches the
-    // provider - `toInteractionInput` above passes on role and text only.
+    // provider - `toConversationInput` above passes on role and text only.
     const answering = newestFirst[0]!.chat_message_id
 
     // When the conversation was last answered - server time, since only this
@@ -428,21 +465,49 @@ Deno.serve(async (request) => {
       async () => {
         // The patient's clinic's guidance; the built-in one if it cannot be
         // read. The clinic comes from the conversation proved theirs above.
-        const prompt = await timed('prompt', () => loadClinicPrompt(promptStore(admin), patient.doc_id))
+        const prompt = await timed('prompt', () => loadClinicPrompt(promptStore(admin), patient.docId))
 
-        const body = buildInteractionRequest({
-          systemInstruction: buildSystemInstruction(prompt),
-          turns,
-        })
-        facts.requestBytes = new TextEncoder().encode(JSON.stringify(body)).length
+        // The patient's own records, only the kinds the question is about,
+        // read as the patient (see the header). Never throws: a kind that
+        // cannot be read is marked unavailable, not missing.
+        const topics = topicsForQuestion(
+          newestFirst
+            .filter((row) => row.chat_message_role === 'patient')
+            .map((row) => row.chat_message_content ?? ''),
+        )
+        let records: PatientContext | null = null
+        if (topics.size > 0) {
+          const asPatient = callerClient(request) as unknown as RecordClient
+          records = await timed('context', () =>
+            loadPatientContext({
+              store: patientRecordStore(asPatient, patient.patId, patient.docId, dbDeadline),
+              topics,
+              patient,
+              now: new Date(),
+            }),
+          )
+        }
+        facts.recordSections = contextStates(records)
 
-        // One deadline for headers and body together: what is left of the
-        // request's budget, at most PROVIDER_TIMEOUT_MS.
-        let outcome: Awaited<ReturnType<typeof requestGeminiReply>>
+        // Clinic guidance, then the safety rules, then the record rules, then
+        // the records: all from code, whether or not a hosted prompt is set.
+        const instructions = buildSystemInstruction(
+          prompt,
+          records ? renderPatientContext(records) : null,
+        )
+
+        // One deadline for the whole exchange, any retry without the hosted
+        // prompt included: what is left of the request's budget, at most
+        // PROVIDER_TIMEOUT_MS.
+        let outcome: Awaited<ReturnType<typeof requestOpenAIReply>>
         try {
-          outcome = await requestGeminiReply({
-            apiKey: Deno.env.get('GEMINI_API_KEY'),
-            body,
+          outcome = await requestOpenAIReply({
+            apiKey: Deno.env.get('OPENAI_API_KEY'),
+            model: Deno.env.get('OPENAI_MODEL'),
+            instructions,
+            turns,
+            // Off unless deliberately switched on with a pinned version.
+            hostedPrompt: hostedPromptFromConfig((name) => Deno.env.get(name)),
             timeoutMs: providerDeadlineMs(Date.now() - startedAt),
           })
         } catch (error) {
@@ -461,6 +526,8 @@ Deno.serve(async (request) => {
         recordProvider(outcome.timings)
         facts.providerStatus = outcome.providerStatus
         facts.responseBytes = outcome.responseBytes
+        facts.requestBytes = outcome.requestBytes
+        facts.hostedPrompt = outcome.usedHostedPrompt
         const parsed = outcome.reply
 
         // Modules 8.2 and 8.3, before the reply is saved: a concern is flagged
@@ -469,7 +536,7 @@ Deno.serve(async (request) => {
         try {
           escalation = await timed('escalation', () =>
             escalateCriticalConcern(
-              criticalStore(admin, patient.doc_id, chatSessionId),
+              criticalStore(admin, patient.docId, chatSessionId),
               parsed,
               latestReplyAt,
             ),
@@ -565,7 +632,7 @@ Deno.serve(async (request) => {
           critical: escalation !== 'not_critical',
         }
       },
-      (error) => requestReview(reviewStore(admin, patient.doc_id, chatSessionId), reviewMessageFor(error)),
+      (error) => requestReview(reviewStore(admin, patient.docId, chatSessionId), reviewMessageFor(error)),
       (error) => console.error(reviewFailureLogLine(error, facts.escalationStep)),
       (line) => console.error(line),
     )
