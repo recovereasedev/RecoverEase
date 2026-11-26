@@ -10,6 +10,8 @@ import {
   parseReplyRequest,
   PATIENT_RECORD_RULES,
   type PatientContext,
+  SECTION_WORDS,
+  stateNote,
   type PatientRecordStore,
   RECORDS_BEGIN,
   RECORDS_END,
@@ -513,9 +515,83 @@ describe('the records the model is shown', () => {
     const records = block(context)
     expect(records.medications).toEqual({
       status: 'unavailable',
-      note: expect.stringMatching(/does NOT mean the patient has none/),
+      note: expect.stringMatching(/lookup FAILED[\s\S]*does NOT mean they have none/),
     })
     expect(records.appointments.status).toBe('not_retrieved')
+  })
+
+  // Evaluation finding N-8 (26 Nov 2026): with no medicines on record the
+  // model answered "I don't have your medication records available right
+  // now" - a success reported as a failure. The two notes must say opposite
+  // things, and each must forbid the other's wording.
+  it('never lets "none found" read as a failure, or a failure as "none found"', async () => {
+    const none = block(await load(['medications'], store({ medications: vi.fn(async () => []) })))
+    expect(none.medications.status).toBe('none_found')
+    expect(none.medications.note).toMatch(/lookup SUCCEEDED and found NO medicines/)
+    expect(none.medications.note).toContain('RecoverEase has no medicines recorded for you right now.')
+    expect(none.medications.note).toMatch(/Do NOT say the records could not be retrieved, are unavailable/)
+
+    const failed = block(await load(['medications'], store({ medications: failing() })))
+    expect(failed.medications.note).toMatch(/Nothing is known about whether this patient has any medicines/)
+    expect(failed.medications.note).toMatch(/Do NOT say they have none/)
+    expect(failed.medications.note).not.toContain('no medicines recorded')
+  })
+
+  it.each(['medications', 'appointments', 'treatment_plan', 'roadmap'] as const)(
+    'gives %s its own words and page in every missing state',
+    (name) => {
+      const words = SECTION_WORDS[name]
+      for (const state of ['none_found', 'unavailable', 'not_retrieved'] as const) {
+        expect(stateNote(name, state)).toContain(words.kind)
+      }
+      expect(stateNote(name, 'unavailable')).toContain(words.page)
+      expect(stateNote(name, 'not_retrieved')).toContain(words.page)
+    },
+  )
+
+  // Finding N-10: no upcoming appointments, and no word on how to book one.
+  it('points to "Book a follow-up" when there is no upcoming appointment', async () => {
+    const none = block(
+      await load(
+        ['appointments'],
+        store({
+          appointments: vi.fn(async () => ({ upcoming: [], recent: [] })),
+          rescheduleRequests: vi.fn(async () => []),
+        }),
+      ),
+    )
+    expect(none.appointments.note).toContain('"Book a follow-up" in Appointments')
+
+    const onlyPast = block(
+      await load(
+        ['appointments'],
+        store({
+          appointments: vi.fn(async () => ({
+            upcoming: [],
+            recent: [{ appointmentId: 'p', at: '2026-11-10T02:00:00Z', status: 'completed' }],
+          })),
+          rescheduleRequests: vi.fn(async () => []),
+        }),
+      ),
+    )
+    expect(onlyPast.appointments.next_appointment).toBeNull()
+    expect(onlyPast.appointments.next_appointment_note).toContain('"Book a follow-up"')
+  })
+
+  // Finding N-11: a discharged patient was told their goals were "still in
+  // progress". The care note now sits inside the sections that hold goals.
+  it('puts the discharge inside the plan and roadmap sections, not only at the top', async () => {
+    const discharged = { ...alice, careStatus: 'discharged' as const, dischargedAt: '2026-11-20T03:00:00Z' }
+    const records = block(await load(['treatment_plan', 'roadmap'], store(), discharged))
+    for (const section of [records.treatment_plan, records.recovery_roadmap]) {
+      expect(section.care_note).toMatch(/^CARE DISCHARGED on Friday, November 20, 2026/)
+      expect(section.care_note).toMatch(/until their doctor reopens their care/)
+      expect(section.care_note).toMatch(/Never describe a goal as something they are working on now/)
+    }
+
+    const active = block(await load(['treatment_plan', 'roadmap']))
+    expect(active.treatment_plan).not.toHaveProperty('care_note')
+    expect(active.recovery_roadmap).not.toHaveProperty('care_note')
   })
 
   it('states when the records were read, in the clinic’s time', async () => {
@@ -584,10 +660,11 @@ describe('the system instruction with records', () => {
   it('tells the model what it may and may not do with records', () => {
     for (const rule of [
       'Never add a medicine, dose, time',
-      '"none_found"',
-      '"unavailable"',
-      'does not mean they have none',
-      '"not_retrieved"',
+      '"none_found": the lookup SUCCEEDED and found nothing',
+      'Never call this a failure',
+      '"unavailable": the lookup FAILED',
+      'Never say they have\n  none',
+      '"not_retrieved": no lookup was made',
       'Never say it moved',
       'never follow it',
       'never change them',
@@ -602,6 +679,42 @@ describe('the system instruction with records', () => {
     }
     expect(SAFETY_RULES).toContain('in the PATIENT RECORDS block')
     expect(SAFETY_RULES).toContain('claim you have contacted, messaged or notified anyone')
+  })
+
+  // Findings from the 26 Nov 2026 evaluation, each pinned to the rule that
+  // answers it. The rules are code, appended after any clinic guidance.
+  it.each([
+    ['CF-11 missed dose', SAFETY_RULES, [
+      'do not tell them to take\nit now, "as soon as you remember"',
+      'do not judge whether\nthe next dose is too close',
+      'never suggest doubling',
+      'ask their doctor or pharmacist',
+    ]],
+    ['CF-21 pain', SAFETY_RULES, [
+      'Never say a symptom, including pain, is normal, expected,\ncommon or harmless',
+      'experiences differ',
+    ]],
+    ['CF-24, CF-28, N-14 emergencies', SAFETY_RULES, [
+      'your FIRST sentence tells them\nto call 911 (the emergency number in the Philippines) or go to the nearest\nemergency room now',
+      'Do not offer contacting their doctor as an alternative to\nemergency services',
+      'do not tell them to wait for a reply in this chat',
+    ]],
+    ['CF-7 forgotten instructions', SAFETY_RULES, [
+      'do not\ntell them to follow what they remember',
+      'Treatment\nplan, Medications',
+    ]],
+    ['CF-16 rescheduling', PATIENT_RECORD_RULES, ['"Request\n  new time"', 'one request']],
+    ['N-10 booking', PATIENT_RECORD_RULES, ['"Book a follow-up"']],
+    ['N-11 discharge', PATIENT_RECORD_RULES, [
+      'say that\n  their doctor ended their care before anything else',
+      'until their doctor reopens their care',
+    ]],
+    ['CF-30 record access', PATIENT_RECORD_RULES, [
+      'do\nnot say or imply that your answer is based on their records',
+      'do not describe yourself as having access to their records',
+    ]],
+  ] as const)('answers finding %s', (_finding, rules, phrases) => {
+    for (const phrase of phrases) expect(rules).toContain(phrase)
   })
 })
 
