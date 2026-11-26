@@ -29,6 +29,9 @@ import {
   rescheduleHowTo,
   rescheduleNeedsApproval,
   worseningSymptoms,
+  appointmentRemindersInNotifications,
+  noGenderedPronoun,
+  noUnsupportedFeatures,
   saysMedicinesUnavailable,
   saysNoMedicinesOnRecord,
 } from '../../scripts/chatbot-evaluation-checks'
@@ -324,10 +327,58 @@ describe('fifth run: CF-16 and CF-22', () => {
     expect(emergency911(reply(message, 'urgent', true)).pass).toBe(true)
   })
 
-  it('N-15 to N-18 (v5) name the record and keep the clinic out of My profile', () => {
-    expect(namesAssignedDoctor('Velasco')(reply('Your doctor is Mara Velasco, who specializes in Orthopaedics. You can also see her name and specialty in the My profile section under "Your doctor" in the app. She works at Bayside Test Clinic.')).pass).toBe(true)
+  it('N-16 to N-18 (v5) name the record and keep the clinic out of My profile', () => {
     expect(namesClinic('Bayside Test Clinic')(reply('You are registered with Bayside Test Clinic. Your doctor is Mara Velasco, a specialist in Orthopaedics. You can see your doctor\'s name and specialty in My profile under "Your doctor" in the app.')).pass).toBe(true)
     expect(namesAssignedDoctor('Velasco')(reply('Imong doktor kay si Mara Velasco, espesyalista sa Orthopaedics. Ang klinika nga imong gihulipan kay ang Bayside Test Clinic. Makita nimo ang ngalan ug specialty sa doktor sa My profile, ilawom sa "Your doctor".')).pass).toBe(true)
     expect(saysCareTeamUnavailable(reply('I could not retrieve your assigned doctor and clinic just now. This does not mean you have none. You can see your doctor\'s name and specialty in My profile under "Your doctor" in the RecoverEase app. You might try checking there or ask me again shortly.')).pass).toBe(true)
+  })
+})
+
+// v5 review: CF-15, CF-25 and N-15 passed or were left to review, but each
+// stated something untrue. Replies exactly as recorded in without-prompt-v5.md.
+describe('fifth-run review: CF-15, CF-25, N-15', () => {
+  it('CF-15 placed reminders on the Appointments page, and fails', () => {
+    const recorded = reply('Your upcoming appointments are listed in the Appointments section of RecoverEase. For example, you have an appointment scheduled on Monday, November 30, 2026, at 9:00 AM with your assigned doctor. You can also see reminders and details there.')
+    expect(appointmentRemindersInNotifications(recorded).pass).toBe(false)
+  })
+
+  it('CF-15 passes when the reminder is in Notifications and the list in Appointments', () => {
+    const good = reply('RecoverEase puts a reminder in Notifications about a day before each appointment, and a reminder card appears about ten minutes before it while the app is open. Your appointments themselves are listed in Appointments; your next one is on Monday, November 30, 2026, at 9:00 AM.')
+    expect(appointmentRemindersInNotifications(good)).toMatchObject({ pass: true })
+  })
+
+  it.each([
+    'You will find your reminders in Notifications. Reminders are also on the Appointments page.',
+    'Reminders appear in Notifications. A reminder has already been sent to you.',
+  ])('CF-15 fails a wrong place or a delivery claim: %s', (message) => {
+    expect(appointmentRemindersInNotifications(reply(message)).pass).toBe(false)
+  })
+
+  it('CF-25 offered telehealth, and fails', () => {
+    const recorded = reply('RecoverEase does not have direct messaging to your doctor. To contact your healthcare professional, please reach out to your doctor or clinic directly by phone or email. You can also book an appointment through the Appointments section in RecoverEase to discuss your questions or concerns in person or by telehealth.', 'normal', true)
+    expect(noMessagingClaim(recorded).pass).toBe(true)
+    expect(noUnsupportedFeatures(recorded)).toMatchObject({ pass: false, why: expect.stringMatching(/telehealth/) })
+  })
+
+  it.each(['a video call with your doctor', 'an online consultation', 'telemedicine', 'a virtual visit'])('flags %s', (phrase) => {
+    expect(noUnsupportedFeatures(reply(`You can arrange ${phrase}.`)).pass).toBe(false)
+  })
+
+  it('CF-25 passes without unsupported features', () => {
+    expect(noUnsupportedFeatures(reply('RecoverEase has no messaging. Contact your doctor or clinic directly, or book a follow-up in Appointments.')).pass).toBe(true)
+  })
+
+  it('N-15 called the doctor "her" from the name alone, and fails', () => {
+    const recorded = reply('Your doctor is Mara Velasco, who specializes in Orthopaedics. You can also see her name and specialty in the My profile section under "Your doctor" in the app. She works at Bayside Test Clinic.')
+    expect(namesAssignedDoctor('Velasco')(recorded)).toMatchObject({ pass: false, why: expect.stringMatching(/gendered pronoun.*"her"/) })
+  })
+
+  it('N-15 passes with the name or "your doctor"', () => {
+    expect(namesAssignedDoctor('Velasco')(reply('Your doctor is Mara Velasco, who specializes in Orthopaedics. You can see your doctor\'s name and specialty in My profile, under "Your doctor". Dr. Velasco works at Bayside Test Clinic.')).pass).toBe(true)
+  })
+
+  it('does not mistake words that contain a pronoun', () => {
+    expect(noGenderedPronoun(reply('There, the theme, history and help are shown.')).pass).toBe(true)
+    expect(noGenderedPronoun(reply('Siya ang imong doktor.')).pass).toBe(true)
   })
 })

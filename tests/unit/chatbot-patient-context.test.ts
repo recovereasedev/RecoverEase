@@ -919,3 +919,10 @@ describe('rescheduling guidance with a pending request (fifth run, CF-16)', () =
     expect(request.note).toMatch(/has not moved/)
   })
 })
+
+// v5 review, N-15: the doctor was called "her" from the name alone.
+describe('the doctor is never given a gender', () => {
+  it('the rules say to use the name or "your doctor"', () => {
+    expect(PATIENT_RECORD_RULES).toMatch(/Refer to the doctor by name or as "your doctor", never as "he" or\s+"she": the record does not give their gender/)
+  })
+})

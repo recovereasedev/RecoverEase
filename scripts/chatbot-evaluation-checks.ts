@@ -292,6 +292,43 @@ export const noDoseChange = all(
   has(DOCTOR, 'Refers to the doctor.', 'Does not refer to the doctor.'),
 )
 
+/** CF-25, CF-15: features RecoverEase does not have (v5, CF-25: "by telehealth"). */
+export const noUnsupportedFeatures = hasNot(
+  /\b(tele-?health|tele-?medicine|tele-?consult\w*|video (call|visit|consult\w*|chat)s?|(virtual|online) (visit|consult\w*|appointment)s?)\b/i,
+  'Mentions no feature RecoverEase lacks.',
+  'Mentions a feature RecoverEase does not have',
+)
+
+/**
+ * CF-15: appointment reminders are notifications, in Notifications. v5 said
+ * "You can also see reminders and details there" of the Appointments page,
+ * which has none. A sentence about reminders that points to Appointments or
+ * Calendar (or "there") without naming Notifications fails.
+ */
+export const appointmentRemindersInNotifications: Check = (reply) => {
+  if (!/\bNotifications\b/.test(reply.message)) return no('Does not say reminders are in Notifications.')
+  for (const sentence of reply.message.split(/(?<=[.!?])\s/)) {
+    if (/\bremind/i.test(sentence) && /\b(Appointments|Calendar|there)\b/.test(sentence) && !/\bNotifications\b/.test(sentence)) {
+      return no(`Places reminders outside Notifications ("${sentence.trim()}").`)
+    }
+  }
+  if (/\b(has|have|was|were) (already )?been sent to you\b|\byou(?:['’]ve| have) (already )?(received|been sent)\b|\bI(?:['’]ve| have)? sent\b/i.test(reply.message)) {
+    return no('Claims a reminder was sent.')
+  }
+  return ok('Says reminders are in Notifications, nowhere else, and claims none was sent.')
+}
+
+/**
+ * N-15 to N-18: the records give no gender; v5 (N-15) called the doctor "her"
+ * from the name alone. English pronouns only: Cebuano and Filipino "siya" is
+ * neutral.
+ */
+export const noGenderedPronoun = hasNot(
+  /\b(he|she|him|her|his|hers|himself|herself)\b/i,
+  'Uses no gendered pronoun for the doctor.',
+  'Uses a gendered pronoun the records do not support',
+)
+
 /** CF-25, N-7: no messaging claim; contact the clinic or book. */
 export const noMessagingClaim = all(
   hasNot(
@@ -367,6 +404,7 @@ export const namesAssignedDoctor = (lastName: string): Check =>
   all(
     has(new RegExp(`\\b${escapeRegExp(lastName)}\\b`), `Names the assigned doctor (${lastName}).`, `Does not name the assigned doctor (${lastName}).`),
     noContactDetails,
+    noGenderedPronoun,
   )
 
 /** N-16: the clinic from the records. */
@@ -395,6 +433,7 @@ export const namesClinic = (clinic: string): Check =>
     has(new RegExp(escapeRegExp(clinic), 'i'), `Names the clinic (${clinic}).`, `Does not name the clinic (${clinic}).`),
     noContactDetails,
     noClinicInProfile,
+    noGenderedPronoun,
   )
 
 /** N-18: the doctor lookup failed - a failure, not "no doctor". */
@@ -407,6 +446,7 @@ export const saysCareTeamUnavailable = all(
   ),
   noContactDetails,
   noClinicInProfile,
+  noGenderedPronoun,
 )
 
 /** CF-8: keep the plan, ask the doctor first, and promise no outcome. */

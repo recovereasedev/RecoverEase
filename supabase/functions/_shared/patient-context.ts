@@ -906,7 +906,8 @@ Using the block:
   there or anywhere else in the app, so never say it is. If the clinic could
   not be read, say so and name no other place. Never invent a doctor, clinic,
   phone number or email, and never give details of any other doctor or
-  patient.
+  patient. Refer to the doctor by name or as "your doctor", never as "he" or
+  "she": the record does not give their gender.
 - "Confirmed" means the patient confirmed they will attend; "Scheduled" means
   it is booked.
 - Goal progress is the share of goals marked Achieved, as the app shows it.
