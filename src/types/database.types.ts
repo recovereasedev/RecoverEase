@@ -1431,6 +1431,199 @@ export type Database = {
           },
         ]
       }
+      clinic_subscription: {
+        Row: {
+          subscription_id: string
+          clinic_id: string
+          plan_code: string
+          subscription_status: string
+          subscription_billing_interval: string
+          subscription_period_start: string
+          subscription_period_end: string | null
+          subscription_agreed_price_centavos: number | null
+          subscription_created_at: string
+          subscription_updated_at: string
+        }
+        Insert: {
+          subscription_id?: string
+          clinic_id: string
+          plan_code: string
+          subscription_status: string
+          subscription_billing_interval: string
+          subscription_period_start?: string
+          subscription_period_end?: string | null
+          subscription_agreed_price_centavos?: number | null
+          subscription_created_at?: string
+          subscription_updated_at?: string
+        }
+        Update: {
+          subscription_id?: string
+          clinic_id?: string
+          plan_code?: string
+          subscription_status?: string
+          subscription_billing_interval?: string
+          subscription_period_start?: string
+          subscription_period_end?: string | null
+          subscription_agreed_price_centavos?: number | null
+          subscription_created_at?: string
+          subscription_updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'clinic_subscription_clinic_id_fkey'
+            columns: ['clinic_id']
+            isOneToOne: true
+            referencedRelation: 'clinic'
+            referencedColumns: ['clinic_id']
+          },
+          {
+            foreignKeyName: 'clinic_subscription_plan_code_fkey'
+            columns: ['plan_code']
+            isOneToOne: false
+            referencedRelation: 'subscription_plan'
+            referencedColumns: ['plan_code']
+          },
+        ]
+      }
+      paymongo_webhook_event: {
+        Row: {
+          provider_event_id: string
+          event_type: string
+          event_livemode: boolean
+          processing_status: string
+          processing_result: string
+          event_received_at: string
+          event_processed_at: string
+        }
+        Insert: {
+          provider_event_id: string
+          event_type: string
+          event_livemode: boolean
+          processing_status: string
+          processing_result: string
+          event_received_at?: string
+          event_processed_at?: string
+        }
+        Update: {
+          provider_event_id?: string
+          event_type?: string
+          event_livemode?: boolean
+          processing_status?: string
+          processing_result?: string
+          event_received_at?: string
+          event_processed_at?: string
+        }
+        Relationships: []
+      }
+      subscription_payment: {
+        Row: {
+          payment_id: string
+          clinic_id: string
+          subscription_id: string | null
+          plan_code: string
+          plan_name_snapshot: string
+          payment_amount_centavos: number
+          payment_currency: string
+          payment_status: string
+          payment_provider: string
+          provider_checkout_id: string | null
+          provider_payment_intent_id: string | null
+          provider_payment_id: string | null
+          payment_paid_at: string | null
+          created_by_user_id: string | null
+          payment_created_at: string
+          payment_updated_at: string
+        }
+        Insert: {
+          payment_id?: string
+          clinic_id: string
+          subscription_id?: string | null
+          plan_code: string
+          plan_name_snapshot: string
+          payment_amount_centavos: number
+          payment_currency?: string
+          payment_status?: string
+          payment_provider?: string
+          provider_checkout_id?: string | null
+          provider_payment_intent_id?: string | null
+          provider_payment_id?: string | null
+          payment_paid_at?: string | null
+          created_by_user_id?: string | null
+          payment_created_at?: string
+          payment_updated_at?: string
+        }
+        Update: {
+          payment_id?: string
+          clinic_id?: string
+          subscription_id?: string | null
+          plan_code?: string
+          plan_name_snapshot?: string
+          payment_amount_centavos?: number
+          payment_currency?: string
+          payment_status?: string
+          payment_provider?: string
+          provider_checkout_id?: string | null
+          provider_payment_intent_id?: string | null
+          provider_payment_id?: string | null
+          payment_paid_at?: string | null
+          created_by_user_id?: string | null
+          payment_created_at?: string
+          payment_updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'subscription_payment_clinic_id_fkey'
+            columns: ['clinic_id']
+            isOneToOne: false
+            referencedRelation: 'clinic'
+            referencedColumns: ['clinic_id']
+          },
+          {
+            foreignKeyName: 'subscription_payment_plan_code_fkey'
+            columns: ['plan_code']
+            isOneToOne: false
+            referencedRelation: 'subscription_plan'
+            referencedColumns: ['plan_code']
+          },
+          {
+            foreignKeyName: 'subscription_payment_subscription_id_fkey'
+            columns: ['subscription_id']
+            isOneToOne: false
+            referencedRelation: 'clinic_subscription'
+            referencedColumns: ['subscription_id']
+          },
+        ]
+      }
+      subscription_plan: {
+        Row: {
+          plan_code: string
+          plan_name: string
+          plan_price_centavos: number | null
+          plan_currency: string
+          plan_billing_interval: string
+          plan_sort_order: number
+          plan_created_at: string
+        }
+        Insert: {
+          plan_code: string
+          plan_name: string
+          plan_price_centavos?: number | null
+          plan_currency?: string
+          plan_billing_interval: string
+          plan_sort_order: number
+          plan_created_at?: string
+        }
+        Update: {
+          plan_code?: string
+          plan_name?: string
+          plan_price_centavos?: number | null
+          plan_currency?: string
+          plan_billing_interval?: string
+          plan_sort_order?: number
+          plan_created_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: { [_ in never]: never }
     Functions: {
@@ -1577,6 +1770,14 @@ export type Database = {
       super_admin_platform_overview: {
         Args: Record<PropertyKey, never>
         Returns: Json
+      }
+      super_admin_subscription_overview: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      clinic_admin_choose_free_plan: {
+        Args: Record<PropertyKey, never>
+        Returns: string
       }
     }
     Enums: {

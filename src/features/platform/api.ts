@@ -97,6 +97,96 @@ export async function fetchPlatformOverview(): Promise<PlatformOverview> {
   return parsePlatformOverview(data)
 }
 
+// --- Subscriptions and revenue (migration 68) -------------------------------
+
+export type PlanCode = 'free' | 'basic' | 'premium' | 'enterprise'
+
+const PLAN_CODES: readonly PlanCode[] = ['free', 'basic', 'premium', 'enterprise']
+
+/**
+ * Subscriber counts per plan and revenue PayMongo confirmed paid. Totals
+ * only, as the platform overview: no clinic, person or payment reference.
+ * Money is whole centavos.
+ */
+export type SubscriptionOverview = {
+  totalSubscribers: number
+  plans: {
+    code: PlanCode
+    name: string
+    /** Null for Enterprise: priced per agreement. */
+    priceCentavos: number | null
+    billingInterval: 'forever' | 'month' | 'custom'
+    subscribers: number
+  }[]
+  revenue: {
+    lifetimeCentavos: number
+    thisMonthCentavos: number
+    /** The last twelve Asia/Manila months, oldest first; `month` is YYYY-MM. */
+    monthly: { month: string; centavos: number }[]
+    byPlan: { code: PlanCode; centavos: number }[]
+  }
+  generatedAt: string
+}
+
+const isPlanCode = (value: unknown): value is PlanCode =>
+  typeof value === 'string' && (PLAN_CODES as readonly string[]).includes(value)
+
+/** Refuses an answer that is not exactly these figures, as parsePlatformOverview does. */
+export function parseSubscriptionOverview(data: unknown): SubscriptionOverview {
+  const malformed = () => new Error('The subscription overview could not be read.')
+  if (!isRecord(data)) throw malformed()
+  const { total_subscribers, plans, revenue, generated_at } = data
+  if (!isCount(total_subscribers) || !Array.isArray(plans) || !isRecord(revenue) || typeof generated_at !== 'string') {
+    throw malformed()
+  }
+  const { lifetime_centavos, this_month_centavos, monthly, by_plan } = revenue
+  if (!isCount(lifetime_centavos) || !isCount(this_month_centavos) || !Array.isArray(monthly) || !Array.isArray(by_plan)) {
+    throw malformed()
+  }
+
+  return {
+    totalSubscribers: total_subscribers,
+    plans: plans.map((plan: unknown) => {
+      if (
+        !isRecord(plan) || !isPlanCode(plan.code) || typeof plan.name !== 'string' ||
+        !(plan.price_centavos === null || isCount(plan.price_centavos)) ||
+        !(plan.billing_interval === 'forever' || plan.billing_interval === 'month' || plan.billing_interval === 'custom') ||
+        !isCount(plan.subscribers)
+      ) {
+        throw malformed()
+      }
+      return {
+        code: plan.code,
+        name: plan.name,
+        priceCentavos: plan.price_centavos,
+        billingInterval: plan.billing_interval,
+        subscribers: plan.subscribers,
+      }
+    }),
+    revenue: {
+      lifetimeCentavos: lifetime_centavos,
+      thisMonthCentavos: this_month_centavos,
+      monthly: monthly.map((month: unknown) => {
+        if (!isRecord(month) || typeof month.month !== 'string' || !/^\d{4}-\d{2}$/.test(month.month) || !isCount(month.centavos)) {
+          throw malformed()
+        }
+        return { month: month.month, centavos: month.centavos }
+      }),
+      byPlan: by_plan.map((entry: unknown) => {
+        if (!isRecord(entry) || !isPlanCode(entry.code) || !isCount(entry.centavos)) throw malformed()
+        return { code: entry.code, centavos: entry.centavos }
+      }),
+    },
+    generatedAt: generated_at,
+  }
+}
+
+export async function fetchSubscriptionOverview(): Promise<SubscriptionOverview> {
+  const { data, error } = await supabase.rpc('super_admin_subscription_overview')
+  if (error) throw error
+  return parseSubscriptionOverview(data)
+}
+
 // --- Clinics -----------------------------------------------------------------
 
 export async function fetchClinics(): Promise<PlatformClinic[]> {

@@ -4,6 +4,7 @@ import { Fragment, useState } from 'react'
 import { ErrorState, LoadingState } from '@/components/feedback/state-view'
 import { PageHeader } from '@/components/layout/page-header'
 import { useCurrentUser } from '@/features/auth/auth-context'
+import { ClinicSubscriptionSection } from '@/features/billing/components/clinic-subscription-section'
 import { useQueryKeys } from '@/features/auth/use-query-keys'
 import {
   fetchClinicSettings,
@@ -143,6 +144,10 @@ export function SystemSettingsPage() {
         title="System settings"
         description="Configuration for your clinic: how RecoverEase behaves for its staff and patients."
       />
+
+      <div className="mb-section-lg">
+        <ClinicSubscriptionSection />
+      </div>
 
       <div className="space-y-5">
         {forms.map(({ definition, savedValue, updatedAt }) => (

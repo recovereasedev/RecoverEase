@@ -102,6 +102,8 @@ Copy [`.env.example`](./.env.example) to `.env.local`.
 | `OPENAI_API_KEY` | Edge Function secrets | OpenAI, for the recovery guidance assistant. Without it (or without `OPENAI_MODEL`) the assistant returns 503 and the UI says so; everything else works. |
 | `OPENAI_MODEL` | Edge Function secrets | The OpenAI model every assistant request names. |
 | `OPENAI_HOSTED_PROMPT_ENABLED`, `OPENAI_PROMPT_ID`, `OPENAI_PROMPT_VERSION` | Edge Function secrets | Optional hosted prompt, **off** unless enabled is `true` and a reviewed version is pinned. Every instruction is assembled in code; the assistant works without these. |
+| `PAYMONGO_SECRET_KEY` | Edge Function secrets | PayMongo **test** secret key (`sk_test_`; live keys are refused) for `paymongo-checkout`. Unset means online checkout says it is not set up. [docs/paymongo-sandbox.md](docs/paymongo-sandbox.md) |
+| `PAYMONGO_WEBHOOK_SECRET` | Edge Function secrets | The test webhook's `whsk_` secret; `paymongo-webhook` refuses any request it did not sign. |
 | `ALLOWED_ORIGINS` | Edge Function secrets | CORS allowlist for the functions. |
 
 Anything prefixed `VITE_` is compiled into the browser bundle.

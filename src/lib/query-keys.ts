@@ -169,6 +169,8 @@ export function queryKeysFor(userId: string) {
         [...queryKeys.admin.all, 'audit-log', filters] as const,
       settings: () => [...queryKeys.admin.all, 'settings'] as const,
       clinic: () => [...queryKeys.admin.all, 'clinic'] as const,
+      /** The clinic's plan, subscription and payments (migration 68). */
+      subscription: () => [...queryKeys.admin.all, 'subscription'] as const,
     },
 
     /** The platform console (Super Admin). */
@@ -180,6 +182,8 @@ export function queryKeysFor(userId: string) {
        */
       assurance: () => [...queryKeys.platform.all, 'assurance'] as const,
       overview: () => [...queryKeys.platform.all, 'overview'] as const,
+      /** Subscribers and revenue (migration 68). */
+      subscriptions: () => [...queryKeys.platform.all, 'subscriptions'] as const,
       clinics: () => [...queryKeys.platform.all, 'clinics'] as const,
       announcements: () =>
         [...queryKeys.platform.all, 'announcements'] as const,

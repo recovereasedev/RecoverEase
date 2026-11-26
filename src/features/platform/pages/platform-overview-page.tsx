@@ -10,6 +10,7 @@ import { PageSection } from '@/components/ui/section-heading'
 import { StatBand } from '@/components/ui/stat-card'
 import { useQueryKeys } from '@/features/auth/use-query-keys'
 import { fetchPlatformOverview } from '@/features/platform/api'
+import { SubscriptionOverviewSection } from '@/features/platform/components/subscription-overview'
 import { useDocumentTitle } from '@/hooks/use-document-title'
 import { formatDateTime } from '@/lib/format'
 
@@ -23,6 +24,9 @@ import { formatDateTime } from '@/lib/format'
  * an assured Super Admin and returns totals only: no clinic broken out, no
  * person and nothing clinical - so there is nothing on this page to hide,
  * and nothing derived from it here: no rate, no score, no trend.
+ *
+ * Below them, subscribers per plan and revenue collected (migration 68),
+ * from their own Super Admin function and refreshed on their own.
  */
 export function PlatformOverviewPage() {
   const queryKeys = useQueryKeys()
@@ -125,6 +129,11 @@ export function PlatformOverviewPage() {
           </>
         )}
       </StateView>
+
+      <h2 className="mt-section-lg mb-4 text-lg font-semibold text-heading">
+        Subscriptions and revenue
+      </h2>
+      <SubscriptionOverviewSection />
     </>
   )
 }

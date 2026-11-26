@@ -2657,6 +2657,39 @@ no feature here needs them.
   patient is discharged; drops the care history and care follow-up marks -
   export them first), 62. The rollback-chain tests run 67 -> 32 and 67 -> 47.
 
+### Clinic subscriptions and PayMongo sandbox (migration 68)
+
+> **NOT APPLIED to production. The functions are NOT deployed, and no PayMongo
+> secret is set.** Each step needs Kean's separate approval, a fresh verified
+> backup and a quiet window. Never `supabase db push`.
+
+Order:
+
+1. Apply `20260902100068_clinic_subscriptions.sql` byte-for-byte in its own
+   transaction with its history row, as for 62-67. It needs 29 and 33
+   (refuses otherwise). It is independent of 34, 47 (PR #75) and 54-60.
+   - **Preflight (read-only):** none of `subscription_plan`,
+     `clinic_subscription`, `subscription_payment`, `paymongo_webhook_event`
+     exist; no cron job named `recoverease-expire-lapsed-subscriptions`.
+   - **Data effects:** 4 plan rows (only where missing) and one active Free
+     subscription for each existing clinic (production has 1). It adds a
+     trigger on `clinic` inserts and schedules one pg_cron job (minutes 7,
+     22, 37 and 52 of every hour, clear of the other jobs).
+   - **Verify:** `select plan_code, plan_price_centavos from
+     public.subscription_plan order by plan_sort_order;` returns 0 / 99900 /
+     249900 / NULL; every clinic has exactly one active subscription.
+2. Deploy the website (the overview and settings read the new objects; on a
+   database without 68 those sections show their error state only).
+3. Sandbox only: set the secrets and deploy the two functions as
+   `docs/paymongo-sandbox.md` describes (`paymongo-webhook` with
+   `--no-verify-jwt`).
+
+Rollback (reverse order): undeploy or disable the two functions, roll the
+website back, then apply
+`supabase/rollbacks/20260902100068_clinic_subscriptions.down.sql`. The
+rollback **deletes every subscription and payment**, so dump those four
+tables first.
+
 ## Bundle budget
 
 Measured on the built output, gzipped, for a first-time visitor to the landing

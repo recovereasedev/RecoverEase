@@ -108,6 +108,8 @@ Full model, access matrix and known limitations: [`security.md`](./security.md).
 - Migrations from 29 onward ship a rollback in `supabase/rollbacks/`, except
   32 (PostgreSQL cannot remove an enum value). Migrations 41 onward set
   `lock_timeout = '3s'` so they stop rather than queue behind live traffic.
+- Migration 68 (clinic subscriptions, PayMongo sandbox) is NOT applied to production;
+  PR #75 holds 47. The next free number is 69.
 - After changing a migration run `npm run db:types`; it applies the committed
   migrations to an in-process PostgreSQL and regenerates `src/types/`.
 - Applying to production is a separate step that needs the project owner's
@@ -127,6 +129,8 @@ caller checks, assistant, escalation).
 | `reset-account-password` | Reissues a temporary credential (Clinic Admin for their doctors, doctor for their patients) | service role |
 | `complete-password-setup` | Sets the new password and clears the forced-change flag in one call | service role |
 | `chatbot-reply` | The patient guidance assistant: clinic prompt, assistant switch, critical-concern escalation, validated reply | `OPENAI_API_KEY`, `OPENAI_MODEL` (hosted prompt off unless `OPENAI_HOSTED_PROMPT_ENABLED`=true with `OPENAI_PROMPT_ID`/`_VERSION`) |
+| `paymongo-checkout` | A Clinic Admin's PayMongo **test-mode** checkout for Basic/Premium: clinic and price from the database; `check`/`cancel` read the session back from PayMongo (migration 68) | service role, `PAYMONGO_SECRET_KEY` (sk_test_ only) |
+| `paymongo-webhook` | PayMongo's signed webhook (`verify_jwt` off; HMAC signature required); applies a paid checkout once | service role, `PAYMONGO_WEBHOOK_SECRET` |
 
 Secrets are set as Edge Function secrets, never in the client. Variable names
 (no values) are in the [README](../README.md#environment-variables) and
@@ -206,6 +210,7 @@ Docker is needed. Strategy and what is not covered: [`testing.md`](./testing.md)
 | [`security.md`](./security.md) | RLS model, access matrix, Super Admin, limitations |
 | [`testing.md`](./testing.md) | Test strategy and gaps |
 | [`deployment.md`](./deployment.md) | Setup, migration releases, scheduled jobs, production status |
+| [`paymongo-sandbox.md`](./paymongo-sandbox.md) | Subscriptions: PayMongo test-mode checkout, webhook, test cards, reset, going live later |
 | [`ui-design.md`](./ui-design.md) | Design tokens, contrast, accessibility |
 | [`adviser-checklist.md`](./adviser-checklist.md) | Module checklist status |
 | [`EMAIL_SMTP_SETUP.md`](./EMAIL_SMTP_SETUP.md) | Email delivery |
