@@ -26,6 +26,22 @@ import { useFocusRecovery } from '@/hooks/use-focus-recovery'
 import { formatDate } from '@/lib/format'
 import { focusFirstInvalid } from '@/lib/form-focus'
 
+/** A new clinic starts in RecoverEase's home zone; the Super Admin can change it. */
+const DEFAULT_CLINIC_TIMEZONE = 'Asia/Manila'
+
+/**
+ * Zones a beginner can pick from. Any zone the database knows is still
+ * accepted by typing it; these only show the shape of the answer.
+ */
+const TIMEZONE_EXAMPLES = [
+  { zone: 'Asia/Manila', place: 'Philippines' },
+  { zone: 'Asia/Singapore', place: 'Singapore' },
+  { zone: 'Asia/Tokyo', place: 'Japan' },
+  { zone: 'Europe/London', place: 'United Kingdom' },
+  { zone: 'America/New_York', place: 'United States' },
+  { zone: 'Australia/Sydney', place: 'Australia' },
+] as const
+
 function adminCount(count: number): string {
   if (count === 0) return 'No Clinic Admin yet'
   return count === 1 ? '1 Clinic Admin' : `${count} Clinic Admins`
@@ -57,7 +73,7 @@ export function PlatformClinicsPage() {
   // --- New clinic ------------------------------------------------------------
   const [isCreating, setCreating] = useState(false)
   const [name, setName] = useState('')
-  const [timezone, setTimezone] = useState('')
+  const [timezone, setTimezone] = useState(DEFAULT_CLINIC_TIMEZONE)
   const [problems, setProblems] = useState<{
     name?: string | undefined
     timezone?: string | undefined
@@ -69,7 +85,7 @@ export function PlatformClinicsPage() {
     onSuccess: () => {
       setCreating(false)
       setName('')
-      setTimezone('')
+      setTimezone(DEFAULT_CLINIC_TIMEZONE)
       void invalidate()
     },
   })
@@ -295,7 +311,7 @@ export function PlatformClinicsPage() {
             label="Time zone"
             required
             error={problems.timezone}
-            description="The zone the clinic's medication times, reminders and dates are in, such as Asia/Manila."
+            description="Sets the clinic's local medication schedules, reminders and dates. Type a zone name, or choose an example below."
           >
             <Input
               value={timezone}
@@ -308,6 +324,36 @@ export function PlatformClinicsPage() {
               }}
             />
           </Field>
+
+          <div>
+            <p aria-hidden="true" className="text-sm text-muted">
+              Examples
+            </p>
+            <ul
+              aria-label="Example time zones"
+              className="mt-1.5 grid grid-cols-2 gap-2"
+            >
+              {TIMEZONE_EXAMPLES.map(({ zone, place }) => (
+                <li key={zone}>
+                  <button
+                    type="button"
+                    aria-label={`Use ${zone} (${place})`}
+                    aria-pressed={timezone.trim() === zone}
+                    onClick={() => {
+                      setTimezone(zone)
+                      setProblems((current) => ({ ...current, timezone: undefined }))
+                    }}
+                    className="flex min-h-11 w-full flex-col justify-center rounded-[var(--radius-md)] border border-[var(--color-border)] px-2.5 py-1 text-left transition-colors hover:border-neutral-400 aria-pressed:border-brand-600 aria-pressed:bg-brand-50"
+                  >
+                    <span className="truncate text-sm font-medium text-heading">
+                      {zone}
+                    </span>
+                    <span className="truncate text-xs text-muted">{place}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
 
           {create.isError ? (
             <FormError error={create.error} title="The clinic was not created" />
