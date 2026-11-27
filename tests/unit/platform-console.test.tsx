@@ -172,6 +172,7 @@ describe('clinics', () => {
     await user.click(await screen.findByRole('button', { name: 'New clinic' }))
     const dialog = openDialog()
     await user.type(within(dialog).getByLabelText(/Clinic name/), 'Second Clinic')
+    await user.clear(within(dialog).getByLabelText(/Time zone/))
     await user.type(within(dialog).getByLabelText(/Time zone/), 'Mars/Olympus')
     await user.click(within(dialog).getByRole('button', { name: 'Create clinic' }))
 
@@ -188,6 +189,7 @@ describe('clinics', () => {
     await user.click(await screen.findByRole('button', { name: 'New clinic' }))
     const dialog = openDialog()
     await user.type(within(dialog).getByLabelText(/Clinic name/), '  Bay Clinic ')
+    await user.clear(within(dialog).getByLabelText(/Time zone/))
     await user.type(within(dialog).getByLabelText(/Time zone/), 'asia/singapore')
     await user.click(within(dialog).getByRole('button', { name: 'Create clinic' }))
 
@@ -211,12 +213,103 @@ describe('clinics', () => {
     await user.click(await screen.findByRole('button', { name: 'New clinic' }))
     const dialog = openDialog()
     await user.type(within(dialog).getByLabelText(/Clinic name/), 'Bay Clinic')
-    await user.type(within(dialog).getByLabelText(/Time zone/), 'Asia/Manila')
     await user.click(within(dialog).getByRole('button', { name: 'Create clinic' }))
 
     expect(
       await within(dialog).findByText(/set up for one clinic for now/),
     ).toBeInTheDocument()
+  })
+
+  it('starts a new clinic in Asia/Manila and shows example zones', async () => {
+    const user = userEvent.setup()
+    renderPage(<PlatformClinicsPage />)
+
+    await user.click(await screen.findByRole('button', { name: 'New clinic' }))
+    const dialog = openDialog()
+    const zone = within(dialog).getByLabelText(/Time zone/)
+    expect(zone).toHaveValue('Asia/Manila')
+    expect(zone).toHaveAccessibleDescription(/medication schedules, reminders and dates/)
+
+    const examples = within(dialog).getByRole('list', { name: 'Example time zones' })
+    for (const [value, place] of [
+      ['Asia/Manila', 'Philippines'],
+      ['Asia/Singapore', 'Singapore'],
+      ['Asia/Tokyo', 'Japan'],
+      ['Europe/London', 'United Kingdom'],
+      ['America/New_York', 'United States'],
+      ['Australia/Sydney', 'Australia'],
+    ]) {
+      expect(
+        within(examples).getByRole('button', { name: `Use ${value} (${place})` }),
+      ).toBeInTheDocument()
+    }
+  })
+
+  it('creates a clinic in Asia/Manila without touching the zone', async () => {
+    api.createClinic.mockResolvedValue({ ...HARBOR, clinic_id: 'clinic-2', clinic_name: 'Demo Clinic' })
+    const user = userEvent.setup()
+    renderPage(<PlatformClinicsPage />)
+
+    await user.click(await screen.findByRole('button', { name: 'New clinic' }))
+    const dialog = openDialog()
+    await user.type(within(dialog).getByLabelText(/Clinic name/), 'Demo Clinic')
+    await user.click(within(dialog).getByRole('button', { name: 'Create clinic' }))
+
+    await waitFor(() =>
+      expect(api.createClinic).toHaveBeenCalledWith({ name: 'Demo Clinic', timezone: 'Asia/Manila' }),
+    )
+  })
+
+  it('fills the zone from an example and creates the clinic in it', async () => {
+    api.createClinic.mockResolvedValue({ ...HARBOR, clinic_id: 'clinic-2', clinic_name: 'Tokyo Clinic' })
+    const user = userEvent.setup()
+    renderPage(<PlatformClinicsPage />)
+
+    await user.click(await screen.findByRole('button', { name: 'New clinic' }))
+    const dialog = openDialog()
+    await user.type(within(dialog).getByLabelText(/Clinic name/), 'Tokyo Clinic')
+    await user.click(within(dialog).getByRole('button', { name: 'Use Asia/Tokyo (Japan)' }))
+    expect(within(dialog).getByLabelText(/Time zone/)).toHaveValue('Asia/Tokyo')
+    await user.click(within(dialog).getByRole('button', { name: 'Create clinic' }))
+
+    await waitFor(() =>
+      expect(api.createClinic).toHaveBeenCalledWith({ name: 'Tokyo Clinic', timezone: 'Asia/Tokyo' }),
+    )
+  })
+
+  it('clears a wrong zone and its error when an example is chosen', async () => {
+    const user = userEvent.setup()
+    renderPage(<PlatformClinicsPage />)
+
+    await user.click(await screen.findByRole('button', { name: 'New clinic' }))
+    const dialog = openDialog()
+    await user.type(within(dialog).getByLabelText(/Clinic name/), 'Second Clinic')
+    await user.clear(within(dialog).getByLabelText(/Time zone/))
+    await user.type(within(dialog).getByLabelText(/Time zone/), 'Philippines')
+    await user.click(within(dialog).getByRole('button', { name: 'Create clinic' }))
+    expect(within(dialog).getByLabelText(/Time zone/)).toHaveAttribute('aria-invalid', 'true')
+    expect(api.createClinic).not.toHaveBeenCalled()
+
+    await user.click(within(dialog).getByRole('button', { name: 'Use Europe/London (United Kingdom)' }))
+    expect(within(dialog).getByLabelText(/Time zone/)).toHaveValue('Europe/London')
+    expect(within(dialog).getByLabelText(/Time zone/)).not.toHaveAttribute('aria-invalid', 'true')
+  })
+
+  it('starts again from Asia/Manila after a clinic is created', async () => {
+    api.createClinic.mockResolvedValue({ ...HARBOR, clinic_id: 'clinic-2', clinic_name: 'Bay Clinic' })
+    const user = userEvent.setup()
+    renderPage(<PlatformClinicsPage />)
+
+    await user.click(await screen.findByRole('button', { name: 'New clinic' }))
+    let dialog = openDialog()
+    await user.type(within(dialog).getByLabelText(/Clinic name/), 'Bay Clinic')
+    await user.click(within(dialog).getByRole('button', { name: 'Use Australia/Sydney (Australia)' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Create clinic' }))
+    await waitFor(() => expect(api.createClinic).toHaveBeenCalledTimes(1))
+
+    await user.click(await screen.findByRole('button', { name: 'New clinic' }))
+    dialog = openDialog()
+    expect(within(dialog).getByLabelText(/Time zone/)).toHaveValue('Asia/Manila')
   })
 
   it('asks before deactivating, and says nothing is deleted', async () => {
