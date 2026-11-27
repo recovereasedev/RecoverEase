@@ -150,10 +150,29 @@ prints names and digests, never values.
 
 ## 5. Run the website against staging
 
-In the worktree, create `.env.local` (gitignored) with
-`VITE_SUPABASE_URL=https://<staging ref>.supabase.co` and
-`VITE_SUPABASE_PUBLISHABLE_KEY=<staging publishable key>`. Then run
-`npm run dev`, open `http://localhost:5173`, sign in as
+In the worktree, create `.env.local` (gitignored) with these three lines:
+
+```
+VITE_SUPABASE_URL=https://<staging ref>.supabase.co
+VITE_SUPABASE_PUBLISHABLE_KEY=<staging publishable key>
+VITE_PAYMONGO_CHECKOUT_ENABLED=true
+```
+
+`VITE_PAYMONGO_CHECKOUT_ENABLED=true` turns on the Subscribe and Renew
+buttons so you can test sandbox checkout. Without it, Basic and Premium
+show "Online payment is not available yet" instead.
+
+- **Staging and local only.** Set it only in this `.env.local` or another
+  staging build. **Production leaves it unset**, so Harborview's Clinic
+  Admin never sees a checkout button that cannot work.
+- **Not a secret.** It is a public switch read when the website is built,
+  and it only shows or hides the buttons. It does not set up payments: the
+  functions, the `sk_test_…` key and the webhook secret from sections 3
+  and 4 are still needed.
+- The switch comes from PR #100. Test from a branch that includes it; on
+  an older build the buttons always show.
+
+Then run `npm run dev`, open `http://localhost:5173`, sign in as
 `staging.clinic.admin@recoverease.test`, and go to **Settings →
 Subscription**. Never put staging values in Vercel.
 
