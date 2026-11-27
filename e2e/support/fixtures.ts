@@ -385,7 +385,35 @@ export function platformDataset(): TableRows {
     'rpc/super_admin_list_clinics': [],
     // The overview's counts (migration 46): one jsonb answer, so one row.
     'rpc/super_admin_platform_overview': [PLATFORM_OVERVIEW],
+    // Subscribers and revenue (migration 68): one jsonb answer, so one row.
+    'rpc/super_admin_subscription_overview': [SUBSCRIPTION_OVERVIEW],
   }
+}
+
+/** What `super_admin_subscription_overview()` returns: totals only, money in centavos. */
+export const SUBSCRIPTION_OVERVIEW = {
+  total_subscribers: 4,
+  plans: [
+    { code: 'free', name: 'Free', price_centavos: 0, billing_interval: 'forever', subscribers: 1 },
+    { code: 'basic', name: 'Basic', price_centavos: 99900, billing_interval: 'month', subscribers: 1 },
+    { code: 'premium', name: 'Premium', price_centavos: 249900, billing_interval: 'month', subscribers: 1 },
+    { code: 'enterprise', name: 'Enterprise', price_centavos: null, billing_interval: 'custom', subscribers: 1 },
+  ],
+  revenue: {
+    currency: 'PHP',
+    lifetime_centavos: 2099700,
+    this_month_centavos: 349800,
+    monthly: [
+      { month: '2026-10', centavos: 1749900 },
+      { month: '2026-11', centavos: 349800 },
+    ],
+    by_plan: [
+      { code: 'basic', centavos: 99900 },
+      { code: 'premium', centavos: 249900 },
+      { code: 'enterprise', centavos: 1749900 },
+    ],
+  },
+  generated_at: '2026-01-01T00:00:00Z',
 }
 
 /** What `super_admin_platform_overview()` returns: platform totals only. */

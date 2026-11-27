@@ -22,6 +22,8 @@ import { assuredSuperAdmin, createSignIn, type Claims } from './helpers/super-ad
  * the comparison includes the enum, so it shows that is all that remains.
  */
 
+const ROLLBACK_69 = 'supabase/rollbacks/20260902100069_subscription_payment_livemode.down.sql'
+const ROLLBACK_68 = 'supabase/rollbacks/20260902100068_clinic_subscriptions.down.sql'
 const ROLLBACK_67 = 'supabase/rollbacks/20260902100067_medication_schedule_reminder_control.down.sql'
 const ROLLBACK_66 = 'supabase/rollbacks/20260902100066_medication_schedule_instructions.down.sql'
 const ROLLBACK_65 = 'supabase/rollbacks/20260902100065_automatic_recovery_roadmap.down.sql'
@@ -63,7 +65,7 @@ const rows = async (database: TestDatabase) => ({
   ),
 })
 
-describe('rolling back migrations 67, 66, 65, 64, 63, 62, 61, 53, 48, 46, 45, 43, 44, 41, 42, 38, 37, 36, 35, 34 and 33 with their down-scripts', () => {
+describe('rolling back migrations 68, 67, 66, 65, 64, 63, 62, 61, 53, 48, 46, 45, 43, 44, 41, 42, 38, 37, 36, 35, 34 and 33 with their down-scripts', () => {
   let used: TestDatabase
   let through32: TestDatabase
   let fx: Fixture
@@ -107,6 +109,8 @@ describe('rolling back migrations 67, 66, 65, 64, 63, 62, 61, 53, 48, 46, 45, 43
   it('returns the schema to exactly what 32 left, and keeps every row', async () => {
     const before = await rows(used)
 
+    await used.db.exec(await script(ROLLBACK_69))
+    await used.db.exec(await script(ROLLBACK_68))
     await used.db.exec(await script(ROLLBACK_67))
     await used.db.exec(await script(ROLLBACK_66))
     await used.db.exec(await script(ROLLBACK_65))
@@ -186,6 +190,7 @@ describe('the down-scripts refuse, changing nothing, when they cannot be undone 
     // Only to let the next test roll 34 back: the test's own database.
     await database.asService('delete from public.system_setting where clinic_id = $1', [created!.clinic_id])
     await database.asService('delete from public.audit_log where clinic_id = $1', [created!.clinic_id])
+    await database.asService('delete from public.clinic_subscription where clinic_id = $1', [created!.clinic_id])
     await database.asService('delete from public.clinic where clinic_id = $1', [created!.clinic_id])
     await database.db.exec(await script(ROLLBACK_34))
   })

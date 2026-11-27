@@ -412,6 +412,10 @@ async function main(): Promise<void> {
       ['super_admin_set_guidance_assistant', '{ enabled: boolean }', 'boolean'],
       // Migration 46: jsonb, checked by parsePlatformOverview.
       ['super_admin_platform_overview', 'Record<PropertyKey, never>', 'Json'],
+      // Migration 68: jsonb, checked by parseSubscriptionOverview; and a Clinic
+      // Admin's own move to Free (refuses anyone else; not a Super Admin call).
+      ['super_admin_subscription_overview', 'Record<PropertyKey, never>', 'Json'],
+      ['clinic_admin_choose_free_plan', 'Record<PropertyKey, never>', 'string'],
     ]
     for (const [name, args, returns] of superAdminFunctions) {
       lines.push(`      ${name}: {`)

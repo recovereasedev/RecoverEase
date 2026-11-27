@@ -30,7 +30,8 @@ describe('database schema', () => {
     // 19 entities from the ERD, chat_message (the transcript the chat modules
     // need), clinic (Phase A, migration 28), super_admin (migration 33) and
     // the recovery roadmap's phases, activities and histories (migration 45),
-    // a plan's lifecycle history (61) and a patient's care history (63).
+    // a plan's lifecycle history (61), a patient's care history (63), and the
+    // plans, subscriptions, payments and PayMongo events of migration 68.
     // Web Push's devices and queue (migration 53) are in app_private, not here.
     expect(tables.map((row) => row.table_name)).toEqual([
       'admin',
@@ -40,6 +41,7 @@ describe('database schema', () => {
       'chat_message',
       'chat_session',
       'clinic',
+      'clinic_subscription',
       'doctor',
       'doctor_note',
       'medication_dose_conflict',
@@ -48,6 +50,7 @@ describe('database schema', () => {
       'notification',
       'patient',
       'patient_care_event',
+      'paymongo_webhook_event',
       'prescription',
       'recovery_activity',
       'recovery_activity_event',
@@ -55,6 +58,8 @@ describe('database schema', () => {
       'recovery_phase',
       'report',
       'reschedule_request',
+      'subscription_payment',
+      'subscription_plan',
       'super_admin',
       'system_setting',
       'treatment_goal',
@@ -162,6 +167,9 @@ describe('database schema', () => {
     // because no module queries through them.
     const exemptions = new Set([
       'announcement.admin_id',
+      // Migration 68: plans are seeded and never deleted.
+      'clinic_subscription.plan_code',
+      'subscription_payment.plan_code',
       'doctor_note.doc_id',
       'prescription.doc_id',
       'system_setting.admin_id',

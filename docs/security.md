@@ -667,6 +667,51 @@ client code even by accident.
 `.gitignore` blocks all `.env*` files with an explicit exception for
 `.env.example`, verified with `git check-ignore` before the first commit.
 
+## Subscriptions and PayMongo sandbox payments (migrations 68 and 69, applied 2026-11-26/27)
+
+- **No checkout button unless the build enables it.** The Clinic Admin's
+  Subscribe and Renew buttons appear only when the website is built with
+  `VITE_PAYMONGO_CHECKOUT_ENABLED=true` (staging, local sandbox testing).
+  Production leaves it unset, so no one is offered a checkout that cannot
+  work. This hides buttons only; every rule below holds regardless.
+- **The browser decides nothing about money.** It sends a plan name (`basic`
+  or `premium`) or a payment id. `paymongo-checkout` takes the clinic from the
+  verified caller's `admin` row and the price from `subscription_plan`, prices
+  the payment again when recording it, and returns only PayMongo's checkout URL.
+  The website follows that URL only when it starts with
+  `https://checkout.paymongo.com/`.
+- **Only PayMongo activates a plan.** It does so through a webhook whose
+  HMAC-SHA256 signature over `<t>.<raw body>` matches the `te` value under
+  `PAYMONGO_WEBHOOK_SECRET` (checked before parsing, compared in constant
+  time), or through the session read back from PayMongo with the secret key.
+  The `?billing=success` return page only prompts that read. A mismatched
+  amount or currency, a live-mode event or an unknown checkout changes
+  nothing.
+- **Idempotent.** The event id is the primary key of `paymongo_webhook_event`
+  and is claimed in the same transaction as its effect. The payment row is
+  locked `FOR UPDATE`, and a paid row answers `duplicate`. A repeated
+  delivery never adds revenue or activates twice.
+- **`paymongo-webhook` runs with `verify_jwt` off**, because PayMongo cannot
+  send a Supabase token. The signature is its only way in: no valid `te`
+  signature means 401, with nothing parsed or written. `paymongo-checkout`
+  keeps JWT verification on and refuses every role except `admin`.
+- **Test mode only.** `sk_live_` keys are refused, only `te` is compared,
+  and `livemode = true` events are recorded as `rejected`.
+- **Logs** carry the event type, the provider status and the internal result.
+  They never include keys, signatures, ids, amounts, names or card details.
+  PayMongo error bodies are not logged.
+- **RLS.** Clinic Admins read their own clinic's subscriptions and payments.
+  No one signed in writes them. The webhook table is service-role only. The
+  Super Admin reads totals only, through `super_admin_subscription_overview()`,
+  behind `require_super_admin()` with MFA assurance.
+- **No payment details stored.** PayMongo's hosted checkout collects card
+  data. RecoverEase keeps the `cs_`, `pi_` and `pay_` references only.
+
+| Secret | Lives in | Never in |
+| --- | --- | --- |
+| `PAYMONGO_SECRET_KEY` (`sk_test_…`) | Edge Function secrets | Any `VITE_` variable, client code, the repo, docs |
+| `PAYMONGO_WEBHOOK_SECRET` (`whsk_…`) | Edge Function secrets | Same |
+
 ## Client hardening
 
 `vercel.json` sets a Content-Security-Policy limiting `connect-src` to the

@@ -855,6 +855,80 @@ refuses while any patient is discharged or while 64 is applied, and drops
 the care history and care follow-up marks (export them first); it restores
 61's two functions byte for byte.
 
+### 24. Clinic subscriptions and PayMongo sandbox payments (migration 68)
+
+Four plans, one current subscription per clinic, and the payments that move
+a clinic onto a paid plan. **Applied to production 2026-11-26 22:48Z** (history
+`20261126224819`); migration 69 followed on 2026-11-27. Money is integer
+centavos (`bigint`) everywhere. Clinic *account* status (`clinic.clinic_status`)
+and *subscription* status are separate and never move each other.
+
+| Table | Holds | Key rules |
+| --- | --- | --- |
+| `subscription_plan` | `free` (0, forever), `basic` (99900, month), `premium` (249900, month), `enterprise` (no list price, custom) | Seeded `on conflict do nothing`, so an agreed price is never overwritten. A CHECK constraint makes Enterprise's price NULL and every other price set. Readable by any signed-in user; writable by no one signed in |
+| `clinic_subscription` | A clinic's plan over a period: `active`, `expired` (a paid month ran out) or `replaced` (left early for another plan) | Unique index `clinic_subscription_one_active` (one `active` row per clinic). Enterprise requires `subscription_agreed_price_centavos > 0`, and every other plan forbids it. Basic and Premium require a period end |
+| `subscription_payment` | One row per checkout, holding a plan and amount snapshot, `pending`/`paid`/`failed`/`cancelled`, and PayMongo's `cs_`/`pi_`/`pay_` references | Amount > 0, PHP only, never Free. A `paid` row must have `payment_paid_at`, `provider_payment_id` (unique) and `subscription_id`. No card or account details |
+| `paymongo_webhook_event` | Each signed event id once, with its type, livemode, processing status and result | Primary key = PayMongo's `evt_` id. No payload. A deny-all policy (a signed-in read returns no row), no write privilege for any API role, nothing for `anon` |
+
+- **Backfill.** Every existing clinic with no active subscription gets an
+  active Free subscription starting at `clinic_created_at`. Free costs nothing
+  and gates nothing, so no one's access changes. Re-running adds nothing.
+- **New clinics.** The trigger `clinic_starts_on_free_plan` (after insert on
+  `clinic`) adds the Free subscription in the same transaction.
+- **RLS.** A Clinic Admin selects only their own clinic's
+  `clinic_subscription` and `subscription_payment` rows
+  (`clinic_id = app_private.admin_clinic_id()`). Doctors, patients, other
+  clinics' Clinic Admins and visitors read none. No one signed in may insert,
+  update or delete any of the four tables.
+- **Functions granted only to `service_role`**, which the Edge Functions call
+  after verifying the caller or PayMongo's signature:
+  `billing_checkout_quote(user, plan)`, `billing_record_checkout(user, plan,
+  cs, pi)` (prices again from the table), `billing_apply_paid_checkout(cs,
+  pay, amount, currency, paid_at)` (locks the payment row; `duplicate` if
+  already paid; `amount_mismatch` unless amount and currency equal the
+  snapshot), `billing_mark_unpaid(cs, pi, failed|cancelled)` (never touches a
+  paid row), `billing_handle_webhook_event(...)` (claims the event id first,
+  refuses live-mode events, and applies the effect in the same transaction),
+  and `expire_lapsed_subscriptions()` (pg_cron
+  `recoverease-expire-lapsed-subscriptions`, at minutes 7, 22, 37 and 52 of
+  every hour).
+- **Granted to `authenticated`:** `clinic_admin_choose_free_plan()` (refuses
+  anyone but a Clinic Admin, takes the clinic from the database, and refuses
+  to move an Enterprise clinic) and `super_admin_subscription_overview()`
+  (migration 46's pattern: `SECURITY DEFINER`, empty `search_path`,
+  `app_private.require_super_admin()` first, revoked from `public`/`anon`).
+- **The overview's figures.** `total_subscribers` = distinct clinics with an
+  active subscription; per plan, distinct clinics with that active plan.
+  Revenue = the sum of `payment_amount_centavos` over `paid` rows only (from
+  migration 69, live ones only: see section 25), split
+  by the payment's own `plan_code` snapshot. It reports lifetime, the current
+  Asia/Manila calendar month, the last twelve Asia/Manila months (each
+  present, oldest first) and by plan. Changing a list price never changes
+  past revenue.
+- **Enterprise.** No online checkout. An operator sets the agreed price on
+  the subscription and records the payment at the amount actually paid.
+
+Rollback: `supabase/rollbacks/20260902100068_clinic_subscriptions.down.sql`.
+It **deletes all billing history**, so dump the four tables first. Tested in
+`tests/db/clinic-subscriptions.test.ts` (rollback, then re-apply).
+
+### 25. Revenue counts live payments only (migration 69)
+
+The integration is sandbox only (a live event is refused), so every paid row
+is a test-mode payment. Migration 69 keeps those out of revenue (the owner's
+decision, 2026-11-27):
+
+- `subscription_payment.payment_livemode boolean not null default false` -
+  true only for a payment taken in PayMongo's live mode. Nothing writes true
+  until live payments are implemented; every existing row is sandbox.
+- `super_admin_subscription_overview()` adds `payment_livemode` to every
+  revenue figure (lifetime, this month, the twelve months, by plan).
+  Subscriber counts are unchanged. A sandbox payment still moves its clinic
+  onto the plan it paid for; it is only kept out of revenue.
+
+Rollback: `supabase/rollbacks/20260902100069_subscription_payment_livemode.down.sql`
+puts back 68's overview and drops the column. Roll 69 back before 68.
+
 ## Assumptions where the ERD was silent
 
 The ERD types every status column as `varchar` without listing values. Each

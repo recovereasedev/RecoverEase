@@ -374,8 +374,9 @@ describe('every Super Admin operation needs a live session verified with the cal
         order by 1`,
     )
     // 12 from migration 33, migration 38's two for the guidance assistant's
-    // platform switch, and migration 46's platform overview.
-    expect(definers).toHaveLength(15)
+    // platform switch, migration 46's platform overview and migration 68's
+    // subscription and revenue totals.
+    expect(definers).toHaveLength(16)
     for (const row of definers) {
       expect(row, row.fn).toMatchObject({ definer: true, path: 'search_path=""', anon: false })
     }
@@ -905,7 +906,9 @@ describe('a Super Admin and clinical information', () => {
       const [row] = await database.asClaims<{ n: number }>(superAdmin.claims, `select count(*)::int as n from public.${t}`)
       if (row!.n > 0) visible[t] = row!.n
     }
-    expect(visible).toEqual({ announcement: 1, super_admin: 1, user_account: 1 })
+    // The four plans and their list prices (migration 68) are readable by
+    // anyone signed in: not a clinic's record, nor anyone's.
+    expect(visible).toEqual({ announcement: 1, subscription_plan: 4, super_admin: 1, user_account: 1 })
     expect(
       await database.asClaims(superAdmin.claims, 'select user_id from public.user_account'),
     ).toEqual([{ user_id: superAdmin.userId }])

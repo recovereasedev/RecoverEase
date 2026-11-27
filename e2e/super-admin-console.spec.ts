@@ -128,7 +128,7 @@ test.describe('the authenticator step', () => {
 })
 
 test.describe('the console', () => {
-  test('opens on the overview: platform totals only, asked of one function, with the way on to the clinics', async ({
+  test('opens on the overview: platform totals only, asked of its own totals functions, with the way on to the clinics', async ({
     page,
     signInAs,
   }) => {
@@ -147,8 +147,11 @@ test.describe('the console', () => {
     // No clinic on its own: the overview names none.
     await expect(page.getByText('Harbor Clinic')).toHaveCount(0)
     await expect(page.getByRole('heading', { name: 'By clinic' })).toHaveCount(0)
-    // The overview's only console call is the overview itself.
-    expect(consoleCalls(stub.requests)).toEqual(['POST rpc/super_admin_platform_overview'])
+    // The overview's only console calls are its own two totals functions.
+    expect([...consoleCalls(stub.requests)].sort()).toEqual([
+      'POST rpc/super_admin_platform_overview',
+      'POST rpc/super_admin_subscription_overview',
+    ])
 
     // Nothing wider than the screen, on a phone as on a desktop.
     const overflow = await page.evaluate(
