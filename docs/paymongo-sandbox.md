@@ -63,9 +63,11 @@ available yet" instead of a button that cannot work.
 
 ## Sandbox setup
 
-Every step below is a production configuration step and **needs Kean's
-approval first**. Migration 68 must be applied before the functions are
-deployed.
+**Do this on a staging project, never production:** follow
+`docs/paymongo-staging.md`. It covers creating the project, building its
+schema, the synthetic seed, deploys, secrets, the webhook and the test
+matrix. The steps below are the generic outline, and each one **needs
+Kean's approval first**.
 
 1. Create or sign in to a PayMongo account. In the dashboard, switch to
    **Test mode** and copy the test secret key (`sk_test_…`).
