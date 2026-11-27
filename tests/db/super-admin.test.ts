@@ -374,9 +374,9 @@ describe('every Super Admin operation needs a live session verified with the cal
         order by 1`,
     )
     // 12 from migration 33, migration 38's two for the guidance assistant's
-    // platform switch, migration 46's platform overview and migration 68's
-    // subscription and revenue totals.
-    expect(definers).toHaveLength(16)
+    // platform switch, migration 46's platform overview, migration 68's
+    // subscription and revenue totals and migration 70's checkout activity.
+    expect(definers).toHaveLength(17)
     for (const row of definers) {
       expect(row, row.fn).toMatchObject({ definer: true, path: 'search_path=""', anon: false })
     }
