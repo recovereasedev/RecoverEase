@@ -130,6 +130,34 @@ test.describe('the Clinic Admin’s subscription', () => {
     expect(sent).toEqual([{ action: 'create', plan: 'basic' }])
   })
 
+  test('recent payments show the status and the PayMongo mode apart, on a phone too', async ({ page, signInAs }) => {
+    const paid = (id: string, livemode: boolean, status = 'paid') => ({
+      ...PENDING_PAYMENT,
+      payment_id: `0b4b4c1e-1111-4222-8333-44445555666${id}`,
+      payment_status: status,
+      payment_paid_at: status === 'paid' ? '2026-11-27T00:00:00Z' : null,
+      payment_livemode: livemode,
+    })
+    await signInAs('admin', billingTables([paid('1', true), paid('2', false), paid('3', false, 'failed')]))
+    await page.goto('/admin/settings')
+    const list = page.getByRole('list', { name: 'Recent payments' })
+    const rows = list.getByRole('listitem')
+    await expect(rows).toHaveCount(3)
+    await expect(rows.nth(0)).toContainText('Paid')
+    await expect(rows.nth(0).getByTestId('payment-mode')).toHaveText('Payment mode: Live')
+    await expect(rows.nth(1).getByTestId('payment-mode')).toHaveText('Payment mode: Sandbox')
+    await expect(rows.nth(2)).toContainText('Failed')
+    await expect(rows.nth(2).getByTestId('payment-mode')).toHaveText('Payment mode: Sandbox')
+    // The screen-reader prefix is hidden; people see just "Live" / "Sandbox".
+    await expect(rows.nth(0).getByTestId('payment-mode')).toBeVisible()
+    await expect(rows.nth(0).getByText('Payment mode:')).toHaveClass(/sr-only/)
+
+    await page.setViewportSize({ width: 375, height: 812 })
+    await expect(rows.nth(1).getByTestId('payment-mode')).toBeVisible()
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
+    expect(overflow).toBeLessThanOrEqual(0)
+  })
+
   test('starts a Premium checkout', async ({ page, signInAs }) => {
     await signInAs('admin', billingTables())
     const sent = await stubCheckout(page, () => ({ error: 'Online payment is not set up yet' }))

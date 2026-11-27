@@ -11,6 +11,7 @@ import { assuredSuperAdmin, claimsFor, createSignIn, openSession, type Claims } 
 /**
  * Migration 68: plans, one current subscription per clinic, PayMongo sandbox
  * payments applied once, and the Super Admin's subscriber and revenue totals.
+ * Migration 69: revenue counts live payments only, never a sandbox one.
  *
  * The service-role functions are called here as the owner, the way the Edge
  * Functions call them with the service key; what a signed-in user may reach
@@ -32,6 +33,8 @@ type Overview = {
 
 const MIGRATION_68 = 'supabase/migrations/20260902100068_clinic_subscriptions.sql'
 const ROLLBACK_68 = 'supabase/rollbacks/20260902100068_clinic_subscriptions.down.sql'
+const MIGRATION_69 = 'supabase/migrations/20260902100069_subscription_payment_livemode.sql'
+const ROLLBACK_69 = 'supabase/rollbacks/20260902100069_subscription_payment_livemode.down.sql'
 const script = (path: string) => readFile(join(process.cwd(), path), 'utf8')
 
 let checkoutSeq = 0
@@ -109,6 +112,17 @@ async function payCheckout(
     currency: 'PHP',
     paidAt,
   })
+}
+
+/**
+ * Nothing in the app records a live payment yet (live events are refused), so
+ * a test marks a paid sandbox row live to show the overview would count it.
+ */
+async function markLive(database: TestDatabase, checkoutId: string) {
+  await database.asService(
+    'update public.subscription_payment set payment_livemode = true where provider_checkout_id = $1',
+    [checkoutId],
+  )
 }
 
 /** A Clinic Admin of a second clinic, made as the provisioning path would. */
@@ -343,6 +357,16 @@ describe('clinic subscriptions (migration 68)', () => {
       )
       expect(period!.months).toBe(1)
 
+      // A sandbox payment: the plan changes, but it is never revenue.
+      const [mode] = await database.asService<{ payment_livemode: boolean }>(
+        'select payment_livemode from public.subscription_payment where provider_checkout_id = $1',
+        [checkout.checkoutId],
+      )
+      expect(mode!.payment_livemode).toBe(false)
+      expect((await overview(database, superAdmin.claims)).revenue).toEqual(before.revenue)
+
+      // The same payment, had it been live, counts once.
+      await markLive(database, checkout.checkoutId)
       const after = await overview(database, superAdmin.claims)
       expect(after.revenue.lifetime_centavos - before.revenue.lifetime_centavos).toBe(99900)
       expect(after.revenue.this_month_centavos - before.revenue.this_month_centavos).toBe(99900)
@@ -368,7 +392,10 @@ describe('clinic subscriptions (migration 68)', () => {
 
     it('a successful Premium payment changes plan: Basic is replaced, the clinic is counted once', async () => {
       const before = await overview(database, superAdmin.claims)
-      expect(await payCheckout(database, await startCheckout(database, fx.adminUserId, 'premium'))).toBe('activated')
+      const checkout = await startCheckout(database, fx.adminUserId, 'premium')
+      expect(await payCheckout(database, checkout)).toBe('activated')
+      expect((await overview(database, superAdmin.claims)).revenue).toEqual(before.revenue)
+      await markLive(database, checkout.checkoutId)
 
       const history = await database.asService<{ plan_code: string; subscription_status: string }>(
         `select plan_code, subscription_status from public.clinic_subscription
@@ -429,8 +456,9 @@ describe('clinic subscriptions (migration 68)', () => {
       await database.asService(
         `insert into public.subscription_payment
            (clinic_id, subscription_id, plan_code, plan_name_snapshot, payment_amount_centavos,
-            payment_status, provider_payment_id, payment_paid_at)
-         values ($1, $2, 'enterprise', 'Enterprise', 1750000, 'paid', 'pay_enterprise0001', now())`,
+            payment_status, provider_payment_id, payment_paid_at, payment_livemode)
+         values ($1, $2, 'enterprise', 'Enterprise', 1750000, 'paid', 'pay_enterprise0001', now(), true),
+                ($1, $2, 'enterprise', 'Enterprise', 500000, 'paid', 'pay_enterprise0002', now(), false)`,
         [alder, sub!.subscription_id],
       )
       const after = await overview(database, superAdmin.claims)
@@ -450,15 +478,21 @@ describe('clinic subscriptions (migration 68)', () => {
       expect(result.plans.find((p) => p.code === 'free')).toMatchObject({ price_centavos: 0, subscribers: 2 })
     })
 
-    it('excludes pending, failed and cancelled payments from every revenue figure', async () => {
+    it('excludes pending, failed, cancelled and sandbox payments from every revenue figure', async () => {
       const result = await overview(database, superAdmin.claims)
       const [paid] = await database.asService<{ n: number }>(
-        `select coalesce(sum(payment_amount_centavos), 0)::int as n from public.subscription_payment where payment_status = 'paid'`,
+        `select coalesce(sum(payment_amount_centavos), 0)::int as n from public.subscription_payment
+          where payment_status = 'paid' and payment_livemode`,
       )
       const [unpaid] = await database.asService<{ n: number }>(
         `select count(*)::int as n from public.subscription_payment where payment_status <> 'paid'`,
       )
+      const [sandbox] = await database.asService<{ n: number }>(
+        `select count(*)::int as n from public.subscription_payment where payment_status = 'paid' and not payment_livemode`,
+      )
       expect(unpaid!.n).toBeGreaterThanOrEqual(5)
+      expect(sandbox!.n).toBeGreaterThanOrEqual(2)
+      expect(paid!.n).toBeGreaterThan(0)
       expect(result.revenue.lifetime_centavos).toBe(paid!.n)
       expect(result.revenue.by_plan.reduce((sum, p) => sum + p.centavos, 0)).toBe(paid!.n)
       expect(result.revenue.monthly.reduce((sum, m) => sum + m.centavos, 0)).toBe(paid!.n)
@@ -473,20 +507,13 @@ describe('clinic subscriptions (migration 68)', () => {
       const before = await overview(database, superAdmin.claims)
       const alderAdmin = await secondClinicAdmin(database, await addClinic(database, 'Cedar Clinic', 'Asia/Manila'))
       // 30 minutes before Manila's month began: last month. 30 after: this month.
-      expect(
-        await payCheckout(
-          database,
-          await startCheckout(database, alderAdmin, 'basic'),
-          new Date(Date.parse(b!.start) - 30 * 60_000).toISOString(),
-        ),
-      ).toBe('activated')
-      expect(
-        await payCheckout(
-          database,
-          await startCheckout(database, alderAdmin, 'basic'),
-          new Date(Date.parse(b!.start) + 30 * 60_000).toISOString(),
-        ),
-      ).toBe('activated')
+      for (const offset of [-30, 30]) {
+        const checkout = await startCheckout(database, alderAdmin, 'basic')
+        expect(
+          await payCheckout(database, checkout, new Date(Date.parse(b!.start) + offset * 60_000).toISOString()),
+        ).toBe('activated')
+        await markLive(database, checkout.checkoutId)
+      }
 
       const after = await overview(database, superAdmin.claims)
       const month = (o: Overview, m: string) => o.revenue.monthly.find((x) => x.month === m)!.centavos
@@ -530,6 +557,15 @@ describe('clinic subscriptions (migration 68)', () => {
       const own = await database.asUser<{ clinic_id: string }>(fx.adminUserId, 'select clinic_id from public.subscription_payment')
       expect(own.length).toBeGreaterThan(0)
       expect(new Set(own.map((r) => r.clinic_id))).toEqual(new Set([clinicId]))
+      // The page's own column list (fetchClinicBilling), payment mode included (migration 69).
+      const page = await database.asUser<{ payment_livemode: boolean }>(
+        fx.adminUserId,
+        'select payment_id, plan_name_snapshot, payment_amount_centavos, payment_status, payment_created_at, payment_paid_at, payment_livemode from public.subscription_payment',
+      )
+      expect(page.length).toBe(own.length)
+      expect(page.every((r) => typeof r.payment_livemode === 'boolean')).toBe(true)
+      expect(page.some((r) => r.payment_livemode === true)).toBe(true)
+      expect(page.some((r) => r.payment_livemode === false)).toBe(true)
       const subs = await database.asUser<{ clinic_id: string }>(fx.adminUserId, 'select clinic_id from public.clinic_subscription')
       expect(new Set(subs.map((r) => r.clinic_id))).toEqual(new Set([clinicId]))
     })
@@ -581,10 +617,39 @@ describe('clinic subscriptions (migration 68)', () => {
   })
 })
 
+describe('migration 69 rollback', () => {
+  it('restores the overview of 68 and drops the column, then can be applied again', async () => {
+    const database = await createTestDatabase()
+    const liveColumns = async () => {
+      const [row] = await database.asService<{ n: number }>(
+        `select count(*)::int as n from information_schema.columns
+          where table_name = 'subscription_payment' and column_name = 'payment_livemode'`,
+      )
+      return row!.n
+    }
+    try {
+      expect(await liveColumns()).toBe(1)
+      await database.db.exec(await script(ROLLBACK_69))
+      expect(await liveColumns()).toBe(0)
+      const [source] = await database.asService<{ live: boolean }>(
+        `select prosrc like '%payment_livemode%' as live from pg_proc where proname = 'super_admin_subscription_overview'`,
+      )
+      expect(source!.live).toBe(false)
+      await expect(database.db.exec(await script(ROLLBACK_69))).rejects.toThrow(/not applied/)
+
+      await database.db.exec(await script(MIGRATION_69))
+      expect(await liveColumns()).toBe(1)
+    } finally {
+      await database.close()
+    }
+  })
+})
+
 describe('migration 68 rollback', () => {
   it('removes everything it added and can be applied again', async () => {
     const database = await createTestDatabase()
     try {
+      await database.db.exec(await script(ROLLBACK_69))
       await database.db.exec(await script(ROLLBACK_68))
       const [gone] = await database.asService<{ n: number }>(
         `select count(*)::int as n from pg_class

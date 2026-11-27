@@ -73,6 +73,9 @@ export default defineConfig({
       // switch is offered, and e2e/push-notifications.spec.ts stands in for
       // the browser's push service, so nothing is ever sent with it.
       VITE_VAPID_PUBLIC_KEY: `B${'A'.repeat(86)}`,
+      // The browser tests exercise the PayMongo checkout flow against a stub,
+      // so this build offers it; production leaves the switch unset.
+      VITE_PAYMONGO_CHECKOUT_ENABLED: 'true',
     },
   },
 })

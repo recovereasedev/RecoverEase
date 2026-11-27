@@ -55,11 +55,19 @@ month is a new one-time checkout ("Renew for one more month").
 Never put either one in a `VITE_` variable, `.env.example` values, the repo or
 a document. The browser never needs a PayMongo key.
 
+The website shows the Subscribe and Renew buttons only when it is built with
+`VITE_PAYMONGO_CHECKOUT_ENABLED=true` (not a secret). Set it for staging or in
+`.env.local` for local sandbox testing. Production leaves it unset until
+online payment is really set up, so Clinic Admins see "Online payment is not
+available yet" instead of a button that cannot work.
+
 ## Sandbox setup
 
-Every step below is a production configuration step and **needs Kean's
-approval first**. Migration 68 must be applied before the functions are
-deployed.
+**Do this on a staging project, never production:** follow
+`docs/paymongo-staging.md`. It covers creating the project, building its
+schema, the synthetic seed, deploys, secrets, the webhook and the test
+matrix. The steps below are the generic outline, and each one **needs
+Kean's approval first**.
 
 1. Create or sign in to a PayMongo account. In the dashboard, switch to
    **Test mode** and copy the test secret key (`sk_test_…`).
@@ -88,8 +96,11 @@ Use PayMongo's published test cards with any future expiry and any 3-digit CVC:
 | Declined | `4111111111111111` (generic decline), `5100000000000198` (insufficient funds) |
 
 - **Success:** pay, and you return to Settings, which shows "Payment
-  successful". The Super Admin overview counts the clinic under the plan, and
-  the revenue figures rise by the plan's price.
+  successful". The Super Admin overview counts the clinic under the plan.
+  Revenue does **not** move: from migration 69 a sandbox payment is never
+  revenue (`payment_livemode` stays false). Run these tests only in an
+  isolated test project, never against a real clinic in production: the
+  payment still changes that clinic's plan.
 - **Failure:** use a decline card. The payment shows **Failed**. The plan does
   not change and revenue does not move. You can retry on the same checkout.
 - **Cancellation:** use the checkout's back or cancel link. Settings shows

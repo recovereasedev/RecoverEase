@@ -97,7 +97,7 @@ export function SubscriptionFigures({ overview }: { overview: SubscriptionOvervi
 
         <PageSection
           title="Revenue overview"
-          description="Payments PayMongo confirmed. Pending, failed and cancelled payments are not counted. Months are Philippine time."
+          description="Live payments PayMongo confirmed. Sandbox (test-mode) payments are never counted, nor are pending, failed or cancelled ones. Months are Philippine time."
         >
           <Card className="p-4 sm:p-5">
             <dl className="grid grid-cols-2 gap-4">
@@ -142,7 +142,7 @@ export function SubscriptionFigures({ overview }: { overview: SubscriptionOvervi
               </>
             ) : (
               <p className="mt-5 text-sm text-muted">
-                No payments yet. Revenue appears here once PayMongo confirms a payment.
+                No live payments yet. Revenue appears here once PayMongo confirms a live payment.
               </p>
             )}
           </Card>

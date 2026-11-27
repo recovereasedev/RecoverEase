@@ -18,6 +18,7 @@ import {
   type PaymentStatus,
   type Plan,
 } from '@/features/billing/api'
+import { isOnlineCheckoutEnabled } from '@/features/billing/availability'
 import { formatDate, formatDateTime } from '@/lib/format'
 import { formatCentavos, formatPlanPrice } from '@/lib/money'
 import type { StatusTone } from '@/lib/status'
@@ -27,6 +28,25 @@ const PAYMENT_LABELS: Record<PaymentStatus, { label: string; tone: StatusTone }>
   paid: { label: 'Paid', tone: 'success' },
   failed: { label: 'Failed', tone: 'danger' },
   cancelled: { label: 'Cancelled', tone: 'neutral' },
+}
+
+/**
+ * Which PayMongo mode a payment was made in (migration 69), shown apart from
+ * its status: an outlined pill, dashed for Sandbox, so it never reads as a
+ * second status. Screen readers hear "Payment mode: Sandbox".
+ */
+function PaymentModeBadge({ livemode }: { livemode: boolean }) {
+  return (
+    <Badge
+      tone={livemode ? 'info' : 'neutral'}
+      className={livemode ? 'bg-transparent' : 'border-dashed bg-transparent'}
+    >
+      <span data-testid="payment-mode">
+        <span className="sr-only">Payment mode: </span>
+        {livemode ? 'Live' : 'Sandbox'}
+      </span>
+    </Badge>
+  )
 }
 
 /** How often a pending payment is read again until PayMongo's answer arrives. */
@@ -77,6 +97,7 @@ export function ClinicSubscriptionSection() {
 
   // Back from PayMongo: ask the server about the latest pending checkout once.
   const returnedWith = searchParams.get('billing')
+  const checkoutEnabled = isOnlineCheckoutEnabled()
   const latestPending = billing.data?.payments.find((p) => p.status === 'pending') ?? null
   useEffect(() => {
     if (handledReturn.current || !billing.data) return
@@ -85,6 +106,8 @@ export function ClinicSubscriptionSection() {
     const next = new URLSearchParams(searchParams)
     next.delete('billing')
     setSearchParams(next, { replace: true })
+    // No online checkout in this build: there is nothing to confirm.
+    if (!checkoutEnabled) return
 
     if (!latestPending) {
       setReturnState({ status: billing.data.payments[0]?.status ?? 'pending' })
@@ -107,7 +130,11 @@ export function ClinicSubscriptionSection() {
   return (
     <PageSection
       title="Subscription"
-      description="Your clinic’s RecoverEase plan. Payments are PayMongo test-mode only: no real money is charged."
+      description={
+        checkoutEnabled
+          ? 'Your clinic’s RecoverEase plan. Payments are PayMongo test-mode only: no real money is charged.'
+          : 'Your clinic’s RecoverEase plan.'
+      }
     >
       <div className="space-y-4">
         <ReturnNotice state={returnState} />
@@ -132,6 +159,7 @@ export function ClinicSubscriptionSection() {
                 plan={plan}
                 isCurrent={billing.data.current?.planCode === plan.code}
                 isBusy={checkout.isPending || toFree.isPending}
+                checkoutEnabled={checkoutEnabled}
                 confirmingFree={confirmingFree}
                 currentIsPaid={billing.data.current?.planCode === 'basic' || billing.data.current?.planCode === 'premium'}
                 onSubscribe={(code) => checkout.mutate(code)}
@@ -193,6 +221,7 @@ function PlanCard(props: {
   plan: Plan
   isCurrent: boolean
   isBusy: boolean
+  checkoutEnabled: boolean
   confirmingFree: boolean
   currentIsPaid: boolean
   onSubscribe: (code: 'basic' | 'premium') => void
@@ -208,7 +237,10 @@ function PlanCard(props: {
       </div>
       <p className="mt-1 text-sm text-body" data-numeric>{formatPlanPrice(plan)}</p>
       <div className="mt-auto pt-4">
-        {plan.code === 'basic' || plan.code === 'premium' ? (
+        {(plan.code === 'basic' || plan.code === 'premium') && !props.checkoutEnabled ? (
+          <p className="text-sm text-muted">Online payment is not available yet. Contact RecoverEase to change plans.</p>
+        ) : null}
+        {(plan.code === 'basic' || plan.code === 'premium') && props.checkoutEnabled ? (
           <Button
             size="sm"
             variant={isCurrent ? 'outline' : 'primary'}
@@ -252,7 +284,7 @@ function RecentPayments({ billing }: { billing: ClinicBilling }) {
   return (
     <div>
       <h3 className="text-sm font-semibold text-heading">Recent payments</h3>
-      <ul className="mt-2 divide-y divide-[var(--color-border)] rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-surface">
+      <ul aria-label="Recent payments" className="mt-2 divide-y divide-[var(--color-border)] rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-surface">
         {billing.payments.map((payment) => {
           const label = PAYMENT_LABELS[payment.status]
           return (
@@ -261,7 +293,10 @@ function RecentPayments({ billing }: { billing: ClinicBilling }) {
                 {payment.planName} · <span data-numeric>{formatCentavos(payment.amountCentavos)}</span>
                 <span className="block text-muted">{formatDateTime(payment.paidAt ?? payment.createdAt)}</span>
               </span>
-              <Badge tone={label.tone}>{label.label}</Badge>
+              <span className="flex flex-wrap items-center gap-1.5">
+                <Badge tone={label.tone}>{label.label}</Badge>
+                <PaymentModeBadge livemode={payment.livemode} />
+              </span>
             </li>
           )
         })}
