@@ -18,6 +18,7 @@ import {
   type PaymentStatus,
   type Plan,
 } from '@/features/billing/api'
+import { isOnlineCheckoutEnabled } from '@/features/billing/availability'
 import { formatDate, formatDateTime } from '@/lib/format'
 import { formatCentavos, formatPlanPrice } from '@/lib/money'
 import type { StatusTone } from '@/lib/status'
@@ -96,6 +97,7 @@ export function ClinicSubscriptionSection() {
 
   // Back from PayMongo: ask the server about the latest pending checkout once.
   const returnedWith = searchParams.get('billing')
+  const checkoutEnabled = isOnlineCheckoutEnabled()
   const latestPending = billing.data?.payments.find((p) => p.status === 'pending') ?? null
   useEffect(() => {
     if (handledReturn.current || !billing.data) return
@@ -104,6 +106,8 @@ export function ClinicSubscriptionSection() {
     const next = new URLSearchParams(searchParams)
     next.delete('billing')
     setSearchParams(next, { replace: true })
+    // No online checkout in this build: there is nothing to confirm.
+    if (!checkoutEnabled) return
 
     if (!latestPending) {
       setReturnState({ status: billing.data.payments[0]?.status ?? 'pending' })
@@ -126,7 +130,11 @@ export function ClinicSubscriptionSection() {
   return (
     <PageSection
       title="Subscription"
-      description="Your clinic’s RecoverEase plan. Payments are PayMongo test-mode only: no real money is charged."
+      description={
+        checkoutEnabled
+          ? 'Your clinic’s RecoverEase plan. Payments are PayMongo test-mode only: no real money is charged.'
+          : 'Your clinic’s RecoverEase plan.'
+      }
     >
       <div className="space-y-4">
         <ReturnNotice state={returnState} />
@@ -151,6 +159,7 @@ export function ClinicSubscriptionSection() {
                 plan={plan}
                 isCurrent={billing.data.current?.planCode === plan.code}
                 isBusy={checkout.isPending || toFree.isPending}
+                checkoutEnabled={checkoutEnabled}
                 confirmingFree={confirmingFree}
                 currentIsPaid={billing.data.current?.planCode === 'basic' || billing.data.current?.planCode === 'premium'}
                 onSubscribe={(code) => checkout.mutate(code)}
@@ -212,6 +221,7 @@ function PlanCard(props: {
   plan: Plan
   isCurrent: boolean
   isBusy: boolean
+  checkoutEnabled: boolean
   confirmingFree: boolean
   currentIsPaid: boolean
   onSubscribe: (code: 'basic' | 'premium') => void
@@ -227,7 +237,10 @@ function PlanCard(props: {
       </div>
       <p className="mt-1 text-sm text-body" data-numeric>{formatPlanPrice(plan)}</p>
       <div className="mt-auto pt-4">
-        {plan.code === 'basic' || plan.code === 'premium' ? (
+        {(plan.code === 'basic' || plan.code === 'premium') && !props.checkoutEnabled ? (
+          <p className="text-sm text-muted">Online payment is not available yet. Contact RecoverEase to change plans.</p>
+        ) : null}
+        {(plan.code === 'basic' || plan.code === 'premium') && props.checkoutEnabled ? (
           <Button
             size="sm"
             variant={isCurrent ? 'outline' : 'primary'}

@@ -22,6 +22,9 @@ const billing = vi.hoisted(() => ({
 const platform = vi.hoisted(() => ({ fetchSubscriptionOverview: vi.fn() }))
 
 vi.mock('@/features/billing/api', () => billing)
+// Online checkout is a build-time switch (VITE_PAYMONGO_CHECKOUT_ENABLED), off in production.
+const availability = vi.hoisted(() => ({ enabled: true }))
+vi.mock('@/features/billing/availability', () => ({ isOnlineCheckoutEnabled: () => availability.enabled }))
 vi.mock('@/features/platform/api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/features/platform/api')>()),
   ...platform,
@@ -218,7 +221,10 @@ const payment = (id: string, status: string, livemode: boolean, planName = 'Basi
 })
 
 describe('the Clinic Admin’s plan', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => {
+    vi.clearAllMocks()
+    availability.enabled = true
+  })
 
   it('shows the four plans, the current one, and the paid choices', async () => {
     billing.fetchClinicBilling.mockResolvedValue(onFree)
@@ -333,6 +339,47 @@ describe('the Clinic Admin’s plan', () => {
       renderWith(<ClinicSubscriptionSection />)
       await screen.findByRole('list', { name: 'Plans' })
       expect(screen.queryByRole('list', { name: 'Recent payments' })).toBeNull()
+    })
+  })
+
+  describe('when online checkout is switched off (production until PayMongo is set up)', () => {
+    beforeEach(() => {
+      availability.enabled = false
+    })
+
+    it('offers no Subscribe or Renew button and says why; the plans, prices and Free stay', async () => {
+      billing.fetchClinicBilling.mockResolvedValue({
+        ...onFree,
+        current: { ...onFree.current, planCode: 'basic', periodEnd: '2026-12-27T00:00:00Z' },
+      })
+      renderWith(<ClinicSubscriptionSection />)
+      const plans = await screen.findByRole('list', { name: 'Plans' })
+      expect(within(plans).getAllByRole('heading').map((h) => h.textContent)).toEqual(['Free', 'Basic', 'Premium', 'Enterprise'])
+      expect(within(plans).getByText('₱999.00 / month')).toBeInTheDocument()
+      expect(within(plans).getByText('₱2,499.00 / month')).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /Subscribe to/ })).toBeNull()
+      expect(screen.queryByRole('button', { name: /Renew/ })).toBeNull()
+      expect(within(plans).getAllByText('Online payment is not available yet. Contact RecoverEase to change plans.')).toHaveLength(2)
+      expect(screen.getByRole('button', { name: 'Switch to Free' })).toBeEnabled()
+      expect(screen.queryByText(/PayMongo test-mode only/)).toBeNull()
+      expect(billing.startCheckout).not.toHaveBeenCalled()
+    })
+
+    it('a return link from PayMongo asks nothing of the payment service', async () => {
+      billing.fetchClinicBilling.mockResolvedValue({ ...onFree, payments: [PENDING] })
+      renderWith(<ClinicSubscriptionSection />, '/admin/settings?billing=success')
+      await screen.findByRole('list', { name: 'Plans' })
+      await waitFor(() => expect(billing.fetchClinicBilling).toHaveBeenCalled())
+      expect(billing.confirmCheckout).not.toHaveBeenCalled()
+      expect(screen.queryByText('Checking your payment with PayMongo…')).toBeNull()
+    })
+
+    it('still shows the payment history with its status and mode', async () => {
+      billing.fetchClinicBilling.mockResolvedValue({ ...onFree, payments: [payment('1', 'paid', false)] })
+      renderWith(<ClinicSubscriptionSection />)
+      const list = await screen.findByRole('list', { name: 'Recent payments' })
+      expect(within(list).getByText('Paid')).toBeInTheDocument()
+      expect(within(list).getByTestId('payment-mode')).toHaveTextContent('Payment mode: Sandbox')
     })
   })
 

@@ -858,7 +858,8 @@ the care history and care follow-up marks (export them first); it restores
 ### 24. Clinic subscriptions and PayMongo sandbox payments (migration 68)
 
 Four plans, one current subscription per clinic, and the payments that move
-a clinic onto a paid plan. **Not applied to production.** Money is integer
+a clinic onto a paid plan. **Applied to production 2026-11-26 22:48Z** (history
+`20261126224819`); migration 69 followed on 2026-11-27. Money is integer
 centavos (`bigint`) everywhere. Clinic *account* status (`clinic.clinic_status`)
 and *subscription* status are separate and never move each other.
 
