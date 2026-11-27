@@ -10,6 +10,7 @@ import { PageSection } from '@/components/ui/section-heading'
 import { StatBand } from '@/components/ui/stat-card'
 import { useQueryKeys } from '@/features/auth/use-query-keys'
 import { fetchPlatformOverview } from '@/features/platform/api'
+import { DemoPaymentActivitySection } from '@/features/platform/components/demo-payment-activity'
 import { SubscriptionOverviewSection } from '@/features/platform/components/subscription-overview'
 import { useDocumentTitle } from '@/hooks/use-document-title'
 import { formatDateTime } from '@/lib/format'
@@ -134,6 +135,7 @@ export function PlatformOverviewPage() {
         Subscriptions and revenue
       </h2>
       <SubscriptionOverviewSection />
+      <DemoPaymentActivitySection />
     </>
   )
 }

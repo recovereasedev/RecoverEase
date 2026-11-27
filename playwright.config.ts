@@ -76,6 +76,9 @@ export default defineConfig({
       // The browser tests exercise the PayMongo checkout flow against a stub,
       // so this build offers it; production leaves the switch unset.
       VITE_PAYMONGO_CHECKOUT_ENABLED: 'true',
+      // The internal demo payment simulator (migration 70), also against a
+      // stub; the database decides per clinic whether it is shown.
+      VITE_DEMO_PAYMENT_SIMULATOR_ENABLED: 'true',
     },
   },
 })
