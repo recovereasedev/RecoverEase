@@ -55,6 +55,12 @@ month is a new one-time checkout ("Renew for one more month").
 Never put either one in a `VITE_` variable, `.env.example` values, the repo or
 a document. The browser never needs a PayMongo key.
 
+The website shows the Subscribe and Renew buttons only when it is built with
+`VITE_PAYMONGO_CHECKOUT_ENABLED=true` (not a secret). Set it for staging or in
+`.env.local` for local sandbox testing. Production leaves it unset until
+online payment is really set up, so Clinic Admins see "Online payment is not
+available yet" instead of a button that cannot work.
+
 ## Sandbox setup
 
 Every step below is a production configuration step and **needs Kean's

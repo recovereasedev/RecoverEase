@@ -667,8 +667,13 @@ client code even by accident.
 `.gitignore` blocks all `.env*` files with an explicit exception for
 `.env.example`, verified with `git check-ignore` before the first commit.
 
-## Subscriptions and PayMongo sandbox payments (migration 68, not applied)
+## Subscriptions and PayMongo sandbox payments (migrations 68 and 69, applied 2026-11-26/27)
 
+- **No checkout button unless the build enables it.** The Clinic Admin's
+  Subscribe and Renew buttons appear only when the website is built with
+  `VITE_PAYMONGO_CHECKOUT_ENABLED=true` (staging, local sandbox testing).
+  Production leaves it unset, so no one is offered a checkout that cannot
+  work. This hides buttons only; every rule below holds regardless.
 - **The browser decides nothing about money.** It sends a plan name (`basic`
   or `premium`) or a payment id. `paymongo-checkout` takes the clinic from the
   verified caller's `admin` row and the price from `subscription_plan`, prices

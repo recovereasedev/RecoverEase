@@ -2687,10 +2687,13 @@ Order:
    replaced (same signature and grants). **Verify:** the column exists and
    `super_admin_subscription_overview` mentions `payment_livemode`.
 2. Deploy the website (the overview and settings read the new objects; on a
-   database without 68 those sections show their error state only).
+   database without 68 those sections show their error state only). Leave
+   `VITE_PAYMONGO_CHECKOUT_ENABLED` unset in production: the Clinic Admin then sees
+   the plans and can move to Free, but gets no Subscribe or Renew button.
 3. Sandbox only: set the secrets and deploy the two functions as
    `docs/paymongo-sandbox.md` describes (`paymongo-webhook` with
-   `--no-verify-jwt`).
+   `--no-verify-jwt`), and build that environment's website with
+   `VITE_PAYMONGO_CHECKOUT_ENABLED=true`.
 
 Rollback (reverse order): undeploy or disable the two functions, roll the
 website back, then apply
