@@ -2660,8 +2660,9 @@ no feature here needs them.
 ### Clinic subscriptions and PayMongo sandbox (migrations 68, 69)
 
 > **68 is APPLIED to production (2026-11-26 22:48Z, history
-> `20261126224819`). 69 is NOT applied. The functions are NOT deployed, and no
-> PayMongo secret is set.** Each step needs Kean's separate approval, a fresh
+> `20261126224819`). 69 is APPLIED (2026-11-27 04:33Z, history
+> `20261127043314`). The functions are NOT deployed, and no PayMongo secret is
+> set.** Each step needs Kean's separate approval, a fresh
 > verified backup and a quiet window. Never `supabase db push`.
 
 Order:
