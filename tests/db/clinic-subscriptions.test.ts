@@ -557,6 +557,15 @@ describe('clinic subscriptions (migration 68)', () => {
       const own = await database.asUser<{ clinic_id: string }>(fx.adminUserId, 'select clinic_id from public.subscription_payment')
       expect(own.length).toBeGreaterThan(0)
       expect(new Set(own.map((r) => r.clinic_id))).toEqual(new Set([clinicId]))
+      // The page's own column list (fetchClinicBilling), payment mode included (migration 69).
+      const page = await database.asUser<{ payment_livemode: boolean }>(
+        fx.adminUserId,
+        'select payment_id, plan_name_snapshot, payment_amount_centavos, payment_status, payment_created_at, payment_paid_at, payment_livemode from public.subscription_payment',
+      )
+      expect(page.length).toBe(own.length)
+      expect(page.every((r) => typeof r.payment_livemode === 'boolean')).toBe(true)
+      expect(page.some((r) => r.payment_livemode === true)).toBe(true)
+      expect(page.some((r) => r.payment_livemode === false)).toBe(true)
       const subs = await database.asUser<{ clinic_id: string }>(fx.adminUserId, 'select clinic_id from public.clinic_subscription')
       expect(new Set(subs.map((r) => r.clinic_id))).toEqual(new Set([clinicId]))
     })

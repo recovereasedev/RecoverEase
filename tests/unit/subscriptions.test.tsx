@@ -203,7 +203,19 @@ const PENDING = {
   status: 'pending',
   createdAt: '2026-11-27T00:00:00Z',
   paidAt: null,
+  livemode: false,
 }
+
+/** One payment of each kind, newest first, as fetchClinicBilling returns them. */
+const payment = (id: string, status: string, livemode: boolean, planName = 'Basic', amountCentavos = 99900) => ({
+  paymentId: `00000000-0000-4000-8000-00000000000${id}`,
+  planName,
+  amountCentavos,
+  status,
+  createdAt: '2026-11-27T00:00:00Z',
+  paidAt: status === 'paid' ? '2026-11-27T00:00:00Z' : null,
+  livemode,
+})
 
 describe('the Clinic Admin’s plan', () => {
   beforeEach(() => vi.clearAllMocks())
@@ -264,6 +276,64 @@ describe('the Clinic Admin’s plan', () => {
     expect(billing.chooseFreePlan).not.toHaveBeenCalled()
     await userEvent.click(screen.getByRole('button', { name: 'Yes, switch to Free' }))
     await waitFor(() => expect(billing.chooseFreePlan).toHaveBeenCalledTimes(1))
+  })
+
+  describe('recent payments: status and PayMongo mode', () => {
+    const STATUS_TEXT = /^(Paid|Pending|Failed|Cancelled)$/
+    /** Each row's status badge and mode badge, as written on screen. */
+    async function rows() {
+      const list = await screen.findByRole('list', { name: 'Recent payments' })
+      return within(list)
+        .getAllByRole('listitem')
+        .map((item) => [
+          within(item).getByText(STATUS_TEXT).textContent,
+          within(item).getByTestId('payment-mode').textContent,
+        ])
+    }
+
+    it.each([
+      ['paid', false, 'Paid', 'Sandbox'],
+      ['paid', true, 'Paid', 'Live'],
+      ['pending', false, 'Pending', 'Sandbox'],
+      ['failed', false, 'Failed', 'Sandbox'],
+      ['cancelled', false, 'Cancelled', 'Sandbox'],
+    ] as const)('a %s payment with livemode %s shows %s and %s', async (status, livemode, statusText, modeText) => {
+      billing.fetchClinicBilling.mockResolvedValue({ ...onFree, payments: [payment('1', status, livemode)] })
+      renderWith(<ClinicSubscriptionSection />)
+      expect(await rows()).toEqual([[statusText, `Payment mode: ${modeText}`]])
+    })
+
+    it('labels each payment by its own mode when sandbox and live are mixed', async () => {
+      billing.fetchClinicBilling.mockResolvedValue({
+        ...onFree,
+        payments: [
+          payment('1', 'paid', true, 'Premium', 249900),
+          payment('2', 'paid', false),
+          payment('3', 'failed', false),
+          payment('4', 'pending', true),
+        ],
+      })
+      renderWith(<ClinicSubscriptionSection />)
+      expect(await rows()).toEqual([
+        ['Paid', 'Payment mode: Live'],
+        ['Paid', 'Payment mode: Sandbox'],
+        ['Failed', 'Payment mode: Sandbox'],
+        ['Pending', 'Payment mode: Live'],
+      ])
+      // The two badges are styled apart: a mode badge is outlined, a status badge is not.
+      const list = screen.getByRole('list', { name: 'Recent payments' })
+      for (const mode of within(list).getAllByTestId('payment-mode')) expect(mode.parentElement!.className).toContain('bg-transparent')
+      for (const status of within(list).getAllByText(STATUS_TEXT)) expect(status.className).not.toContain('bg-transparent')
+      // Plan and amount are still shown as before.
+      expect(within(list).getByText('₱2,499.00')).toBeInTheDocument()
+    })
+
+    it('shows no payment list when there are no payments', async () => {
+      billing.fetchClinicBilling.mockResolvedValue(onFree)
+      renderWith(<ClinicSubscriptionSection />)
+      await screen.findByRole('list', { name: 'Plans' })
+      expect(screen.queryByRole('list', { name: 'Recent payments' })).toBeNull()
+    })
   })
 
   it('shows the error state with a retry', async () => {

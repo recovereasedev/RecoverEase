@@ -35,6 +35,8 @@ export type ClinicPayment = {
   status: PaymentStatus
   createdAt: string
   paidAt: string | null
+  /** PayMongo live mode (migration 69). False is a sandbox (test-mode) payment. */
+  livemode: boolean
 }
 
 export type ClinicBilling = {
@@ -56,7 +58,7 @@ export async function fetchClinicBilling(): Promise<ClinicBilling> {
       .maybeSingle(),
     supabase
       .from('subscription_payment')
-      .select('payment_id, plan_name_snapshot, payment_amount_centavos, payment_status, payment_created_at, payment_paid_at')
+      .select('payment_id, plan_name_snapshot, payment_amount_centavos, payment_status, payment_created_at, payment_paid_at, payment_livemode')
       .order('payment_created_at', { ascending: false })
       .limit(5),
   ])
@@ -87,6 +89,8 @@ export async function fetchClinicBilling(): Promise<ClinicBilling> {
       status: row.payment_status as PaymentStatus,
       createdAt: row.payment_created_at,
       paidAt: row.payment_paid_at,
+      // Anything but an explicit true is sandbox: a payment is never shown as live by default.
+      livemode: row.payment_livemode === true,
     })),
   }
 }

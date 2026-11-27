@@ -29,6 +29,25 @@ const PAYMENT_LABELS: Record<PaymentStatus, { label: string; tone: StatusTone }>
   cancelled: { label: 'Cancelled', tone: 'neutral' },
 }
 
+/**
+ * Which PayMongo mode a payment was made in (migration 69), shown apart from
+ * its status: an outlined pill, dashed for Sandbox, so it never reads as a
+ * second status. Screen readers hear "Payment mode: Sandbox".
+ */
+function PaymentModeBadge({ livemode }: { livemode: boolean }) {
+  return (
+    <Badge
+      tone={livemode ? 'info' : 'neutral'}
+      className={livemode ? 'bg-transparent' : 'border-dashed bg-transparent'}
+    >
+      <span data-testid="payment-mode">
+        <span className="sr-only">Payment mode: </span>
+        {livemode ? 'Live' : 'Sandbox'}
+      </span>
+    </Badge>
+  )
+}
+
 /** How often a pending payment is read again until PayMongo's answer arrives. */
 export const PENDING_REFRESH_MS = 5_000
 
@@ -252,7 +271,7 @@ function RecentPayments({ billing }: { billing: ClinicBilling }) {
   return (
     <div>
       <h3 className="text-sm font-semibold text-heading">Recent payments</h3>
-      <ul className="mt-2 divide-y divide-[var(--color-border)] rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-surface">
+      <ul aria-label="Recent payments" className="mt-2 divide-y divide-[var(--color-border)] rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-surface">
         {billing.payments.map((payment) => {
           const label = PAYMENT_LABELS[payment.status]
           return (
@@ -261,7 +280,10 @@ function RecentPayments({ billing }: { billing: ClinicBilling }) {
                 {payment.planName} · <span data-numeric>{formatCentavos(payment.amountCentavos)}</span>
                 <span className="block text-muted">{formatDateTime(payment.paidAt ?? payment.createdAt)}</span>
               </span>
-              <Badge tone={label.tone}>{label.label}</Badge>
+              <span className="flex flex-wrap items-center gap-1.5">
+                <Badge tone={label.tone}>{label.label}</Badge>
+                <PaymentModeBadge livemode={payment.livemode} />
+              </span>
             </li>
           )
         })}
