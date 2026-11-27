@@ -1534,6 +1534,8 @@ export type Database = {
           payment_created_at: string
           payment_updated_at: string
           payment_livemode: boolean
+          /** Migration 70: qr_wallet or card on demo simulator rows only. */
+          payment_demo_method: string | null
         }
         Insert: {
           payment_id?: string
@@ -1553,6 +1555,7 @@ export type Database = {
           payment_created_at?: string
           payment_updated_at?: string
           payment_livemode?: boolean
+          payment_demo_method?: string | null
         }
         Update: {
           payment_id?: string
@@ -1572,6 +1575,7 @@ export type Database = {
           payment_created_at?: string
           payment_updated_at?: string
           payment_livemode?: boolean
+          payment_demo_method?: string | null
         }
         Relationships: [
           {
@@ -1781,6 +1785,27 @@ export type Database = {
       clinic_admin_choose_free_plan: {
         Args: Record<PropertyKey, never>
         Returns: string
+      }
+      /** Migration 70: the internal demo payment simulator. */
+      demo_payment_simulator_available: {
+        Args: Record<PropertyKey, never>
+        Returns: boolean
+      }
+      clinic_admin_simulate_demo_payment: {
+        Args: { p_plan_code: string; p_method: string; p_outcome: string; p_request_id: string }
+        Returns: Json
+      }
+      super_admin_demo_payment_activity: {
+        Args: {
+          p_clinic_id?: string | null
+          p_status?: string | null
+          p_method?: string | null
+          p_from?: string | null
+          p_to?: string | null
+          p_page?: number
+          p_page_size?: number
+        }
+        Returns: Json
       }
     }
     Enums: {

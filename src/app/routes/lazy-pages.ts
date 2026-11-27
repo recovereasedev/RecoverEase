@@ -170,6 +170,11 @@ export const SystemSettingsPage = lazy(() =>
     default: m.SystemSettingsPage,
   })),
 )
+export const DemoCheckoutPage = lazy(() =>
+  import('@/features/billing/demo-checkout/demo-checkout-page').then((m) => ({
+    default: m.DemoCheckoutPage,
+  })),
+)
 export const AdminProfilePage = lazy(() =>
   import('@/features/system-settings/pages/admin-profile-page').then((m) => ({
     default: m.AdminProfilePage,

@@ -171,6 +171,8 @@ export function queryKeysFor(userId: string) {
       clinic: () => [...queryKeys.admin.all, 'clinic'] as const,
       /** The clinic's plan, subscription and payments (migration 68). */
       subscription: () => [...queryKeys.admin.all, 'subscription'] as const,
+      /** Whether the demo payment simulator is on for this clinic (migration 70). */
+      demoCheckout: () => [...queryKeys.admin.all, 'demo-checkout'] as const,
     },
 
     /** The platform console (Super Admin). */
@@ -184,6 +186,9 @@ export function queryKeysFor(userId: string) {
       overview: () => [...queryKeys.platform.all, 'overview'] as const,
       /** Subscribers and revenue (migration 68). */
       subscriptions: () => [...queryKeys.platform.all, 'subscriptions'] as const,
+      /** Demo payment simulator transactions (migration 70). */
+      demoPayments: (filters: string) =>
+        [...queryKeys.platform.all, 'demo-payments', filters] as const,
       clinics: () => [...queryKeys.platform.all, 'clinics'] as const,
       announcements: () =>
         [...queryKeys.platform.all, 'announcements'] as const,

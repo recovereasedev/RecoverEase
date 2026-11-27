@@ -187,6 +187,122 @@ export async function fetchSubscriptionOverview(): Promise<SubscriptionOverview>
   return parseSubscriptionOverview(data)
 }
 
+// --- Demo payment activity (migration 70) -----------------------------------
+
+export type DemoPaymentStatus = 'pending' | 'paid' | 'failed' | 'cancelled'
+export type DemoPaymentMethod = 'qr_wallet' | 'card'
+
+export type DemoPaymentFilters = {
+  clinicId: string | null
+  status: DemoPaymentStatus | null
+  method: DemoPaymentMethod | null
+  /** Asia/Manila calendar dates, YYYY-MM-DD, inclusive. */
+  from: string | null
+  to: string | null
+  page: number
+}
+
+export const DEMO_PAYMENTS_PAGE_SIZE = 10
+
+/**
+ * Transactions made with the internal demo simulator. Never revenue: the
+ * demo volume is the sum of paid demo rows, kept apart from every revenue
+ * figure. No person, email or PayMongo reference is returned.
+ */
+export type DemoPaymentActivity = {
+  summary: { total: number; paid: number; failed: number; cancelled: number; pending: number; demoVolumeCentavos: number }
+  totalMatching: number
+  rows: {
+    paymentId: string
+    reference: string
+    clinicId: string
+    clinicName: string
+    planCode: PlanCode
+    planName: string
+    amountCentavos: number
+    method: DemoPaymentMethod
+    status: DemoPaymentStatus
+    createdAt: string
+    paidAt: string | null
+  }[]
+  clinics: { clinicId: string; clinicName: string }[]
+  generatedAt: string
+}
+
+const DEMO_STATUSES: readonly string[] = ['pending', 'paid', 'failed', 'cancelled']
+
+export function parseDemoPaymentActivity(data: unknown): DemoPaymentActivity {
+  const malformed = () => new Error('The demo payment activity could not be read.')
+  if (!isRecord(data)) throw malformed()
+  const { summary, total_matching, rows, clinics, generated_at } = data
+  if (!isRecord(summary) || !isCount(total_matching) || !Array.isArray(rows) || !Array.isArray(clinics) || typeof generated_at !== 'string') {
+    throw malformed()
+  }
+  const { total, paid, failed, cancelled, pending, demo_volume_centavos } = summary
+  if (![total, paid, failed, cancelled, pending, demo_volume_centavos].every(isCount)) throw malformed()
+
+  return {
+    summary: {
+      total: total as number,
+      paid: paid as number,
+      failed: failed as number,
+      cancelled: cancelled as number,
+      pending: pending as number,
+      demoVolumeCentavos: demo_volume_centavos as number,
+    },
+    totalMatching: total_matching,
+    rows: rows.map((row: unknown) => {
+      if (
+        !isRecord(row) || typeof row.payment_id !== 'string' || typeof row.reference !== 'string' ||
+        typeof row.clinic_id !== 'string' || typeof row.clinic_name !== 'string' || !isPlanCode(row.plan_code) ||
+        typeof row.plan_name !== 'string' || !isCount(row.amount_centavos) ||
+        (row.method !== 'qr_wallet' && row.method !== 'card') ||
+        typeof row.status !== 'string' || !DEMO_STATUSES.includes(row.status) ||
+        typeof row.created_at !== 'string' || !(row.paid_at === null || typeof row.paid_at === 'string')
+      ) {
+        throw malformed()
+      }
+      return {
+        paymentId: row.payment_id,
+        reference: row.reference,
+        clinicId: row.clinic_id,
+        clinicName: row.clinic_name,
+        planCode: row.plan_code,
+        planName: row.plan_name,
+        amountCentavos: row.amount_centavos,
+        method: row.method,
+        status: row.status as DemoPaymentStatus,
+        createdAt: row.created_at,
+        paidAt: row.paid_at,
+      }
+    }),
+    clinics: clinics.map((clinic: unknown) => {
+      if (!isRecord(clinic) || typeof clinic.clinic_id !== 'string' || typeof clinic.clinic_name !== 'string') throw malformed()
+      return { clinicId: clinic.clinic_id, clinicName: clinic.clinic_name }
+    }),
+    generatedAt: generated_at,
+  }
+}
+
+/**
+ * Null when the database has no such function yet (migration 70 not
+ * applied): the section is then simply not shown.
+ */
+export async function fetchDemoPaymentActivity(filters: DemoPaymentFilters): Promise<DemoPaymentActivity | null> {
+  const { data, error } = await supabase.rpc('super_admin_demo_payment_activity', {
+    p_clinic_id: filters.clinicId,
+    p_status: filters.status,
+    p_method: filters.method,
+    p_from: filters.from,
+    p_to: filters.to,
+    p_page: filters.page,
+    p_page_size: DEMO_PAYMENTS_PAGE_SIZE,
+  })
+  if (error?.code === 'PGRST202' || error?.code === '42883') return null
+  if (error) throw error
+  return parseDemoPaymentActivity(data)
+}
+
 // --- Clinics -----------------------------------------------------------------
 
 export async function fetchClinics(): Promise<PlatformClinic[]> {

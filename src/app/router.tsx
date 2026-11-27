@@ -182,6 +182,8 @@ export const router = createBrowserRouter([
     { path: 'reports', element: <Page.AdminReportsPage /> },
     { path: 'notifications', element: <Page.NotificationsPage /> },
     { path: 'settings', element: <Page.SystemSettingsPage /> },
+    // The internal demo payment simulator (migration 70); simulation only.
+    { path: 'settings/checkout', element: <Page.DemoCheckoutPage /> },
     { path: 'profile', element: <Page.AdminProfilePage /> },
   ]),
 

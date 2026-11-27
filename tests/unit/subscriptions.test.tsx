@@ -18,13 +18,18 @@ const billing = vi.hoisted(() => ({
   chooseFreePlan: vi.fn(),
   startCheckout: vi.fn(),
   confirmCheckout: vi.fn(),
+  fetchDemoCheckoutAvailable: vi.fn(async () => false),
 }))
 const platform = vi.hoisted(() => ({ fetchSubscriptionOverview: vi.fn() }))
 
 vi.mock('@/features/billing/api', () => billing)
 // Online checkout is a build-time switch (VITE_PAYMONGO_CHECKOUT_ENABLED), off in production.
 const availability = vi.hoisted(() => ({ enabled: true }))
-vi.mock('@/features/billing/availability', () => ({ isOnlineCheckoutEnabled: () => availability.enabled }))
+// The demo simulator (migration 70) is its own switch, off here: tests/unit/demo-checkout.test.tsx covers it.
+vi.mock('@/features/billing/availability', () => ({
+  isOnlineCheckoutEnabled: () => availability.enabled,
+  isDemoPaymentSimulatorEnabled: () => false,
+}))
 vi.mock('@/features/platform/api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/features/platform/api')>()),
   ...platform,

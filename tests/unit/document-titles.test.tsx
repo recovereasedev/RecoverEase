@@ -73,6 +73,7 @@ const ROUTES: { path: string; page: string; file: string; title: string | null }
   { path: '/admin/reports', page: 'AdminReportsPage', file: 'reports/pages/admin-reports-page.tsx', title: 'Reports' },
   { path: '/admin/notifications', page: 'NotificationsPage', file: 'notifications/pages/notifications-page.tsx', title: 'Notifications' },
   { path: '/admin/settings', page: 'SystemSettingsPage', file: 'system-settings/pages/system-settings-page.tsx', title: 'System Settings' },
+  { path: '/admin/settings/checkout', page: 'DemoCheckoutPage', file: 'billing/demo-checkout/demo-checkout-page.tsx', title: 'Checkout' },
   { path: '/admin/profile', page: 'AdminProfilePage', file: 'system-settings/pages/admin-profile-page.tsx', title: 'My Profile' },
 
   // Platform (Super Admin).
