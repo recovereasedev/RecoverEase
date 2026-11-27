@@ -19,6 +19,7 @@ import {
   useDecideRescheduleRequest,
   useRescheduleRequests,
 } from '@/features/appointments/hooks'
+import { CHAT_ALERT, chatAlertKind } from '@/features/notifications/chat-alert'
 import { useNotifications } from '@/features/notifications/hooks'
 import { useMyPatients } from '@/features/patients/hooks'
 import { useDocumentTitle } from '@/hooks/use-document-title'
@@ -80,13 +81,17 @@ export function DoctorDashboard() {
     (patient) => patient.pat_status === 'active',
   )
 
-  // Unread critical-chat alerts: module 8.2 raised them, and they stay here
-  // until read on the notifications page.
-  const flagged = (notificationsQuery.data ?? []).filter(
-    (notification) =>
-      notification.notification_type === 'chat_critical' &&
-      !notification.notification_is_read,
-  )
+  // Unread chat alerts: they stay here until read on the notifications page.
+  // A possible concern comes before an assistant that could not reply
+  // (Phase 2B); each kind keeps its newest-first order.
+  const flagged = (notificationsQuery.data ?? [])
+    .filter(
+      (notification) =>
+        notification.notification_type === 'chat_critical' &&
+        !notification.notification_is_read,
+    )
+    .map((notification) => ({ notification, kind: chatAlertKind(notification) ?? 'concern' }))
+    .sort((a, b) => Number(a.kind === 'unanswered') - Number(b.kind === 'unanswered'))
   const nothingWaiting =
     requestsQuery.isSuccess &&
     notificationsQuery.isSuccess &&
@@ -103,26 +108,22 @@ export function DoctorDashboard() {
       <div className="grid gap-section lg:grid-cols-3 lg:gap-8">
         <div className="space-y-section lg:col-span-2">
           {/* --- Needs attention — modules 8.2, 6.3, 6.4 ------------------ */}
-          <PageSection
-            title="Needs attention"
-            description={
-              nothingWaiting
-                ? undefined
-                : 'Waiting on your decision or your review.'
-            }
-          >
+          <PageSection title="Needs attention">
             <Card variant="elevated" className="overflow-hidden">
               {nothingWaiting ? (
                 <InlineEmpty icon={Inbox}>
-                  Nothing needs your attention right now. Flagged
-                  conversations and reschedule requests appear here.
+                  Nothing needs your attention right now.
                 </InlineEmpty>
               ) : null}
 
-              {/* Flagged conversations, first. */}
+              {/* Chat alerts, first: possible concerns in amber, then
+                  messages the assistant could not answer, in neutral grey -
+                  a service fault, not a clinical one. No patient text. */}
               {flagged.length > 0 ? (
                 <ListRows>
-                  {flagged.map((notification) => {
+                  {flagged.map(({ notification, kind }) => {
+                    const alert = CHAT_ALERT[kind]
+                    const Icon = alert.icon
                     // The same rule as the notifications page: a link to the
                     // conversation only when the database lets this reader
                     // see it, which is the patient's own doctor.
@@ -134,21 +135,26 @@ export function DoctorDashboard() {
                     return (
                       <ListRow
                         key={notification.notification_id}
-                        className="bg-warning-50"
+                        className={alert.tone === 'warning' ? 'bg-warning-50' : ''}
                         title={
                           <span className="inline-flex items-start gap-2">
-                            <AlertTriangle
-                              className="mt-0.5 size-4 shrink-0 text-warning-700"
+                            <Icon
+                              className={cn(
+                                'mt-0.5 size-4 shrink-0',
+                                alert.tone === 'warning' ? 'text-warning-700' : 'text-neutral-500',
+                              )}
                               aria-hidden="true"
                             />
-                            Flagged conversation
+                            {alert.label}
                           </span>
                         }
                         description={
                           <>
-                            {notification.notification_message}{' '}
-                            <span className="whitespace-nowrap">
-                              · {formatRelative(notification.notification_created_at)}
+                            {alert.summary}
+                            {/* Its own line: wrapped after the sentence, a
+                                leading "·" read as a stray mark. */}
+                            <span className="block">
+                              {formatRelative(notification.notification_created_at)}
                             </span>
                           </>
                         }
@@ -180,7 +186,7 @@ export function DoctorDashboard() {
                     </Link>
                   }
                 >
-                  Flagged conversations could not be checked just now.
+                  Chat alerts couldn’t be checked just now.
                 </InlineEmpty>
               ) : null}
 

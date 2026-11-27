@@ -87,6 +87,46 @@ describe('a critical-chat alert', () => {
   })
 })
 
+describe('the two kinds of chat alert (Phase 2B)', () => {
+  const UNANSWERED =
+    "The guidance assistant could not answer a patient's message. Please review the conversation."
+
+  it('marks a possible concern in amber and says what it is', () => {
+    state.notifications = [
+      notification({ notification_type: 'chat_critical', notification_message: ALERT_TEXT }),
+    ]
+    renderPage()
+
+    const item = screen.getByText(ALERT_TEXT).closest('li') as HTMLElement
+    expect(within(item).getByText('Possible concern')).toBeInTheDocument()
+    expect(item.className).toMatch(/bg-warning-50/)
+  })
+
+  it('shows an assistant that could not reply as a neutral fault, not a concern', () => {
+    state.notifications = [
+      notification({
+        notification_type: 'chat_critical',
+        notification_message: UNANSWERED,
+        chat_session_id: 's-2',
+        chat_session: { pat_id: 'p-1' },
+      }),
+    ]
+    renderPage()
+
+    const item = screen.getByText(UNANSWERED).closest('li') as HTMLElement
+    expect(within(item).getByText('Unanswered message')).toBeInTheDocument()
+    // The row itself carries the tint and the bar down its edge, so the row's
+    // own classes are checked as well as everything inside it.
+    expect(item.className).not.toMatch(/warning|danger/)
+    expect(item.innerHTML).not.toMatch(/warning|danger/)
+    // It still opens the conversation, as every chat alert does.
+    expect(within(item).getByRole('link', { name: /^View conversation/ })).toHaveAttribute(
+      'href',
+      '/doctor/patients/p-1?tab=chat&session=s-2',
+    )
+  })
+})
+
 describe('every other notification', () => {
   it('stays as it was: no link, and Mark read while unread', () => {
     state.notifications = [

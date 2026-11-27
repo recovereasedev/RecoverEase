@@ -1002,7 +1002,7 @@ export function PatientChatPage() {
                     isLoading={isBusy}
                     loadingLabel="Sending…"
                     aria-label="Send message"
-                    className="size-12 shrink-0 rounded-[var(--radius-lg)] bg-fill-brand-700 px-0 text-[15px] hover:bg-fill-brand-800 lg:h-14 lg:w-auto lg:px-5 [&_svg]:size-5"
+                    className="size-12 shrink-0 rounded-[var(--radius-lg)] px-0 text-[15px] lg:h-14 lg:w-auto lg:px-5 [&_svg]:size-5"
                   >
                     {/* The button shows its own spinner while sending. */}
                     {sendMessage.isPending ? null : <Send aria-hidden="true" />}

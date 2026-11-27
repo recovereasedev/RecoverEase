@@ -12,10 +12,12 @@ import { Link, useLocation } from 'react-router-dom'
 
 import { EmptyState, StateView } from '@/components/feedback/state-view'
 import { PageHeader } from '@/components/layout/page-header'
+import { Badge } from '@/components/ui/badge'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Card, CardBody } from '@/components/ui/card'
 import type { ClinicRole } from '@/features/auth/types'
 import type { NotificationType } from '@/features/notifications/api'
+import { CHAT_ALERT, chatAlertKind } from '@/features/notifications/chat-alert'
 import { SendPatientNotification } from '@/features/notifications/components/send-patient-notification'
 import {
   useMarkAllNotificationsRead,
@@ -29,8 +31,10 @@ import { cn } from '@/lib/utils'
 
 /**
  * Each notification type carries its own icon, so the kind of update is
- * recognisable before the text is read. `chat_critical` is the only one given
- * a warning tone — if everything were urgent, nothing would be.
+ * recognisable before the text is read. A chat alert that is a possible
+ * concern is the only one given a warning tone — if everything were urgent,
+ * nothing would be; one the assistant could not answer takes its own icon
+ * from `chat-alert.ts`.
  */
 const TYPE_ICON: Record<NotificationType, LucideIcon> = {
   appointment: CalendarDays,
@@ -51,6 +55,17 @@ const DESCRIPTION: Record<ClinicRole, string> = {
   patient: 'Reminders and updates about your care.',
   doctor: 'Alerts and updates about your patients.',
   admin: 'Updates about the system.',
+}
+
+/**
+ * What an empty list says will arrive, for the two readers it can promise it
+ * to. A patient gets medication and appointment reminders; a doctor gets chat
+ * alerts and reminders of their own appointments (migrations 18 and 42). An
+ * administrator is promised neither, so theirs has the title alone.
+ */
+const EMPTY_DESCRIPTION: Partial<Record<ClinicRole, string>> = {
+  patient: 'Medication and appointment reminders will show here.',
+  doctor: 'Chat alerts and appointment reminders will show here.',
 }
 
 /** Module 7.3 "View Notifications and Reminders". */
@@ -117,23 +132,28 @@ export function NotificationsPage() {
               empty={
                 <EmptyState
                   icon={Bell}
-                  title="You are all caught up"
-                  description="Reminders about medication and appointments will appear here."
+                  title="You’re all caught up"
+                  {...(EMPTY_DESCRIPTION[role]
+                    ? { description: EMPTY_DESCRIPTION[role] }
+                    : {})}
                 />
               }
             >
               {(notifications) => (
                 <ul className="divide-y divide-[var(--color-border)]">
                   {notifications.map((notification) => {
-                    const Icon = TYPE_ICON[notification.notification_type]
                     const isUnread = !notification.notification_is_read
-                    const isCritical =
-                      notification.notification_type === 'chat_critical'
-                    // Module 8.5: a critical-chat alert opens the conversation
-                    // it is about. The patient is only there when the database
+                    // A chat alert is a possible concern (amber) or an
+                    // assistant that could not reply (neutral): Phase 2B.
+                    const chatKind = chatAlertKind(notification)
+                    const chatAlert = chatKind ? CHAT_ALERT[chatKind] : null
+                    const Icon = chatAlert?.icon ?? TYPE_ICON[notification.notification_type]
+                    const isCritical = chatKind === 'concern'
+                    // Module 8.5: a chat alert opens the conversation it is
+                    // about. The patient is only there when the database
                     // lets this reader see that conversation, which is the
                     // patient's assigned doctor; otherwise there is no link.
-                    const conversationPatientId = isCritical
+                    const conversationPatientId = chatKind
                       ? notification.chat_session?.pat_id
                       : undefined
                     const conversationPath =
@@ -191,6 +211,11 @@ export function NotificationsPage() {
                           />
 
                           <div className="min-w-0 flex-1">
+                            {chatAlert ? (
+                              <Badge tone={chatAlert.tone} className="mb-1.5">
+                                {chatAlert.label}
+                              </Badge>
+                            ) : null}
                             <p
                               className={cn(
                                 'text-body',

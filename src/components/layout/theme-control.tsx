@@ -23,7 +23,7 @@ export function ThemeControl({ className }: { className?: string }) {
 
   return (
     <fieldset className={cn('min-w-0', className)}>
-      <legend className="mb-1.5 px-1 text-xs font-semibold text-muted">Theme</legend>
+      <legend className="mb-1.5 px-1 text-sm font-semibold text-muted">Theme</legend>
       <div className="grid grid-cols-3 gap-1 rounded-[var(--radius-md)] bg-surface-sunken p-1">
         {OPTIONS.map(({ value, label, icon: Icon }) => (
           <label
